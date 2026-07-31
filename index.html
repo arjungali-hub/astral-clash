@@ -541,7 +541,7 @@
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">🧱</div>
                             <h4>Arena Collapse</h4>
-                            <p>No round timer — instead, a countdown to the <em>next wall shrink</em>. The play area's side walls pull inward on a timer, squeezing the fight into a shrinking strip so stalling isn't an option. If the walls fully close, both fighters take the same flat damage per second (regardless of max or current HP) until one dies — whoever's crushed first loses.</p>
+                            <p>No round timer — instead, a countdown to the <em>next collapse</em>. The whole arena closes in from all four sides on a timer (the edges literally crumble away), squeezing the fight toward the center so stalling isn't an option. If it fully shuts, both fighters are crushed and lose the same flat HP per second (regardless of max or current HP) until one dies — whoever's crushed first loses.</p>
                         </div>
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">🏃</div>
@@ -551,7 +551,7 @@
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">⚔️</div>
                             <h4>Basic vs. Special</h4>
-                            <p>Both hit hard — a handful of clean attacks can end a round, so don't get comfortable eating hits. Basic attacks are fast and always available (short cooldown between swings). Specials hit even harder but need a full meter — meter builds from both dealing <em>and</em> taking damage, so a losing fighter charges up faster.</p>
+                            <p>Basic attacks are fast and always available (short cooldown between swings) and hit hard, so don't get comfortable eating them. Your Special needs a full meter — meter builds from both dealing <em>and</em> taking damage, so a losing fighter charges up faster. Each fighter's Special is unique: some blink and combo, some launch, stun, root, burn, pull the enemy in, or strike from range. Read yours (and your opponent's) in the fighter panel.</p>
                         </div>
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">⚔️</div>
@@ -1358,15 +1358,20 @@ function addRimEdge(x, z, w, d, accent) {
     m.position.set(x, 2.5, z);
     m.receiveShadow = true;
     mapGroup.add(m);
+    return m;
 }
 
 function addCornerGlow(x, z, accent) {
+    const group = new THREE.Group();
     const glow = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 8), new THREE.MeshBasicMaterial({ color: accent }));
-    glow.position.set(x, 3, z);
-    mapGroup.add(glow);
+    glow.position.y = 3;
+    group.add(glow);
     const light = new THREE.PointLight(accent, 0.5, 150);
-    light.position.set(x, 20, z);
-    mapGroup.add(light);
+    light.position.y = 20;
+    group.add(light);
+    group.position.set(x, 0, z);
+    mapGroup.add(group);
+    return group;
 }
 
 function buildPillarMesh(ob, accent) {
@@ -1390,6 +1395,7 @@ function buildPillarMesh(ob, accent) {
 
     group.position.set(worldX(ob.x), 0, worldZ(ob.y));
     mapGroup.add(group);
+    return group;
 }
 
 // Floating, jump-only platform: a gap under the slab is what makes it
@@ -1399,38 +1405,48 @@ function buildPillarMesh(ob, accent) {
 // bit more metallic than a plain step so "jump-only high ground" still
 // reads as visually distinct from walk-up-able stairs.
 function buildPlatformMesh(p, accent) {
+    const group = new THREE.Group();
     const slab = new THREE.Mesh(
         new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2),
         new THREE.MeshStandardMaterial({ color: 0x2a3350, roughness: 0.6, metalness: 0.35 })
     );
-    slab.position.set(worldX(p.x), p.height / 2, worldZ(p.y));
+    slab.position.y = p.height / 2;
     slab.castShadow = true; slab.receiveShadow = true;
-    mapGroup.add(slab);
+    group.add(slab);
 
     const trim = new THREE.Mesh(
         new THREE.BoxGeometry(p.hw * 2 + 2, 2, p.hd * 2 + 2),
         new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.5, transparent: true, opacity: 0.75 })
     );
-    trim.position.set(worldX(p.x), p.height, worldZ(p.y));
-    mapGroup.add(trim);
+    trim.position.y = p.height;
+    group.add(trim);
+
+    group.position.set(worldX(p.x), 0, worldZ(p.y));
+    mapGroup.add(group);
+    return group;
 }
 
 // Solid stair block, floor-to-top — always walkable, no jump required.
 function buildStepMesh(t, accent) {
+    const group = new THREE.Group();
     const slab = new THREE.Mesh(
         new THREE.BoxGeometry(t.hw * 2, Math.max(6, t.height), t.hd * 2),
         new THREE.MeshStandardMaterial({ color: 0x1c2438, roughness: 0.85 })
     );
-    slab.position.set(worldX(t.x), t.height / 2, worldZ(t.y));
+    slab.position.y = t.height / 2;
     slab.castShadow = true; slab.receiveShadow = true;
-    mapGroup.add(slab);
+    group.add(slab);
 
     const trim = new THREE.Mesh(
         new THREE.BoxGeometry(t.hw * 2 + 1.5, 1.5, t.hd * 2 + 1.5),
         new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.5, transparent: true, opacity: 0.7 })
     );
-    trim.position.set(worldX(t.x), t.height, worldZ(t.y));
-    mapGroup.add(trim);
+    trim.position.y = t.height;
+    group.add(trim);
+
+    group.position.set(worldX(t.x), 0, worldZ(t.y));
+    mapGroup.add(group);
+    return group;
 }
 
 // Tilted slab approximating the linear from->to incline groundLevelAt()
@@ -1440,6 +1456,7 @@ function buildStepMesh(t, accent) {
 // walk through underneath — only a real box primitive is used, since a
 // single hand-rolled wedge mesh risks inverted normals I can't preview.
 function buildRampMesh(t, accent) {
+    const group = new THREE.Group();
     const length = t.axis === 'x' ? t.hw * 2 : t.hd * 2;
     const width = t.axis === 'x' ? t.hd * 2 : t.hw * 2;
     const angle = Math.atan2(t.to - t.from, length);
@@ -1456,19 +1473,23 @@ function buildRampMesh(t, accent) {
             new THREE.BoxGeometry(t.axis === 'x' ? segLen : width, hHi, t.axis === 'x' ? width : segLen),
             supportMat
         );
-        if (t.axis === 'x') seg.position.set(worldX(t.x + offset), hHi / 2, worldZ(t.y));
-        else seg.position.set(worldX(t.x), hHi / 2, worldZ(t.y + offset));
+        if (t.axis === 'x') seg.position.set(offset, hHi / 2, 0);
+        else seg.position.set(0, hHi / 2, offset);
         seg.castShadow = true; seg.receiveShadow = true;
-        mapGroup.add(seg);
+        group.add(seg);
     }
 
     const surface = new THREE.Mesh(
         new THREE.BoxGeometry(length, 4, width),
         new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.35, transparent: true, opacity: 0.85 })
     );
-    surface.position.set(worldX(t.x), (t.from + t.to) / 2, worldZ(t.y));
+    surface.position.y = (t.from + t.to) / 2;
     if (t.axis === 'x') surface.rotation.z = angle; else surface.rotation.x = -angle;
-    mapGroup.add(surface);
+    group.add(surface);
+
+    group.position.set(worldX(t.x), 0, worldZ(t.y));
+    mapGroup.add(group);
+    return group;
 }
 
 const mapGroup = new THREE.Group();
@@ -1484,38 +1505,57 @@ function clearMapGroup() {
 
 let currentMap = null;
 
+// Arena Collapse tracking (see the constants/logic further down): rather
+// than a couple of glowing wall slabs marking the boundary, the actual map
+// geometry at the shrinking edges is hidden as the boundary sweeps past
+// it — "falls away, as if it never existed" per the brief. `floorMesh` is
+// scaled/repositioned every shrink tick; `borderDecor` (the 4 rim-edge
+// strips + 4 corner glows, all fixed at the original outer boundary) is
+// hidden the instant any shrink happens, since they're the outermost
+// things and are immediately "outside" the very first tick; `mapEdgeObjects`
+// (pillars/terrain/platforms, each tagged with its game-space x/y) is
+// checked every tick and hidden once its position falls outside the
+// current play bounds.
+let floorMesh = null, floorBaseSize = null;
+let borderDecor = [];
+let mapEdgeObjects = [];
+
 function loadMap(map) {
     currentMap = map;
     clearMapGroup();
     startAmbientPad(map); // Batch 10: swaps to this map's drone; internally stops whatever was already playing
+    borderDecor = [];
+    mapEdgeObjects = [];
 
     const accent = hexNum(map.accent);
     const floorMat = new THREE.MeshStandardMaterial({ map: getFloorTexture(map, accent), roughness: 0.95 });
     floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it
-    const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(ARENA_RIGHT - ARENA_LEFT, ARENA_BOTTOM - ARENA_TOP),
+    floorBaseSize = { w: ARENA_RIGHT - ARENA_LEFT, d: ARENA_BOTTOM - ARENA_TOP };
+    floorMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d),
         floorMat
     );
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    mapGroup.add(floor);
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.position.set(worldX(ARENA_CX), 0, worldZ(ARENA_CY));
+    floorMesh.receiveShadow = true;
+    mapGroup.add(floorMesh);
 
     const aw = ARENA_RIGHT - ARENA_LEFT, ad = ARENA_BOTTOM - ARENA_TOP;
-    addRimEdge(0, -ad / 2, aw, 6, accent);
-    addRimEdge(0, ad / 2, aw, 6, accent);
-    addRimEdge(-aw / 2, 0, 6, ad, accent);
-    addRimEdge(aw / 2, 0, 6, ad, accent);
+    borderDecor.push(addRimEdge(0, -ad / 2, aw, 6, accent));
+    borderDecor.push(addRimEdge(0, ad / 2, aw, 6, accent));
+    borderDecor.push(addRimEdge(-aw / 2, 0, 6, ad, accent));
+    borderDecor.push(addRimEdge(aw / 2, 0, 6, ad, accent));
     [[ARENA_LEFT, ARENA_TOP], [ARENA_RIGHT, ARENA_TOP], [ARENA_LEFT, ARENA_BOTTOM], [ARENA_RIGHT, ARENA_BOTTOM]].forEach(([x, y]) => {
-        addCornerGlow(worldX(x), worldZ(y), accent);
+        borderDecor.push(addCornerGlow(worldX(x), worldZ(y), accent));
     });
 
     OBSTACLES = map.obstacles;
     TERRAIN = map.terrain;
     PLATFORMS = map.platforms;
 
-    OBSTACLES.forEach(ob => buildPillarMesh(ob, accent));
-    TERRAIN.forEach(t => (t.type === 'ramp' ? buildRampMesh : buildStepMesh)(t, accent));
-    PLATFORMS.forEach(p => buildPlatformMesh(p, accent));
+    OBSTACLES.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, accent), x: ob.x, y: ob.y }));
+    TERRAIN.forEach(t => mapEdgeObjects.push({ mesh: (t.type === 'ramp' ? buildRampMesh : buildStepMesh)(t, accent), x: t.x, y: t.y }));
+    PLATFORMS.forEach(p => mapEdgeObjects.push({ mesh: buildPlatformMesh(p, accent), x: p.x, y: p.y }));
 
     scene.fog.color.setHex(hexNum(map.fogColor));
     scene.background.setHex(hexNum(map.fogColor));
@@ -1709,43 +1749,43 @@ loadMap(MAPS[Math.floor(Math.random() * MAPS.length)]);
 const CHARACTERS = [
     { name: 'Kaelen', title: 'Rhythm Blade', color: '#3b82f6', speed: 3.4, hp: 400, meterRateMult: 1,
       atkType: 'slash', dmg: 35, range: 70, halfAngle: 55 * DEG, cooldown: 16,
-      special: 'dash', specialName: 'Blade Dash', specialDesc: 'Dash forward and strike for heavy damage.',
+      special: 'dash', specialName: 'Blade Dash', specialDesc: 'Dash through the enemy, cutting them on the pass and ending behind them.',
       desc: 'Balanced duelist, flowing blade.' },
     { name: 'Lyra', title: 'Glassweaver', color: '#a855f7', speed: 3, hp: 360, meterRateMult: 1,
       atkType: 'shard', dmg: 30, range: 260, halfAngle: 15 * DEG, cooldown: 16,
-      special: 'volley', specialName: 'Prism Volley', specialDesc: 'Fire a 3-shard spread volley.',
+      special: 'volley', specialName: 'Prism Volley', specialDesc: 'Spray a wide 5-shard fan to wall off space.',
       desc: 'Fragile, deadly at range.' },
     { name: 'Gorgonok', title: 'Seismic Forge', color: '#f97316', speed: 2.2, hp: 440, meterRateMult: 1.8,
       atkType: 'punch', dmg: 50, range: 60, halfAngle: 40 * DEG, cooldown: 20,
-      special: 'shockwave', specialName: 'Seismic Slam', specialDesc: 'Slam the ground for AOE damage around you.',
+      special: 'shockwave', specialName: 'Seismic Slam', specialDesc: 'A ground slam that launches the enemy away and stuns them.',
       desc: 'Slow, heavy-hitting brawler.' },
     { name: 'Voss', title: 'Shadow Dagger', color: '#14b8a6', speed: 4.1, hp: 320, meterRateMult: 1,
       atkType: 'dagger', dmg: 25, range: 45, halfAngle: 65 * DEG, cooldown: 9,
-      special: 'flurry', specialName: 'Shadow Flurry', specialDesc: 'Blink strike dealing heavy damage.',
+      special: 'flurry', specialName: 'Shadow Flurry', specialDesc: 'Blink onto the enemy and stab rapidly, briefly invulnerable.',
       desc: 'Blazing fast glass cannon.' },
     { name: 'Draven', title: 'Ironclad Warden', color: '#6b7280', speed: 1.9, hp: 520, meterRateMult: 1,
       atkType: 'hammer', dmg: 70, range: 75, halfAngle: 45 * DEG, cooldown: 30,
-      special: 'groundbreak', specialName: 'Ground Breaker', specialDesc: 'Massive AOE seismic slam.',
+      special: 'groundbreak', specialName: 'Ground Breaker', specialDesc: 'A short-range overhead smash that hard-stuns (knocks down).',
       desc: 'Slow, nearly unbreakable tank.' },
     { name: 'Seraphine', title: 'Astral Warden', color: '#eab308', speed: 2.6, hp: 380, meterRateMult: 0.8,
       atkType: 'orb', dmg: 25, range: 260, halfAngle: 15 * DEG, cooldown: 16,
-      special: 'ward', specialName: 'Astral Ward', specialDesc: 'Shield yourself and heal a little.',
+      special: 'ward', specialName: 'Astral Ward', specialDesc: 'Shield yourself and heal — purely defensive.',
       desc: 'Support caster, shields and heals.' },
     { name: 'Nyx', title: 'Umbral Reaper', color: '#7c3aed', speed: 3.2, hp: 380, meterRateMult: 1,
       atkType: 'scythe', dmg: 34, range: 95, halfAngle: 60 * DEG, cooldown: 19,
-      special: 'reap', specialName: "Death's Embrace", specialDesc: 'Wide reaping arc that yanks the enemy in close.',
+      special: 'reap', specialName: "Death's Embrace", specialDesc: 'Yank the enemy in, cut them, and root them in place.',
       desc: 'Long reach, drags foes into the blade.' },
     { name: 'Ignis', title: 'Emberfist', color: '#dc2626', speed: 3.7, hp: 380, meterRateMult: 1.1,
       atkType: 'punch', dmg: 22, range: 55, halfAngle: 50 * DEG, cooldown: 9,
-      special: 'inferno', specialName: 'Inferno Burst', specialDesc: 'Erupt in flame, torching everything nearby.',
+      special: 'inferno', specialName: 'Inferno Burst', specialDesc: 'Erupt in flame, leaving the enemy burning over time.',
       desc: 'Relentless flurry brawler, fast fists.' },
     { name: 'Aurelia', title: 'Storm Herald', color: '#22d3ee', speed: 3.0, hp: 340, meterRateMult: 1,
       atkType: 'bolt', dmg: 28, range: 300, halfAngle: 12 * DEG, cooldown: 15,
-      special: 'thunder', specialName: 'Thunderstrike', specialDesc: 'Loose a massive overcharged bolt.',
+      special: 'thunder', specialName: 'Thunderstrike', specialDesc: 'Call a bolt down directly onto the enemy — cannot be sidestepped.',
       desc: 'Ranged stormcaller, long-range bolts.' },
     { name: 'Thorne', title: 'Thorncaller', color: '#4ade80', speed: 2.8, hp: 420, meterRateMult: 1,
       atkType: 'whip', dmg: 30, range: 115, halfAngle: 32 * DEG, cooldown: 20,
-      special: 'bramble', specialName: 'Bramble Lash', specialDesc: 'Sweeping thorn-lash across a wide arc.',
+      special: 'bramble', specialName: 'Bramble Lash', specialDesc: 'A wide thorn-arc that ensnares (roots) the enemy in place.',
       desc: 'Longest melee reach, controls space.' }
 ];
 const CHAR_MAP = Object.fromEntries(CHARACTERS.map(c => [c.name, c]));
@@ -1912,6 +1952,8 @@ class Fighter {
         this.hitLanded = false; // Batch 10: did the current action's active window connect? drives the whiff sound
         this.atkOpponent = null;
         this.hitstunTimer = 0; // can't act while this is > 0 (Batch 3c)
+        this.rootedFrames = 0; // special-inflicted root: can't MOVE (may still attack) while > 0
+        this.burnFrames = 0; this.burnDps = 0; // special-inflicted damage-over-time
         this.dodgeCooldown = 0; // Batch 3d
         this.jumpCooldown = 0;
         this.hitFlash = 0;
@@ -1966,8 +2008,8 @@ class Fighter {
     clampToArena() {
         if (this.x < playLeft) this.x = playLeft;
         if (this.x > playRight - this.width) this.x = playRight - this.width;
-        if (this.y < ARENA_TOP) this.y = ARENA_TOP;
-        if (this.y > ARENA_BOTTOM - this.height) this.y = ARENA_BOTTOM - this.height;
+        if (this.y < playTop) this.y = playTop;
+        if (this.y > playBottom - this.height) this.y = playBottom - this.height;
     }
 
     // Push the fighter back out of any pillar it just walked into — unless
@@ -2061,10 +2103,14 @@ class Fighter {
         this.clampToArena();
     }
 
-    // Simple reactive AI for a bot-controlled fighter: keep to a preferred
-    // range for its attack type, back off out of an active hazard, and
-    // probabilistically fire off its attack/special when facing the
-    // opponent and off cooldown, so it doesn't play with frame-perfect timing.
+    // Reactive AI for a bot-controlled fighter: keep to a preferred range
+    // for its attack type, back off out of an active hazard, strafe to be a
+    // harder target, and probabilistically fire off its attack/special. A
+    // key detail: it sets `botFaceX/botFaceY` (an aim override update()
+    // applies AFTER movement) so a kiting/strafing bot keeps facing — and
+    // firing at — the opponent instead of facing wherever it happens to be
+    // moving. Ranged bots additionally LEAD the target (predict where it'll
+    // be when the projectile arrives) so their shots actually connect.
     botDecide(opponent, dt) {
         const diff = BOT_DIFFICULTY[botDifficulty];
         const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
@@ -2072,7 +2118,24 @@ class Fighter {
         const dx = ox - cx, dy = oy - cy;
         const dist = Math.hypot(dx, dy) || 1;
         const ux = dx / dist, uy = dy / dist;
+        const isRanged = this.atkType === 'shard' || this.atkType === 'orb' || this.atkType === 'bolt';
         let jumpPressed = false;
+
+        // --- AIM. Default: straight at the opponent. Ranged + `lead`:
+        // aim where the opponent will be when a speed-7 projectile arrives,
+        // so a moving target still gets hit. Stored as a facing override
+        // (see update()) so movement direction never turns the bot's aim
+        // away from its target — the main thing that made ranged bots miss.
+        let aimX = ux, aimY = uy;
+        if (isRanged && diff.lead) {
+            const PROJ_SPEED = 7;
+            const t = Math.min(70, dist / PROJ_SPEED);
+            const adx = (ox + (opponent.vx || 0) * t) - cx;
+            const ady = (oy + (opponent.vy || 0) * t) - cy;
+            const al = Math.hypot(adx, ady) || 1;
+            aimX = adx / al; aimY = ady / al;
+        }
+        this.botFaceX = aimX; this.botFaceY = aimY;
 
         // React to the hazard during its 'warn' telegraph too, not just
         // once it's already dealing damage — a human would start moving
@@ -2082,7 +2145,6 @@ class Fighter {
             const hdist = Math.hypot(hdx, hdy);
             const reactRadius = hazard.state === 'active' ? HAZARD_R + 40 : HAZARD_R + 15;
             if (hdist < reactRadius) {
-                this.setFacing(ux, uy);
                 return { moveX: hdx / (hdist || 1), moveY: hdy / (hdist || 1), jumpPressed: false };
             }
         }
@@ -2095,26 +2157,34 @@ class Fighter {
             const pdx = pickup.x - cx, pdy = pickup.y - cy;
             const pdist = Math.hypot(pdx, pdy) || 1;
             if (pdist < 260 * (0.5 + missingHpFrac)) {
-                this.setFacing(pdx / pdist, pdy / pdist);
                 return { moveX: pdx / pdist, moveY: pdy / pdist, jumpPressed: false };
             }
         }
 
-        const isRanged = this.atkType === 'shard' || this.atkType === 'orb' || this.atkType === 'bolt';
-        const preferredRange = isRanged ? 220 : (this.attackRange || 55) * 0.75;
+        // Ranged bots want to hold a mid-range band and never let the
+        // opponent close; melee bots want to get right on top of them.
+        const preferredRange = isRanged ? 235 : (this.attackRange || 55) * 0.7;
         let moveX = 0, moveY = 0;
-
-        if (dist > preferredRange + 20) {
-            moveX = ux; moveY = uy;
-        } else if (isRanged && dist < preferredRange - 20) {
-            moveX = -ux; moveY = -uy;
-        } else {
-            this.setFacing(ux, uy);
+        if (dist > preferredRange + 25) {
+            moveX = ux; moveY = uy; // close the gap
+        } else if (dist < preferredRange - 25 && (isRanged || dist < preferredRange - 45)) {
+            moveX = -ux; moveY = -uy; // back off (ranged kites eagerly; melee only if basically on top)
+        }
+        // Strafe perpendicular to the line of sight — a moving target is far
+        // harder to hit and passively slips incoming shots. Direction flips
+        // on a timer so it weaves rather than orbiting predictably.
+        if (diff.strafe > 0 && dist < 400) {
+            if (this.strafeTimer === undefined || this.strafeTimer <= 0) {
+                this.strafeDir = Math.random() < 0.5 ? 1 : -1;
+                this.strafeTimer = 35 + Math.random() * 45;
+            }
+            this.strafeTimer -= dt;
+            moveX += -uy * this.strafeDir * diff.strafe;
+            moveY += ux * this.strafeDir * diff.strafe;
         }
 
-        // Purposeful jump: hop when the path toward the opponent is about
-        // to run into a platform wall or a too-tall-to-walk-up step
-        // (see resolveTallTerrain), instead of a pure random twitch.
+        // Purposeful jump: hop when the path is about to run into a platform
+        // wall or a too-tall-to-walk-up step (see resolveTallTerrain).
         if (this.grounded && (moveX !== 0 || moveY !== 0)) {
             const lookX = cx + moveX * 40, lookY = cy + moveY * 40;
             for (const p of PLATFORMS) {
@@ -2125,13 +2195,16 @@ class Fighter {
             }
             if (!jumpPressed && groundLevelAt(lookX, lookY) - this.z > MAX_WALK_STEP_UP) jumpPressed = true;
         }
-        if (!jumpPressed) jumpPressed = this.grounded && Math.random() < 0.002 * dt;
+        // Lower tiers add a little idle jump-twitch to look alive; relentless
+        // tiers don't waste airtime on noise.
+        if (!jumpPressed && !diff.relentless) jumpPressed = this.grounded && Math.random() < 0.002 * dt;
 
         // Dodge an incoming projectile perpendicular to its travel line,
         // if it's close enough to matter and this difficulty reacts to them.
         if (diff.dodgeProjectiles && this.dodgeCooldown <= 0 && this.atkState === 'idle') {
+            const dodgeRadius = diff.relentless ? 130 : 90; // insane reacts from further out
             for (const p of opponent.projectiles) {
-                if (Math.hypot(cx - p.x, cy - p.y) < 90) {
+                if (Math.hypot(cx - p.x, cy - p.y) < dodgeRadius) {
                     const pvLen = Math.hypot(p.vx, p.vy) || 1;
                     this.tryDodge(-p.vy / pvLen, p.vx / pvLen);
                     break;
@@ -2139,26 +2212,39 @@ class Fighter {
             }
         }
 
-        const facingOk = (ux * this.fx + uy * this.fy) > 0.5;
+        // Facing check: melee needs to be pointed at the opponent; ranged
+        // needs its facing to match its (led) aim — which the override keeps
+        // locked on, so this is essentially always true once aiming, letting
+        // it fire on lead instead of only when pointed at the current spot.
+        const facingOk = isRanged
+            ? (aimX * this.fx + aimY * this.fy) > 0.8
+            : (ux * this.fx + uy * this.fy) > 0.5;
         const opponentRecovering = diff.punishRecovery && opponent.atkState === 'recovery';
 
         // Only reconsider whether to attack every so often, like a human
-        // reaction gap, instead of re-rolling every single frame — scaled
-        // by difficulty. An open recovery window on the opponent shortens
-        // the think gap so higher difficulties actually punish it.
+        // reaction gap, instead of re-rolling every frame — scaled by
+        // difficulty. An open recovery window shortens the gap so higher
+        // difficulties actually punish it.
         if (this.aiThinkTimer > 0) this.aiThinkTimer -= dt;
         if (this.aiThinkTimer <= 0 || opponentRecovering) {
             this.aiThinkTimer = diff.thinkMin + Math.floor(Math.random() * (diff.thinkMax - diff.thinkMin));
             const atkChance = opponentRecovering ? Math.min(1, diff.atkChance * 1.6) : diff.atkChance;
             if (this.attackCooldown <= 0 && facingOk) {
-                const inRange = isRanged ? dist < 260 : dist < (this.attackRange || 55) + 15;
+                // Ranged can fire across most of the arena (the projectile
+                // flies until it hits or leaves); melee needs to be in reach.
+                const inRange = isRanged ? dist < 360 : dist < (this.attackRange || 55) + 15;
                 if (inRange && Math.random() < atkChance) this.tryStartAction('basic', opponent);
             }
-            if (this.specialMeter >= 100 && facingOk && Math.random() < diff.specialChance) this.tryStartAction('special', opponent);
+            // Save the special for when it can actually connect: in melee/AOE
+            // reach for melee casters, or (ranged) whenever the opponent is
+            // in front — a wasted special is a long recovery for nothing.
+            const specialInRange = isRanged ? dist < 360 : dist < (this.attackRange || 55) + 60;
+            if (this.specialMeter >= 100 && facingOk && specialInRange && Math.random() < diff.specialChance) {
+                this.tryStartAction('special', opponent);
+            }
         }
 
-        // Basic steering: if a pillar sits roughly in the path toward the
-        // opponent (or the pickup/hazard-flee target above), add a lateral
+        // Basic steering: if a pillar sits roughly in the path, add a lateral
         // nudge so the bot slides around it instead of stalling on it.
         if (moveX !== 0 || moveY !== 0) {
             const steer = steerAroundObstacles(cx, cy, moveX, moveY);
@@ -2175,6 +2261,17 @@ class Fighter {
         this.vy = 0;
         let moveX = 0, moveY = 0;
         let jumpPressed = false;
+
+        // Special-inflicted status effects (Batch: creative-specials pass).
+        // Root blocks movement (handled below); burn drains HP over time as
+        // plain damage (like the arena crush — no i-frames/hitstun, and it
+        // still routes into the existing hp<=0 -> loss check).
+        if (this.rootedFrames > 0) this.rootedFrames -= dt;
+        if (this.burnFrames > 0) {
+            this.burnFrames -= dt;
+            this.hp = Math.max(0, this.hp - this.burnDps * dt / 60);
+            if (Math.random() < 0.4) this.effects.push({ type: 'shockwaveRing', r: 4, max: 26, color: '248,113,73' }); // little flame flickers
+        }
 
         if (this.isBot) {
             const decision = this.botDecide(opponent, dt);
@@ -2215,6 +2312,10 @@ class Fighter {
             }
         }
 
+        // Rooted (e.g. Thorne's Bramble Lash): can't move, but can still
+        // turn and attack — a lockdown, not a full stun.
+        if (this.rootedFrames > 0) { moveX = 0; moveY = 0; }
+
         // Movement speed depends on the action state machine: full lock
         // during the active hitbox window and while in hitstun, slowed
         // during startup/recovery (still some repositioning, but committed),
@@ -2230,6 +2331,15 @@ class Fighter {
             const len = Math.sqrt(moveX * moveX + moveY * moveY);
             this.vx = (moveX / len) * this.speed * speedMult;
             this.vy = (moveY / len) * this.speed * speedMult;
+        }
+
+        // Bot aim override: applied AFTER the movement-based facing above so
+        // a bot always faces (and shoots at) its chosen target — including
+        // its led aim for ranged — instead of facing wherever it's moving.
+        // This is the internal equivalent of the old player aim-lock, kept
+        // for bots only. See botDecide()'s botFaceX/botFaceY.
+        if (this.isBot && this.botFaceX !== undefined && this.hitstunTimer <= 0) {
+            this.setFacing(this.botFaceX, this.botFaceY);
         }
 
         const oldX = this.x, oldY = this.y;
@@ -2252,17 +2362,26 @@ class Fighter {
         const nextZ = this.z + this.vz * dt;
 
         // Steps/ramps are always steppable (no jump needed). Platforms are
-        // one-way: they only count as landable ground while actually
-        // airborne from a jump (not this.grounded) and at/above the
-        // platform's height while descending. Gravity decrements vz every
-        // frame even while standing still, so "vz <= 0" alone was almost
-        // always true — that let a fighter walk onto a platform for free
-        // straight off an adjacent step/ramp of matching height, no jump
-        // needed. Requiring !this.grounded closes that off.
+        // one-way high ground: you can only land on top by dropping onto the
+        // surface from at/above it (jumped up), never by walking into the
+        // footprint at ground level. The condition: descending (vz <= 0),
+        // currently on/just-above the surface, and dipping to/below it.
+        //
+        // The old check used `this.z >= p.height` gated by `!this.grounded`,
+        // which had a nasty bug: once you *landed* on a platform (grounded =
+        // true), the next frame gravity dipped your z a hair below p.height,
+        // and now neither `!this.grounded` nor `this.z >= p.height` held — so
+        // the platform stopped counting as ground and you fell straight off
+        // it ("teleported off the top"). Fixed with a small epsilon: you
+        // count as standing on the surface while within a few units of it,
+        // which absorbs the per-frame gravity dip so you stay put, while a
+        // fighter at ground level (z ≈ 0, far below a tall platform) still
+        // can't qualify — preserving one-way behavior without the fall-off.
+        const SURFACE_EPS = 5;
         let landHeight = stepGround;
         for (const p of PLATFORMS) {
             if (Math.abs(footX - p.x) <= p.hw && Math.abs(footY - p.y) <= p.hd &&
-                !this.grounded && this.vz <= 0 && this.z >= p.height && p.height > landHeight) {
+                this.vz <= 0 && this.z >= p.height - SURFACE_EPS && nextZ <= p.height && p.height > landHeight) {
                 landHeight = p.height;
             }
         }
@@ -2504,73 +2623,99 @@ class Fighter {
         if (matchStats) matchStats[this.isPlayerOne ? 'p1' : 'p2'].specialsUsed++;
         const angle = Math.atan2(this.fy, this.fx);
 
+        // A dodging (i-framed) opponent shrugs off a special's control
+        // effects too, not just its damage — this helper gates the CC.
+        const canAffect = () => opponent.invulnFrames <= 0;
+
         switch (this.cfg.special) {
-            case 'dash': { // Kaelen: forward dash-strike
-                this.teleportTo(this.fx * 50, this.fy * 50);
-                const range = 80, halfAngle = 70 * DEG;
-                this.effects.push({ type: 'slash', life: 16, maxLife: 16, angle, range, halfAngle });
-                if (inMeleeCone(this, opponent, range, halfAngle)) opponent.takeDamage(175, this);
+            case 'dash': { // Kaelen — Blade Dash: dash THROUGH the opponent, cutting them on the pass and ending behind them.
+                this.effects.push({ type: 'slash', life: 16, maxLife: 16, angle, range: 95, halfAngle: 85 * DEG });
+                if (distBetween(this, opponent) < 175) opponent.takeDamage(90, this);
+                const reach = Math.min(165, distBetween(this, opponent) + 45);
+                this.teleportTo(this.fx * reach, this.fy * reach); // ends past where the opponent was
                 break;
             }
-            case 'volley': { // Lyra: three-shard fan
-                [-0.35, 0, 0.35].forEach(offset => {
+            case 'volley': { // Lyra — Prism Volley: a wide 5-shard zoning spray that walls off space.
+                [-0.5, -0.25, 0, 0.25, 0.5].forEach(offset => {
                     const a = angle + offset;
                     this.projectiles.push({ x: this.x + this.width / 2, y: this.y + this.height / 2,
-                        vx: Math.cos(a) * 9, vy: Math.sin(a) * 9, damage: 75, color: '#00f3ff', z: this.z + 16 });
+                        vx: Math.cos(a) * 8, vy: Math.sin(a) * 8, damage: 24, color: '#c4b5fd', z: this.z + 16 });
                 });
                 break;
             }
-            case 'shockwave': { // Gorgonok: seismic AOE slam
-                if (distBetween(this, opponent) < 150) opponent.takeDamage(175, this);
-                this.effects.push({ type: 'shockwaveRing', r: 10, max: 150, color: '249,115,22' });
-                break;
-            }
-            case 'flurry': { // Voss: blink strike
-                this.teleportTo(this.fx * 40, this.fy * 40);
-                const range = 60, halfAngle = 80 * DEG;
-                this.effects.push({ type: 'dagger', life: 14, maxLife: 14, angle, range, halfAngle });
-                if (inMeleeCone(this, opponent, range, halfAngle)) opponent.takeDamage(200, this);
-                break;
-            }
-            case 'groundbreak': { // Draven: bigger seismic AOE
-                if (distBetween(this, opponent) < 170) opponent.takeDamage(225, this);
-                this.effects.push({ type: 'shockwaveRing', r: 10, max: 170, color: '148,163,184' });
-                break;
-            }
-            case 'ward': { // Seraphine: self shield + heal
-                this.shieldFrames = 180;
-                this.shieldColor = 0xfacc15;
-                this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.08); // % of maxHp, not a flat number — scales with the Batch 4 HP pass
-                this.effects.push({ type: 'ward', life: 30, maxLife: 30, color: '250,204,21' });
-                break;
-            }
-            case 'reap': { // Nyx: wide reaping arc that yanks the enemy in
-                const range = 120, halfAngle = 75 * DEG;
-                this.effects.push({ type: 'scythe', life: 18, maxLife: 18, angle, range, halfAngle });
-                if (distBetween(this, opponent) < 220) {
-                    // Pull the opponent toward this fighter, then hit them.
-                    const dx = (this.x + this.width / 2) - (opponent.x + opponent.width / 2);
-                    const dy = (this.y + this.height / 2) - (opponent.y + opponent.height / 2);
-                    const d = Math.sqrt(dx * dx + dy * dy) || 1;
-                    opponent.teleportTo((dx / d) * 110, (dy / d) * 110);
-                    opponent.takeDamage(185, this);
+            case 'shockwave': { // Gorgonok — Seismic Slam: shorter AOE that LAUNCHES the enemy away, resetting the fight.
+                this.effects.push({ type: 'shockwaveRing', r: 10, max: 130, color: '249,115,22' });
+                if (distBetween(this, opponent) < 130 && canAffect()) {
+                    opponent.takeDamage(70, this);
+                    const kx = opponent.x - this.x, ky = opponent.y - this.y, kl = Math.hypot(kx, ky) || 1;
+                    opponent.teleportTo((kx / kl) * 130, (ky / kl) * 130); // hard radial launch
+                    opponent.hitstunTimer = Math.max(opponent.hitstunTimer, 30);
                 }
                 break;
             }
-            case 'inferno': { // Ignis: fiery AOE eruption around self
-                if (distBetween(this, opponent) < 160) opponent.takeDamage(185, this);
-                this.effects.push({ type: 'shockwaveRing', r: 10, max: 160, color: '248,113,73' });
+            case 'flurry': { // Voss — Shadow Flurry: blink onto the enemy and rapidly stab, briefly invulnerable through the combo.
+                if (distBetween(this, opponent) < 280) {
+                    const dx = opponent.x - this.x, dy = opponent.y - this.y, dl = Math.hypot(dx, dy) || 1;
+                    this.teleportTo(dx - (dx / dl) * 34, dy - (dy / dl) * 34); // blink to point-blank
+                    this.setFacing(dx, dy);
+                }
+                this.invulnFrames = 20;
+                const range = 68, halfAngle = 88 * DEG;
+                const stab = (opp) => {
+                    this.effects.push({ type: 'dagger', life: 8, maxLife: 8, angle: Math.atan2(this.fy, this.fx), range, halfAngle });
+                    if (inMeleeCone(this, opp, range, halfAngle)) opp.takeDamage(19, this);
+                };
+                stab(opponent);
+                this.scheduleAction(5, stab); this.scheduleAction(10, stab); this.scheduleAction(15, stab); // 4 hits, ~76 if all land
                 break;
             }
-            case 'thunder': { // Aurelia: one massive overcharged bolt
-                this.projectiles.push({ x: this.x + this.width / 2, y: this.y + this.height / 2,
-                    vx: this.fx * 13, vy: this.fy * 13, damage: 210, color: '#a5f3fc', z: this.z + 16, big: true });
+            case 'groundbreak': { // Draven — Ground Breaker: SHORT-range overhead that shatters the ground and hard-stuns (knockdown). Range halved from the old version.
+                this.effects.push({ type: 'shockwaveRing', r: 8, max: 85, color: '148,163,184' });
+                if (distBetween(this, opponent) < 85) {
+                    opponent.takeDamage(95, this);
+                    if (canAffect()) opponent.hitstunTimer = Math.max(opponent.hitstunTimer, 55); // long knockdown-length stun
+                }
                 break;
             }
-            case 'bramble': { // Thorne: sweeping thorn-lash across a wide arc
-                const range = 150, halfAngle = 65 * DEG;
+            case 'ward': { // Seraphine — Astral Ward: purely defensive shield + heal, no damage.
+                this.shieldFrames = 150;
+                this.shieldColor = 0xfacc15;
+                this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.10);
+                this.effects.push({ type: 'ward', life: 30, maxLife: 30, color: '250,204,21' });
+                break;
+            }
+            case 'reap': { // Nyx — Death's Embrace: yank the enemy in, cut them, and root them for the follow-up.
+                this.effects.push({ type: 'scythe', life: 18, maxLife: 18, angle, range: 120, halfAngle: 80 * DEG });
+                if (distBetween(this, opponent) < 200 && canAffect()) {
+                    const dx = this.x - opponent.x, dy = this.y - opponent.y, d = Math.hypot(dx, dy) || 1;
+                    opponent.teleportTo((dx / d) * 130, (dy / d) * 130); // pull toward Nyx
+                    opponent.takeDamage(70, this);
+                    opponent.rootedFrames = 40;
+                }
+                break;
+            }
+            case 'inferno': { // Ignis — Inferno Burst: a flame eruption that leaves the enemy burning (damage over time).
+                this.effects.push({ type: 'shockwaveRing', r: 10, max: 150, color: '248,113,73' });
+                if (distBetween(this, opponent) < 150 && canAffect()) {
+                    opponent.takeDamage(45, this);
+                    opponent.burnFrames = 180; opponent.burnDps = 22; // ~3s burn, ~66 extra over time
+                }
+                break;
+            }
+            case 'thunder': { // Aurelia — Thunderstrike: call a bolt down directly onto the enemy — targeted, not a sidesteppable projectile like her basic.
+                if (distBetween(this, opponent) < 340) {
+                    opponent.takeDamage(90, this);
+                    opponent.effects.push({ type: 'shockwaveRing', r: 6, max: 70, color: '165,243,252' }); // strike lands on the target
+                }
+                break;
+            }
+            case 'bramble': { // Thorne — Bramble Lash: a wide thorn-arc that ensnares (roots) the enemy in place. Range reduced from the old version.
+                const range = 120, halfAngle = 70 * DEG;
                 this.effects.push({ type: 'whip', life: 18, maxLife: 18, angle, range, halfAngle });
-                if (inMeleeCone(this, opponent, range, halfAngle)) opponent.takeDamage(195, this);
+                if (inMeleeCone(this, opponent, range, halfAngle)) {
+                    opponent.takeDamage(60, this);
+                    if (canAffect()) opponent.rootedFrames = 70; // ensnared ~1.2s
+                }
                 break;
             }
         }
@@ -2803,11 +2948,16 @@ class Fighter {
         this.mesh.rotation.x = lean;
         animateWeapon(this);
 
-        // Arena Collapse: once the walls have fully closed, squeeze the
-        // whole body flat along X — meshes always start a fresh round at
-        // scale 1 (new Fighter/initMesh() each round), so this only ever
-        // needs to shrink, never reset.
-        if (crushing) this.mesh.scale.x = Math.max(0.15, this.mesh.scale.x - 0.008 * dt);
+        // Arena Collapse: once the walls have fully closed, crush the whole
+        // body — footprint (X and Z) squished flat while it pops up in Y,
+        // like a can being stepped on, in place on whichever side the
+        // fighter ended up. Meshes always start a fresh round at scale 1
+        // (new Fighter/initMesh() each round), so this only ever shrinks.
+        if (crushing) {
+            this.mesh.scale.x = Math.max(0.12, this.mesh.scale.x - 0.011 * dt);
+            this.mesh.scale.z = Math.max(0.12, this.mesh.scale.z - 0.011 * dt);
+            this.mesh.scale.y = Math.min(1.7, this.mesh.scale.y + 0.006 * dt);
+        }
 
         this.flashLight.intensity = this.hitFlash > 0 ? (this.hitFlash / 10) * 2.2 : 0;
 
@@ -3492,13 +3642,18 @@ let p1IsBot = false, p2IsBot = false;
 
 // Batch 6: difficulty tiers built on the existing think-timer/probability
 // model rather than a separate system — easy reacts slowly and whiffs
-// often, hard reacts fast and punishes recovery windows.
+// often, higher tiers react fast, punish recovery, lead their shots, and
+// strafe. `lead` = predict the target's position when aiming projectiles;
+// `strafe` = perpendicular-movement amplitude (harder to hit, dodges
+// shots passively); `relentless` = no random idle jump-twitch, always
+// pressing. 'insane' is a deliberately very strong boss tier.
 const BOT_DIFFICULTY = {
-    easy:   { thinkMin: 30, thinkMax: 60, atkChance: 0.35, specialChance: 0.20, punishRecovery: false, dodgeProjectiles: false },
-    normal: { thinkMin: 18, thinkMax: 40, atkChance: 0.55, specialChance: 0.35, punishRecovery: false, dodgeProjectiles: true  },
-    hard:   { thinkMin: 8,  thinkMax: 20, atkChance: 0.75, specialChance: 0.50, punishRecovery: true,  dodgeProjectiles: true  }
+    easy:   { thinkMin: 30, thinkMax: 60, atkChance: 0.35, specialChance: 0.20, punishRecovery: false, dodgeProjectiles: false, lead: false, strafe: 0.0, relentless: false },
+    normal: { thinkMin: 18, thinkMax: 40, atkChance: 0.55, specialChance: 0.35, punishRecovery: false, dodgeProjectiles: true,  lead: true,  strafe: 0.3, relentless: false },
+    hard:   { thinkMin: 8,  thinkMax: 20, atkChance: 0.78, specialChance: 0.55, punishRecovery: true,  dodgeProjectiles: true,  lead: true,  strafe: 0.55, relentless: false },
+    insane: { thinkMin: 2,  thinkMax: 6,  atkChance: 0.98, specialChance: 0.90, punishRecovery: true,  dodgeProjectiles: true,  lead: true,  strafe: 0.85, relentless: true }
 };
-const DIFFICULTY_ORDER = ['easy', 'normal', 'hard'];
+const DIFFICULTY_ORDER = ['easy', 'normal', 'hard', 'insane'];
 let botDifficulty = 'normal';
 
 // Reflects each side's bot state into the UI: toggles the button label/
@@ -3799,22 +3954,36 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 
 // --- Arena Collapse: replaces the old flat round timer. There's no clock
 // counting down to a timeout draw anymore — instead there's a timer to the
-// *next* wall shrink. Every SHRINK_INTERVAL seconds the play area's left
-// and right bounds each pull in by SHRINK_STEP, squeezing the fight into a
-// shrinking strip so two fighters who are just avoiding each other run out
-// of room to do that. Once the gap closes to CRUSH_GAP or less, the walls
-// snap fully shut and both fighters take flat, equal, maxHP-independent
-// damage per second (CRUSH_DPS) until one of them dies — reusing the
-// existing hp<=0 -> DEATH-state flow, so "whoever dies first loses" falls
-// out of logic that already existed rather than needing a new win-check.
-const SHRINK_INTERVAL = 10; // seconds between each shrink tick
-const SHRINK_STEP = 35; // units the play boundary pulls in, per side, per tick
-const CRUSH_GAP = 120; // once (playRight - playLeft) drops to this or below, snap shut and start crushing
-const CRUSH_DPS = 35; // flat HP/second lost by BOTH fighters while crushing — same rate regardless of max or current HP
+// *next* collapse tick. Every SHRINK_INTERVAL seconds the play area pulls
+// inward on ALL FOUR sides proportionally (X and Y together, so it stays
+// the same shape as it closes toward center), squeezing the fight so two
+// fighters who are just avoiding each other run out of room. As the bounds
+// close, the map geometry left outside them literally falls away into the
+// void beneath the (also-shrinking) floor — "as if it never existed" — so
+// the arena visibly disappears from the edges in rather than being hidden
+// behind wall props. Once the collapse passes CRUSH_AT_FRAC, it snaps the
+// rest of the way shut and both fighters take flat, equal, maxHP-independent
+// damage per second (CRUSH_DPS) until one dies — reusing the existing
+// hp<=0 -> DEATH flow so "whoever dies first loses" falls out of logic that
+// already existed, and the map stays fully visible (no obscuring props)
+// while each fighter is crushed in place on their own side.
+const SHRINK_INTERVAL = 9;      // seconds between each collapse tick
+const SHRINK_FRAC_STEP = 0.14;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+const CRUSH_AT_FRAC = 0.8;      // once the collapse fraction passes this, snap fully shut and start crushing
+const CRUSH_DPS = 40;           // flat HP/second lost by BOTH fighters while crushing — same rate regardless of max or current HP
 let shrinkTimer = SHRINK_INTERVAL;
-let shrinkAmount = 0;
-let playLeft = ARENA_LEFT, playRight = ARENA_RIGHT; // the CURRENT shrinking playable bounds — clampToArena() uses these instead of ARENA_LEFT/RIGHT directly
+let shrinkFrac = 0;             // current (smoothly-lerped) collapse fraction, 0 = full arena, 1 = fully shut at center
+let shrinkTargetFrac = 0;       // the stepped target the visible fraction eases toward
 let crushing = false;
+// The CURRENT shrinking playable bounds — clampToArena() uses these instead
+// of the fixed ARENA_* so fighters are physically squeezed inward.
+let playLeft = ARENA_LEFT, playRight = ARENA_RIGHT, playTop = ARENA_TOP, playBottom = ARENA_BOTTOM;
+function arenaBoundsFromFrac(f) {
+    playLeft = ARENA_LEFT + (ARENA_CX - ARENA_LEFT) * f;
+    playRight = ARENA_RIGHT - (ARENA_RIGHT - ARENA_CX) * f;
+    playTop = ARENA_TOP + (ARENA_CY - ARENA_TOP) * f;
+    playBottom = ARENA_BOTTOM - (ARENA_BOTTOM - ARENA_CY) * f;
+}
 
 let roundWins = { p1: 0, p2: 0 };
 let currentRound = 1;
@@ -3852,49 +4021,62 @@ function pickHazardSpot() {
     return { x, y };
 }
 
-// Arena Collapse: advances the shrink-tick timer, pulls playLeft/playRight
-// in by SHRINK_STEP on each tick, and flips on `crushing` once the gap
-// closes to CRUSH_GAP or below (see the constants block above for the
-// full design rationale). Called every frame from gameLoop's FIGHT branch.
+// Arena Collapse: advances the collapse-tick timer (stepping the target
+// fraction inward), smoothly eases the visible fraction toward that target
+// every frame, and flips on `crushing` once it passes CRUSH_AT_FRAC (see
+// the constants block for the full design rationale). Called every frame
+// from gameLoop's FIGHT branch.
 function updateArenaShrink(dt) {
-    if (crushing) return;
-    shrinkTimer -= dt / 60;
-    if (shrinkTimer <= 0) {
-        shrinkTimer = SHRINK_INTERVAL;
-        shrinkAmount += SHRINK_STEP;
-        playLeft = ARENA_LEFT + shrinkAmount;
-        playRight = ARENA_RIGHT - shrinkAmount;
-        sfxHazardActive(); // reuse the hazard's low "thud" as a shrink-tick sting — a new dedicated cue felt like overkill for a once-per-10s event
-        if (playRight - playLeft <= CRUSH_GAP) {
-            playLeft = playRight = (ARENA_LEFT + ARENA_RIGHT) / 2;
-            crushing = true;
-            sfxKO(); // the same heavy impact cue used for a normal KO — this is the moment the walls slam shut
+    if (!crushing) {
+        shrinkTimer -= dt / 60;
+        if (shrinkTimer <= 0) {
+            shrinkTimer = SHRINK_INTERVAL;
+            shrinkTargetFrac = Math.min(1, shrinkTargetFrac + SHRINK_FRAC_STEP);
+            sfxHazardActive(); // reuse the hazard's low "thud" as a collapse-tick sting
+            if (shrinkTargetFrac >= CRUSH_AT_FRAC) {
+                shrinkTargetFrac = 1; // snap the rest of the way shut
+                crushing = true;
+                sfxKO(); // the same heavy impact cue as a KO — the walls slamming home
+            }
         }
     }
+    // Smoothly ease the actual bounds toward the stepped target so the walls
+    // read as continuously closing in, not teleporting inward once a tick.
+    shrinkFrac += (shrinkTargetFrac - shrinkFrac) * Math.min(1, 0.05 * dt);
+    arenaBoundsFromFrac(shrinkFrac);
 }
 
-// Two glowing slabs tracking playLeft/playRight, so the shrinking play
-// area is something you can actually see closing in, not just a number
-// counting down. Built once (not per-map, unlike the hazard) since they're
-// part of the match structure, not map decoration.
-let shrinkWallLeftMesh, shrinkWallRightMesh;
-function buildShrinkWalls() {
-    const wallGeo = new THREE.BoxGeometry(10, 240, VIRTUAL_H);
-    const wallMatL = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.7, transparent: true, opacity: 0.6 });
-    const wallMatR = wallMatL.clone();
-    shrinkWallLeftMesh = new THREE.Mesh(wallGeo, wallMatL);
-    shrinkWallRightMesh = new THREE.Mesh(wallGeo, wallMatR);
-    shrinkWallLeftMesh.position.y = shrinkWallRightMesh.position.y = 100;
-    scene.add(shrinkWallLeftMesh, shrinkWallRightMesh);
-}
-buildShrinkWalls();
-function syncShrinkWalls() {
-    const wz = worldZ((ARENA_TOP + ARENA_BOTTOM) / 2);
-    shrinkWallLeftMesh.position.set(worldX(playLeft), 100, wz);
-    shrinkWallRightMesh.position.set(worldX(playRight), 100, wz);
-    const pulse = crushing ? (0.6 + Math.sin(arenaTime * 0.4) * 0.3) : 0.55;
-    shrinkWallLeftMesh.material.opacity = pulse;
-    shrinkWallRightMesh.material.opacity = pulse;
+// Visual half of Arena Collapse: shrink the floor plane to the current play
+// bounds and drop any map geometry now outside them into the void, so the
+// arena visibly disappears from the edges inward. Replaces the old red wall
+// slabs (which obscured the fight); nothing is drawn "at" the boundary now —
+// the boundary is simply where the floor and props stop existing.
+function syncArenaCollapse(dt) {
+    dt = dt || 1;
+    if (!floorMesh) return;
+    const xExt = Math.max(1, playRight - playLeft);
+    const zExt = Math.max(1, playBottom - playTop);
+    floorMesh.scale.x = xExt / floorBaseSize.w;
+    floorMesh.scale.y = zExt / floorBaseSize.d; // plane's local Y maps to world Z after the -90° flip
+    floorMesh.position.set(worldX((playLeft + playRight) / 2), 0, worldZ((playTop + playBottom) / 2));
+
+    const collapsing = shrinkFrac > 0.001;
+    // Rim edges + corner glows sit exactly on the original outer boundary,
+    // so they're outside the play area the instant any collapse begins.
+    for (const d of borderDecor) d.visible = !collapsing;
+    // Each pillar/terrain/platform: once its game-space position is outside
+    // the shrinking bounds, it starts falling (drops straight down through
+    // where the floor used to be) and is hidden once well below — a clean
+    // per-instance transform, no shared-material opacity to worry about.
+    for (const o of mapEdgeObjects) {
+        if (!o.falling && (o.x < playLeft || o.x > playRight || o.y < playTop || o.y > playBottom)) {
+            o.falling = true;
+        }
+        if (o.falling && o.mesh.visible) {
+            o.mesh.position.y -= 3.5 * dt;
+            if (o.mesh.position.y < -180) o.mesh.visible = false;
+        }
+    }
 }
 
 function updateHazard(dt) {
@@ -4062,9 +4244,9 @@ function startRound() {
     hazard = { state: 'dormant', x: 0, y: 0, timer: 0 };
     pickup = { active: false, x: 0, y: 0, timer: 0 };
     shrinkTimer = SHRINK_INTERVAL;
-    shrinkAmount = 0;
-    playLeft = ARENA_LEFT; playRight = ARENA_RIGHT;
+    shrinkFrac = 0; shrinkTargetFrac = 0;
     crushing = false;
+    arenaBoundsFromFrac(0); // reset play bounds to the full arena
     roundStartedAt = performance.now();
     gameState = "FIGHT";
     sfxRoundStart();
@@ -4353,7 +4535,7 @@ function gameLoop() {
         player2.render3D(null, dt);
         syncHazard3D();
         syncPickup3D(dt);
-        syncShrinkWalls();
+        syncArenaCollapse(dt);
 
         drawHUD();
 
@@ -4375,7 +4557,7 @@ function gameLoop() {
         player2.tickEffects(player1, dt);
         syncHazard3D();
         syncPickup3D(dt);
-        syncShrinkWalls();
+        syncArenaCollapse(dt);
 
         const showDeathAnim = deathPhase === "defeatAnim";
         player1.render3D(deathCandidates.includes(player1) && showDeathAnim ? deathTimer / DEFEAT_ANIM_FRAMES : null, dt);
