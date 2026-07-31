@@ -58,6 +58,8 @@ Legend: `[x]` done · `[~]` partially done (see note) · `[ ]` not started
 
 **Fighter-select grid changed from 1 column to 2, on request.** `.fighter-grid`'s `grid-template-columns: 1fr` → `1fr 1fr`. With 10 characters this also roughly halves the grid's height (5 rows instead of 10), which helps the just-fixed select-screen scroll situation above — less content to scroll through in the first place. Pure CSS change; `.fighter-btn` needed no adjustment since it already fills its container width (the global `button { width: 100% }` rule), it just now fills a half-width grid track instead of a full-width one.
 
+**Select-screen UI scaled up ~15%, on request ("fit perfectly with the bigger box").** Root cause of the mismatch: `#game-container`'s on-screen size grew when the maps were made bigger (`min(96vw, 1170px)`, up from 900px), but the HTML/CSS select-screen UI inside it is independent of that — none of its font sizes, panel widths, or paddings are tied to `VIRTUAL_W`/`VIRTUAL_H` (those only govern the WebGL/HUD canvas coordinate system), so the UI kept its original pixel sizing and now reads as too small for the bigger box around it. Bumped the main visual anchors roughly 12-18%: `h1`/`.vs-label` 2rem→2.4rem, base `button` 1rem→1.08rem with more padding, `.side-panel` width 290px→340px, `.fighter-btn`'s key badge/name/title text, `.bot-toggle`/`.menu-footer`/`.btn-tutorial` buttons, and the gaps between panels (14px→20px) and grid cells (4px→7px) all scaled with it. Pure CSS, no layout structure changes.
+
 ---
 
 ## Read-this-before-you-touch-anything (comment-truth audit)

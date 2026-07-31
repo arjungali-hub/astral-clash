@@ -69,7 +69,7 @@
             color: #00f3ff;
             text-shadow: 0 0 16px rgba(0, 243, 255, 0.55);
             margin: 2px 0;
-            font-size: 2rem;
+            font-size: 2.4rem;
             letter-spacing: 0.06em;
             text-transform: uppercase;
         }
@@ -80,11 +80,11 @@
             background: linear-gradient(90deg, transparent, #00f3ff, transparent);
             opacity: 0.7;
         }
-        p { color: #94a3b8; margin: 0 0 6px; font-size: 0.8rem; }
+        p { color: #94a3b8; margin: 0 0 6px; font-size: 0.9rem; }
         .menu-section {
             position: relative;
             background: linear-gradient(180deg, #1c2439, #161d2f);
-            padding: 20px;
+            padding: 24px;
             border-radius: 8px;
             margin: 10px;
             border: 1px solid #2e3a59;
@@ -106,9 +106,9 @@
             background: #00f3ff;
             color: #0d0f18;
             border: none;
-            padding: 12px 20px;
+            padding: 14px 22px;
             font-weight: bold;
-            font-size: 1rem;
+            font-size: 1.08rem;
             border-radius: 4px;
             cursor: pointer;
             margin: 8px 0;
@@ -134,19 +134,19 @@
             flex-wrap: wrap;
             align-items: flex-start;
             justify-content: center;
-            gap: 14px;
+            gap: 20px;
             /* #ui-overlay itself scrolls now (see above) — a second nested
                scroll region here would just fight it for the mouse wheel. */
         }
-        .side-panel { width: min(290px, 90vw); padding: 10px; margin: 4px; transition: box-shadow 0.2s; }
-        .side-panel h3 { margin: 0 0 8px; font-size: 0.85rem; }
-        .side-panel .key-hint { color: #64748b; font-weight: normal; font-size: 0.68rem; }
-        .side-actions { display: flex; gap: 6px; margin-bottom: 6px; }
+        .side-panel { width: min(340px, 90vw); padding: 14px; margin: 4px; transition: box-shadow 0.2s; }
+        .side-panel h3 { margin: 0 0 10px; font-size: 1rem; }
+        .side-panel .key-hint { color: #64748b; font-weight: normal; font-size: 0.75rem; }
+        .side-actions { display: flex; gap: 8px; margin-bottom: 8px; }
         .side-actions .bot-toggle { flex: 1; margin: 0; }
         .fighter-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 4px;
+            gap: 7px;
         }
         .vs-column {
             position: relative;
@@ -154,23 +154,23 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 12px;
+            gap: 14px;
             padding-top: 40px;
-            width: 140px;
+            width: 165px;
         }
         /* Soft radial halo behind the VS badge, so the center of the
            screen reads as the focal point of the matchup. */
         .vs-glow {
             position: absolute;
             top: 46px; left: 50%;
-            width: 120px; height: 120px;
+            width: 145px; height: 145px;
             transform: translateX(-50%);
             background: radial-gradient(circle, rgba(0, 243, 255, 0.12), transparent 70%);
             pointer-events: none;
         }
         .vs-label {
             position: relative;
-            font-size: 2rem;
+            font-size: 2.4rem;
             font-weight: 800;
             font-style: italic;
             letter-spacing: 0.06em;
@@ -178,24 +178,24 @@
             text-shadow: 0 0 18px rgba(0, 243, 255, 0.45);
         }
         .vs-status {
-            font-size: 0.72rem;
+            font-size: 0.8rem;
             color: #94a3b8;
             text-align: center;
-            width: 130px;
+            width: 155px;
             min-height: 2.4em;
             transition: color 0.2s, font-size 0.2s;
         }
         .vs-status.ready {
             color: #00f3ff;
             font-weight: bold;
-            font-size: 0.95rem;
+            font-size: 1.05rem;
             text-shadow: 0 0 12px rgba(0, 243, 255, 0.7);
             animation: vsReadyPulse 1.1s ease-in-out infinite;
         }
         #btn-start-match {
             width: auto;
-            padding: 8px 22px;
-            font-size: 0.85rem;
+            padding: 10px 26px;
+            font-size: 0.95rem;
             background: #00f3ff;
             box-shadow: 0 0 18px rgba(0, 243, 255, 0.5);
             animation: startPulse 1.3s ease-in-out infinite;
@@ -224,9 +224,9 @@
             background: #1a2235;
             color: #94a3b8;
             border: 1px solid #2e3a59;
-            font-size: 0.7rem;
+            font-size: 0.78rem;
             font-weight: normal;
-            padding: 6px 12px;
+            padding: 8px 16px;
             margin: 0;
         }
         .menu-footer button:hover {
@@ -236,9 +236,9 @@
         }
         .bot-toggle {
             width: auto;
-            padding: 3px 10px;
+            padding: 6px 12px;
             margin: 0 0 6px;
-            font-size: 0.66rem;
+            font-size: 0.74rem;
             background: #334155;
             color: #cbd5e1;
         }
@@ -258,19 +258,19 @@
             background: rgba(245, 158, 11, 0.05);
         }
         .fighter-bot-mode.show { display: flex; }
-        .bot-mode-icon { font-size: 1.8rem; line-height: 1; filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.5)); }
-        .bot-mode-title { font-size: 0.9rem; font-weight: bold; color: #f59e0b; }
-        .bot-mode-sub { font-size: 0.66rem; color: #94a3b8; text-align: center; }
+        .bot-mode-icon { font-size: 2.1rem; line-height: 1; filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.5)); }
+        .bot-mode-title { font-size: 1.02rem; font-weight: bold; color: #f59e0b; }
+        .bot-mode-sub { font-size: 0.74rem; color: #94a3b8; text-align: center; }
         .fighter-btn {
             display: flex;
             flex-direction: column;
             align-items: flex-start;
-            gap: 1px;
+            gap: 2px;
             background: #0f1420;
             border: 1px solid var(--accent, #00f3ff);
             color: #fff;
             text-align: left;
-            padding: 4px 8px;
+            padding: 7px 11px;
             margin: 0;
         }
         .fighter-btn .fkey {
@@ -279,13 +279,13 @@
             border: 1px solid var(--accent, #00f3ff);
             color: var(--accent, #00f3ff);
             font-weight: bold;
-            font-size: 0.68rem;
-            padding: 0 5px;
+            font-size: 0.76rem;
+            padding: 1px 6px;
             border-radius: 3px;
-            margin-right: 6px;
+            margin-right: 7px;
         }
-        .fighter-btn .fname { font-weight: bold; color: var(--accent, #00f3ff); font-size: 0.82rem; }
-        .fighter-btn .ftitle { font-size: 0.62rem; color: #94a3b8; font-weight: normal; }
+        .fighter-btn .fname { font-weight: bold; color: var(--accent, #00f3ff); font-size: 0.95rem; }
+        .fighter-btn .ftitle { font-size: 0.7rem; color: #94a3b8; font-weight: normal; }
         .fighter-btn:hover { background: var(--accent, #00f3ff); box-shadow: 0 0 15px rgba(0, 243, 255, 0.4); }
         .fighter-btn:hover .fname, .fighter-btn:hover .ftitle, .fighter-btn:hover .fkey { color: #0d0f18; }
 
@@ -349,10 +349,10 @@
             background: transparent;
             color: #00f3ff;
             border: 1px solid #00f3ff;
-            padding: 6px 18px;
-            font-size: 0.72rem;
+            padding: 8px 22px;
+            font-size: 0.82rem;
             font-weight: bold;
-            margin: 4px 0 0;
+            margin: 6px 0 0;
             box-shadow: none;
         }
         .btn-tutorial:hover { background: rgba(0, 243, 255, 0.12); box-shadow: 0 0 12px rgba(0, 243, 255, 0.35); }
