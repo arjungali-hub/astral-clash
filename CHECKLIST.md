@@ -56,6 +56,8 @@ Legend: `[x]` done · `[~]` partially done (see note) · `[ ]` not started
 
 **The three footer settings buttons (Rebind Keys / HUD Text / Audio Settings) consolidated into one, on request.** New `#settings-screen` overlay (same popup pattern as the existing Rebind/Audio screens) holding all three as a vertical list; the footer now has a single "⚙ Settings" button. Rebind Keys and Audio Settings still open their own pre-existing screens unchanged (same element IDs, same handlers) — clicking either from within Settings just also closes the Settings panel first so they don't stack.
 
+**Fighter-select grid changed from 1 column to 2, on request.** `.fighter-grid`'s `grid-template-columns: 1fr` → `1fr 1fr`. With 10 characters this also roughly halves the grid's height (5 rows instead of 10), which helps the just-fixed select-screen scroll situation above — less content to scroll through in the first place. Pure CSS change; `.fighter-btn` needed no adjustment since it already fills its container width (the global `button { width: 100% }` rule), it just now fills a half-width grid track instead of a full-width one.
+
 ---
 
 ## Read-this-before-you-touch-anything (comment-truth audit)
