@@ -539,6 +539,11 @@
                             <p>Best of 3 rounds. Win a round by knocking your opponent's HP to 0 — there's no clock to just run out, so see Arena Collapse below for how a round is guaranteed to end.</p>
                         </div>
                         <div class="tutorial-card">
+                            <div class="tutorial-card-icon">👁️</div>
+                            <h4>First-Person View</h4>
+                            <p>You fight through your character's own eyes, weapon in hand. You always face the way you move, so your view turns as you change direction — walk toward your target to aim at it, then attack. Two human players share the screen split left/right; against a bot you get the whole screen.</p>
+                        </div>
+                        <div class="tutorial-card">
                             <div class="tutorial-card-icon">🧱</div>
                             <h4>Arena Collapse</h4>
                             <p>No round timer — instead, a countdown to the <em>next collapse</em>. The whole arena closes in from all four sides on a timer (the edges literally crumble away), squeezing the fight toward the center so stalling isn't an option. If it fully shuts, both fighters are crushed and lose the same flat HP per second (regardless of max or current HP) until one dies — whoever's crushed first loses.</p>
@@ -546,7 +551,7 @@
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">🏃</div>
                             <h4>Movement &amp; Jumping</h4>
-                            <p>Move freely in all directions. Jumping clears pillars and reaches platforms, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges aren't.</p>
+                            <p>Move freely in any direction (and you'll face wherever you're heading). Jumping reaches platforms and cover, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges and walls aren't. Use columns and interior walls for cover.</p>
                         </div>
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">⚔️</div>
@@ -1083,18 +1088,30 @@ function startAmbientPad(map) {
 }
 
 const DEG = Math.PI / 180;
-const HUD_HEIGHT = 112;
 const ATTACK_FINISH_FRAMES = 34;
 const DEFEAT_ANIM_FRAMES = 55;
 // All gameplay math (arena bounds, maps, HUD layout) lives in this fixed
-// 1170x650 virtual space (bumped 1.3x from the original 900x500 for more
-// room to build maps in — see the "bigger maps" pass), independent of the
-// canvas's actual pixel size. That's what lets the window be resized
-// freely (see the resize listener near the bottom) without having to
-// redesign every map's coordinates.
-const VIRTUAL_W = 1170, VIRTUAL_H = 650;
-const ARENA_LEFT = 40, ARENA_RIGHT = VIRTUAL_W - 40, ARENA_TOP = HUD_HEIGHT, ARENA_BOTTOM = VIRTUAL_H - 40;
+// virtual space, independent of the canvas's actual pixel size. Scaled up
+// ~1.5x for the first-person conversion (bigger maps to move around in);
+// the aspect ratio (1755:975 = 1.8:1) is unchanged so the responsive CSS
+// container still matches. The whole 2D HUD is drawn in this space and
+// scaled to fill the canvas, so its layout stays proportional.
+const VIRTUAL_W = 1755, VIRTUAL_H = 975;
+const ARENA_LEFT = 60, ARENA_RIGHT = VIRTUAL_W - 60, ARENA_TOP = 60, ARENA_BOTTOM = VIRTUAL_H - 60;
 const ARENA_CX = (ARENA_LEFT + ARENA_RIGHT) / 2, ARENA_CY = (ARENA_TOP + ARENA_BOTTOM) / 2;
+const CEILING_HEIGHT = 620; // very high ceiling for the enclosed FPS arena
+
+// The CURRENT (shrinking) playable bounds — clampToArena() and the arena
+// visuals use these instead of the fixed ARENA_* so Arena Collapse can
+// squeeze the room inward. Declared here (not down in the collapse section)
+// because loadMap()/syncOuterWalls run at startup, before that section.
+let playLeft = ARENA_LEFT, playRight = ARENA_RIGHT, playTop = ARENA_TOP, playBottom = ARENA_BOTTOM;
+function arenaBoundsFromFrac(f) {
+    playLeft = ARENA_LEFT + (ARENA_CX - ARENA_LEFT) * f;
+    playRight = ARENA_RIGHT - (ARENA_RIGHT - ARENA_CX) * f;
+    playTop = ARENA_TOP + (ARENA_CY - ARENA_TOP) * f;
+    playBottom = ARENA_BOTTOM - (ARENA_BOTTOM - ARENA_CY) * f;
+}
 
 // --- Three.js scene: an angled arena camera (Power Stone-style) instead
 // of a top-down view. All gameplay math below stays entirely in the
@@ -1136,89 +1153,133 @@ function onWindowResize() {
     hudCanvas.width = Math.round(w * PIXEL_RATIO);
     hudCanvas.height = Math.round(h * PIXEL_RATIO);
     renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
+    // The two FPS cameras get their aspect set per-viewport each frame in
+    // renderOneView (split-screen halves have a different aspect than the
+    // full window), so nothing to update here.
 }
 window.addEventListener('resize', onWindowResize);
 
 const WHITE_COLOR = new THREE.Color(0xffffff); // reused every frame by the hit-flash lerp below, not reallocated
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0d14);
-// Batch 8: fog near was tighter than the camera's actual distance to the
-// arena, so the whole playable floor was already inside the falloff and
-// read as permanently hazy instead of crisp-near/faded-far. Pushed near
-// out past the arena's farthest corner and far out further still, so fog
-// only eats the empty background beyond the arena, not the fight. Scaled
-// 1.3x alongside the camera distances below when the arena grew.
-scene.fog = new THREE.Fog(0x0a0d14, 1170, 2600);
+// First-person atmosphere: a gentle depth fog that fades the far end of a
+// big enclosed arena without hazing the immediate fight. Recolored per map
+// in loadMap().
+scene.fog = new THREE.Fog(0x0a0d14, 700, 3200);
 
-const camera = new THREE.PerspectiveCamera(50, canvas.width / canvas.height, 1, 4000);
-camera.position.set(0, 624, 650);
-camera.lookAt(0, 0, 0);
-const camTarget = new THREE.Vector3(0, 20, 0);
-const camDesiredPos = new THREE.Vector3();
-onWindowResize(); // now that `camera` exists, establish real pixel size to match the responsive CSS on first load
+// --- Rendering layers (three.js): each fighter's body is put on its own
+// layer so a first-person camera can exclude ITS OWN fighter's body (you
+// don't see your own head/torso from inside your head), while still seeing
+// the opponent and the environment. Viewmodels (the weapon in your own
+// hands) go on a per-player layer only that player's camera renders. ---
+const LAYER_DEFAULT = 0; // environment, projectiles, effects — everyone sees these
+const LAYER_P1_BODY = 1, LAYER_P2_BODY = 2;
+const LAYER_P1_VM = 3, LAYER_P2_VM = 4;
+function setLayerRecursive(obj, n) { obj.layers.set(n); obj.traverse(c => c.layers.set(n)); }
 
-// The camera isn't fixed: it reframes around the midpoint of both
-// fighters each frame — swinging its angle toward whichever side of the
-// arena the fight is happening on, pulling back when they're far apart,
-// and rising a little when either is airborne. Smoothly lerped so it
-// reads as a cinematic reframe rather than a snap-cut.
-function updateCamera(dt) {
-    dt = dt || 1;
-    if (!player1 || !player2) return;
-    const p1x = worldX(player1.x + player1.width / 2), p1z = worldZ(player1.y + player1.height / 2);
-    const p2x = worldX(player2.x + player2.width / 2), p2z = worldZ(player2.y + player2.height / 2);
-    const mx = (p1x + p2x) / 2, mz = (p1z + p2z) / 2;
-    const my = (player1.z + player2.z) / 2;
-    const sep = Math.hypot(p1x - p2x, p1z - p2z);
+// Two first-person cameras, one per fighter (eye at the head, looking the
+// way the fighter faces). A wide-ish 72° FOV reads well for FPS.
+const EYE_HEIGHT = 46; // world Y above the fighter's feet (z) — roughly head height on the humanoid rig
+function makeFpsCamera(ownBodyLayer, ownVmLayer) {
+    const cam = new THREE.PerspectiveCamera(72, 1, 0.5, 5000);
+    cam.layers.disableAll();
+    cam.layers.enable(LAYER_DEFAULT);
+    cam.layers.enable(ownBodyLayer === LAYER_P1_BODY ? LAYER_P2_BODY : LAYER_P1_BODY); // see the OTHER fighter's body, not our own
+    cam.layers.enable(ownVmLayer); // see our own viewmodel
+    return cam;
+}
+const camP1 = makeFpsCamera(LAYER_P1_BODY, LAYER_P1_VM);
+const camP2 = makeFpsCamera(LAYER_P2_BODY, LAYER_P2_VM);
+// Add the cameras to the scene graph so their attached viewmodels (children
+// of the camera) actually render — a child of a camera that isn't in the
+// scene is skipped by the renderer. The cameras themselves render nothing.
+scene.add(camP1, camP2);
+onWindowResize(); // establish real pixel size now that a camera-ish setup exists
 
-    // Batch 9: prefers-reduced-motion also flattens the dynamic zoom/pan
-    // (the continuous small corrections chasing both fighters' midpoint),
-    // not just hit-shake — that ongoing sway is its own motion-sickness
-    // trigger for anyone sensitive to it, independent of getting hit.
-    const zoom = REDUCED_MOTION ? 1 : THREE.MathUtils.clamp(sep / 338, 0.75, 1.3);
-    const azimuth = (REDUCED_MOTION ? 0.3 : 1) * THREE.MathUtils.clamp(mx / (ARENA_RIGHT - ARENA_CX), -1, 1) * 0.5;
-    const pitchShift = (REDUCED_MOTION ? 0.3 : 1) * THREE.MathUtils.clamp(mz / (ARENA_BOTTOM - ARENA_CY), -1, 1) * 46;
-
-    camDesiredPos.set(
-        mx + Math.sin(azimuth) * 338 * zoom,
-        572 * zoom + my * 0.5 + pitchShift,
-        mz + Math.cos(azimuth) * 559 * zoom
-    );
-    camera.position.lerp(camDesiredPos, 0.06);
-    camTarget.lerp(new THREE.Vector3(mx, 20 + my * 0.4, mz), 0.08);
-    camera.lookAt(camTarget);
-
-    // Camera shake: a rapid decaying random offset applied after lookAt,
-    // so heavier hits (which set a bigger cameraShakeMag) read as a
-    // visible jolt instead of just a hitFlash on the fighter.
-    // Batch 9: prefers-reduced-motion cuts shake magnitude drastically
-    // rather than removing it outright — it's also the primary "you got
-    // hit" cue for anyone not staring at the HP bar, so zeroing it
-    // entirely would quietly remove feedback rather than just the motion.
+const _fwd = new THREE.Vector3();
+// Place a first-person camera at its fighter's eye, looking along the
+// fighter's 2D facing (fx,fy → world X,Z), tilted slightly down so the
+// floor and the weapon viewmodel are visible. Adds the global hit-shake.
+function positionFpsCamera(cam, f, dt) {
+    const cx = f.x + f.width / 2, cy = f.y + f.height / 2;
+    const ex = worldX(cx), ey = f.z + EYE_HEIGHT, ez = worldZ(cy);
+    cam.position.set(ex, ey, ez);
+    _fwd.set(f.fx, 0, f.fy).normalize();
+    cam.lookAt(ex + _fwd.x * 20, ey - 4, ez + _fwd.z * 20); // small downward pitch
     const shakeScale = REDUCED_MOTION ? 0.15 : 1;
     if (cameraShakeMag > 0.05) {
-        camera.position.x += (Math.random() - 0.5) * cameraShakeMag * shakeScale;
-        camera.position.y += (Math.random() - 0.5) * cameraShakeMag * 0.6 * shakeScale;
-        camera.position.z += (Math.random() - 0.5) * cameraShakeMag * shakeScale;
-        cameraShakeMag *= Math.pow(0.85, dt);
-    } else {
-        cameraShakeMag = 0;
+        cam.position.x += (Math.random() - 0.5) * cameraShakeMag * 0.5 * shakeScale;
+        cam.position.y += (Math.random() - 0.5) * cameraShakeMag * 0.35 * shakeScale;
+        cam.position.z += (Math.random() - 0.5) * cameraShakeMag * 0.5 * shakeScale;
     }
 }
 
-scene.add(new THREE.AmbientLight(0x445066, 0.85));
-const keyLight = new THREE.DirectionalLight(0xbfe8ff, 1.15);
-keyLight.position.set(-220, 420, 260);
+// Decays the shared hit-shake once per frame (the FPS cameras only READ it,
+// so it needs decaying somewhere central rather than inside the old camera
+// updater that no longer exists).
+function decayCameraShake(dt) {
+    if (cameraShakeMag > 0.05) cameraShakeMag *= Math.pow(0.85, dt);
+    else cameraShakeMag = 0;
+}
+
+// Split-screen (two humans) / full-screen (one human, or spectating a
+// bot-vs-bot match from P1's eyes) first-person rendering. Viewports and
+// scissor rects are in CSS pixels; three.js applies the pixel ratio.
+const _rendSize = new THREE.Vector2();
+function renderViews(dt) {
+    renderer.getSize(_rendSize);
+    if (!player1 || !player2) { // pre-match fallback (menu backdrop)
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, _rendSize.x, _rendSize.y);
+        renderer.render(scene, camP1);
+        return;
+    }
+    const W = _rendSize.x, H = _rendSize.y;
+    const twoHumans = !player1.isBot && !player2.isBot;
+    renderer.setScissorTest(true);
+    if (twoHumans) {
+        renderOneView(camP1, player1, 0, 0, W / 2, H, dt);
+        renderOneView(camP2, player2, W / 2, 0, W / 2, H, dt);
+    } else {
+        // Full screen from whichever side is human (or P1 if neither is).
+        const viewer = !player1.isBot ? player1 : (!player2.isBot ? player2 : player1);
+        renderOneView(viewer === player1 ? camP1 : camP2, viewer, 0, 0, W, H, dt);
+    }
+    renderer.setScissorTest(false);
+}
+function renderOneView(cam, viewer, x, y, vw, vh, dt) {
+    renderer.setViewport(x, y, vw, vh);
+    renderer.setScissor(x, y, vw, vh);
+    cam.aspect = vw / vh;
+    cam.updateProjectionMatrix();
+    positionFpsCamera(cam, viewer, dt);
+    renderer.render(scene, cam);
+}
+
+// Lighting for the enclosed first-person arena. Every light has all render
+// layers enabled (layers.enableAll) because the fighters live on their own
+// body layers (1/2) so cameras can hide the viewer's own body — a light
+// only illuminates objects sharing an enabled layer with it, so without
+// this the fighters would render pitch black.
+const ambientLight = new THREE.AmbientLight(0x3a4560, 0.7);
+ambientLight.layers.enableAll();
+scene.add(ambientLight);
+const hemiLight = new THREE.HemisphereLight(0x9fc4ff, 0x1a2030, 0.55); // sky/ground fill for depth
+hemiLight.layers.enableAll();
+scene.add(hemiLight);
+const keyLight = new THREE.DirectionalLight(0xbfe8ff, 1.05);
+keyLight.position.set(-320, 700, 380);
 keyLight.castShadow = true;
-keyLight.shadow.mapSize.set(1024, 1024);
-keyLight.shadow.camera.left = -624; keyLight.shadow.camera.right = 624;
-keyLight.shadow.camera.top = 390; keyLight.shadow.camera.bottom = -390;
-keyLight.shadow.camera.near = 1; keyLight.shadow.camera.far = 1560;
+keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.camera.left = -950; keyLight.shadow.camera.right = 950;
+keyLight.shadow.camera.top = 600; keyLight.shadow.camera.bottom = -600;
+keyLight.shadow.camera.near = 1; keyLight.shadow.camera.far = 2400;
+keyLight.shadow.bias = -0.0004;
+keyLight.layers.enableAll();
 scene.add(keyLight);
-const rimLight = new THREE.PointLight(0x00f3ff, 0.6, 900);
-rimLight.position.set(0, 150, 250);
+const rimLight = new THREE.PointLight(0x00f3ff, 0.5, 1600);
+rimLight.position.set(0, 260, 300);
+rimLight.layers.enableAll();
 scene.add(rimLight);
 
 // Terrain is per-map (see MAPS below); these bindings get reassigned by
@@ -1313,28 +1374,62 @@ function removeAndDispose(obj) {
 // --- 3D arena, rebuilt per map by loadMap(). Every builder below takes
 // the map's accent color so each map reads as visually distinct. ---
 
+// Tileable metal-deck floor: dark panels with beveled seams, bolt heads,
+// and faint accent inlays. Repeats across the big FPS floor (see loadMap
+// setting the texture .repeat), so no map-centered motif.
 function buildFloorTexture(accent) {
     const c = document.createElement('canvas');
-    c.width = 512; c.height = 512;
-    const c2 = c.getContext('2d');
-    c2.fillStyle = '#141a2b'; c2.fillRect(0, 0, 512, 512);
-    c2.strokeStyle = 'rgba(255,255,255,0.06)'; c2.lineWidth = 1;
-    for (let i = 0; i <= 512; i += 32) {
-        c2.beginPath(); c2.moveTo(i, 0); c2.lineTo(i, 512); c2.stroke();
-        c2.beginPath(); c2.moveTo(0, i); c2.lineTo(512, i); c2.stroke();
+    c.width = 256; c.height = 256;
+    const g = c.getContext('2d');
+    g.fillStyle = '#12172480'; g.fillStyle = '#121826'; g.fillRect(0, 0, 256, 256);
+    // two-panel-per-tile plating with a subtle vertical gradient for depth
+    const grad = g.createLinearGradient(0, 0, 0, 128);
+    grad.addColorStop(0, '#1a2133'); grad.addColorStop(1, '#141a29');
+    for (const [px, py] of [[0, 0], [128, 0], [0, 128], [128, 128]]) {
+        g.fillStyle = grad; g.fillRect(px + 3, py + 3, 122, 122);
     }
-    c2.strokeStyle = hexToCss(accent, 0.25); c2.lineWidth = 3;
-    c2.beginPath(); c2.arc(256, 256, 150, 0, Math.PI * 2); c2.stroke();
-    c2.beginPath(); c2.arc(256, 256, 95, 0, Math.PI * 2); c2.stroke();
-    c2.strokeStyle = hexToCss(accent, 0.3); c2.lineWidth = 2;
-    for (let i = 0; i < 16; i++) {
-        const a = i * (Math.PI * 2 / 16);
-        c2.beginPath();
-        c2.moveTo(256 + Math.cos(a) * 142, 256 + Math.sin(a) * 142);
-        c2.lineTo(256 + Math.cos(a) * 158, 256 + Math.sin(a) * 158);
-        c2.stroke();
+    // beveled seams
+    g.strokeStyle = 'rgba(0,0,0,0.55)'; g.lineWidth = 3;
+    for (let i = 0; i <= 256; i += 128) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke(); }
+    g.strokeStyle = 'rgba(120,150,190,0.10)'; g.lineWidth = 1;
+    for (let i = 0; i <= 256; i += 128) { g.beginPath(); g.moveTo(i + 2, 0); g.lineTo(i + 2, 256); g.stroke(); }
+    // accent inlay strips + bolts
+    g.fillStyle = hexToCss(accent, 0.5);
+    for (const [px, py] of [[64, 64], [192, 64], [64, 192], [192, 192]]) {
+        g.beginPath(); g.arc(px, py, 3.5, 0, Math.PI * 2); g.fill();
+    }
+    g.fillStyle = 'rgba(200,220,255,0.12)';
+    for (const [px, py] of [[10, 10], [118, 10], [10, 118], [118, 118], [138, 10], [246, 10], [138, 118], [246, 118], [10, 138], [118, 138], [10, 246], [118, 246], [138, 138], [246, 138], [138, 246], [246, 246]]) {
+        g.fillRect(px - 1.5, py - 1.5, 3, 3);
     }
     return new THREE.CanvasTexture(c);
+}
+
+// Tileable wall panel: ribbed industrial plating with an emissive accent
+// stripe, used on the outer arena walls and interior cover.
+const wallTextureCache = {};
+function getWallTexture(accent) {
+    if (wallTextureCache[accent]) return wallTextureCache[accent];
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const g = c.getContext('2d');
+    g.fillStyle = '#0f1420'; g.fillRect(0, 0, 256, 256);
+    // vertical ribs
+    for (let x = 0; x < 256; x += 32) {
+        const grad = g.createLinearGradient(x, 0, x + 32, 0);
+        grad.addColorStop(0, '#1b2436'); grad.addColorStop(0.5, '#232f47'); grad.addColorStop(1, '#161d2c');
+        g.fillStyle = grad; g.fillRect(x + 2, 0, 28, 256);
+    }
+    // horizontal band seams
+    g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 4;
+    for (let y = 0; y <= 256; y += 64) { g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke(); }
+    // one glowing accent stripe
+    g.fillStyle = hexToCss(accent, 0.85); g.fillRect(0, 122, 256, 5);
+    g.fillStyle = hexToCss(accent, 0.25); g.fillRect(0, 116, 256, 17);
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    wallTextureCache[accent] = tex;
+    return tex;
 }
 
 // Batch 7 item 2: cached per map name instead of rebuilt every time
@@ -1369,49 +1464,58 @@ function addCornerGlow(x, z, accent) {
     return group;
 }
 
+// A full-height structural column, floor to ceiling — solid cover you fight
+// around, with a chunky base plinth and a glowing accent ring near the top.
 function buildPillarMesh(ob, accent) {
     const group = new THREE.Group();
-    const base = new THREE.Mesh(
-        getCachedGeometry(`pillarBase:${ob.r}`, () => new THREE.CylinderGeometry(ob.r, ob.r * 1.15, 55, 10)),
-        getCachedMaterial('pillarBaseMat', () => new THREE.MeshStandardMaterial({ color: 0x2a3350, roughness: 0.75, metalness: 0.15 }))
+    const colH = CEILING_HEIGHT;
+    const shaft = new THREE.Mesh(
+        getCachedGeometry(`pillarShaft:${ob.r}`, () => new THREE.CylinderGeometry(ob.r, ob.r, colH, 12)),
+        getCachedMaterial('pillarShaftMat', () => new THREE.MeshStandardMaterial({ color: 0x2a3350, roughness: 0.7, metalness: 0.3 }))
     );
-    base.position.y = 27.5;
-    base.castShadow = true; base.receiveShadow = true;
-    group.add(base);
+    shaft.position.y = colH / 2;
+    shaft.castShadow = true; shaft.receiveShadow = true;
+    group.add(shaft);
 
-    const crystal = new THREE.Mesh(
-        getCachedGeometry(`pillarCrystal:${ob.r}`, () => new THREE.ConeGeometry(ob.r * 0.5, 26, 6)),
-        getCachedMaterial(`pillarCrystalMat:${accent}`, () => new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.7, transparent: true, opacity: 0.85 }))
+    const plinth = new THREE.Mesh(
+        getCachedGeometry(`pillarPlinth:${ob.r}`, () => new THREE.CylinderGeometry(ob.r * 1.35, ob.r * 1.5, 16, 12)),
+        getCachedMaterial('pillarPlinthMat', () => new THREE.MeshStandardMaterial({ color: 0x1a2234, roughness: 0.8, metalness: 0.2 }))
     );
-    crystal.position.y = 55 + 13;
-    crystal.rotation.y = ob.seed;
-    crystal.castShadow = true;
-    group.add(crystal);
+    plinth.position.y = 8; plinth.castShadow = true; plinth.receiveShadow = true;
+    group.add(plinth);
+
+    const ring = new THREE.Mesh(
+        getCachedGeometry(`pillarRing:${ob.r}`, () => new THREE.CylinderGeometry(ob.r * 1.12, ob.r * 1.12, 10, 12)),
+        getCachedMaterial(`pillarRingMat:${accent}`, () => new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.8 }))
+    );
+    ring.position.y = colH - 60; group.add(ring);
 
     group.position.set(worldX(ob.x), 0, worldZ(ob.y));
     mapGroup.add(group);
     return group;
 }
 
-// Floating, jump-only platform: a gap under the slab is what makes it
-// readable as "you must jump up to this" rather than a solid step.
-// Solid ground-to-surface block (matches the solid collision wall below
-// it — no floating gap you could mistake for walkable space), styled a
-// bit more metallic than a plain step so "jump-only high ground" still
-// reads as visually distinct from walk-up-able stairs.
+// A solid block: short ones read as jump-on cover platforms, tall ones as
+// full interior walls (collision is the same — you can only get on top of
+// something within jump reach). Textured with the ribbed wall panel and
+// capped with a glowing accent trim so the top edge is clear to aim for.
 function buildPlatformMesh(p, accent) {
     const group = new THREE.Group();
+    const tex = getWallTexture(accent).clone();
+    tex.needsUpdate = true;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(Math.max(1, Math.round(p.hw / 40)), Math.max(1, Math.round(p.height / 60)));
     const slab = new THREE.Mesh(
         new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2),
-        new THREE.MeshStandardMaterial({ color: 0x2a3350, roughness: 0.6, metalness: 0.35 })
+        new THREE.MeshStandardMaterial({ map: tex, color: 0x8fa0c0, roughness: 0.7, metalness: 0.35 })
     );
     slab.position.y = p.height / 2;
     slab.castShadow = true; slab.receiveShadow = true;
     group.add(slab);
 
     const trim = new THREE.Mesh(
-        new THREE.BoxGeometry(p.hw * 2 + 2, 2, p.hd * 2 + 2),
-        new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.5, transparent: true, opacity: 0.75 })
+        new THREE.BoxGeometry(p.hw * 2 + 3, 3, p.hd * 2 + 3),
+        new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.7 })
     );
     trim.position.y = p.height;
     group.add(trim);
@@ -1512,8 +1616,54 @@ let currentMap = null;
 // checked every tick and hidden once its position falls outside the
 // current play bounds.
 let floorMesh = null, floorBaseSize = null;
+let ceilingMesh = null;
 let borderDecor = [];
 let mapEdgeObjects = [];
+let outerWalls = []; // {mesh, side, baseLen} — the 4 enclosing walls; syncArenaCollapse slides + scales them inward as the arena closes
+
+// A very high ceiling with recessed emissive light strips + hanging lamps,
+// so looking up reads as a real roofed arena rather than open sky.
+function buildCeiling(accent) {
+    const w = ARENA_RIGHT - ARENA_LEFT + 200, d = ARENA_BOTTOM - ARENA_TOP + 200;
+    const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, d),
+        new THREE.MeshStandardMaterial({ color: 0x0c111c, roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide })
+    );
+    mesh.rotation.x = Math.PI / 2; // face down
+    mesh.position.set(worldX(ARENA_CX), CEILING_HEIGHT, worldZ(ARENA_CY));
+    mapGroup.add(mesh);
+    // parallel glowing light strips across the ceiling
+    const stripMat = new THREE.MeshBasicMaterial({ color: 0xcfe4ff });
+    for (let i = -2; i <= 2; i++) {
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(w * 0.8, 4, 10), stripMat);
+        strip.position.set(worldX(ARENA_CX), CEILING_HEIGHT - 4, worldZ(ARENA_CY) + i * (d / 6));
+        mapGroup.add(strip);
+        const lamp = new THREE.PointLight(0xbfe0ff, 0.35, 900);
+        lamp.position.set(worldX(ARENA_CX), CEILING_HEIGHT - 40, worldZ(ARENA_CY) + i * (d / 6));
+        lamp.layers.enableAll();
+        mapGroup.add(lamp);
+    }
+    return mesh;
+}
+
+// One enclosing wall (a tall textured slab) along a side of the arena. side
+// is 'left'|'right'|'top'|'bottom'; the wall spans the full opposite extent
+// and full height. Returned so syncArenaCollapse can slide/scale it inward.
+function buildOuterWall(side, accent) {
+    const tex = getWallTexture(accent);
+    const along = (side === 'left' || side === 'right') ? (ARENA_BOTTOM - ARENA_TOP) : (ARENA_RIGHT - ARENA_LEFT);
+    const wtex = tex.clone(); wtex.needsUpdate = true; wtex.wrapS = wtex.wrapT = THREE.RepeatWrapping;
+    wtex.repeat.set(Math.max(2, Math.round(along / 90)), Math.max(2, Math.round(CEILING_HEIGHT / 90)));
+    const thick = 14;
+    const geo = (side === 'left' || side === 'right')
+        ? new THREE.BoxGeometry(thick, CEILING_HEIGHT, along)
+        : new THREE.BoxGeometry(along, CEILING_HEIGHT, thick);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: wtex, color: 0x7f90b0, roughness: 0.8, metalness: 0.3 }));
+    mesh.receiveShadow = true;
+    mesh.position.y = CEILING_HEIGHT / 2;
+    mapGroup.add(mesh);
+    return { mesh, side, baseLen: along };
+}
 
 function loadMap(map) {
     currentMap = map;
@@ -1521,28 +1671,27 @@ function loadMap(map) {
     startAmbientPad(map); // Batch 10: swaps to this map's drone; internally stops whatever was already playing
     borderDecor = [];
     mapEdgeObjects = [];
+    outerWalls = [];
 
     const accent = hexNum(map.accent);
-    const floorMat = new THREE.MeshStandardMaterial({ map: getFloorTexture(map, accent), roughness: 0.95 });
-    floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it
+    const floorTex = getFloorTexture(map, accent);
+    floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
     floorBaseSize = { w: ARENA_RIGHT - ARENA_LEFT, d: ARENA_BOTTOM - ARENA_TOP };
-    floorMesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d),
-        floorMat
-    );
+    floorTex.repeat.set(floorBaseSize.w / 190, floorBaseSize.d / 190);
+    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, color: 0x9fb0d0, roughness: 0.92, metalness: 0.15 });
+    floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it
+    floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d), floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.position.set(worldX(ARENA_CX), 0, worldZ(ARENA_CY));
     floorMesh.receiveShadow = true;
     mapGroup.add(floorMesh);
 
-    const aw = ARENA_RIGHT - ARENA_LEFT, ad = ARENA_BOTTOM - ARENA_TOP;
-    borderDecor.push(addRimEdge(0, -ad / 2, aw, 6, accent));
-    borderDecor.push(addRimEdge(0, ad / 2, aw, 6, accent));
-    borderDecor.push(addRimEdge(-aw / 2, 0, 6, ad, accent));
-    borderDecor.push(addRimEdge(aw / 2, 0, 6, ad, accent));
-    [[ARENA_LEFT, ARENA_TOP], [ARENA_RIGHT, ARENA_TOP], [ARENA_LEFT, ARENA_BOTTOM], [ARENA_RIGHT, ARENA_BOTTOM]].forEach(([x, y]) => {
-        borderDecor.push(addCornerGlow(worldX(x), worldZ(y), accent));
-    });
+    ceilingMesh = buildCeiling(accent);
+    outerWalls.push(buildOuterWall('left', accent));
+    outerWalls.push(buildOuterWall('right', accent));
+    outerWalls.push(buildOuterWall('top', accent));
+    outerWalls.push(buildOuterWall('bottom', accent));
+    syncOuterWalls(); // place them at the full-arena bounds initially
 
     OBSTACLES = map.obstacles;
     TERRAIN = map.terrain;
@@ -1556,6 +1705,19 @@ function loadMap(map) {
     scene.background.setHex(hexNum(map.fogColor));
 
     assertSpawnsClear(map);
+}
+
+// Slide + scale the four enclosing walls to the current (possibly shrinking)
+// play bounds, so during Arena Collapse the room's walls physically close in.
+function syncOuterWalls() {
+    const cx = worldX((playLeft + playRight) / 2), cz = worldZ((playTop + playBottom) / 2);
+    const xExt = Math.max(1, playRight - playLeft), zExt = Math.max(1, playBottom - playTop);
+    for (const w of outerWalls) {
+        if (w.side === 'left') { w.mesh.position.set(worldX(playLeft), CEILING_HEIGHT / 2, cz); w.mesh.scale.z = zExt / w.baseLen; }
+        else if (w.side === 'right') { w.mesh.position.set(worldX(playRight), CEILING_HEIGHT / 2, cz); w.mesh.scale.z = zExt / w.baseLen; }
+        else if (w.side === 'top') { w.mesh.position.set(cx, CEILING_HEIGHT / 2, worldZ(playTop)); w.mesh.scale.x = xExt / w.baseLen; }
+        else { w.mesh.position.set(cx, CEILING_HEIGHT / 2, worldZ(playBottom)); w.mesh.scale.x = xExt / w.baseLen; }
+    }
 }
 
 // Dev-time safety net: warns (doesn't throw) if a map's configured spawn
@@ -1578,150 +1740,137 @@ function assertSpawnsClear(map) {
     });
 }
 
-// Map data is hand-placed in the 1170x650 virtual space (see VIRTUAL_W/H).
-// The original four were laid out for a 900x500 space and got a uniform
-// 1.3x horizontal rescale here when the arena grew — heights are
-// deliberately NOT scaled, since vertical reach is governed by JUMP_VZ/
-// GRAVITY (unchanged), not by how wide the map is.
+// Map data is hand-placed in the 1755x975 virtual space (see VIRTUAL_W/H;
+// arena is x:60..1695, y:60..915, center 877,487). For the first-person
+// conversion these were rebuilt as enclosed arenas: `obstacles` are
+// floor-to-ceiling columns, short `platforms` (height ≤ ~90) are jump-on
+// cover, TALL `platforms` (height ≥ ~250, unjumpable) act as interior
+// walls / lane dividers, and steps/ramps give walkable elevation. Heights
+// are NOT scaled with the arena width — vertical reach is fixed by
+// JUMP_VZ/GRAVITY. Layout density varies map to map so they feel different
+// sizes even though the outer bounds are shared.
 const MAPS = [
     {
         name: 'Astral Proving Grounds',
         accent: '#00f3ff', fogColor: '#0a0d14',
-        spawn1: { x: 260, y: 390 }, spawn2: { x: 845, y: 390 },
+        // Open duelling arena: a ring of columns and a central raised dais.
+        spawn1: { x: 280, y: 487 }, spawn2: { x: 1474, y: 487 },
         obstacles: [
-            { x: 442, y: 234, r: 26, seed: 0.3 }, { x: 728, y: 234, r: 26, seed: 1.6 },
-            { x: 442, y: 520, r: 26, seed: 2.7 }, { x: 728, y: 520, r: 26, seed: 4.1 }
+            { x: 660, y: 300, r: 36, seed: 0.3 }, { x: 1094, y: 300, r: 36, seed: 1.6 },
+            { x: 660, y: 674, r: 36, seed: 2.7 }, { x: 1094, y: 674, r: 36, seed: 4.1 }
         ],
-        // Two shallow walk-up rises added north/south of center — this map
-        // used to be the only one with zero terrain at all.
         terrain: [
-            { type: 'step', x: 585, y: 170, hw: 150, hd: 25, height: 22 },
-            { type: 'step', x: 585, y: 582, hw: 150, hd: 25, height: 22 }
+            { type: 'step', x: 877, y: 210, hw: 210, hd: 36, height: 26 },
+            { type: 'step', x: 877, y: 764, hw: 210, hd: 36, height: 26 }
         ],
         platforms: [
-            { x: 585, y: 378, hw: 91, hd: 59, height: 60 }
+            { x: 877, y: 487, hw: 95, hd: 78, height: 72 },
+            { x: 560, y: 487, hw: 46, hd: 130, height: 52 },
+            { x: 1194, y: 487, hw: 46, hd: 130, height: 52 }
         ]
     },
     {
         name: 'Sundered Stair',
         accent: '#f59e0b', fogColor: '#140d08',
-        // Fixed: the staircase now starts flush against ARENA_LEFT (its
-        // first step's near edge sits exactly on the west wall) instead of
-        // floating with an unexplained gap of open floor in front of it.
-        // A fourth step was added (each riser is still 18 units — at or
-        // under MAX_WALK_STEP_UP, so the whole staircase remains climbable
-        // on foot, no jump required, exactly like before) leading up to a
-        // small two-tier platform chain: an easy hop onto the height-80
-        // landing right off the top step, then a real jump — height delta
-        // 80, horizontal gap 40 — up to a height-160 platform that's
-        // deliberately hard to reach (unreachable from the ground directly;
-        // only reachable by actually climbing the stair first).
-        spawn1: { x: 104, y: 195 }, spawn2: { x: 1066, y: 195 },
+        // A climbing staircase up the west side to a high throne platform,
+        // an interior cover wall on the east, and a ramp back down.
+        spawn1: { x: 220, y: 230 }, spawn2: { x: 1540, y: 740 },
         obstacles: [
-            { x: 585, y: 234, r: 29, seed: 0.6 }, { x: 585, y: 520, r: 29, seed: 3.1 }
+            { x: 900, y: 300, r: 34, seed: 0.6 }, { x: 900, y: 674, r: 34, seed: 3.1 }
         ],
         terrain: [
-            { type: 'step', x: 73, y: 361, hw: 33, hd: 130, height: 18 },
-            { type: 'step', x: 139, y: 361, hw: 33, hd: 130, height: 36 },
-            { type: 'step', x: 205, y: 361, hw: 33, hd: 130, height: 54 },
-            { type: 'step', x: 271, y: 361, hw: 33, hd: 130, height: 72 },
-            { type: 'ramp', x: 845, y: 378, hw: 117, hd: 78, axis: 'x', from: 0, to: 40 }
+            { type: 'step', x: 150, y: 487, hw: 60, hd: 220, height: 20 },
+            { type: 'step', x: 270, y: 487, hw: 60, hd: 220, height: 40 },
+            { type: 'step', x: 390, y: 487, hw: 60, hd: 220, height: 60 },
+            { type: 'ramp', x: 1420, y: 487, hw: 130, hd: 140, axis: 'x', from: 0, to: 55 }
         ],
         platforms: [
-            { x: 340, y: 361, hw: 45, hd: 80, height: 80 },
-            { x: 460, y: 361, hw: 35, hd: 70, height: 160 }
+            { x: 520, y: 487, hw: 62, hd: 155, height: 110 },
+            { x: 690, y: 487, hw: 52, hd: 110, height: 210 },
+            { x: 1080, y: 300, hw: 26, hd: 180, height: 280 }
         ]
     },
     {
         name: 'Twin Ramparts',
         accent: '#a855f7', fogColor: '#0f0a1a',
-        spawn1: { x: 260, y: 195 }, spawn2: { x: 845, y: 195 },
+        // Two raised plateaus on either side, ramps up to them, and a tall
+        // central dividing wall you fight around.
+        spawn1: { x: 230, y: 180 }, spawn2: { x: 1524, y: 794 },
         obstacles: [
-            { x: 585, y: 234, r: 29, seed: 0.9 }, { x: 494, y: 378, r: 26, seed: 2.2 },
-            { x: 676, y: 378, r: 26, seed: 3.8 }, { x: 585, y: 520, r: 29, seed: 5.0 }
+            { x: 877, y: 180, r: 30, seed: 0.9 }, { x: 877, y: 794, r: 30, seed: 5.0 }
         ],
-        // Added a small central step (20 units — walkable, no jump) in the
-        // open floor between the two ramps, for texture in what used to be
-        // a big empty middle.
         terrain: [
-            { type: 'ramp', x: 358, y: 378, hw: 59, hd: 117, axis: 'x', from: 0, to: 70 },
-            { type: 'ramp', x: 813, y: 378, hw: 59, hd: 117, axis: 'x', from: 70, to: 0 },
-            { type: 'step', x: 585, y: 361, hw: 50, hd: 45, height: 20 }
+            { type: 'ramp', x: 540, y: 487, hw: 95, hd: 170, axis: 'x', from: 0, to: 70 },
+            { type: 'ramp', x: 1214, y: 487, hw: 95, hd: 170, axis: 'x', from: 70, to: 0 }
         ],
         platforms: [
-            { x: 182, y: 378, hw: 104, hd: 143, height: 70 },
-            { x: 988, y: 378, hw: 104, hd: 143, height: 70 }
+            { x: 250, y: 487, hw: 110, hd: 150, height: 70 },
+            { x: 1504, y: 487, hw: 110, hd: 150, height: 70 },
+            { x: 877, y: 487, hw: 30, hd: 160, height: 285 }
         ]
     },
     {
         name: 'The Colosseum Ring',
         accent: '#22c55e', fogColor: '#081409',
-        spawn1: { x: 260, y: 390 }, spawn2: { x: 845, y: 390 },
+        // A raised perimeter ring with a sunken center, two central columns,
+        // and a pair of diagonal interior cover walls.
+        spawn1: { x: 300, y: 487 }, spawn2: { x: 1454, y: 487 },
         obstacles: [
-            { x: 546, y: 378, r: 26, seed: 1.1 }, { x: 624, y: 378, r: 26, seed: 4.4 }
+            { x: 820, y: 487, r: 30, seed: 1.1 }, { x: 934, y: 487, r: 30, seed: 4.4 }
         ],
-        // Added a hard-to-reach platform (height 110) off to the side of
-        // the north ramp — unreachable cold from the ground, but a clean
-        // jump from the ramp's own height-35 top clears both the 75-unit
-        // rise and the 28-unit gap.
         terrain: [
-            { type: 'step', x: 585, y: 195, hw: 195, hd: 33, height: 35 },
-            { type: 'step', x: 585, y: 562, hw: 195, hd: 33, height: 35 },
-            { type: 'step', x: 143, y: 378, hw: 33, hd: 117, height: 35 },
-            { type: 'step', x: 1027, y: 378, hw: 33, hd: 117, height: 35 },
-            { type: 'ramp', x: 585, y: 267, hw: 52, hd: 46, axis: 'y', from: 0, to: 35 }
+            { type: 'step', x: 877, y: 150, hw: 300, hd: 50, height: 40 },
+            { type: 'step', x: 877, y: 824, hw: 300, hd: 50, height: 40 },
+            { type: 'step', x: 170, y: 487, hw: 50, hd: 220, height: 40 },
+            { type: 'step', x: 1584, y: 487, hw: 50, hd: 220, height: 40 }
         ],
         platforms: [
-            { x: 710, y: 280, hw: 45, hd: 35, height: 110 }
+            { x: 560, y: 300, hw: 50, hd: 50, height: 62 },
+            { x: 1194, y: 674, hw: 50, hd: 50, height: 62 },
+            { x: 560, y: 674, hw: 26, hd: 110, height: 250 },
+            { x: 1194, y: 300, hw: 26, hd: 110, height: 250 }
         ]
     },
     {
         name: 'Skyreach Spire',
         accent: '#f43f5e', fogColor: '#170a0d',
-        spawn1: { x: 150, y: 500 }, spawn2: { x: 1020, y: 500 },
+        // Vertical map: three platform tiers climbing to a high central
+        // throne (unreachable in one jump — climb tier by tier), flanked by
+        // two tall interior walls.
+        spawn1: { x: 230, y: 750 }, spawn2: { x: 1524, y: 750 },
         obstacles: [
-            { x: 400, y: 500, r: 22, seed: 0.5 }, { x: 770, y: 500, r: 22, seed: 2.0 }
+            { x: 600, y: 780, r: 26, seed: 0.5 }, { x: 1154, y: 780, r: 26, seed: 2.0 }
         ],
         terrain: [
-            { type: 'step', x: 585, y: 530, hw: 80, hd: 30, height: 18 },
-            { type: 'ramp', x: 250, y: 480, hw: 60, hd: 40, axis: 'x', from: 0, to: 15 }
+            { type: 'step', x: 877, y: 820, hw: 130, hd: 45, height: 18 },
+            { type: 'ramp', x: 400, y: 720, hw: 90, hd: 70, axis: 'x', from: 0, to: 22 }
         ],
-        // The whole point of this map: a three-tier platform staircase
-        // climbing to a height-200 "throne" that's flatly impossible to
-        // reach in one jump from the ground (max single-jump rise is
-        // ~96 units) — has to be climbed tier by tier. The last gap (P2 to
-        // P3) is a deliberately tight 70-unit horizontal jump, crossable
-        // by every character's top speed but genuinely tight for the
-        // slowest (Draven).
         platforms: [
-            { x: 585, y: 420, hw: 70, hd: 50, height: 60 },
-            { x: 760, y: 340, hw: 55, hd: 45, height: 130 },
-            { x: 585, y: 230, hw: 50, hd: 40, height: 200 }
+            { x: 877, y: 620, hw: 105, hd: 80, height: 60 },
+            { x: 1150, y: 500, hw: 82, hd: 68, height: 140 },
+            { x: 877, y: 360, hw: 78, hd: 62, height: 230 },
+            { x: 480, y: 340, hw: 26, hd: 150, height: 265 },
+            { x: 1300, y: 340, hw: 26, hd: 150, height: 265 }
         ]
     },
     {
         name: 'The Shattered Bridge',
         accent: '#0ea5e9', fogColor: '#081019',
-        // Two ground "shores" connected only by a broken chain of floating
-        // stepping-stones over open floor in between — there's no pit/fall
-        // damage in this game, so the challenge is purely the platforming,
-        // not a death risk. Every gap (45/55 units) is comfortably inside
-        // even the slowest character's jump-arc horizontal reach; the
-        // peak stone (height 95, dead center) sits right at the edge of
-        // what's reachable in a single jump from the ground below it.
-        spawn1: { x: 150, y: 361 }, spawn2: { x: 1020, y: 361 },
+        // Two shores linked by a chain of stepping-stones down the middle,
+        // with long interior walls dividing the north and south lanes.
+        spawn1: { x: 200, y: 487 }, spawn2: { x: 1554, y: 487 },
         obstacles: [
-            { x: 250, y: 200, r: 20, seed: 0.3 }, { x: 250, y: 520, r: 20, seed: 1.8 },
-            { x: 920, y: 200, r: 20, seed: 3.2 }, { x: 920, y: 520, r: 20, seed: 4.6 }
+            { x: 420, y: 250, r: 24, seed: 0.3 }, { x: 420, y: 724, r: 24, seed: 1.8 },
+            { x: 1334, y: 250, r: 24, seed: 3.2 }, { x: 1334, y: 724, r: 24, seed: 4.6 }
         ],
-        terrain: [
-            { type: 'step', x: 150, y: 200, hw: 60, hd: 30, height: 16 },
-            { type: 'step', x: 1020, y: 520, hw: 60, hd: 30, height: 16 }
-        ],
+        terrain: [],
         platforms: [
-            { x: 400, y: 361, hw: 40, hd: 40, height: 55 },
-            { x: 520, y: 361, hw: 35, hd: 35, height: 95 },
-            { x: 650, y: 361, hw: 40, hd: 40, height: 55 }
+            { x: 640, y: 487, hw: 46, hd: 46, height: 55 },
+            { x: 790, y: 487, hw: 42, hd: 42, height: 95 },
+            { x: 965, y: 487, hw: 42, hd: 42, height: 95 },
+            { x: 1115, y: 487, hw: 46, hd: 46, height: 55 },
+            { x: 877, y: 250, hw: 230, hd: 26, height: 270 },
+            { x: 877, y: 724, hw: 230, hd: 26, height: 270 }
         ]
     }
 ];
@@ -2427,7 +2576,7 @@ class Fighter {
                 opponent.takeDamage(p.damage, this);
                 removeAndDispose(p.mesh);
                 this.projectiles.splice(i, 1);
-            } else if (p.x < 0 || p.x > VIRTUAL_W || p.y < 0 || p.y > VIRTUAL_H) {
+            } else if (p.x < ARENA_LEFT || p.x > ARENA_RIGHT || p.y < ARENA_TOP || p.y > ARENA_BOTTOM) {
                 removeAndDispose(p.mesh);
                 this.projectiles.splice(i, 1);
             }
@@ -2763,6 +2912,13 @@ class Fighter {
 
         this.mesh = group;
         this.deathParticles = [];
+        // First-person layers: put this whole fighter on its own body layer
+        // so the OWNER's camera can hide it (you don't see your own body from
+        // inside your head) while the opponent's camera still shows it. Any
+        // lights inside the group (hit-flash, Seraphine's glow) get all
+        // layers re-enabled so they still illuminate the layer-0 environment.
+        setLayerRecursive(group, this.isPlayerOne ? LAYER_P1_BODY : LAYER_P2_BODY);
+        group.traverse(n => { if (n.isLight) n.layers.enableAll(); });
         scene.add(group);
     }
 
@@ -3258,6 +3414,68 @@ function buildOrbProp(coreHex, emissiveHex) {
     g.userData.mats = [coreMat];
     g.userData.core = core;
     return g;
+}
+
+// --- First-person weapon viewmodel: the weapon (+ a bit of forearm) held
+// in the player's own view, matching their character. Built as a child of
+// their camera and placed on their own viewmodel layer so only their camera
+// renders it. Small and toward the lower-right, so it reads as "your hands"
+// without eating the screen. ---
+function propForAtkType(f) {
+    switch (f.atkType) {
+        case 'slash': return buildSwordProp('#e6faff', '#38bdf8', 17, 5);
+        case 'dagger': return buildDaggerProp('#99f6e4', '#14b8a6');
+        case 'hammer': return buildHammerProp();
+        case 'scythe': return buildScytheProp();
+        case 'punch': return buildFistProp(f.color);
+        case 'bolt': return buildStaffProp();
+        case 'whip': return buildWhipProp();
+        case 'shard': return buildOrbProp('#e9d5ff', '#a855f7');
+        case 'orb': return buildOrbProp('#fff7d6', '#facc15');
+        default: return buildFistProp(f.color);
+    }
+}
+function buildViewmodel(f, layer) {
+    const holder = new THREE.Group();
+    // A stub of forearm coming in from the lower edge toward the weapon.
+    const armMat = makeMat(f.color, { roughness: 0.6, metalness: 0.2 });
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(3.4, 3.4, 11), armMat);
+    arm.position.set(-1, -1.5, 4.5);
+    holder.add(arm);
+    const prop = propForAtkType(f);
+    prop.rotation.y = Math.PI / 2; // weapon local +X (its "forward") now points into the screen (-Z)
+    prop.position.set(0, 0, -1);
+    holder.add(prop);
+    // Place & scale the whole thing in camera space: right of center, below
+    // the crosshair line, a short distance in front of the near plane.
+    holder.position.set(5.5, -5.5, -10);
+    holder.scale.setScalar(0.34);
+    holder.userData.baseY = holder.position.y;
+    holder.userData.baseZ = holder.position.z;
+    setLayerRecursive(holder, layer);
+    holder.traverse(n => { if (n.isLight) n.parent.remove(n); }); // strip any point lights from props (Seraphine glow etc.) — viewmodel shouldn't light the world
+    return holder;
+}
+let vmP1 = null, vmP2 = null;
+function rebuildViewmodels() {
+    if (vmP1) { camP1.remove(vmP1); disposeObject3D(vmP1); vmP1 = null; }
+    if (vmP2) { camP2.remove(vmP2); disposeObject3D(vmP2); vmP2 = null; }
+    if (player1) { vmP1 = buildViewmodel(player1, LAYER_P1_VM); camP1.add(vmP1); }
+    if (player2) { vmP2 = buildViewmodel(player2, LAYER_P2_VM); camP2.add(vmP2); }
+}
+// Subtle idle bob + an attack lunge, so the viewmodel feels alive and
+// reacts when you swing.
+function syncViewmodels(dt) {
+    const pairs = [[vmP1, player1], [vmP2, player2]];
+    for (const [vm, f] of pairs) {
+        if (!vm || !f) continue;
+        const bob = Math.sin(arenaTime * 0.08) * 0.35;
+        let lunge = 0;
+        if (f.atkState === 'active') lunge = -2.4;
+        else if (f.atkState === 'startup') lunge = 1.2;
+        vm.position.y = vm.userData.baseY + bob;
+        vm.position.z = vm.userData.baseZ + lunge;
+    }
 }
 
 function buildKaelenMesh(color) {
@@ -3939,15 +4157,6 @@ let shrinkTimer = GRACE_PERIOD; // first tick fires after the grace period, then
 let shrinkFrac = 0;             // current (smoothly-lerped) collapse fraction, 0 = full arena, 1 = fully shut at center
 let shrinkTargetFrac = 0;       // the stepped target the visible fraction eases toward
 let crushing = false;
-// The CURRENT shrinking playable bounds — clampToArena() uses these instead
-// of the fixed ARENA_* so fighters are physically squeezed inward.
-let playLeft = ARENA_LEFT, playRight = ARENA_RIGHT, playTop = ARENA_TOP, playBottom = ARENA_BOTTOM;
-function arenaBoundsFromFrac(f) {
-    playLeft = ARENA_LEFT + (ARENA_CX - ARENA_LEFT) * f;
-    playRight = ARENA_RIGHT - (ARENA_RIGHT - ARENA_CX) * f;
-    playTop = ARENA_TOP + (ARENA_CY - ARENA_TOP) * f;
-    playBottom = ARENA_BOTTOM - (ARENA_BOTTOM - ARENA_CY) * f;
-}
 
 let roundWins = { p1: 0, p2: 0 };
 let currentRound = 1;
@@ -4000,11 +4209,8 @@ function syncArenaCollapse(dt) {
     floorMesh.scale.x = xExt / floorBaseSize.w;
     floorMesh.scale.y = zExt / floorBaseSize.d; // plane's local Y maps to world Z after the -90° flip
     floorMesh.position.set(worldX((playLeft + playRight) / 2), 0, worldZ((playTop + playBottom) / 2));
+    syncOuterWalls(); // the four enclosing walls physically slide inward with the bounds
 
-    const collapsing = shrinkFrac > 0.001;
-    // Rim edges + corner glows sit exactly on the original outer boundary,
-    // so they're outside the play area the instant any collapse begins.
-    for (const d of borderDecor) d.visible = !collapsing;
     // Each pillar/terrain/platform: once its game-space position is outside
     // the shrinking bounds, it starts falling (drops straight down through
     // where the floor used to be) and is hidden once well below — a clean
@@ -4062,6 +4268,7 @@ function startRound() {
     player2 = new Fighter(p2Choice, matchMap.spawn2.x, matchMap.spawn2.y, false, p2IsBot);
     player1.initMesh();
     player2.initMesh();
+    rebuildViewmodels(); // first-person weapon in each player's own view
     loser = null; winner = null; deathPhase = ''; deathTimer = 0; isDraw = false; deathCandidates = [];
     hitStopFrames = 0; cameraShakeMag = 0;
     damageNumbers = []; impactSparks = [];
@@ -4099,104 +4306,110 @@ function drawRoundStatus() {
 }
 
 function drawPlayerHUD(f, x, label) {
-    hudCtx.fillStyle = "#1e293b";
-    hudCtx.fillRect(x, 15, 260, 16);
+    const BW = 420; // bar width, scaled up for the bigger virtual space
+    hudCtx.fillStyle = "#ffffff";
+    hudCtx.font = hudFont(18, true);
+    hudCtx.textAlign = "left";
+    hudCtx.fillText(`${f.name} (${label})`, x, 46);
+
+    hudCtx.fillStyle = "#0f1420";
+    hudCtx.fillRect(x, 56, BW, 24);
 
     // Ghost trail: a lighter afterimage of HP just lost, drawn first so the
     // real (character-colored) bar sits on top of it and looks like it's
     // "pulling away" from a fading remnant.
     if (f.hpGhost > f.hp) {
         hudCtx.fillStyle = "#64748b";
-        hudCtx.fillRect(x, 15, (f.hpGhost / f.maxHp) * 260, 16);
+        hudCtx.fillRect(x, 56, (f.hpGhost / f.maxHp) * BW, 24);
     }
-
     const lowHp = f.hp / f.maxHp < 0.25 && f.hp > 0;
     hudCtx.fillStyle = lowHp && Math.sin(arenaTime * 0.3) > 0 ? "#ef4444" : f.color;
-    hudCtx.fillRect(x, 15, (f.hp / f.maxHp) * 260, 16);
+    hudCtx.fillRect(x, 56, (f.hp / f.maxHp) * BW, 24);
+    hudCtx.strokeStyle = "rgba(255,255,255,0.2)"; hudCtx.lineWidth = 1.5;
+    hudCtx.strokeRect(x, 56, BW, 24);
 
     hudCtx.fillStyle = "#e2e8f0";
-    hudCtx.font = hudFont(10);
+    hudCtx.font = hudFont(14, true);
     hudCtx.textAlign = "right";
-    hudCtx.fillText(`${Math.ceil(f.hp)}/${f.maxHp}`, x + 256, 27);
+    hudCtx.fillText(`${Math.ceil(f.hp)}/${f.maxHp}`, x + BW - 6, 74);
     hudCtx.textAlign = "left";
 
-    hudCtx.fillStyle = "#1e293b";
-    hudCtx.fillRect(x, 33, 260, 7);
-    hudCtx.fillStyle = "#eab308";
-    hudCtx.fillRect(x, 33, (f.specialMeter / 100) * 260, 7);
-
-    hudCtx.fillStyle = "#ffffff";
-    hudCtx.font = hudFont(12, true);
-    hudCtx.textAlign = "left";
-    hudCtx.fillText(`${f.name} (${label})`, x, 54);
-
+    // Special meter
+    hudCtx.fillStyle = "#0f1420";
+    hudCtx.fillRect(x, 84, BW, 10);
+    const meterReady = f.specialMeter >= 100;
+    hudCtx.fillStyle = meterReady ? "#00f3ff" : "#eab308";
+    hudCtx.fillRect(x, 84, (f.specialMeter / 100) * BW, 10);
     hudCtx.fillStyle = "#94a3b8";
-    hudCtx.font = hudFont(10);
-    hudCtx.fillText(`Special ${Math.floor(f.specialMeter)}%`, x, 68);
+    hudCtx.font = hudFont(11);
+    hudCtx.fillText(meterReady ? 'SPECIAL READY' : `Special ${Math.floor(f.specialMeter)}%`, x, 108);
+}
 
-    // Hit-direction arrow: fades in on a hit, points at the attacker's
-    // relative position in arena space (2D, matches the fighters' own x/y).
-    if (f.hitDirTimer > 0) {
-        const alpha = f.hitDirTimer / 30;
-        const ax = x + 270, ay = 23;
-        hudCtx.save();
-        hudCtx.globalAlpha = alpha;
-        hudCtx.translate(ax, ay);
-        hudCtx.rotate(f.hitDirAngle);
-        hudCtx.fillStyle = "#ef4444";
+// First-person crosshair(s): one centered in each active viewport (both
+// halves when split-screen, else screen center). Drawn in raw canvas pixels
+// (not the virtual-space transform) so it's always a crisp, correctly-
+// centered reticle regardless of aspect.
+function drawCrosshairs(twoHumans) {
+    const W = hudCanvas.width, H = hudCanvas.height;
+    const centers = twoHumans ? [W * 0.25, W * 0.75] : [W * 0.5];
+    const s = Math.max(6, W * 0.006), gap = s * 0.45;
+    hudCtx.save();
+    hudCtx.strokeStyle = 'rgba(220,240,255,0.7)';
+    hudCtx.lineWidth = Math.max(1.5, W * 0.0013);
+    for (const cxp of centers) {
+        const cyp = H * 0.5;
         hudCtx.beginPath();
-        hudCtx.moveTo(7, 0); hudCtx.lineTo(-5, -5); hudCtx.lineTo(-5, 5);
-        hudCtx.closePath();
-        hudCtx.fill();
-        hudCtx.restore();
-        hudCtx.globalAlpha = 1;
+        hudCtx.moveTo(cxp - s - gap, cyp); hudCtx.lineTo(cxp - gap, cyp);
+        hudCtx.moveTo(cxp + gap, cyp); hudCtx.lineTo(cxp + s + gap, cyp);
+        hudCtx.moveTo(cxp, cyp - s - gap); hudCtx.lineTo(cxp, cyp - gap);
+        hudCtx.moveTo(cxp, cyp + gap); hudCtx.lineTo(cxp, cyp + s + gap);
+        hudCtx.stroke();
     }
+    hudCtx.restore();
 }
 
 function drawHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
-    // Every draw call below is written in the fixed 900x500 virtual space;
-    // this scale is the only thing that adapts it to the canvas's actual
-    // (resizable) pixel size, so none of the hardcoded x/y positions
-    // below needed to change for resize support.
+    const twoHumans = player1 && player2 && !player1.isBot && !player2.isBot;
+    drawCrosshairs(twoHumans);
+
+    // Everything below is written in the fixed virtual space and scaled to
+    // fill the canvas. In split-screen the left third holds P1's HUD (P1's
+    // view is the left half), the right third P2's, and the center column
+    // the shared collapse timer / round banner — all naturally readable in
+    // both halves.
     hudCtx.save();
     hudCtx.scale(hudCanvas.width / VIRTUAL_W, hudCanvas.height / VIRTUAL_H);
 
     if (currentMap) {
         hudCtx.fillStyle = "#64748b";
-        hudCtx.font = "11px sans-serif";
+        hudCtx.font = hudFont(15);
         hudCtx.textAlign = "center";
-        hudCtx.fillText(currentMap.name, VIRTUAL_W / 2, 12);
+        hudCtx.fillText(currentMap.name, VIRTUAL_W / 2, 24);
         hudCtx.textAlign = "left";
     }
 
     drawRoundStatus();
-    drawPlayerHUD(player1, 20, 'P1');
-    drawPlayerHUD(player2, VIRTUAL_W - 280, 'P2'); // 260px bar width + 20px margin, so this tracks VIRTUAL_W instead of assuming the old 900-wide space
-    drawHitFeedback();
+    drawPlayerHUD(player1, 30, 'P1');
+    drawPlayerHUD(player2, VIRTUAL_W - 30 - 420, 'P2');
 
     if (gameState === "ROUND_END") {
         hudCtx.textAlign = "center";
-        hudCtx.font = "bold 22px sans-serif";
+        hudCtx.font = hudFont(34, true);
         hudCtx.fillStyle = "#00f3ff";
         const roundText = isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`;
-        hudCtx.fillText(roundText, VIRTUAL_W / 2, 200);
-        hudCtx.font = "13px sans-serif";
+        hudCtx.fillText(roundText, VIRTUAL_W / 2, 300);
+        hudCtx.font = hudFont(18);
         hudCtx.fillStyle = "#94a3b8";
-        hudCtx.fillText(`Round ${currentRound} starting...`, VIRTUAL_W / 2, 225);
+        hudCtx.fillText(`Round ${currentRound} starting...`, VIRTUAL_W / 2, 336);
         hudCtx.textAlign = "left";
     }
 
-    // Batch 9: the full control list used to sit here permanently, every
-    // frame, for the entire match. Now that it's a click/Esc away on the
-    // pause screen (see togglePause(), which sets pause-controls-reminder
-    // from these same controlsSummary() strings), this strip is freed for
-    // just a one-line reminder of how to get there.
     hudCtx.fillStyle = "#64748b";
-    hudCtx.font = hudFont(10);
+    hudCtx.font = hudFont(13);
     hudCtx.textAlign = "center";
     const botNote = [player1.isBot ? 'P1 Bot' : null, player2.isBot ? 'P2 Bot' : null].filter(Boolean).join(' / ');
-    hudCtx.fillText(`Esc for controls / pause${botNote ? '  |  ' + botNote : ''}`, VIRTUAL_W / 2, 98);
+    hudCtx.fillText(`Esc for controls / pause${botNote ? '  |  ' + botNote : ''}`, VIRTUAL_W / 2, VIRTUAL_H - 20);
     hudCtx.textAlign = "left";
 
     hudCtx.restore();
@@ -4315,7 +4528,7 @@ function gameLoop() {
     fpsSmoothed = fpsSmoothed * 0.9 + (dt > 0.001 ? (60 / dt) : 60) * 0.1;
 
     if (gameState === "PAUSED") {
-        renderer.render(scene, camera); // keep showing the frozen frame under the pause overlay
+        renderViews(dt); // keep showing the frozen frame under the pause overlay
         requestAnimationFrame(gameLoop);
         return;
     }
@@ -4324,8 +4537,8 @@ function gameLoop() {
     // so the freeze-frame itself is visible) right after a hit lands.
     if (hitStopFrames > 0) {
         hitStopFrames -= dt;
-        updateCamera(dt);
-        renderer.render(scene, camera);
+        syncViewmodels(dt);
+        renderViews(dt);
         requestAnimationFrame(gameLoop);
         return;
     }
@@ -4403,8 +4616,9 @@ function gameLoop() {
         if (roundEndTimer >= 90) startRound();
     }
 
-    updateCamera(dt);
-    renderer.render(scene, camera);
+    decayCameraShake(dt);
+    syncViewmodels(dt);
+    renderViews(dt);
     requestAnimationFrame(gameLoop);
 }
 
