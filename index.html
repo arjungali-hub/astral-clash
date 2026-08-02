@@ -541,7 +541,7 @@
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">👁️</div>
                             <h4>First-Person View</h4>
-                            <p>You fight through your character's own eyes, weapon in hand. You always face the way you move, so your view turns as you change direction — walk toward your target to aim at it, then attack. Two human players share the screen split left/right; against a bot you get the whole screen.</p>
+                            <p>You fight through your character's own eyes, weapon in hand. Turn keys rotate your view like looking around, not an instant sidestep — walk forward/back in whatever direction you're currently facing to actually move that way. Two human players share the screen split left/right; against a bot you get the whole screen.</p>
                         </div>
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">🧱</div>
@@ -551,7 +551,7 @@
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">🏃</div>
                             <h4>Movement &amp; Jumping</h4>
-                            <p>Move freely in any direction (and you'll face wherever you're heading). Jumping reaches platforms and cover, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges and walls aren't. Use columns and interior walls for cover.</p>
+                            <p>Turn to look around, then walk forward or back in that direction — there's no strafing sideways. Jumping reaches platforms and cover, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges and walls aren't. Use columns and interior walls for cover.</p>
                         </div>
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">⚔️</div>
@@ -766,8 +766,7 @@ function keyLabel(k) {
 // both places without them drifting out of sync with each other.
 function controlsSummary(side) {
     const b = BINDINGS[side];
-    const dir = `${keyLabel(b.up)}/${keyLabel(b.left)}/${keyLabel(b.down)}/${keyLabel(b.right)}`;
-    return `${dir} Move | ${keyLabel(b.jump)} Jump | ${keyLabel(b.attack)}/${keyLabel(b.special)} Atk/Spc | ${keyLabel(b.dodge)} Dodge`;
+    return `${keyLabel(b.up)}/${keyLabel(b.down)} Fwd/Back, ${keyLabel(b.left)}/${keyLabel(b.right)} Turn | ${keyLabel(b.jump)} Jump | ${keyLabel(b.attack)}/${keyLabel(b.special)} Atk/Spc | ${keyLabel(b.dodge)} Dodge`;
 }
 
 const REBIND_ACTION_LABELS = { up: 'Up', down: 'Down', left: 'Left', right: 'Right', jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dodge' };
@@ -1297,6 +1296,7 @@ const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42, PLATFORM_SAFE_HEIGHT = 30;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
 const MAX_WALK_STEP_UP = 20; // taller single-frame rises than this require an actual jump — see resolveTallTerrain()
+const TURN_SPEED = 0.052; // radians per frame-unit that left/right turns the human player's facing (first-person look)
 let OBSTACLES = [], TERRAIN = [], PLATFORMS = [];
 
 function groundLevelAt(x, y) {
@@ -2146,6 +2146,17 @@ class Fighter {
         this.fy = my / len;
     }
 
+    // First-person look: rotates the current facing by `radians` instead of
+    // snapping to a direction — used by the human A/D and Left/Right keys so
+    // turning reads as looking around rather than instantly strafing to face
+    // sideways. Positive radians turns right (clockwise viewed from above,
+    // since worldZ = y is flipped relative to standard screen-space angles).
+    turnBy(radians) {
+        const ang = Math.atan2(this.fy, this.fx) + radians;
+        this.fx = Math.cos(ang);
+        this.fy = Math.sin(ang);
+    }
+
     // Uses the CURRENT shrinking play bounds (see the Arena Collapse
     // constants/state), not the level's fixed ARENA_LEFT/RIGHT — this is
     // what actually pushes fighters inward as the walls close in.
@@ -2398,34 +2409,40 @@ class Fighter {
             moveX = decision.moveX; moveY = decision.moveY; jumpPressed = decision.jumpPressed;
         } else if (this.isPlayerOne) {
             const b = BINDINGS.p1;
-            if (keys[b.up]) moveY -= 1;
-            if (keys[b.down]) moveY += 1;
-            if (keys[b.left]) moveX -= 1;
-            if (keys[b.right]) moveX += 1;
+            // First-person controls: Left/Right TURN (look) instead of
+            // instantly snapping to face sideways; Up/Down walk forward/back
+            // along wherever you're currently facing, so "turn, then walk
+            // that way" is how you change direction — same as a real FPS.
+            if (keys[b.left]) this.turnBy(-TURN_SPEED * dt);
+            if (keys[b.right]) this.turnBy(TURN_SPEED * dt);
+            if (keys[b.up]) { moveX += this.fx; moveY += this.fy; }
+            if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
             if (keys[b.jump]) jumpPressed = true;
             if (consumePress(b.attack)) this.tryStartAction('basic', opponent);
             if (consumePress(b.special)) this.tryStartAction('special', opponent);
             if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
             const gp = pollGamepad(0);
             if (gp) {
-                moveX += gp.moveX; moveY += gp.moveY;
+                if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6); // stick X = turn rate
+                if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; } // stick Y = forward/back (up on stick is negative)
                 if (gp.jump) jumpPressed = true;
                 if (gp.attack) this.tryStartAction('basic', opponent);
                 if (gp.special) this.tryStartAction('special', opponent);
             }
         } else {
             const b = BINDINGS.p2;
-            if (keys[b.up]) moveY -= 1;
-            if (keys[b.down]) moveY += 1;
-            if (keys[b.left]) moveX -= 1;
-            if (keys[b.right]) moveX += 1;
+            if (keys[b.left]) this.turnBy(-TURN_SPEED * dt);
+            if (keys[b.right]) this.turnBy(TURN_SPEED * dt);
+            if (keys[b.up]) { moveX += this.fx; moveY += this.fy; }
+            if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
             if (keys[b.jump]) jumpPressed = true;
             if (consumePress(b.attack)) this.tryStartAction('basic', opponent);
             if (consumePress(b.special)) this.tryStartAction('special', opponent);
             if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
             const gp = pollGamepad(1);
             if (gp) {
-                moveX += gp.moveX; moveY += gp.moveY;
+                if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6);
+                if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; }
                 if (gp.jump) jumpPressed = true;
                 if (gp.attack) this.tryStartAction('basic', opponent);
                 if (gp.special) this.tryStartAction('special', opponent);
@@ -2447,7 +2464,13 @@ class Fighter {
         else if (this.atkState !== 'idle') speedMult = 0.4;
 
         if ((moveX !== 0 || moveY !== 0) && this.hitstunTimer <= 0) {
-            this.setFacing(moveX, moveY);
+            // Bots still auto-face wherever they're moving (steered further
+            // below by the bot aim override). Human players' facing is
+            // handled entirely by turnBy() up in the input block above —
+            // moveX/moveY here is a forward/back vector ALONG that facing
+            // (or its reverse when walking backward), so calling setFacing
+            // on it would wrongly spin a human 180° just from pressing back.
+            if (this.isBot) this.setFacing(moveX, moveY);
             const len = Math.sqrt(moveX * moveX + moveY * moveY);
             this.vx = (moveX / len) * this.speed * speedMult;
             this.vy = (moveY / len) * this.speed * speedMult;
