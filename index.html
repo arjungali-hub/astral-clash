@@ -564,9 +564,9 @@
                             <p>A short dash with brief invulnerability frames — phases through attacks and projectiles entirely if timed right. Has its own cooldown, so it's a precise tool, not a shield.</p>
                         </div>
                         <div class="tutorial-card">
-                            <div class="tutorial-card-icon">⚠️</div>
-                            <h4>Hazards &amp; Pickups</h4>
-                            <p>A red zone telegraphs where a damage hazard is about to activate — get out before it does. A glowing orb periodically appears on the map and heals whoever reaches it first.</p>
+                            <div class="tutorial-card-icon">🩹</div>
+                            <h4>No Healing</h4>
+                            <p>There's no way to get HP back — no health pickups, no regen. Every hit you take counts. Play patient, punish mistakes, and use your dodge i-frames and shields to avoid damage rather than trying to out-heal it.</p>
                         </div>
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">🎮</div>
@@ -1027,14 +1027,9 @@ function sfxSpecial(f) {
     synthTone(root, 0.3, { type: 'sawtooth', freqEnd: root * 2, peak: 0.22 });
     synthTone(root * 1.5, 0.35, { type: 'sine', freqEnd: root * 2.5, peak: 0.14 });
 }
-function sfxPickup() {
-    synthTone(660, 0.09, { type: 'sine', freqEnd: 880, peak: 0.25 });
-    synthTone(990, 0.12, { type: 'sine', freqEnd: 1320, peak: 0.18, attack: 0.03 });
-}
-function sfxHazardWarn() {
-    synthTone(180, 0.5, { type: 'sawtooth', freqEnd: 340, peak: 0.15 });
-}
-function sfxHazardActive() {
+// Low grinding "thud" — used for each arena-collapse tick (the walls
+// grinding inward a notch).
+function sfxCollapseTick() {
     synthNoise(0.3, { peak: 0.3, filterFreq: 300, filterType: 'lowpass' });
     synthTone(70, 0.35, { type: 'square', peak: 0.2 });
 }
@@ -1769,7 +1764,7 @@ const CHARACTERS = [
       desc: 'Slow, nearly unbreakable tank.' },
     { name: 'Seraphine', title: 'Astral Warden', color: '#eab308', speed: 2.6, hp: 380, meterRateMult: 0.8,
       atkType: 'orb', dmg: 25, range: 260, halfAngle: 15 * DEG, cooldown: 16,
-      special: 'ward', specialName: 'Astral Ward', specialDesc: 'Shield yourself and heal — purely defensive.',
+      special: 'ward', specialName: 'Astral Ward', specialDesc: 'Raise a strong shield that halves incoming damage for several seconds.',
       desc: 'Support caster, shields and heals.' },
     { name: 'Nyx', title: 'Umbral Reaper', color: '#7c3aed', speed: 3.2, hp: 380, meterRateMult: 1,
       atkType: 'scythe', dmg: 34, range: 95, halfAngle: 60 * DEG, cooldown: 19,
@@ -2104,8 +2099,8 @@ class Fighter {
     }
 
     // Reactive AI for a bot-controlled fighter: keep to a preferred range
-    // for its attack type, back off out of an active hazard, strafe to be a
-    // harder target, and probabilistically fire off its attack/special. A
+    // for its attack type, strafe to be a harder target, and
+    // probabilistically fire off its attack/special. A
     // key detail: it sets `botFaceX/botFaceY` (an aim override update()
     // applies AFTER movement) so a kiting/strafing bot keeps facing — and
     // firing at — the opponent instead of facing wherever it happens to be
@@ -2136,30 +2131,6 @@ class Fighter {
             aimX = adx / al; aimY = ady / al;
         }
         this.botFaceX = aimX; this.botFaceY = aimY;
-
-        // React to the hazard during its 'warn' telegraph too, not just
-        // once it's already dealing damage — a human would start moving
-        // the instant they see the warning ring.
-        if (hazard.state === 'active' || hazard.state === 'warn') {
-            const hdx = cx - hazard.x, hdy = cy - hazard.y;
-            const hdist = Math.hypot(hdx, hdy);
-            const reactRadius = hazard.state === 'active' ? HAZARD_R + 40 : HAZARD_R + 15;
-            if (hdist < reactRadius) {
-                return { moveX: hdx / (hdist || 1), moveY: hdy / (hdist || 1), jumpPressed: false };
-            }
-        }
-
-        // Contest the heal pickup when it's active and this fighter could
-        // use it — weighted by how much HP is actually missing, so a
-        // near-full bot doesn't detour across the map for a sliver.
-        const missingHpFrac = 1 - this.hp / this.maxHp;
-        if (pickup.active && missingHpFrac > 0.15) {
-            const pdx = pickup.x - cx, pdy = pickup.y - cy;
-            const pdist = Math.hypot(pdx, pdy) || 1;
-            if (pdist < 260 * (0.5 + missingHpFrac)) {
-                return { moveX: pdx / pdist, moveY: pdy / pdist, jumpPressed: false };
-            }
-        }
 
         // Ranged bots want to hold a mid-range band and never let the
         // opponent close; melee bots want to get right on top of them.
@@ -2470,9 +2441,8 @@ class Fighter {
         this.hitFlash = 10;
 
         // Only real hits (an attacker is known) trigger knockback/hitstun/
-        // hit-stop/shake — the passive hazard tick calls this every single
-        // frame while someone stands in it, and re-triggering hit-stop
-        // that often would freeze the game solid for as long as they're in it.
+        // hit-stop/shake. (Damage sources without an attacker — the arena
+        // crush and burn DoT — apply hp loss directly and skip all of this.)
         if (attacker) {
             // Getting hit interrupts whatever you were doing — no trading
             // a slow recovery animation for a free follow-up.
@@ -2522,18 +2492,6 @@ class Fighter {
                 s.largestHit = Math.max(s.largestHit, amount);
             }
         }
-    }
-
-    // The environmental hazard's own damage path — deliberately separate
-    // from takeDamage(). It ticks every frame while you stand in the zone,
-    // so it must not touch hitFlash (constant reset = a stuck strobe
-    // instead of a readable flash — the ground hazard disc is the visual
-    // telegraph here) and it deliberately ignores invulnFrames, since a
-    // DoT floor hazard isn't something a combat dodge window should grant
-    // free immunity to.
-    takeHazardDamage(amount) {
-        if (this.shieldFrames > 0) amount *= (1 - this.shieldReduction);
-        this.hp = Math.max(0, this.hp - amount);
     }
 
     fireProjectile(color) {
@@ -2677,10 +2635,9 @@ class Fighter {
                 }
                 break;
             }
-            case 'ward': { // Seraphine — Astral Ward: purely defensive shield + heal, no damage.
-                this.shieldFrames = 150;
+            case 'ward': { // Seraphine — Astral Ward: a strong defensive shield that cuts incoming damage (no healing — there's no healing in the game).
+                this.shieldFrames = 200;
                 this.shieldColor = 0xfacc15;
-                this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.10);
                 this.effects.push({ type: 'ward', life: 30, maxLife: 30, color: '250,204,21' });
                 break;
             }
@@ -3954,10 +3911,11 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 
 // --- Arena Collapse: replaces the old flat round timer. There's no clock
 // counting down to a timeout draw anymore — instead there's a timer to the
-// *next* collapse tick. Every SHRINK_INTERVAL seconds the play area pulls
-// inward on ALL FOUR sides proportionally (X and Y together, so it stays
-// the same shape as it closes toward center), squeezing the fight so two
-// fighters who are just avoiding each other run out of room. As the bounds
+// *next* collapse tick. The arena holds at full size for a grace period
+// (GRACE_PERIOD) so players get to use the whole map early, THEN starts
+// pulling inward on ALL FOUR sides proportionally (X and Y together, so it
+// keeps its shape) every SHRINK_INTERVAL seconds, squeezing the fight so
+// two fighters just avoiding each other run out of room. As the bounds
 // close, the map geometry left outside them literally falls away into the
 // void beneath the (also-shrinking) floor — "as if it never existed" — so
 // the arena visibly disappears from the edges in rather than being hidden
@@ -3967,11 +3925,17 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 // hp<=0 -> DEATH flow so "whoever dies first loses" falls out of logic that
 // already existed, and the map stays fully visible (no obscuring props)
 // while each fighter is crushed in place on their own side.
-const SHRINK_INTERVAL = 9;      // seconds between each collapse tick
-const SHRINK_FRAC_STEP = 0.14;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+//
+// Timing: GRACE_PERIOD 75s of full arena, then a tick every SHRINK_INTERVAL
+// (13s) closing SHRINK_FRAC_STEP (0.13) each time. Crush (frac >= 0.8) lands
+// on the 7th tick, so ~75 + 7·13 ≈ 166s ≈ 2¾ minutes into a fully-stalled
+// round — in the requested 2-3 minute window.
+const GRACE_PERIOD = 75;        // seconds the arena stays full-size before the first collapse tick
+const SHRINK_INTERVAL = 13;     // seconds between each collapse tick after the grace period
+const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
 const CRUSH_AT_FRAC = 0.8;      // once the collapse fraction passes this, snap fully shut and start crushing
 const CRUSH_DPS = 40;           // flat HP/second lost by BOTH fighters while crushing — same rate regardless of max or current HP
-let shrinkTimer = SHRINK_INTERVAL;
+let shrinkTimer = GRACE_PERIOD; // first tick fires after the grace period, then every SHRINK_INTERVAL
 let shrinkFrac = 0;             // current (smoothly-lerped) collapse fraction, 0 = full arena, 1 = fully shut at center
 let shrinkTargetFrac = 0;       // the stepped target the visible fraction eases toward
 let crushing = false;
@@ -3998,29 +3962,6 @@ function freshStats() {
     return { damageDealt: 0, largestHit: 0, specialsUsed: 0 };
 }
 
-// --- Environmental hazard: telegraphs at a random spot, then punishes
-// anyone standing in it, forcing movement instead of a static floor. ---
-const HAZARD_R = 75, HAZARD_WARN = 120, HAZARD_ACTIVE = 90, HAZARD_COOLDOWN = 180, HAZARD_DPS_PER_FRAME = 0.3;
-let hazard = { state: 'dormant', x: 0, y: 0, timer: 0 };
-
-function pickHazardSpot() {
-    const margin = HAZARD_R + 15;
-    let x, y, tries = 0;
-    do {
-        x = ARENA_LEFT + margin + Math.random() * (ARENA_RIGHT - ARENA_LEFT - margin * 2);
-        y = ARENA_TOP + margin + Math.random() * (ARENA_BOTTOM - ARENA_TOP - margin * 2);
-        tries++;
-    } while (tries < 20 && (
-        OBSTACLES.some(ob => Math.hypot(x - ob.x, y - ob.y) < ob.r + HAZARD_R) ||
-        PLATFORMS.some(p => Math.abs(x - p.x) < p.hw + HAZARD_R && Math.abs(y - p.y) < p.hd + HAZARD_R) ||
-        TERRAIN.some(t => Math.abs(x - t.x) < t.hw + HAZARD_R && Math.abs(y - t.y) < t.hd + HAZARD_R) ||
-        PICKUP_SPOTS.some(s => Math.hypot(x - s.x, y - s.y) < HAZARD_R + PICKUP_R + 20) ||
-        (player1 && Math.hypot(x - (player1.x + player1.width / 2), y - (player1.y + player1.height / 2)) < HAZARD_R + 60) ||
-        (player2 && Math.hypot(x - (player2.x + player2.width / 2), y - (player2.y + player2.height / 2)) < HAZARD_R + 60)
-    ));
-    return { x, y };
-}
-
 // Arena Collapse: advances the collapse-tick timer (stepping the target
 // fraction inward), smoothly eases the visible fraction toward that target
 // every frame, and flips on `crushing` once it passes CRUSH_AT_FRAC (see
@@ -4032,7 +3973,7 @@ function updateArenaShrink(dt) {
         if (shrinkTimer <= 0) {
             shrinkTimer = SHRINK_INTERVAL;
             shrinkTargetFrac = Math.min(1, shrinkTargetFrac + SHRINK_FRAC_STEP);
-            sfxHazardActive(); // reuse the hazard's low "thud" as a collapse-tick sting
+            sfxCollapseTick();
             if (shrinkTargetFrac >= CRUSH_AT_FRAC) {
                 shrinkTargetFrac = 1; // snap the rest of the way shut
                 crushing = true;
@@ -4077,123 +4018,6 @@ function syncArenaCollapse(dt) {
             if (o.mesh.position.y < -180) o.mesh.visible = false;
         }
     }
-}
-
-function updateHazard(dt) {
-    hazard.timer += dt;
-    if (hazard.state === 'dormant') {
-        if (hazard.timer >= HAZARD_COOLDOWN) {
-            const spot = pickHazardSpot();
-            hazard.x = spot.x; hazard.y = spot.y;
-            hazard.state = 'warn'; hazard.timer = 0;
-            sfxHazardWarn();
-        }
-    } else if (hazard.state === 'warn') {
-        if (hazard.timer >= HAZARD_WARN) { hazard.state = 'active'; hazard.timer = 0; sfxHazardActive(); }
-    } else if (hazard.state === 'active') {
-        for (const f of [player1, player2]) {
-            if (f.z >= PLATFORM_SAFE_HEIGHT) continue; // out of reach up on a platform
-            const dx = (f.x + f.width / 2) - hazard.x, dy = (f.y + f.height / 2) - hazard.y;
-            if (Math.sqrt(dx * dx + dy * dy) < HAZARD_R) f.takeHazardDamage(HAZARD_DPS_PER_FRAME * dt);
-        }
-        if (hazard.timer >= HAZARD_ACTIVE) { hazard.state = 'dormant'; hazard.timer = 0; }
-    }
-}
-
-let hazardWarnMesh, hazardActiveMesh;
-function buildHazardMeshes() {
-    hazardWarnMesh = new THREE.Mesh(
-        new THREE.RingGeometry(0.9, 1, 40),
-        new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
-    );
-    hazardWarnMesh.rotation.x = -Math.PI / 2;
-    hazardWarnMesh.visible = false;
-    scene.add(hazardWarnMesh);
-
-    hazardActiveMesh = new THREE.Mesh(
-        new THREE.CircleGeometry(1, 40),
-        new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
-    );
-    hazardActiveMesh.rotation.x = -Math.PI / 2;
-    hazardActiveMesh.visible = false;
-    scene.add(hazardActiveMesh);
-}
-buildHazardMeshes();
-
-function syncHazard3D() {
-    hazardWarnMesh.visible = hazard.state === 'warn';
-    hazardActiveMesh.visible = hazard.state === 'active';
-    if (hazard.state === 'dormant') return;
-    const wx = worldX(hazard.x), wz = worldZ(hazard.y);
-    const pulse = 0.5 + 0.5 * Math.sin(arenaTime * 0.4);
-    if (hazard.state === 'warn') {
-        hazardWarnMesh.position.set(wx, 2, wz);
-        hazardWarnMesh.scale.setScalar(HAZARD_R);
-        hazardWarnMesh.material.opacity = 0.3 + 0.4 * pulse;
-    } else {
-        hazardActiveMesh.position.set(wx, 1.5, wz);
-        hazardActiveMesh.scale.setScalar(HAZARD_R);
-        hazardActiveMesh.material.opacity = 0.25 + 0.15 * pulse;
-    }
-}
-
-// --- Heal pickup: contested resource at fixed north/south spots. Heals
-// as a percentage of the collector's own max HP, so it stays meaningful
-// across the roster's varied HP pools instead of a flat amount. ---
-// Batch 4 item 4: retuned after the TTK pass — fights now run much longer
-// (20-40s vs the old ~2s), so the old 280-frame (4.7s) interval could spawn
-// a heal ~6 times in one match. Spaced out and reduced.
-const PICKUP_R = 14, PICKUP_INTERVAL = 500, PICKUP_HEAL_PCT = 0.14;
-const PICKUP_SPOTS = [{ x: ARENA_CX, y: ARENA_TOP + 28 }, { x: ARENA_CX, y: ARENA_BOTTOM - 28 }];
-let pickup = { active: false, x: 0, y: 0, timer: 0 };
-
-function updatePickup(dt) {
-    pickup.timer += dt;
-    if (!pickup.active && pickup.timer >= PICKUP_INTERVAL) {
-        const spot = PICKUP_SPOTS[Math.floor(Math.random() * PICKUP_SPOTS.length)];
-        pickup.x = spot.x; pickup.y = spot.y;
-        pickup.active = true; pickup.timer = 0;
-    }
-    if (pickup.active) {
-        for (const f of [player1, player2]) {
-            if (f.hp <= 0 || f.z >= PLATFORM_SAFE_HEIGHT) continue; // can't reach a ground pickup from up on a platform
-            const dx = (f.x + f.width / 2) - pickup.x, dy = (f.y + f.height / 2) - pickup.y;
-            if (Math.sqrt(dx * dx + dy * dy) < PICKUP_R + f.width / 2) {
-                f.hp = Math.min(f.maxHp, f.hp + f.maxHp * PICKUP_HEAL_PCT);
-                pickup.active = false; pickup.timer = 0;
-                sfxPickup();
-                break;
-            }
-        }
-    }
-}
-
-let pickupMesh;
-function buildPickupMesh() {
-    const group = new THREE.Group();
-    const orb = new THREE.Mesh(
-        new THREE.SphereGeometry(PICKUP_R, 12, 12),
-        new THREE.MeshStandardMaterial({ color: 0x4ade80, emissive: 0x22c55e, emissiveIntensity: 0.6 })
-    );
-    orb.castShadow = true;
-    group.add(orb);
-    const crossMat = new THREE.MeshBasicMaterial({ color: 0xecfdf5 });
-    group.add(new THREE.Mesh(new THREE.BoxGeometry(12, 2.5, 2.5), crossMat));
-    group.add(new THREE.Mesh(new THREE.BoxGeometry(2.5, 12, 2.5), crossMat));
-    const glow = new THREE.PointLight(0x4ade80, 0.8, 80);
-    group.add(glow);
-    group.visible = false;
-    scene.add(group);
-    pickupMesh = group;
-}
-buildPickupMesh();
-
-function syncPickup3D(dt) {
-    pickupMesh.visible = pickup.active;
-    if (!pickup.active) return;
-    const bob = Math.sin(arenaTime * 0.12) * 3;
-    pickupMesh.position.set(worldX(pickup.x), 16 + bob, worldZ(pickup.y));
-    pickupMesh.rotation.y += 0.02 * dt;
 }
 
 // Pushbox: keeps the two fighters from ever standing exactly on top of
@@ -4241,9 +4065,7 @@ function startRound() {
     loser = null; winner = null; deathPhase = ''; deathTimer = 0; isDraw = false; deathCandidates = [];
     hitStopFrames = 0; cameraShakeMag = 0;
     damageNumbers = []; impactSparks = [];
-    hazard = { state: 'dormant', x: 0, y: 0, timer: 0 };
-    pickup = { active: false, x: 0, y: 0, timer: 0 };
-    shrinkTimer = SHRINK_INTERVAL;
+    shrinkTimer = GRACE_PERIOD; // full arena for the grace period, then collapse ticks begin
     shrinkFrac = 0; shrinkTargetFrac = 0;
     crushing = false;
     arenaBoundsFromFrac(0); // reset play bounds to the full arena
@@ -4259,8 +4081,9 @@ function drawRoundStatus() {
         hudCtx.fillStyle = Math.sin(arenaTime * 0.5) > 0 ? "#ef4444" : "#fca5a5";
         hudCtx.fillText("CRUSHING!", VIRTUAL_W / 2, 44);
     } else {
+        const collapsed = shrinkTargetFrac > 0.001;
         hudCtx.fillStyle = shrinkTimer <= 3 ? "#ef4444" : "#e2e8f0";
-        hudCtx.fillText(`Walls close in ${Math.max(0, Math.ceil(shrinkTimer))}s`, VIRTUAL_W / 2, 44);
+        hudCtx.fillText(`${collapsed ? 'Arena closing — next' : 'Arena collapses in'} ${Math.max(0, Math.ceil(shrinkTimer))}s`, VIRTUAL_W / 2, 44);
     }
 
     // Round-win pips, one row per player, filled dots for rounds already won.
@@ -4517,8 +4340,6 @@ function gameLoop() {
             player1.update(player2, dt);
             player2.update(player1, dt);
             resolvePlayerCollision(player1, player2);
-            updateHazard(dt);
-            updatePickup(dt);
         } else {
             // Arena Collapse's final phase: input/combat frozen, both
             // fighters take the same flat damage per second regardless of
@@ -4533,8 +4354,6 @@ function gameLoop() {
 
         player1.render3D(null, dt);
         player2.render3D(null, dt);
-        syncHazard3D();
-        syncPickup3D(dt);
         syncArenaCollapse(dt);
 
         drawHUD();
@@ -4555,8 +4374,6 @@ function gameLoop() {
 
         player1.tickEffects(player2, dt);
         player2.tickEffects(player1, dt);
-        syncHazard3D();
-        syncPickup3D(dt);
         syncArenaCollapse(dt);
 
         const showDeathAnim = deathPhase === "defeatAnim";
