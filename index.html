@@ -1098,7 +1098,7 @@ const DEFEAT_ANIM_FRAMES = 55;
 const VIRTUAL_W = 1755, VIRTUAL_H = 975;
 const ARENA_LEFT = 60, ARENA_RIGHT = VIRTUAL_W - 60, ARENA_TOP = 60, ARENA_BOTTOM = VIRTUAL_H - 60;
 const ARENA_CX = (ARENA_LEFT + ARENA_RIGHT) / 2, ARENA_CY = (ARENA_TOP + ARENA_BOTTOM) / 2;
-const CEILING_HEIGHT = 620; // very high ceiling for the enclosed FPS arena
+const WALL_HEIGHT = 260; // height of the enclosing perimeter walls (open to the sky above)
 
 // The CURRENT (shrinking) playable bounds — clampToArena() and the arena
 // visuals use these instead of the fixed ARENA_* so Arena Collapse can
@@ -1132,6 +1132,13 @@ renderer.setPixelRatio(PIXEL_RATIO);
 renderer.setSize(canvas.width, canvas.height, false);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// Filmic tone mapping + sRGB output: makes the whole scene read brighter,
+// more saturated and more "next-gen" than raw linear output — colors and
+// emissive accents pop instead of looking flat/muddy. Exposure a touch
+// over 1 for a sunny daytime feel.
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
 
 // The game's own coordinate system (arena bounds, maps, HUD layout) stays
 // a fixed 900x500 virtual space (see VIRTUAL_W/VIRTUAL_H) — only the
@@ -1160,11 +1167,55 @@ window.addEventListener('resize', onWindowResize);
 
 const WHITE_COLOR = new THREE.Color(0xffffff); // reused every frame by the hit-flash lerp below, not reallocated
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0d14);
-// First-person atmosphere: a gentle depth fog that fades the far end of a
-// big enclosed arena without hazing the immediate fight. Recolored per map
-// in loadMap().
-scene.fog = new THREE.Fog(0x0a0d14, 700, 3200);
+scene.background = new THREE.Color(0x8ec7ff); // bright daytime sky
+// Daytime haze: fog tinted to the sky's horizon color and pushed far out,
+// so distance fades into a sunny blue haze instead of black. Recolored a
+// little per map in loadMap().
+scene.fog = new THREE.Fog(0xbfe0ff, 1400, 5200);
+
+// --- Sky dome: a big inward-facing sphere with a vertical gradient (deep
+// blue zenith → pale horizon) plus a soft sun disc, so looking up / past
+// the arena walls shows a real daytime sky in every direction. It's huge
+// and on all layers so both first-person cameras always see it. ---
+function buildSkyDome() {
+    const c = document.createElement('canvas');
+    c.width = 16; c.height = 256;
+    const g = c.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0.0, '#2f7fe0');  // zenith
+    grad.addColorStop(0.45, '#6fb0f2');
+    grad.addColorStop(0.78, '#a9d3fb');
+    grad.addColorStop(1.0, '#e6f3ff');  // horizon haze
+    g.fillStyle = grad; g.fillRect(0, 0, 16, 256);
+    const tex = new THREE.CanvasTexture(c);
+    tex.encoding = THREE.sRGBEncoding;
+    tex.needsUpdate = true;
+    const dome = new THREE.Mesh(
+        new THREE.SphereGeometry(4200, 24, 16),
+        new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false })
+    );
+    dome.layers.enableAll();
+    scene.add(dome);
+    // Soft sun: a bright additive billboard high in the sky (its light comes
+    // from the directional keyLight, aimed to match).
+    const sunCanvas = document.createElement('canvas');
+    sunCanvas.width = sunCanvas.height = 128;
+    const sg = sunCanvas.getContext('2d');
+    const sgrad = sg.createRadialGradient(64, 64, 0, 64, 64, 64);
+    sgrad.addColorStop(0, 'rgba(255,255,245,1)');
+    sgrad.addColorStop(0.25, 'rgba(255,250,220,0.95)');
+    sgrad.addColorStop(0.6, 'rgba(255,240,190,0.35)');
+    sgrad.addColorStop(1, 'rgba(255,240,190,0)');
+    sg.fillStyle = sgrad; sg.fillRect(0, 0, 128, 128);
+    const sunTex = new THREE.CanvasTexture(sunCanvas);
+    sunTex.encoding = THREE.sRGBEncoding;
+    const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: sunTex, transparent: true, fog: false, depthWrite: false }));
+    sun.scale.set(900, 900, 1);
+    sun.position.set(-1400, 2600, 1600);
+    sun.layers.enableAll();
+    scene.add(sun);
+}
+buildSkyDome();
 
 // --- Rendering layers (three.js): each fighter's body is put on its own
 // layer so a first-person camera can exclude ITS OWN fighter's body (you
@@ -1180,7 +1231,7 @@ function setLayerRecursive(obj, n) { obj.layers.set(n); obj.traverse(c => c.laye
 // way the fighter faces). A wide-ish 72° FOV reads well for FPS.
 const EYE_HEIGHT = 46; // world Y above the fighter's feet (z) — roughly head height on the humanoid rig
 function makeFpsCamera(ownBodyLayer, ownVmLayer) {
-    const cam = new THREE.PerspectiveCamera(72, 1, 0.5, 5000);
+    const cam = new THREE.PerspectiveCamera(72, 1, 0.5, 7000); // far enough to keep the whole sky dome in view from anywhere
     cam.layers.disableAll();
     cam.layers.enable(LAYER_DEFAULT);
     cam.layers.enable(ownBodyLayer === LAYER_P1_BODY ? LAYER_P2_BODY : LAYER_P1_BODY); // see the OTHER fighter's body, not our own
@@ -1260,26 +1311,35 @@ function renderOneView(cam, viewer, x, y, vw, vh, dt) {
 // body layers (1/2) so cameras can hide the viewer's own body — a light
 // only illuminates objects sharing an enabled layer with it, so without
 // this the fighters would render pitch black.
-const ambientLight = new THREE.AmbientLight(0x3a4560, 0.7);
+// Bright outdoor daylight. Every light has all render layers enabled
+// (layers.enableAll) because the fighters live on their own body layers
+// (1/2) so cameras can hide the viewer's own body — a light only
+// illuminates objects sharing an enabled layer with it.
+const ambientLight = new THREE.AmbientLight(0xbfd6f5, 0.55); // soft sky-tinted fill
 ambientLight.layers.enableAll();
 scene.add(ambientLight);
-const hemiLight = new THREE.HemisphereLight(0x9fc4ff, 0x1a2030, 0.55); // sky/ground fill for depth
+const hemiLight = new THREE.HemisphereLight(0xdcefff, 0x6b5a45, 0.95); // bright sky above, warm sunlit ground bounce
 hemiLight.layers.enableAll();
 scene.add(hemiLight);
-const keyLight = new THREE.DirectionalLight(0xbfe8ff, 1.05);
-keyLight.position.set(-320, 700, 380);
+// The sun — a strong warm-white directional aimed to match the sun sprite
+// in the sky dome, casting crisp shadows across the arena.
+const keyLight = new THREE.DirectionalLight(0xfff4e0, 1.75);
+keyLight.position.set(-1400, 2600, 1600);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(2048, 2048);
-keyLight.shadow.camera.left = -950; keyLight.shadow.camera.right = 950;
-keyLight.shadow.camera.top = 600; keyLight.shadow.camera.bottom = -600;
-keyLight.shadow.camera.near = 1; keyLight.shadow.camera.far = 2400;
+keyLight.shadow.camera.left = -1000; keyLight.shadow.camera.right = 1000;
+keyLight.shadow.camera.top = 650; keyLight.shadow.camera.bottom = -650;
+keyLight.shadow.camera.near = 1; keyLight.shadow.camera.far = 5200;
 keyLight.shadow.bias = -0.0004;
+keyLight.shadow.normalBias = 1.2;
 keyLight.layers.enableAll();
 scene.add(keyLight);
-const rimLight = new THREE.PointLight(0x00f3ff, 0.5, 1600);
-rimLight.position.set(0, 260, 300);
-rimLight.layers.enableAll();
-scene.add(rimLight);
+// A cool sky-bounce fill from the opposite side to keep shadows from going
+// muddy — subtle, just lifts the shadowed faces toward the sky color.
+const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.4);
+fillLight.position.set(900, 500, -700);
+fillLight.layers.enableAll();
+scene.add(fillLight);
 
 // Terrain is per-map (see MAPS below); these bindings get reassigned by
 // loadMap() each time a map is chosen. Three kinds of terrain:
@@ -1297,6 +1357,7 @@ const JUMP_VZ = 9, GRAVITY = 0.42, PLATFORM_SAFE_HEIGHT = 30;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
 const MAX_WALK_STEP_UP = 20; // taller single-frame rises than this require an actual jump — see resolveTallTerrain()
 const TURN_SPEED = 0.052; // radians per frame-unit that left/right turns the human player's facing (first-person look)
+const MUZZLE_HEIGHT = 34; // world Y above a fighter's feet where its weapon/hand sits — projectiles + muzzle flashes spawn here
 let OBSTACLES = [], TERRAIN = [], PLATFORMS = [];
 
 function groundLevelAt(x, y) {
@@ -1374,60 +1435,72 @@ function removeAndDispose(obj) {
 // --- 3D arena, rebuilt per map by loadMap(). Every builder below takes
 // the map's accent color so each map reads as visually distinct. ---
 
-// Tileable metal-deck floor: dark panels with beveled seams, bolt heads,
-// and faint accent inlays. Repeats across the big FPS floor (see loadMap
-// setting the texture .repeat), so no map-centered motif.
+// Tileable sunlit flagstone floor: warm sandstone slabs with darker grout,
+// per-slab tint variation and a light speckle, plus faint accent motes.
+// Repeats across the big FPS floor (see loadMap setting the texture .repeat).
 function buildFloorTexture(accent) {
     const c = document.createElement('canvas');
     c.width = 256; c.height = 256;
     const g = c.getContext('2d');
-    g.fillStyle = '#12172480'; g.fillStyle = '#121826'; g.fillRect(0, 0, 256, 256);
-    // two-panel-per-tile plating with a subtle vertical gradient for depth
-    const grad = g.createLinearGradient(0, 0, 0, 128);
-    grad.addColorStop(0, '#1a2133'); grad.addColorStop(1, '#141a29');
-    for (const [px, py] of [[0, 0], [128, 0], [0, 128], [128, 128]]) {
-        g.fillStyle = grad; g.fillRect(px + 3, py + 3, 122, 122);
+    g.fillStyle = '#5b4f3a'; g.fillRect(0, 0, 256, 256); // grout base
+    const slabs = [[0, 0, 128, 128], [128, 0, 128, 128], [0, 128, 128, 128], [128, 128, 128, 128]];
+    const tintList = ['#d7c8a6', '#cbb98f', '#d2c19c', '#c6b389'];
+    slabs.forEach((s, i) => {
+        const [x, y, w, h] = s;
+        const base = tintList[i % tintList.length];
+        const grad = g.createLinearGradient(x, y, x, y + h);
+        grad.addColorStop(0, base); grad.addColorStop(1, '#bda87e');
+        g.fillStyle = grad; g.fillRect(x + 4, y + 4, w - 8, h - 8);
+        // chamfer highlight
+        g.strokeStyle = 'rgba(255,250,235,0.18)'; g.lineWidth = 2;
+        g.strokeRect(x + 5, y + 5, w - 10, h - 10);
+    });
+    // speckle grit
+    for (let i = 0; i < 500; i++) {
+        g.fillStyle = `rgba(${90 + Math.random() * 40 | 0},${80 + Math.random() * 40 | 0},${60 + Math.random() * 30 | 0},0.10)`;
+        g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
     }
-    // beveled seams
-    g.strokeStyle = 'rgba(0,0,0,0.55)'; g.lineWidth = 3;
-    for (let i = 0; i <= 256; i += 128) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke(); }
-    g.strokeStyle = 'rgba(120,150,190,0.10)'; g.lineWidth = 1;
-    for (let i = 0; i <= 256; i += 128) { g.beginPath(); g.moveTo(i + 2, 0); g.lineTo(i + 2, 256); g.stroke(); }
-    // accent inlay strips + bolts
-    g.fillStyle = hexToCss(accent, 0.5);
-    for (const [px, py] of [[64, 64], [192, 64], [64, 192], [192, 192]]) {
-        g.beginPath(); g.arc(px, py, 3.5, 0, Math.PI * 2); g.fill();
-    }
-    g.fillStyle = 'rgba(200,220,255,0.12)';
-    for (const [px, py] of [[10, 10], [118, 10], [10, 118], [118, 118], [138, 10], [246, 10], [138, 118], [246, 118], [10, 138], [118, 138], [10, 246], [118, 246], [138, 138], [246, 138], [138, 246], [246, 246]]) {
-        g.fillRect(px - 1.5, py - 1.5, 3, 3);
-    }
-    return new THREE.CanvasTexture(c);
+    // faint accent motes at slab corners (team-color hint in the stone)
+    g.fillStyle = hexToCss(accent, 0.28);
+    for (const [px, py] of [[128, 128], [0, 128], [128, 0], [0, 0]]) { g.beginPath(); g.arc(px, py, 4, 0, Math.PI * 2); g.fill(); }
+    const tex = new THREE.CanvasTexture(c);
+    tex.encoding = THREE.sRGBEncoding; // canvas holds sRGB colors; decode correctly for the sRGB pipeline
+    tex.anisotropy = 8;
+    return tex;
 }
 
-// Tileable wall panel: ribbed industrial plating with an emissive accent
-// stripe, used on the outer arena walls and interior cover.
+// Tileable ashlar stonework: offset rows of cut blocks with recessed mortar
+// and a subtle painted accent band, for the fortress walls + interior cover.
 const wallTextureCache = {};
 function getWallTexture(accent) {
     if (wallTextureCache[accent]) return wallTextureCache[accent];
     const c = document.createElement('canvas');
     c.width = 256; c.height = 256;
     const g = c.getContext('2d');
-    g.fillStyle = '#0f1420'; g.fillRect(0, 0, 256, 256);
-    // vertical ribs
-    for (let x = 0; x < 256; x += 32) {
-        const grad = g.createLinearGradient(x, 0, x + 32, 0);
-        grad.addColorStop(0, '#1b2436'); grad.addColorStop(0.5, '#232f47'); grad.addColorStop(1, '#161d2c');
-        g.fillStyle = grad; g.fillRect(x + 2, 0, 28, 256);
+    g.fillStyle = '#7a6b50'; g.fillRect(0, 0, 256, 256); // mortar
+    const rowH = 42, blockW = 84;
+    const tints = ['#cabd97', '#c0b088', '#d0c2a0', '#bcac80', '#c6b891'];
+    let row = 0;
+    for (let y = 0; y < 256; y += rowH) {
+        const offset = (row % 2) * (blockW / 2);
+        for (let x = -blockW; x < 256; x += blockW) {
+            const bx = x + offset + 3, by = y + 3, bw = blockW - 6, bh = rowH - 6;
+            const base = tints[(row * 3 + Math.floor(x / blockW)) % tints.length];
+            const grad = g.createLinearGradient(bx, by, bx, by + bh);
+            grad.addColorStop(0, base); grad.addColorStop(1, '#a8996f');
+            g.fillStyle = grad; g.fillRect(bx, by, bw, bh);
+            g.strokeStyle = 'rgba(255,250,235,0.14)'; g.lineWidth = 1.5; g.strokeRect(bx + 1, by + 1, bw - 2, bh - 2);
+            g.fillStyle = 'rgba(60,50,35,0.18)'; // bottom-edge shadow
+            g.fillRect(bx, by + bh - 3, bw, 3);
+        }
+        row++;
     }
-    // horizontal band seams
-    g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 4;
-    for (let y = 0; y <= 256; y += 64) { g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke(); }
-    // one glowing accent stripe
-    g.fillStyle = hexToCss(accent, 0.85); g.fillRect(0, 122, 256, 5);
-    g.fillStyle = hexToCss(accent, 0.25); g.fillRect(0, 116, 256, 17);
+    // subtle painted accent band (banner stripe) low on the wall
+    g.fillStyle = hexToCss(accent, 0.5); g.fillRect(0, 210, 256, 8);
     const tex = new THREE.CanvasTexture(c);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.encoding = THREE.sRGBEncoding;
+    tex.anisotropy = 8;
     wallTextureCache[accent] = tex;
     return tex;
 }
@@ -1464,31 +1537,37 @@ function addCornerGlow(x, z, accent) {
     return group;
 }
 
-// A full-height structural column, floor to ceiling — solid cover you fight
-// around, with a chunky base plinth and a glowing accent ring near the top.
+// A carved stone column: fluted sandstone shaft with a wide base and a
+// flared capital, topped by a glowing accent orb. Solid cover you fight
+// around. Height varies a little per obstacle (ob.h) for a less uniform,
+// more built-up look.
 function buildPillarMesh(ob, accent) {
     const group = new THREE.Group();
-    const colH = CEILING_HEIGHT;
+    const colH = ob.h || 165;
     const shaft = new THREE.Mesh(
-        getCachedGeometry(`pillarShaft:${ob.r}`, () => new THREE.CylinderGeometry(ob.r, ob.r, colH, 12)),
-        getCachedMaterial('pillarShaftMat', () => new THREE.MeshStandardMaterial({ color: 0x2a3350, roughness: 0.7, metalness: 0.3 }))
+        getCachedGeometry(`pillarShaft:${ob.r}:${colH}`, () => new THREE.CylinderGeometry(ob.r, ob.r * 1.06, colH, 16)),
+        getCachedMaterial('pillarShaftMat', () => new THREE.MeshStandardMaterial({ color: 0xd9c7a3, roughness: 0.85, metalness: 0.02 }))
     );
     shaft.position.y = colH / 2;
     shaft.castShadow = true; shaft.receiveShadow = true;
     group.add(shaft);
 
-    const plinth = new THREE.Mesh(
-        getCachedGeometry(`pillarPlinth:${ob.r}`, () => new THREE.CylinderGeometry(ob.r * 1.35, ob.r * 1.5, 16, 12)),
-        getCachedMaterial('pillarPlinthMat', () => new THREE.MeshStandardMaterial({ color: 0x1a2234, roughness: 0.8, metalness: 0.2 }))
-    );
-    plinth.position.y = 8; plinth.castShadow = true; plinth.receiveShadow = true;
+    const baseMat = getCachedMaterial('pillarStoneMat', () => new THREE.MeshStandardMaterial({ color: 0xc3ad86, roughness: 0.9, metalness: 0.02 }));
+    const plinth = new THREE.Mesh(getCachedGeometry(`pillarPlinth:${ob.r}`, () => new THREE.BoxGeometry(ob.r * 2.7, 18, ob.r * 2.7)), baseMat);
+    plinth.position.y = 9; plinth.castShadow = true; plinth.receiveShadow = true;
     group.add(plinth);
+    const capital = new THREE.Mesh(getCachedGeometry(`pillarCap:${ob.r}`, () => new THREE.BoxGeometry(ob.r * 2.7, 16, ob.r * 2.7)), baseMat);
+    capital.position.y = colH - 8; capital.castShadow = true;
+    group.add(capital);
 
-    const ring = new THREE.Mesh(
-        getCachedGeometry(`pillarRing:${ob.r}`, () => new THREE.CylinderGeometry(ob.r * 1.12, ob.r * 1.12, 10, 12)),
-        getCachedMaterial(`pillarRingMat:${accent}`, () => new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.8 }))
+    const orb = new THREE.Mesh(
+        getCachedGeometry('pillarOrb', () => new THREE.SphereGeometry(ob.r * 0.55, 12, 12)),
+        getCachedMaterial(`pillarOrbMat:${accent}`, () => new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.9 }))
     );
-    ring.position.y = colH - 60; group.add(ring);
+    orb.position.y = colH + ob.r * 0.5; group.add(orb);
+    const orbLight = new THREE.PointLight(accent, 0.5, 220);
+    orbLight.position.y = colH + ob.r * 0.5; orbLight.layers.enableAll();
+    group.add(orbLight);
 
     group.position.set(worldX(ob.x), 0, worldZ(ob.y));
     mapGroup.add(group);
@@ -1604,81 +1683,67 @@ function clearMapGroup() {
 
 let currentMap = null;
 
-// Arena Collapse tracking (see the constants/logic further down): rather
-// than a couple of glowing wall slabs marking the boundary, the actual map
-// geometry at the shrinking edges is hidden as the boundary sweeps past
-// it — "falls away, as if it never existed" per the brief. `floorMesh` is
-// scaled/repositioned every shrink tick; `borderDecor` (the 4 rim-edge
-// strips + 4 corner glows, all fixed at the original outer boundary) is
-// hidden the instant any shrink happens, since they're the outermost
-// things and are immediately "outside" the very first tick; `mapEdgeObjects`
-// (pillars/terrain/platforms, each tagged with its game-space x/y) is
-// checked every tick and hidden once its position falls outside the
-// current play bounds.
+// Arena Collapse tracking (see the constants/logic further down): the actual
+// map geometry at the shrinking edges falls away as the boundary sweeps past
+// it — "as if it never existed" per the brief. `floorMesh` is scaled/
+// repositioned every shrink tick, the four `outerWalls` slide inward, and
+// `mapEdgeObjects` (pillars/terrain/platforms/scenery, each tagged with its
+// game-space x/y) drop away once outside the current play bounds.
 let floorMesh = null, floorBaseSize = null;
-let ceilingMesh = null;
-let borderDecor = [];
 let mapEdgeObjects = [];
 let outerWalls = []; // {mesh, side, baseLen} — the 4 enclosing walls; syncArenaCollapse slides + scales them inward as the arena closes
 
-// A very high ceiling with recessed emissive light strips + hanging lamps,
-// so looking up reads as a real roofed arena rather than open sky.
-function buildCeiling(accent) {
-    const w = ARENA_RIGHT - ARENA_LEFT + 200, d = ARENA_BOTTOM - ARENA_TOP + 200;
-    const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(w, d),
-        new THREE.MeshStandardMaterial({ color: 0x0c111c, roughness: 0.9, metalness: 0.1, side: THREE.DoubleSide })
-    );
-    mesh.rotation.x = Math.PI / 2; // face down
-    mesh.position.set(worldX(ARENA_CX), CEILING_HEIGHT, worldZ(ARENA_CY));
-    mapGroup.add(mesh);
-    // parallel glowing light strips across the ceiling
-    const stripMat = new THREE.MeshBasicMaterial({ color: 0xcfe4ff });
-    for (let i = -2; i <= 2; i++) {
-        const strip = new THREE.Mesh(new THREE.BoxGeometry(w * 0.8, 4, 10), stripMat);
-        strip.position.set(worldX(ARENA_CX), CEILING_HEIGHT - 4, worldZ(ARENA_CY) + i * (d / 6));
-        mapGroup.add(strip);
-        const lamp = new THREE.PointLight(0xbfe0ff, 0.35, 900);
-        lamp.position.set(worldX(ARENA_CX), CEILING_HEIGHT - 40, worldZ(ARENA_CY) + i * (d / 6));
-        lamp.layers.enableAll();
-        mapGroup.add(lamp);
-    }
-    return mesh;
-}
-
-// One enclosing wall (a tall textured slab) along a side of the arena. side
-// is 'left'|'right'|'top'|'bottom'; the wall spans the full opposite extent
-// and full height. Returned so syncArenaCollapse can slide/scale it inward.
+// One enclosing perimeter rampart along a side of the arena, open to the
+// sky above. A stone wall body plus a darker coping cap and a row of
+// battlement merlons along the top, so the arena reads as a sunlit fortress
+// courtyard. side is 'left'|'right'|'top'|'bottom'. Returned (as a group)
+// so syncArenaCollapse can slide/scale it inward. The children keep the
+// wall's full base length so a uniform group.scale along the run works.
 function buildOuterWall(side, accent) {
-    const tex = getWallTexture(accent);
-    const along = (side === 'left' || side === 'right') ? (ARENA_BOTTOM - ARENA_TOP) : (ARENA_RIGHT - ARENA_LEFT);
-    const wtex = tex.clone(); wtex.needsUpdate = true; wtex.wrapS = wtex.wrapT = THREE.RepeatWrapping;
-    wtex.repeat.set(Math.max(2, Math.round(along / 90)), Math.max(2, Math.round(CEILING_HEIGHT / 90)));
-    const thick = 14;
-    const geo = (side === 'left' || side === 'right')
-        ? new THREE.BoxGeometry(thick, CEILING_HEIGHT, along)
-        : new THREE.BoxGeometry(along, CEILING_HEIGHT, thick);
-    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: wtex, color: 0x7f90b0, roughness: 0.8, metalness: 0.3 }));
-    mesh.receiveShadow = true;
-    mesh.position.y = CEILING_HEIGHT / 2;
-    mapGroup.add(mesh);
-    return { mesh, side, baseLen: along };
+    const runX = (side === 'top' || side === 'bottom');
+    const along = runX ? (ARENA_RIGHT - ARENA_LEFT) : (ARENA_BOTTOM - ARENA_TOP);
+    const wtex = getWallTexture(accent).clone(); wtex.needsUpdate = true; wtex.wrapS = wtex.wrapT = THREE.RepeatWrapping;
+    wtex.repeat.set(Math.max(3, Math.round(along / 80)), Math.max(2, Math.round(WALL_HEIGHT / 80)));
+    const thick = 18;
+    const group = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ map: wtex, color: 0xcbb790, roughness: 0.92, metalness: 0.02 });
+    const capMat = getCachedMaterial('wallCapMat', () => new THREE.MeshStandardMaterial({ color: 0x9c8763, roughness: 0.9 }));
+    // Local space: the run is along the group's local X; buildOuterWall's
+    // caller rotates the group for left/right sides.
+    const body = new THREE.Mesh(new THREE.BoxGeometry(along, WALL_HEIGHT, thick), bodyMat);
+    body.position.y = WALL_HEIGHT / 2; body.receiveShadow = true; body.castShadow = true;
+    group.add(body);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(along, 12, thick + 8), capMat);
+    cap.position.y = WALL_HEIGHT + 6; cap.castShadow = true;
+    group.add(cap);
+    // Battlement merlons across the top.
+    const merlonN = Math.max(4, Math.round(along / 90));
+    const merlonMat = capMat;
+    for (let i = 0; i < merlonN; i++) {
+        const mx = -along / 2 + (i + 0.5) * (along / merlonN);
+        const merlon = new THREE.Mesh(new THREE.BoxGeometry(along / merlonN * 0.5, 24, thick + 6), merlonMat);
+        merlon.position.set(mx, WALL_HEIGHT + 24, 0); merlon.castShadow = true;
+        group.add(merlon);
+    }
+    group.rotation.y = runX ? 0 : Math.PI / 2; // left/right walls run along world Z
+    mapGroup.add(group);
+    return { mesh: group, side, baseLen: along };
 }
 
 function loadMap(map) {
     currentMap = map;
     clearMapGroup();
     startAmbientPad(map); // Batch 10: swaps to this map's drone; internally stops whatever was already playing
-    borderDecor = [];
     mapEdgeObjects = [];
     outerWalls = [];
+    sceneryFlames.length = 0; // drop references to the previous map's (now-disposed) brazier flames
 
     const accent = hexNum(map.accent);
     const floorTex = getFloorTexture(map, accent);
     floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
     floorBaseSize = { w: ARENA_RIGHT - ARENA_LEFT, d: ARENA_BOTTOM - ARENA_TOP };
     floorTex.repeat.set(floorBaseSize.w / 190, floorBaseSize.d / 190);
-    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, color: 0x9fb0d0, roughness: 0.92, metalness: 0.15 });
+    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, color: 0xd8cdb2, roughness: 0.95, metalness: 0.02 });
     floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it
     floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d), floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
@@ -1686,23 +1751,25 @@ function loadMap(map) {
     floorMesh.receiveShadow = true;
     mapGroup.add(floorMesh);
 
-    ceilingMesh = buildCeiling(accent);
     outerWalls.push(buildOuterWall('left', accent));
     outerWalls.push(buildOuterWall('right', accent));
     outerWalls.push(buildOuterWall('top', accent));
     outerWalls.push(buildOuterWall('bottom', accent));
     syncOuterWalls(); // place them at the full-arena bounds initially
 
-    OBSTACLES = map.obstacles;
+    OBSTACLES = map.obstacles.slice(); // copy: buildScenery pushes collidable props onto this, and we must not mutate the source map
     TERRAIN = map.terrain;
     PLATFORMS = map.platforms;
 
-    OBSTACLES.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, accent), x: ob.x, y: ob.y }));
+    map.obstacles.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, accent), x: ob.x, y: ob.y }));
     TERRAIN.forEach(t => mapEdgeObjects.push({ mesh: (t.type === 'ramp' ? buildRampMesh : buildStepMesh)(t, accent), x: t.x, y: t.y }));
     PLATFORMS.forEach(p => mapEdgeObjects.push({ mesh: buildPlatformMesh(p, accent), x: p.x, y: p.y }));
+    buildScenery(map, accent); // decorative + collidable props (braziers, crates, banners, statues…)
 
-    scene.fog.color.setHex(hexNum(map.fogColor));
-    scene.background.setHex(hexNum(map.fogColor));
+    // Daytime haze, tinted a little toward this map's accent for mood, but
+    // kept light — the sky dome supplies the background, so we don't paint it
+    // over with a dark color anymore.
+    scene.fog.color.copy(new THREE.Color(0xbfe0ff).lerp(new THREE.Color(accent), 0.12));
 
     assertSpawnsClear(map);
 }
@@ -1712,11 +1779,180 @@ function loadMap(map) {
 function syncOuterWalls() {
     const cx = worldX((playLeft + playRight) / 2), cz = worldZ((playTop + playBottom) / 2);
     const xExt = Math.max(1, playRight - playLeft), zExt = Math.max(1, playBottom - playTop);
+    // Each wall is a group whose run is its LOCAL X (the left/right groups are
+    // rotated 90°), so scaling local X shrinks the run for every side. The
+    // group origin sits on the floor (children carry their own heights).
     for (const w of outerWalls) {
-        if (w.side === 'left') { w.mesh.position.set(worldX(playLeft), CEILING_HEIGHT / 2, cz); w.mesh.scale.z = zExt / w.baseLen; }
-        else if (w.side === 'right') { w.mesh.position.set(worldX(playRight), CEILING_HEIGHT / 2, cz); w.mesh.scale.z = zExt / w.baseLen; }
-        else if (w.side === 'top') { w.mesh.position.set(cx, CEILING_HEIGHT / 2, worldZ(playTop)); w.mesh.scale.x = xExt / w.baseLen; }
-        else { w.mesh.position.set(cx, CEILING_HEIGHT / 2, worldZ(playBottom)); w.mesh.scale.x = xExt / w.baseLen; }
+        if (w.side === 'left') { w.mesh.position.set(worldX(playLeft), 0, cz); w.mesh.scale.x = zExt / w.baseLen; }
+        else if (w.side === 'right') { w.mesh.position.set(worldX(playRight), 0, cz); w.mesh.scale.x = zExt / w.baseLen; }
+        else if (w.side === 'top') { w.mesh.position.set(cx, 0, worldZ(playTop)); w.mesh.scale.x = xExt / w.baseLen; }
+        else { w.mesh.position.set(cx, 0, worldZ(playBottom)); w.mesh.scale.x = xExt / w.baseLen; }
+    }
+}
+
+// --- Scenery: decorative + collidable props scattered around the arena so
+// it reads as a lived-in place, not an empty box. Braziers, crates, barrels,
+// urns and wall banners. Solid props (crates/barrels/urns/braziers) are
+// registered as circular OBSTACLES so you actually fight around them, and as
+// mapEdgeObjects so they fall away with the arena during collapse. ---
+const sceneryFlames = []; // {mesh, light, phase} — flickered each frame in updateScenery
+function nearSpawnPt(map, x, y, d) {
+    return Math.hypot(x - map.spawn1.x, y - map.spawn1.y) < d || Math.hypot(x - map.spawn2.x, y - map.spawn2.y) < d;
+}
+function spotBlocked(x, y, rad) {
+    return OBSTACLES.some(o => Math.hypot(x - o.x, y - o.y) < o.r + rad) ||
+        PLATFORMS.some(p => Math.abs(x - p.x) < p.hw + rad && Math.abs(y - p.y) < p.hd + rad) ||
+        TERRAIN.some(t => Math.abs(x - t.x) < t.hw + rad && Math.abs(y - t.y) < t.hd + rad);
+}
+function buildCrate(accent) {
+    const g = new THREE.Group();
+    const size = 34 + Math.random() * 8;
+    const woodMat = getCachedMaterial('crateWood', () => new THREE.MeshStandardMaterial({ color: 0x9c6b3f, roughness: 0.85 }));
+    const box = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), woodMat);
+    box.position.y = size / 2; box.castShadow = true; box.receiveShadow = true;
+    g.add(box);
+    const frameMat = getCachedMaterial('crateFrame', () => new THREE.MeshStandardMaterial({ color: 0x6b4522, roughness: 0.8 }));
+    for (const sy of [size * 0.5]) { // corner battens
+        for (const [ex, ez] of [[0.5, 0.5], [-0.5, 0.5], [0.5, -0.5], [-0.5, -0.5]]) {
+            const batten = new THREE.Mesh(new THREE.BoxGeometry(4, size + 1, 4), frameMat);
+            batten.position.set(ex * size, size / 2, ez * size); g.add(batten);
+        }
+    }
+    return g;
+}
+function buildBarrel(accent) {
+    const g = new THREE.Group();
+    const h = 36, r = 15;
+    const woodMat = getCachedMaterial('barrelWood', () => new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 0.82 }));
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.85, h, 14), woodMat);
+    body.position.y = h / 2; body.castShadow = true; body.receiveShadow = true; g.add(body);
+    const bandMat = getCachedMaterial('barrelBand', () => new THREE.MeshStandardMaterial({ color: 0x3f3a33, metalness: 0.6, roughness: 0.4 }));
+    for (const by of [h * 0.22, h * 0.78]) {
+        const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.02, r * 1.02, 3, 14), bandMat);
+        band.position.y = by; g.add(band);
+    }
+    return g;
+}
+function buildUrn(accent) {
+    const g = new THREE.Group();
+    const mat = getCachedMaterial(`urnMat:${accent}`, () => new THREE.MeshStandardMaterial({ color: 0xcdbb95, roughness: 0.7, metalness: 0.05 }));
+    const body = new THREE.Mesh(new THREE.SphereGeometry(15, 14, 12), mat);
+    body.scale.y = 1.5; body.position.y = 20; body.castShadow = true; g.add(body);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(7, 10, 8, 12), mat);
+    neck.position.y = 40; g.add(neck);
+    const accMat = getCachedMaterial(`urnAcc:${accent}`, () => new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.4 }));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(11, 1.6, 6, 14), accMat);
+    ring.rotation.x = Math.PI / 2; ring.position.y = 26; g.add(ring);
+    return g;
+}
+function buildBrazier(accent) {
+    const g = new THREE.Group();
+    const stoneMat = getCachedMaterial('brazierStone', () => new THREE.MeshStandardMaterial({ color: 0x8a7c60, roughness: 0.9 }));
+    const stand = new THREE.Mesh(new THREE.CylinderGeometry(6, 10, 40, 10), stoneMat);
+    stand.position.y = 20; stand.castShadow = true; g.add(stand);
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(15, 9, 12, 12), stoneMat);
+    bowl.position.y = 44; bowl.castShadow = true; g.add(bowl);
+    const flameMat = new THREE.MeshBasicMaterial({ color: 0xffa53c, transparent: true, opacity: 0.95, fog: false });
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(9, 26, 10), flameMat);
+    flame.position.y = 60; g.add(flame);
+    const light = new THREE.PointLight(0xff9640, 1.1, 340);
+    light.position.y = 62; light.layers.enableAll(); g.add(light);
+    sceneryFlames.push({ mesh: flame, light, phase: Math.random() * 6.28, baseY: 60 });
+    return g;
+}
+function buildBanner(side, accent) {
+    // A hanging cloth on an inner wall face, decorative only.
+    const g = new THREE.Group();
+    const cloth = new THREE.Mesh(
+        new THREE.PlaneGeometry(46, 120),
+        new THREE.MeshStandardMaterial({ color: accent, roughness: 0.85, metalness: 0.0, side: THREE.DoubleSide, emissive: accent, emissiveIntensity: 0.12 })
+    );
+    cloth.position.y = WALL_HEIGHT * 0.55; g.add(cloth);
+    const trimMat = getCachedMaterial('bannerTrim', () => new THREE.MeshStandardMaterial({ color: 0x2b2b2b, metalness: 0.4, roughness: 0.6 }));
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 54, 8), trimMat);
+    rod.rotation.z = Math.PI / 2; rod.position.y = WALL_HEIGHT * 0.55 + 62; g.add(rod);
+    return g;
+}
+function buildScenery(map, accent) {
+    const L = ARENA_LEFT, R = ARENA_RIGHT, T = ARENA_TOP, B = ARENA_BOTTOM;
+    const addSolid = (mesh, x, y, r) => {
+        mesh.position.set(worldX(x), 0, worldZ(y)); mesh.rotation.y = Math.random() * Math.PI;
+        mapGroup.add(mesh); OBSTACLES.push({ x, y, r, seed: 0 }); mapEdgeObjects.push({ mesh, x, y });
+    };
+    // Corner braziers (solid), inset from the walls.
+    const inset = 110;
+    for (const [x, y] of [[L + inset, T + inset], [R - inset, T + inset], [L + inset, B - inset], [R - inset, B - inset]]) {
+        if (nearSpawnPt(map, x, y, 90) || spotBlocked(x, y, 30)) continue;
+        addSolid(buildBrazier(accent), x, y, 14);
+    }
+    // Crates / barrels / urns scattered near the edges (solid). Candidate
+    // spots are skipped if they'd sit on a spawn or clip existing geometry.
+    const candidates = [
+        ['crate', L + 200, T + 90], ['barrel', R - 200, T + 90],
+        ['barrel', L + 90, (T + B) / 2 - 120], ['crate', R - 90, (T + B) / 2 + 120],
+        ['urn', L + 200, B - 90], ['crate', R - 200, B - 90],
+        ['barrel', (L + R) / 2 - 150, T + 100], ['crate', (L + R) / 2 + 150, B - 100],
+        ['urn', (L + R) / 2, T + 110], ['barrel', (L + R) / 2, B - 110]
+    ];
+    for (const [type, x, y] of candidates) {
+        const r = type === 'barrel' ? 16 : (type === 'urn' ? 15 : 20);
+        if (nearSpawnPt(map, x, y, 80) || spotBlocked(x, y, r + 8)) continue;
+        addSolid(type === 'barrel' ? buildBarrel(accent) : (type === 'urn' ? buildUrn(accent) : buildCrate(accent)), x, y, r);
+    }
+    // Wall banners (decorative) centered on each wall's inner face.
+    const midX = (L + R) / 2, midY = (T + B) / 2, off = 12;
+    const banners = [
+        [midX, T + off, 0], [midX, B - off, Math.PI],
+        [L + off, midY, -Math.PI / 2], [R - off, midY, Math.PI / 2]
+    ];
+    for (const [x, y, rot] of banners) {
+        const bn = buildBanner(null, accent);
+        bn.position.set(worldX(x), 0, worldZ(y)); bn.rotation.y = rot;
+        mapGroup.add(bn); mapEdgeObjects.push({ mesh: bn, x, y });
+    }
+}
+function updateScenery(dt) {
+    for (const f of sceneryFlames) {
+        f.phase += 0.15 * dt;
+        const flick = 0.8 + Math.sin(f.phase) * 0.12 + Math.sin(f.phase * 2.7) * 0.06;
+        f.mesh.scale.y = flick; f.mesh.scale.x = f.mesh.scale.z = 0.9 + (flick - 0.8) * 0.5;
+        f.light.intensity = 0.9 + flick * 0.5;
+    }
+}
+
+// --- World-space muzzle flash: a brief bright puff + light at a fighter's
+// weapon tip when it fires, so a shot visibly erupts from the weapon in
+// BOTH players' views (the shooter also gets a viewmodel flash). Kept as a
+// tiny pooled system so rapid fire doesn't churn meshes. ---
+const muzzleFlashes = [];
+function spawnMuzzleFlash(gx, gy, gz, colorHex) {
+    let mf = muzzleFlashes.find(m => !m.active);
+    if (!mf) {
+        const core = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8),
+            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1 }));
+        const light = new THREE.PointLight(0xffffff, 0, 140);
+        light.layers.enableAll();
+        core.add(light);
+        scene.add(core);
+        mf = { mesh: core, light, life: 0, maxLife: 8, active: false };
+        muzzleFlashes.push(mf);
+    }
+    mf.mesh.position.set(gx, gy, gz);
+    mf.mesh.material.color.set(hexNum(colorHex));
+    mf.light.color.set(hexNum(colorHex));
+    mf.mesh.visible = true;
+    mf.life = mf.maxLife;
+    mf.active = true;
+}
+function updateMuzzleFlashes(dt) {
+    for (const mf of muzzleFlashes) {
+        if (!mf.active) continue;
+        mf.life -= dt;
+        const t = Math.max(0, mf.life / mf.maxLife);
+        mf.mesh.material.opacity = t;
+        mf.mesh.scale.setScalar(0.6 + (1 - t) * 2.2); // pop outward as it fades
+        mf.light.intensity = t * 2.4;
+        if (mf.life <= 0) { mf.active = false; mf.mesh.visible = false; }
     }
 }
 
@@ -2105,6 +2341,7 @@ class Fighter {
         this.shieldReduction = 0.5;
         this.shieldColor = 0xfacc15; // Batch 8: tint applied whenever a shield is granted (currently only Seraphine's Astral Ward special)
         this.invulnFrames = 0;
+        this.muzzleFlash = 0; // frames left on the viewmodel muzzle flash after firing
         this.projectiles = [];
         this.effects = [];
         this.queue = [];
@@ -2538,6 +2775,7 @@ class Fighter {
             this.grounded = false;
         }
 
+        if (this.muzzleFlash > 0) this.muzzleFlash -= dt;
         if (this.attackCooldown > 0) this.attackCooldown -= dt;
         if (this.shieldFrames > 0) this.shieldFrames -= dt;
         if (this.hitstunTimer > 0) this.hitstunTimer -= dt;
@@ -2667,9 +2905,16 @@ class Fighter {
     }
 
     fireProjectile(color) {
-        const originX = this.x + this.width / 2 + this.fx * (this.width / 2);
-        const originY = this.y + this.height / 2 + this.fy * (this.height / 2);
-        this.projectiles.push({ x: originX, y: originY, vx: this.fx * 7, vy: this.fy * 7, damage: this.attackDmg, color, z: this.z + 16 });
+        // Spawn at the weapon's muzzle, not the body center: out past the
+        // fighter's own radius along its facing, and up at hand/weapon
+        // height (MUZZLE_HEIGHT) rather than down at waist level — so in
+        // first person the shot clearly leaves the weapon you're holding.
+        const fwd = this.width / 2 + 14;
+        const originX = this.x + this.width / 2 + this.fx * fwd;
+        const originY = this.y + this.height / 2 + this.fy * fwd;
+        this.projectiles.push({ x: originX, y: originY, vx: this.fx * 7, vy: this.fy * 7, damage: this.attackDmg, color, z: this.z + MUZZLE_HEIGHT });
+        this.muzzleFlash = 7; // drives the viewmodel muzzle flash in the shooter's own view
+        spawnMuzzleFlash(originX, originY, this.z + MUZZLE_HEIGHT, color); // world-space flash both players can see
     }
 
     // Batch 3a/3b: press-to-fire, with a real startup/active/recovery
@@ -2766,11 +3011,15 @@ class Fighter {
                 break;
             }
             case 'volley': { // Lyra — Prism Volley: a wide 5-shard zoning spray that walls off space.
+                const mfwd = this.width / 2 + 14;
+                const ox = this.x + this.width / 2 + this.fx * mfwd, oy = this.y + this.height / 2 + this.fy * mfwd;
                 [-0.5, -0.25, 0, 0.25, 0.5].forEach(offset => {
                     const a = angle + offset;
-                    this.projectiles.push({ x: this.x + this.width / 2, y: this.y + this.height / 2,
-                        vx: Math.cos(a) * 8, vy: Math.sin(a) * 8, damage: 24, color: '#c4b5fd', z: this.z + 16 });
+                    this.projectiles.push({ x: ox, y: oy,
+                        vx: Math.cos(a) * 8, vy: Math.sin(a) * 8, damage: 24, color: '#c4b5fd', z: this.z + MUZZLE_HEIGHT });
                 });
+                this.muzzleFlash = 8;
+                spawnMuzzleFlash(ox, oy, this.z + MUZZLE_HEIGHT, '#c4b5fd');
                 break;
             }
             case 'shockwave': { // Gorgonok — Seismic Slam: shorter AOE that LAUNCHES the enemy away, resetting the fight.
@@ -3469,6 +3718,16 @@ function buildViewmodel(f, layer) {
     prop.rotation.y = Math.PI / 2; // weapon local +X (its "forward") now points into the screen (-Z)
     prop.position.set(0, 0, -1);
     holder.add(prop);
+    // Muzzle flash at the weapon tip (in front), hidden until this fighter
+    // fires — so ranged shots visibly erupt from the weapon in first person.
+    const flash = new THREE.Mesh(
+        new THREE.SphereGeometry(2.6, 8, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 })
+    );
+    flash.position.set(0, 0, -7);
+    flash.visible = false;
+    holder.add(flash);
+    holder.userData.flash = flash;
     // Place & scale the whole thing in camera space: right of center, below
     // the crosshair line, a short distance in front of the near plane.
     holder.position.set(5.5, -5.5, -10);
@@ -3498,6 +3757,14 @@ function syncViewmodels(dt) {
         else if (f.atkState === 'startup') lunge = 1.2;
         vm.position.y = vm.userData.baseY + bob;
         vm.position.z = vm.userData.baseZ + lunge;
+        const flash = vm.userData.flash;
+        if (flash) {
+            const t = Math.max(0, (f.muzzleFlash || 0) / 7);
+            flash.visible = t > 0;
+            flash.material.opacity = t;
+            flash.scale.setScalar(0.8 + (1 - t) * 1.8);
+            if (t > 0) flash.material.color.set(hexNum(f.color));
+        }
     }
 }
 
@@ -4591,6 +4858,8 @@ function gameLoop() {
         player1.render3D(null, dt);
         player2.render3D(null, dt);
         syncArenaCollapse(dt);
+        updateMuzzleFlashes(dt);
+        updateScenery(dt);
 
         drawHUD();
 
@@ -4611,6 +4880,7 @@ function gameLoop() {
         player1.tickEffects(player2, dt);
         player2.tickEffects(player1, dt);
         syncArenaCollapse(dt);
+        updateMuzzleFlashes(dt);
 
         const showDeathAnim = deathPhase === "defeatAnim";
         player1.render3D(deathCandidates.includes(player1) && showDeathAnim ? deathTimer / DEFEAT_ANIM_FRAMES : null, dt);
