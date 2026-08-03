@@ -1495,7 +1495,11 @@ function getWallTexture(accent) {
         const offset = (row % 2) * (blockW / 2);
         for (let x = -blockW; x < 256; x += blockW) {
             const bx = x + offset + 3, by = y + 3, bw = blockW - 6, bh = rowH - 6;
-            const base = tints[(row * 3 + Math.floor(x / blockW)) % tints.length];
+            // Non-negative modulo: x starts at -blockW so the raw index can go
+            // negative, and JS's % keeps the sign — tints[-1] would be
+            // undefined and make addColorStop throw. ((n%m)+m)%m fixes it.
+            const ti = ((row * 3 + Math.floor(x / blockW)) % tints.length + tints.length) % tints.length;
+            const base = tints[ti];
             const grad = g.createLinearGradient(bx, by, bx, by + bh);
             grad.addColorStop(0, base); grad.addColorStop(1, '#a8996f');
             g.fillStyle = grad; g.fillRect(bx, by, bw, bh);
