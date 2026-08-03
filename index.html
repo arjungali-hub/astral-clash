@@ -565,13 +565,13 @@
                         </div>
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">💨</div>
-                            <h4>Dodge</h4>
-                            <p>A short dash with brief invulnerability frames — phases through attacks and projectiles entirely if timed right. Has its own cooldown, so it's a precise tool, not a shield.</p>
+                            <h4>Dash</h4>
+                            <p>A short burst with brief invulnerability frames — phases through attacks and projectiles entirely if timed right. Has its own cooldown, so it's a precise tool, not a shield.</p>
                         </div>
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">🩹</div>
                             <h4>No Healing</h4>
-                            <p>There's no way to get HP back — no health pickups, no regen. Every hit you take counts. Play patient, punish mistakes, and use your dodge i-frames and shields to avoid damage rather than trying to out-heal it.</p>
+                            <p>There's no way to get HP back — no health pickups, no regen. Every hit you take counts. Play patient, punish mistakes, and use your dash i-frames and shields to avoid damage rather than trying to out-heal it.</p>
                         </div>
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">🎮</div>
@@ -720,7 +720,10 @@ function safeLSSet(key, val) { try { localStorage.setItem(key, val); } catch (e)
 // key themselves), so a rebound action drops straight into the existing
 // `keys[...]`/`consumePress(...)` lookups elsewhere with no other changes.
 const DEFAULT_BINDINGS = {
-    p1: { up: 'w', down: 's', left: 'a', right: 'd', jump: ' ', attack: 'f', special: 'g', dodge: 'control' },
+    // P1 jump is E (not Space): Space is an oversized thumb key that made P1
+    // jumping far easier than P2's, so it's rebalanced to a normal key. Dash
+    // is Shift (was Ctrl). Both remain rebindable in Settings.
+    p1: { up: 'w', down: 's', left: 'a', right: 'd', jump: 'e', attack: 'f', special: 'g', dodge: 'shift' },
     p2: { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', jump: '/', attack: 'k', special: 'l', dodge: '.' }
 };
 let BINDINGS;
@@ -766,10 +769,10 @@ function keyLabel(k) {
 // both places without them drifting out of sync with each other.
 function controlsSummary(side) {
     const b = BINDINGS[side];
-    return `${keyLabel(b.up)}/${keyLabel(b.down)} Fwd/Back, ${keyLabel(b.left)}/${keyLabel(b.right)} Turn | ${keyLabel(b.jump)} Jump | ${keyLabel(b.attack)}/${keyLabel(b.special)} Atk/Spc | ${keyLabel(b.dodge)} Dodge`;
+    return `${keyLabel(b.up)}/${keyLabel(b.down)} Fwd/Back, ${keyLabel(b.left)}/${keyLabel(b.right)} Turn | ${keyLabel(b.jump)} Jump | ${keyLabel(b.attack)}/${keyLabel(b.special)} Atk/Spc | ${keyLabel(b.dodge)} Dash`;
 }
 
-const REBIND_ACTION_LABELS = { up: 'Up', down: 'Down', left: 'Left', right: 'Right', jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dodge' };
+const REBIND_ACTION_LABELS = { up: 'Up', down: 'Down', left: 'Left', right: 'Right', jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash' };
 let rebindCapture = null; // { side, action, buttonEl } while waiting on the next keydown
 function buildRebindList() {
     const list = document.getElementById('rebind-list');
