@@ -1165,6 +1165,16 @@ function onWindowResize() {
 }
 window.addEventListener('resize', onWindowResize);
 
+// Polyfill: THREE.Layers.enableAll()/disableAll() only exist from r130, but
+// this game pins r128 (see the CDN <script> above). The first-person layer
+// setup below calls them heavily — without this they'd throw at load
+// (before the fighter-select grid is built, leaving the menu empty). Adds
+// them only if missing, so a future THREE upgrade is unaffected.
+if (THREE.Layers && !THREE.Layers.prototype.enableAll) {
+    THREE.Layers.prototype.enableAll = function () { this.mask = 0xffffffff | 0; };
+    THREE.Layers.prototype.disableAll = function () { this.mask = 0; };
+}
+
 const WHITE_COLOR = new THREE.Color(0xffffff); // reused every frame by the hit-flash lerp below, not reallocated
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8ec7ff); // bright daytime sky
