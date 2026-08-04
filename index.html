@@ -4050,17 +4050,22 @@ function buildHammerProp() {
     g.userData.mats = [handleMat, headMat, bandMat];
     return g;
 }
-function buildScytheProp() {
+// `len` = shaft length. Nyx's on-body scythe is built long so the blade
+// actually reaches the edge of its (long) attack range; the viewmodel uses a
+// shorter, foreshortened version. Blade cluster scales with the shaft.
+function buildScytheProp(len = 34) {
     const g = new THREE.Group();
+    const s = Math.min(1.6, len / 34);
     const shaftMat = makeMat('#1f2937', { roughness: 0.7, metalness: 0.3 });
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 34, 8), shaftMat);
-    shaft.rotation.z = Math.PI / 2; shaft.position.x = 17; shaft.castShadow = true;
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, len, 8), shaftMat);
+    shaft.rotation.z = Math.PI / 2; shaft.position.x = len / 2; shaft.castShadow = true;
     const bladeMat = weaponMat('#c4b5fd', '#7c3aed');
     // Curved blade approximated by three angled flat segments fanning off
     // the shaft tip — reads as a scythe's hook, not a straight sword.
-    const seg1 = new THREE.Mesh(new THREE.BoxGeometry(14, 1, 5), bladeMat); seg1.position.set(35, 5, 0); seg1.rotation.z = 0.5; seg1.castShadow = true;
-    const seg2 = new THREE.Mesh(new THREE.BoxGeometry(11, 1, 4.5), bladeMat); seg2.position.set(28, 12, 0); seg2.rotation.z = 1.1; seg2.castShadow = true;
-    const seg3 = new THREE.Mesh(new THREE.ConeGeometry(2.5, 8, 4), bladeMat); seg3.position.set(21, 17, 0); seg3.rotation.z = 1.9;
+    const bx0 = len + 1;
+    const seg1 = new THREE.Mesh(new THREE.BoxGeometry(14 * s, 1, 5 * s), bladeMat); seg1.position.set(bx0, 5 * s, 0); seg1.rotation.z = 0.5; seg1.castShadow = true;
+    const seg2 = new THREE.Mesh(new THREE.BoxGeometry(11 * s, 1, 4.5 * s), bladeMat); seg2.position.set(bx0 - 7 * s, 12 * s, 0); seg2.rotation.z = 1.1; seg2.castShadow = true;
+    const seg3 = new THREE.Mesh(new THREE.ConeGeometry(2.5 * s, 8 * s, 4), bladeMat); seg3.position.set(bx0 - 14 * s, 17 * s, 0); seg3.rotation.z = 1.9;
     g.add(shaft, seg1, seg2, seg3);
     g.userData.mats = [shaftMat, bladeMat];
     return g;
@@ -4096,18 +4101,20 @@ function buildStaffProp() {
     g.userData.core = crystal;
     return g;
 }
-function buildWhipProp() {
+// A drooping chain of shrinking segments — a coiled vine whip. `n`/`step`
+// control its length: Thorne's on-body whip is built long (it's the longest
+// reach in the roster) so the lash reaches the edge of its range; the
+// viewmodel uses a shorter version.
+function buildWhipProp(n = 7, step = 3.2) {
     const g = new THREE.Group();
     const mat = makeMat('#4ade80', { emissive: 0x16a34a, emissiveIntensity: 0.4, roughness: 0.6 });
-    // A drooping chain of shrinking segments — reads as a coiled vine whip
-    // hanging from the hand rather than a rigid weapon.
     let px = 4, py = 0;
-    for (let i = 0; i < 7; i++) {
-        const r = 1.8 - i * 0.18;
+    for (let i = 0; i < n; i++) {
+        const r = Math.max(0.6, 2.0 - i * (1.5 / n));
         const seg = new THREE.Mesh(new THREE.SphereGeometry(r, 6, 6), mat);
         seg.position.set(px, py, 0); seg.castShadow = true;
         g.add(seg);
-        px += 3.2; py -= 0.6 + i * 0.35; // curves downward as it extends
+        px += step; py -= 0.5 + i * (2.2 / n); // curves downward as it extends
     }
     const thornMat = makeMat('#166534');
     const tip = new THREE.Mesh(new THREE.ConeGeometry(1.6, 5, 4), thornMat);
@@ -4139,10 +4146,10 @@ function propForAtkType(f) {
         case 'slash': return buildSwordProp('#e6faff', '#38bdf8', 17, 5);
         case 'dagger': return buildDaggerProp('#99f6e4', '#14b8a6');
         case 'hammer': return buildHammerProp();
-        case 'scythe': return buildScytheProp();
+        case 'scythe': return buildScytheProp(46); // a touch longer in-hand to convey Nyx's reach, but foreshortened for the viewmodel
         case 'punch': return buildFistProp(f.color);
         case 'bolt': return buildStaffProp();
-        case 'whip': return buildWhipProp();
+        case 'whip': return buildWhipProp(9, 4);
         case 'shard': return buildOrbProp('#e9d5ff', '#a855f7');
         case 'orb': return buildOrbProp('#fff7d6', '#facc15');
         default: return buildFistProp(f.color);
@@ -4173,8 +4180,10 @@ function buildViewmodel(f, layer) {
     // the crosshair line, a short distance in front of the near plane.
     holder.position.set(5.5, -5.5, -10);
     holder.scale.setScalar(0.34);
+    holder.userData.baseX = holder.position.x;
     holder.userData.baseY = holder.position.y;
     holder.userData.baseZ = holder.position.z;
+    holder.userData.animKind = viewmodelAnimKind(f.atkType); // how this weapon swings in first person
     setLayerRecursive(holder, layer);
     holder.traverse(n => { if (n.isLight) n.parent.remove(n); }); // strip any point lights from props (Seraphine glow etc.) — viewmodel shouldn't light the world
     return holder;
@@ -4186,18 +4195,58 @@ function rebuildViewmodels() {
     if (player1) { vmP1 = buildViewmodel(player1, LAYER_P1_VM); camP1.add(vmP1); }
     if (player2) { vmP2 = buildViewmodel(player2, LAYER_P2_VM); camP2.add(vmP2); }
 }
-// Subtle idle bob + an attack lunge, so the viewmodel feels alive and
-// reacts when you swing.
+// Maps a weapon's attack type to a first-person viewmodel motion, so a sword
+// slashes across the view, a dagger jabs, a hammer comes down overhead, fists
+// piston in and out, and casters recoil — instead of one generic lunge.
+function viewmodelAnimKind(atkType) {
+    if (atkType === 'dagger') return 'stab';
+    if (atkType === 'hammer') return 'overhead';
+    if (atkType === 'punch') return 'jab';
+    if (atkType === 'bolt' || atkType === 'shard' || atkType === 'orb') return 'cast';
+    return 'swing'; // slash / scythe / whip
+}
+const _vmLerp = (a, b, t) => a + (b - a) * t;
 function syncViewmodels(dt) {
     const pairs = [[vmP1, player1], [vmP2, player2]];
     for (const [vm, f] of pairs) {
         if (!vm || !f) continue;
         const bob = Math.sin(arenaTime * 0.08) * 0.35;
-        let lunge = 0;
-        if (f.atkState === 'active') lunge = -2.4;
-        else if (f.atkState === 'startup') lunge = 1.2;
-        vm.position.y = vm.userData.baseY + bob;
-        vm.position.z = vm.userData.baseZ + lunge;
+        const bx = vm.userData.baseX, by = vm.userData.baseY, bz = vm.userData.baseZ;
+        const acting = f.atkState !== 'idle' && f.atkKind;
+        const fd = acting ? FRAME_DATA[f.name][f.atkKind] : null;
+        const kind = vm.userData.animKind;
+        let px = bx, py = by + bob, pz = bz, rx = 0, ry = 0, rz = 0;
+        if (acting && fd) {
+            const su = Math.max(1, fd.startup), av = Math.max(1, fd.active), rc = Math.max(1, fd.recovery);
+            if (kind === 'swing') {
+                // Diagonal slash: wind up upper-right, sweep down-left across view.
+                const t = swingT(f, fd), u = (1 - t) / 2; // 0 = wind-up extreme, 1 = follow-through
+                rz = _vmLerp(0.7, -1.35, u); ry = _vmLerp(-0.4, 0.75, u); rx = _vmLerp(-0.45, 0.4, u);
+                px = bx + _vmLerp(2.5, -3.8, u); py = by + bob + _vmLerp(1.6, -2, u);
+                pz = bz - (f.atkState === 'active' ? 3.5 : 0);
+            } else if (kind === 'stab') {
+                let reach = 0;
+                if (f.atkState === 'active') { const p = 1 - f.atkStateTimer / av; reach = Math.max(0, Math.sin(p * Math.PI * 2)); } // two quick thrusts
+                else if (f.atkState === 'startup') reach = -0.25 * (1 - f.atkStateTimer / su); // cock back
+                else reach = 0.12 * (f.atkStateTimer / rc);
+                pz = bz - reach * 9; px = bx + reach * 1.4; rx = -0.1 - reach * 0.15;
+            } else if (kind === 'overhead') {
+                if (f.atkState === 'startup') { const r = 1 - f.atkStateTimer / su; rx = -r * 1.05; py = by + bob + r * 5.5; pz = bz + r * 1.5; }
+                else if (f.atkState === 'active') { const p = 1 - f.atkStateTimer / av; rx = -1.05 + p * 1.8; py = by + bob + 5.5 - p * 10; pz = bz - p * 4; }
+                else { const r = f.atkStateTimer / rc; rx = 0.55 * r; py = by + bob - 2.5 * r; }
+            } else if (kind === 'jab') {
+                let reach = 0;
+                if (f.atkState === 'active') { const p = 1 - f.atkStateTimer / av; reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 4); } // two piston jabs
+                pz = bz - reach * 7; px = bx + Math.sin(reach * Math.PI) * 1.4; rx = -0.06;
+            } else if (kind === 'cast') {
+                // Recoil kick: weapon snaps back + muzzle-up as the shot leaves.
+                if (f.atkState === 'startup') { const r = 1 - f.atkStateTimer / su; pz = bz + r * 2; rx = -r * 0.3; py = by + bob + r; }
+                else if (f.atkState === 'active') { const k = f.atkStateTimer / av; pz = bz + k * 3.5; rx = -k * 0.4; py = by + bob + k * 1.8; }
+                else { const r = f.atkStateTimer / rc; pz = bz + r; }
+            }
+        }
+        vm.position.set(px, py, pz);
+        vm.rotation.set(rx, ry, rz);
         const flash = vm.userData.flash;
         if (flash) {
             const t = Math.max(0, (f.muzzleFlash || 0) / 7);
@@ -4310,7 +4359,7 @@ function buildSeraphineMesh(color) {
 
 function buildNyxMesh(color) {
     const g = buildHumanoidBase(color, { trimColor: '#2e1065', torsoD: 7, torsoW: 12, legW: 4.5, headR: 6, bodyMatOpts: { emissive: hexNum(color), emissiveIntensity: 0.2 } });
-    const scythe = buildScytheProp();
+    const scythe = buildScytheProp(60); // long shaft so the blade reaches Nyx's long (95) range during the reap
     g.userData.armPos.hand.add(scythe);
     g.userData.bodyMats.push(...scythe.userData.mats);
     g.userData.weapon = scythe;
@@ -4351,7 +4400,7 @@ function buildAureliaMesh(color) {
 
 function buildThorneMesh(color) {
     const g = buildHumanoidBase(color, { trimColor: '#14532d', torsoD: 9, torsoW: 14, legW: 5, legH: 15, headR: 6.2 });
-    const whip = buildWhipProp();
+    const whip = buildWhipProp(13, 6.5); // long lash so it reaches Thorne's range (115) — the longest melee in the roster
     g.userData.armPos.hand.add(whip);
     g.userData.bodyMats.push(...whip.userData.mats);
     g.userData.weapon = whip;
