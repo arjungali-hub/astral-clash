@@ -1190,45 +1190,53 @@ scene.fog = new THREE.Fog(0xbfe0ff, 1400, 5200);
 // blue zenith → pale horizon) plus a soft sun disc, so looking up / past
 // the arena walls shows a real daytime sky in every direction. It's huge
 // and on all layers so both first-person cameras always see it. ---
+let skyDome = null, sunSprite = null, skyTexCanvas = null;
 function buildSkyDome() {
-    const c = document.createElement('canvas');
-    c.width = 16; c.height = 256;
-    const g = c.getContext('2d');
-    const grad = g.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0.0, '#2f7fe0');  // zenith
-    grad.addColorStop(0.45, '#6fb0f2');
-    grad.addColorStop(0.78, '#a9d3fb');
-    grad.addColorStop(1.0, '#e6f3ff');  // horizon haze
-    g.fillStyle = grad; g.fillRect(0, 0, 16, 256);
-    const tex = new THREE.CanvasTexture(c);
+    // Gradient sky texture is redrawn per map by applySky(); build the mesh
+    // and sun sprite once here.
+    skyTexCanvas = document.createElement('canvas');
+    skyTexCanvas.width = 16; skyTexCanvas.height = 256;
+    const tex = new THREE.CanvasTexture(skyTexCanvas);
     tex.encoding = THREE.sRGBEncoding;
-    tex.needsUpdate = true;
-    const dome = new THREE.Mesh(
+    skyDome = new THREE.Mesh(
         new THREE.SphereGeometry(4200, 24, 16),
         new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false })
     );
-    dome.layers.enableAll();
-    scene.add(dome);
-    // Soft sun: a bright additive billboard high in the sky (its light comes
-    // from the directional keyLight, aimed to match).
-    const sunCanvas = document.createElement('canvas');
-    sunCanvas.width = sunCanvas.height = 128;
-    const sg = sunCanvas.getContext('2d');
+    skyDome.layers.enableAll();
+    scene.add(skyDome);
+    // Soft sun billboard (its actual light is the directional keyLight,
+    // repositioned to match by applySky/applyLighting).
+    const sc = document.createElement('canvas'); sc.width = sc.height = 128;
+    const sg = sc.getContext('2d');
     const sgrad = sg.createRadialGradient(64, 64, 0, 64, 64, 64);
-    sgrad.addColorStop(0, 'rgba(255,255,245,1)');
-    sgrad.addColorStop(0.25, 'rgba(255,250,220,0.95)');
-    sgrad.addColorStop(0.6, 'rgba(255,240,190,0.35)');
-    sgrad.addColorStop(1, 'rgba(255,240,190,0)');
+    sgrad.addColorStop(0, 'rgba(255,255,250,1)');
+    sgrad.addColorStop(0.25, 'rgba(255,252,235,0.95)');
+    sgrad.addColorStop(0.6, 'rgba(255,248,220,0.35)');
+    sgrad.addColorStop(1, 'rgba(255,248,220,0)');
     sg.fillStyle = sgrad; sg.fillRect(0, 0, 128, 128);
-    const sunTex = new THREE.CanvasTexture(sunCanvas);
+    const sunTex = new THREE.CanvasTexture(sc);
     sunTex.encoding = THREE.sRGBEncoding;
-    const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: sunTex, transparent: true, fog: false, depthWrite: false }));
-    sun.scale.set(900, 900, 1);
-    sun.position.set(-1400, 2600, 1600);
-    sun.layers.enableAll();
-    scene.add(sun);
+    sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: sunTex, transparent: true, fog: false, depthWrite: false }));
+    sunSprite.scale.set(900, 900, 1);
+    sunSprite.position.set(-1400, 2600, 1600);
+    sunSprite.layers.enableAll();
+    scene.add(sunSprite);
 }
 buildSkyDome();
+
+// Redraw the sky gradient + reposition/recolor the sun for a map's theme.
+function applySky(theme) {
+    const g = skyTexCanvas.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0.0, theme.sky[0]); grad.addColorStop(0.4, theme.sky[1]);
+    grad.addColorStop(0.74, theme.sky[2]); grad.addColorStop(1.0, theme.sky[3]);
+    g.fillStyle = grad; g.fillRect(0, 0, 16, 256);
+    skyDome.material.map.needsUpdate = true;
+    scene.background.set(theme.sky[3]);
+    sunSprite.position.set(theme.sun.pos[0], theme.sun.pos[1], theme.sun.pos[2]);
+    sunSprite.scale.set(theme.sun.size, theme.sun.size, 1);
+    sunSprite.material.color.set(theme.sun.color);
+}
 
 // --- Rendering layers (three.js): each fighter's body is put on its own
 // layer so a first-person camera can exclude ITS OWN fighter's body (you
@@ -1354,6 +1362,82 @@ fillLight.position.set(900, 500, -700);
 fillLight.layers.enableAll();
 scene.add(fillLight);
 
+// Recolor/re-aim the daylight for a map's theme (all daytime, just different
+// times/moods). keyLight is placed at the sun's sky position so shadows fall
+// the right way; fillLight is tinted toward the sky for coherent bounce.
+function applyLighting(theme) {
+    ambientLight.color.set(theme.ambient.color); ambientLight.intensity = theme.ambient.int;
+    hemiLight.color.set(theme.hemi.sky); hemiLight.groundColor.set(theme.hemi.ground); hemiLight.intensity = theme.hemi.int;
+    keyLight.color.set(theme.sun.color); keyLight.intensity = theme.sun.int;
+    keyLight.position.set(theme.sun.pos[0], theme.sun.pos[1], theme.sun.pos[2]);
+    fillLight.color.set(theme.hemi.sky);
+}
+
+// --- Per-map visual THEMES. Each map has a distinct palette, wall shape +
+// material, floor, column style, sky/time-of-day, lighting and scenery, so
+// you can tell which arena you're in at a glance. All are DAYTIME (varying
+// from cool clear midday to warm golden hour, never night). ---
+const MAP_THEMES = {
+    // Cyan energy proving ground — dark steel + glowing seams, clear cool midday.
+    'Astral Proving Grounds': {
+        id: 'astral', wallStyle: 'techrail', wallTex: 'metal', wallColor: 0x3a557e, capColor: 0x22314c,
+        floorTex: 'techgrid', floorColor: 0xaecbe6, column: 'pylon', stoneColor: 0x3a557e, stepColor: 0x2a3a58,
+        sky: ['#1a4fd0', '#3f86e6', '#87bff2', '#cfeaff'],
+        sun: { color: 0xffffff, pos: [-1500, 2800, 1400], int: 1.5, size: 720 },
+        hemi: { sky: 0xcfe6ff, ground: 0x33506f, int: 0.9 }, ambient: { color: 0xaccdf2, int: 0.5 },
+        fog: { color: 0xc4e2ff, near: 1600, far: 5400 }, scenery: 'tech'
+    },
+    // Warm desert sandstone temple — stepped ziggurat walls, golden-hour haze.
+    'Sundered Stair': {
+        id: 'desert', wallStyle: 'ziggurat', wallTex: 'sandstone', wallColor: 0xd9b579, capColor: 0xbf9a5f,
+        floorTex: 'sand', floorColor: 0xe6cd97, column: 'stone', stoneColor: 0xd9c19a, stepColor: 0xc2a06a,
+        sky: ['#5f8fc8', '#c7b184', '#e6cfa0', '#f5e0b4'],
+        sun: { color: 0xffd8a0, pos: [-1900, 1900, 1200], int: 1.5, size: 900 },
+        hemi: { sky: 0xffe6c0, ground: 0x8a6a45, int: 0.9 }, ambient: { color: 0xe8c99a, int: 0.6 },
+        fog: { color: 0xf0d9a8, near: 1300, far: 4800 }, scenery: 'temple'
+    },
+    // Cool grey granite castle — classic battlements, soft diffuse daylight.
+    'Twin Ramparts': {
+        id: 'castle', wallStyle: 'battlement', wallTex: 'ashlar', wallColor: 0x8b9099, capColor: 0x6b7079,
+        floorTex: 'flagstone', floorColor: 0x9aa1aa, column: 'stone', stoneColor: 0x9098a2, stepColor: 0x5c636e,
+        sky: ['#6f92c4', '#9ab4d6', '#c2d2e6', '#dde7f0'],
+        sun: { color: 0xeef0ff, pos: [-1200, 2400, 1500], int: 1.2, size: 680 },
+        hemi: { sky: 0xcdd9ec, ground: 0x545a64, int: 0.85 }, ambient: { color: 0xb8c2d4, int: 0.65 },
+        fog: { color: 0xcdd8e8, near: 1400, far: 5000 }, scenery: 'castle'
+    },
+    // Cream marble + grass colosseum — smooth ivy-topped walls, bright midday.
+    'The Colosseum Ring': {
+        id: 'colosseum', wallStyle: 'ivy', wallTex: 'marble', wallColor: 0xe6ddc9, capColor: 0xd2c8b0,
+        floorTex: 'grass', floorColor: 0x8fbf6f, column: 'marble', stoneColor: 0xe6ddc9, stepColor: 0xcfc6b0,
+        sky: ['#2f8fe0', '#66b6f2', '#a6d8fb', '#e0f4ff'],
+        sun: { color: 0xfffff2, pos: [-1300, 3000, 1400], int: 1.8, size: 800 },
+        hemi: { sky: 0xe4f4ff, ground: 0x5f7d45, int: 0.95 }, ambient: { color: 0xd0ead0, int: 0.55 },
+        fog: { color: 0xdaf0ff, near: 1800, far: 5600 }, scenery: 'grove'
+    },
+    // Red-rock canyon mesa — rough jagged cliffs, warm dusty afternoon.
+    'Skyreach Spire': {
+        id: 'canyon', wallStyle: 'jagged', wallTex: 'redrock', wallColor: 0xb0623a, capColor: 0x8f4a2e,
+        floorTex: 'redsand', floorColor: 0xc87a4a, column: 'redspire', stoneColor: 0xb0623a, stepColor: 0x8f4a2e,
+        sky: ['#4a80c0', '#c88a55', '#e6a865', '#f3c98f'],
+        sun: { color: 0xffc27a, pos: [-2000, 1700, 1100], int: 1.5, size: 950 },
+        hemi: { sky: 0xffd9a0, ground: 0x6a3a25, int: 0.9 }, ambient: { color: 0xe0a878, int: 0.6 },
+        fog: { color: 0xe8b482, near: 1300, far: 4600 }, scenery: 'canyon'
+    },
+    // Frozen glacier — pale cracked-ice walls, crisp cold clear light.
+    'The Shattered Bridge': {
+        id: 'glacier', wallStyle: 'crystal', wallTex: 'ice', wallColor: 0xbfe4f2, capColor: 0x9fd0e8,
+        floorTex: 'ice', floorColor: 0xd6eef8, column: 'icecrystal', stoneColor: 0xbfe4f2, stepColor: 0x9fd0e8,
+        sky: ['#3f96de', '#79c2ef', '#aadcf5', '#e2f5ff'],
+        sun: { color: 0xeef8ff, pos: [-1400, 2700, 1500], int: 1.65, size: 760 },
+        hemi: { sky: 0xeaf7ff, ground: 0x6a8494, int: 0.9 }, ambient: { color: 0xcfe6f2, int: 0.6 },
+        fog: { color: 0xdcf0fa, near: 1500, far: 5200 }, scenery: 'ice'
+    }
+};
+function themeFor(map) {
+    const base = MAP_THEMES[map.name] || MAP_THEMES['Twin Ramparts'];
+    return Object.assign({}, base, { accent: hexNum(map.accent), mapName: map.name });
+}
+
 // Terrain is per-map (see MAPS below); these bindings get reassigned by
 // loadMap() each time a map is chosen. Three kinds of terrain:
 //   OBSTACLES - solid pillars. Block movement/projectiles unless a fighter
@@ -1448,88 +1532,127 @@ function removeAndDispose(obj) {
 // --- 3D arena, rebuilt per map by loadMap(). Every builder below takes
 // the map's accent color so each map reads as visually distinct. ---
 
-// Tileable sunlit flagstone floor: warm sandstone slabs with darker grout,
-// per-slab tint variation and a light speckle, plus faint accent motes.
-// Repeats across the big FPS floor (see loadMap setting the texture .repeat).
-function buildFloorTexture(accent) {
-    const c = document.createElement('canvas');
-    c.width = 256; c.height = 256;
-    const g = c.getContext('2d');
-    g.fillStyle = '#5b4f3a'; g.fillRect(0, 0, 256, 256); // grout base
-    const slabs = [[0, 0, 128, 128], [128, 0, 128, 128], [0, 128, 128, 128], [128, 128, 128, 128]];
-    const tintList = ['#d7c8a6', '#cbb98f', '#d2c19c', '#c6b389'];
-    slabs.forEach((s, i) => {
-        const [x, y, w, h] = s;
-        const base = tintList[i % tintList.length];
-        const grad = g.createLinearGradient(x, y, x, y + h);
-        grad.addColorStop(0, base); grad.addColorStop(1, '#bda87e');
-        g.fillStyle = grad; g.fillRect(x + 4, y + 4, w - 8, h - 8);
-        // chamfer highlight
-        g.strokeStyle = 'rgba(255,250,235,0.18)'; g.lineWidth = 2;
-        g.strokeRect(x + 5, y + 5, w - 10, h - 10);
-    });
-    // speckle grit
-    for (let i = 0; i < 500; i++) {
-        g.fillStyle = `rgba(${90 + Math.random() * 40 | 0},${80 + Math.random() * 40 | 0},${60 + Math.random() * 30 | 0},0.10)`;
-        g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
-    }
-    // faint accent motes at slab corners (team-color hint in the stone)
-    g.fillStyle = hexToCss(accent, 0.28);
-    for (const [px, py] of [[128, 128], [0, 128], [128, 0], [0, 0]]) { g.beginPath(); g.arc(px, py, 4, 0, Math.PI * 2); g.fill(); }
-    const tex = new THREE.CanvasTexture(c);
-    tex.encoding = THREE.sRGBEncoding; // canvas holds sRGB colors; decode correctly for the sRGB pipeline
-    tex.anisotropy = 8;
-    return tex;
+// --- Theme-aware tileable canvas textures. Each map's theme (see MAP_THEMES)
+// picks a wall + floor material so the arenas read as completely different
+// places (steel, sandstone, granite, marble, red rock, ice). ---
+function _tex(canvas, repeat) {
+    const t = new THREE.CanvasTexture(canvas);
+    t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
+    if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
 }
-
-// Tileable ashlar stonework: offset rows of cut blocks with recessed mortar
-// and a subtle painted accent band, for the fortress walls + interior cover.
-const wallTextureCache = {};
-function getWallTexture(accent) {
-    if (wallTextureCache[accent]) return wallTextureCache[accent];
-    const c = document.createElement('canvas');
-    c.width = 256; c.height = 256;
-    const g = c.getContext('2d');
-    g.fillStyle = '#7a6b50'; g.fillRect(0, 0, 256, 256); // mortar
-    const rowH = 42, blockW = 84;
-    const tints = ['#cabd97', '#c0b088', '#d0c2a0', '#bcac80', '#c6b891'];
-    let row = 0;
+function _canvas() { const c = document.createElement('canvas'); c.width = c.height = 256; return c.getContext('2d'); }
+// Offset ashlar-style block courses shared by stone/sandstone/marble/redrock.
+function _blockWall(g, palette, mortar, detail) {
+    g.fillStyle = mortar; g.fillRect(0, 0, 256, 256);
+    const rowH = 42, blockW = 84; let row = 0;
     for (let y = 0; y < 256; y += rowH) {
-        const offset = (row % 2) * (blockW / 2);
+        const off = (row % 2) * (blockW / 2);
         for (let x = -blockW; x < 256; x += blockW) {
-            const bx = x + offset + 3, by = y + 3, bw = blockW - 6, bh = rowH - 6;
-            // Non-negative modulo: x starts at -blockW so the raw index can go
-            // negative, and JS's % keeps the sign — tints[-1] would be
-            // undefined and make addColorStop throw. ((n%m)+m)%m fixes it.
-            const ti = ((row * 3 + Math.floor(x / blockW)) % tints.length + tints.length) % tints.length;
-            const base = tints[ti];
-            const grad = g.createLinearGradient(bx, by, bx, by + bh);
-            grad.addColorStop(0, base); grad.addColorStop(1, '#a8996f');
-            g.fillStyle = grad; g.fillRect(bx, by, bw, bh);
-            g.strokeStyle = 'rgba(255,250,235,0.14)'; g.lineWidth = 1.5; g.strokeRect(bx + 1, by + 1, bw - 2, bh - 2);
-            g.fillStyle = 'rgba(60,50,35,0.18)'; // bottom-edge shadow
-            g.fillRect(bx, by + bh - 3, bw, 3);
+            const bx = x + off + 3, by = y + 3, bw = blockW - 6, bh = rowH - 6;
+            const ti = ((row * 3 + Math.floor(x / blockW)) % palette.length + palette.length) % palette.length; // guard negative index
+            g.fillStyle = palette[ti]; g.fillRect(bx, by, bw, bh);
+            const gr = g.createLinearGradient(bx, by, bx, by + bh);
+            gr.addColorStop(0, 'rgba(255,255,255,0.07)'); gr.addColorStop(1, 'rgba(0,0,0,0.17)');
+            g.fillStyle = gr; g.fillRect(bx, by, bw, bh);
+            g.strokeStyle = 'rgba(255,255,255,0.10)'; g.lineWidth = 1.5; g.strokeRect(bx + 1, by + 1, bw - 2, bh - 2);
+            g.fillStyle = 'rgba(0,0,0,0.16)'; g.fillRect(bx, by + bh - 3, bw, 3);
+            if (detail) detail(g, bx, by, bw, bh);
         }
         row++;
     }
-    // subtle painted accent band (banner stripe) low on the wall
-    g.fillStyle = hexToCss(accent, 0.5); g.fillRect(0, 210, 256, 8);
-    const tex = new THREE.CanvasTexture(c);
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.encoding = THREE.sRGBEncoding;
-    tex.anisotropy = 8;
-    wallTextureCache[accent] = tex;
-    return tex;
+}
+function _speckle(css) { return (g, bx, by, bw, bh) => { g.save(); g.globalAlpha = 0.12; g.fillStyle = css; for (let i = 0; i < 6; i++) g.fillRect(bx + Math.random() * bw, by + Math.random() * bh, 2, 2); g.restore(); }; }
+function _marbleVeins(g, bx, by, bw, bh) { g.strokeStyle = 'rgba(140,140,155,0.28)'; g.lineWidth = 1; g.beginPath(); g.moveTo(bx + Math.random() * bw, by); g.bezierCurveTo(bx + bw * 0.3, by + bh * 0.4, bx + bw * 0.7, by + bh * 0.6, bx + Math.random() * bw, by + bh); g.stroke(); }
+function _redStrata(g, bx, by, bw, bh) { g.fillStyle = 'rgba(80,40,25,0.16)'; for (let yy = by + 4; yy < by + bh; yy += 6) g.fillRect(bx, yy, bw, 2); }
+
+const wallTextureCache = {};
+function getWallTexture(theme) {
+    if (wallTextureCache[theme.id]) return wallTextureCache[theme.id];
+    const g = _canvas();
+    const acc = hexToCss(theme.accent, 0.85);
+    if (theme.wallTex === 'metal') {
+        g.fillStyle = '#28374f'; g.fillRect(0, 0, 256, 256);
+        for (let y = 0; y < 256; y += 64) for (let x = 0; x < 256; x += 64) {
+            const gr = g.createLinearGradient(x, y, x, y + 64); gr.addColorStop(0, '#38507a'); gr.addColorStop(1, '#243349');
+            g.fillStyle = gr; g.fillRect(x + 3, y + 3, 58, 58);
+            g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 2; g.strokeRect(x + 3, y + 3, 58, 58);
+        }
+        g.fillStyle = acc; g.fillRect(0, 125, 256, 4); g.fillRect(125, 0, 4, 256); // glowing seams
+        g.fillStyle = 'rgba(200,225,255,0.3)';
+        for (let y = 0; y <= 256; y += 64) for (let x = 0; x <= 256; x += 64) { g.beginPath(); g.arc(x, y, 2.5, 0, 6.283); g.fill(); }
+    } else if (theme.wallTex === 'ice') {
+        const gr = g.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, '#dceffa'); gr.addColorStop(1, '#a9d6ea');
+        g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+        g.strokeStyle = 'rgba(255,255,255,0.4)'; g.lineWidth = 1;
+        for (let i = 0; i < 20; i++) { const x = Math.random() * 256, y = Math.random() * 256; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.random() * 60 - 30, y + Math.random() * 60 - 30); g.stroke(); }
+        g.strokeStyle = 'rgba(90,140,180,0.35)'; g.lineWidth = 1.5;
+        for (let i = 0; i < 8; i++) { let x = Math.random() * 256, y = 0; g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 5; s++) { x += Math.random() * 40 - 20; y += 52; g.lineTo(x, y); } g.stroke(); }
+        g.fillStyle = 'rgba(255,255,255,0.14)'; for (let i = 0; i < 40; i++) g.fillRect(Math.random() * 256, Math.random() * 256, 3, 3);
+    } else if (theme.wallTex === 'sandstone') {
+        _blockWall(g, ['#dcc088', '#d0b076', '#e0c894', '#cba86e'], '#8a6f4a', _speckle('#b89a68'));
+        g.fillStyle = hexToCss(theme.accent, 0.4); g.fillRect(0, 214, 256, 6);
+    } else if (theme.wallTex === 'marble') {
+        _blockWall(g, ['#ece4d2', '#e4dbc6', '#f0e8d8', '#dfd6c0'], '#c9bfa8', _marbleVeins);
+    } else if (theme.wallTex === 'redrock') {
+        _blockWall(g, ['#b0623a', '#a25631', '#bd6e42', '#98502e'], '#6f3a22', _redStrata);
+    } else { // ashlar granite
+        _blockWall(g, ['#9aa0a8', '#8f959e', '#a2a8b0', '#888e97'], '#5c626c', _speckle('#7a808a'));
+        g.fillStyle = hexToCss(theme.accent, 0.45); g.fillRect(0, 214, 256, 6);
+    }
+    const t = _tex(g.canvas, true);
+    wallTextureCache[theme.id] = t;
+    return t;
 }
 
-// Batch 7 item 2: cached per map name instead of rebuilt every time
-// loadMap() runs. With rounds now re-loading the same map between rounds
-// (Batch 5), this used to redraw the same 512x512 canvas texture 2-3
-// times per match for no reason.
+function _floorSlabs(g, tints, grout, chamferCss) {
+    g.fillStyle = grout; g.fillRect(0, 0, 256, 256);
+    [[0, 0], [128, 0], [0, 128], [128, 128]].forEach(([x, y], i) => {
+        g.fillStyle = tints[i % tints.length]; g.fillRect(x + 4, y + 4, 120, 120);
+        const gr = g.createLinearGradient(x, y, x, y + 128); gr.addColorStop(0, 'rgba(255,255,255,0.06)'); gr.addColorStop(1, 'rgba(0,0,0,0.14)');
+        g.fillStyle = gr; g.fillRect(x + 4, y + 4, 120, 120);
+        g.strokeStyle = chamferCss; g.lineWidth = 2; g.strokeRect(x + 5, y + 5, 118, 118);
+    });
+}
 const floorTextureCache = {};
-function getFloorTexture(map, accent) {
-    if (!floorTextureCache[map.name]) floorTextureCache[map.name] = buildFloorTexture(accent);
-    return floorTextureCache[map.name];
+function getFloorTexture(theme) {
+    if (floorTextureCache[theme.id]) return floorTextureCache[theme.id];
+    const g = _canvas();
+    if (theme.floorTex === 'techgrid') {
+        g.fillStyle = '#182640'; g.fillRect(0, 0, 256, 256);
+        for (let y = 0; y < 256; y += 64) for (let x = 0; x < 256; x += 64) { g.fillStyle = '#20304c'; g.fillRect(x + 4, y + 4, 56, 56); }
+        g.strokeStyle = hexToCss(theme.accent, 0.7); g.lineWidth = 2;
+        for (let i = 0; i <= 256; i += 64) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.moveTo(0, i); g.lineTo(256, i); g.stroke(); }
+        g.fillStyle = hexToCss(theme.accent, 0.95);
+        for (let y = 0; y <= 256; y += 64) for (let x = 0; x <= 256; x += 64) g.fillRect(x - 2, y - 2, 4, 4);
+    } else if (theme.floorTex === 'sand') {
+        g.fillStyle = '#e6cd97'; g.fillRect(0, 0, 256, 256);
+        g.strokeStyle = 'rgba(180,150,100,0.30)'; g.lineWidth = 3;
+        for (let y = 12; y < 256; y += 36) { g.beginPath(); for (let x = 0; x <= 256; x += 8) g.lineTo(x, y + Math.sin(x * 0.06 + y) * 5); g.stroke(); }
+        g.strokeStyle = 'rgba(120,95,60,0.25)'; g.lineWidth = 1;
+        for (let i = 0; i < 6; i++) { let x = Math.random() * 256, y = Math.random() * 256; g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 4; s++) { x += Math.random() * 40 - 20; y += Math.random() * 40 - 20; g.lineTo(x, y); } g.stroke(); }
+        for (let i = 0; i < 400; i++) { g.fillStyle = `rgba(${200 + Math.random() * 30 | 0},${175 + Math.random() * 30 | 0},${120 + Math.random() * 30 | 0},0.12)`; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
+    } else if (theme.floorTex === 'grass') {
+        g.fillStyle = '#6fa84f'; g.fillRect(0, 0, 256, 256);
+        for (let i = 0; i < 2600; i++) { const shade = 60 + Math.random() * 90 | 0; g.fillStyle = `rgba(${40 + Math.random() * 40 | 0},${shade + 40},${30 + Math.random() * 30 | 0},0.5)`; const x = Math.random() * 256, y = Math.random() * 256; g.fillRect(x, y, 1.4, 3); }
+        for (let i = 0; i < 5; i++) { g.fillStyle = 'rgba(120,92,58,0.4)'; g.beginPath(); g.ellipse(Math.random() * 256, Math.random() * 256, 18 + Math.random() * 16, 12 + Math.random() * 10, Math.random() * 3, 0, 6.283); g.fill(); }
+    } else if (theme.floorTex === 'redsand') {
+        g.fillStyle = '#c87a4a'; g.fillRect(0, 0, 256, 256);
+        for (let y = 0; y < 256; y += 10) { g.fillStyle = `rgba(120,60,35,${0.08 + (y % 30 === 0 ? 0.12 : 0)})`; g.fillRect(0, y, 256, 5); }
+        for (let i = 0; i < 400; i++) { g.fillStyle = `rgba(${180 + Math.random() * 40 | 0},${90 + Math.random() * 40 | 0},${50 + Math.random() * 30 | 0},0.15)`; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
+    } else if (theme.floorTex === 'ice') {
+        const gr = g.createLinearGradient(0, 0, 256, 256); gr.addColorStop(0, '#e2f2fb'); gr.addColorStop(1, '#c3e2f0');
+        g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+        g.strokeStyle = 'rgba(120,160,195,0.3)'; g.lineWidth = 1.4;
+        for (let i = 0; i < 9; i++) { let x = Math.random() * 256, y = Math.random() * 256; g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 4; s++) { x += Math.random() * 60 - 30; y += Math.random() * 60 - 30; g.lineTo(x, y); } g.stroke(); }
+        g.fillStyle = 'rgba(255,255,255,0.18)'; for (let i = 0; i < 60; i++) g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+    } else { // flagstone (grey)
+        _floorSlabs(g, ['#a0a6ae', '#969ca6', '#a6acb4', '#8f959f'], '#5c626c', 'rgba(255,255,255,0.14)');
+        for (let i = 0; i < 400; i++) { g.fillStyle = `rgba(${120 + Math.random() * 30 | 0},${126 + Math.random() * 30 | 0},${134 + Math.random() * 30 | 0},0.10)`; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
+    }
+    const t = _tex(g.canvas, true);
+    floorTextureCache[theme.id] = t;
+    return t;
 }
 
 function addRimEdge(x, z, w, d, accent) {
@@ -1554,56 +1677,64 @@ function addCornerGlow(x, z, accent) {
     return group;
 }
 
-// A carved stone column: fluted sandstone shaft with a wide base and a
-// flared capital, topped by a glowing accent orb. Solid cover you fight
-// around. Height varies a little per obstacle (ob.h) for a less uniform,
-// more built-up look.
-function buildPillarMesh(ob, accent) {
+// A full-height obstacle "column" whose form varies by theme.column: carved
+// stone pillar, sleek energy pylon, fluted marble column, natural red-rock
+// spire, or an ice-crystal cluster. Solid cover you fight around.
+function buildPillarMesh(ob, theme) {
     const group = new THREE.Group();
     const colH = ob.h || 165;
-    const shaft = new THREE.Mesh(
-        getCachedGeometry(`pillarShaft:${ob.r}:${colH}`, () => new THREE.CylinderGeometry(ob.r, ob.r * 1.06, colH, 16)),
-        getCachedMaterial('pillarShaftMat', () => new THREE.MeshStandardMaterial({ color: 0xd9c7a3, roughness: 0.85, metalness: 0.02 }))
-    );
-    shaft.position.y = colH / 2;
-    shaft.castShadow = true; shaft.receiveShadow = true;
-    group.add(shaft);
-
-    const baseMat = getCachedMaterial('pillarStoneMat', () => new THREE.MeshStandardMaterial({ color: 0xc3ad86, roughness: 0.9, metalness: 0.02 }));
-    const plinth = new THREE.Mesh(getCachedGeometry(`pillarPlinth:${ob.r}`, () => new THREE.BoxGeometry(ob.r * 2.7, 18, ob.r * 2.7)), baseMat);
-    plinth.position.y = 9; plinth.castShadow = true; plinth.receiveShadow = true;
-    group.add(plinth);
-    const capital = new THREE.Mesh(getCachedGeometry(`pillarCap:${ob.r}`, () => new THREE.BoxGeometry(ob.r * 2.7, 16, ob.r * 2.7)), baseMat);
-    capital.position.y = colH - 8; capital.castShadow = true;
-    group.add(capital);
-
-    const orb = new THREE.Mesh(
-        getCachedGeometry('pillarOrb', () => new THREE.SphereGeometry(ob.r * 0.55, 12, 12)),
-        getCachedMaterial(`pillarOrbMat:${accent}`, () => new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.9 }))
-    );
-    orb.position.y = colH + ob.r * 0.5; group.add(orb);
-    const orbLight = new THREE.PointLight(accent, 0.5, 220);
-    orbLight.position.y = colH + ob.r * 0.5; orbLight.layers.enableAll();
-    group.add(orbLight);
-
+    const style = theme.column;
+    if (style === 'pylon') {
+        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(ob.r * 0.8, ob.r * 0.9, colH, 12),
+            new THREE.MeshStandardMaterial({ color: 0x2b3a52, roughness: 0.35, metalness: 0.7 }));
+        shaft.position.y = colH / 2; shaft.castShadow = shaft.receiveShadow = true; group.add(shaft);
+        const ringMat = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 1.0 });
+        for (let i = 1; i <= 4; i++) { const ring = new THREE.Mesh(new THREE.TorusGeometry(ob.r * 0.95, 2.4, 6, 16), ringMat); ring.rotation.x = Math.PI / 2; ring.position.y = colH * (i / 5); group.add(ring); }
+        const tip = new THREE.Mesh(new THREE.OctahedronGeometry(ob.r * 0.6, 0), ringMat); tip.position.y = colH + ob.r * 0.5; group.add(tip);
+        const l = new THREE.PointLight(theme.accent, 0.6, 260); l.position.y = colH * 0.6; l.layers.enableAll(); group.add(l);
+    } else if (style === 'redspire') {
+        // stacked tapering rough rock chunks (hoodoo)
+        const rockMat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: 0.95, metalness: 0.0 });
+        let y = 0, r = ob.r * 1.15;
+        for (let i = 0; i < 5; i++) { const h = colH / 5, rt = r * 0.82; const seg = new THREE.Mesh(new THREE.CylinderGeometry(rt, r, h, 7), rockMat); seg.position.set((Math.random() - 0.5) * 6, y + h / 2, (Math.random() - 0.5) * 6); seg.rotation.y = Math.random(); seg.castShadow = seg.receiveShadow = true; group.add(seg); y += h; r = rt; }
+    } else if (style === 'icecrystal') {
+        const iceMat = new THREE.MeshStandardMaterial({ color: 0xdceffa, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.92 });
+        const coreMat = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.7, transparent: true, opacity: 0.85 });
+        const main = new THREE.Mesh(new THREE.ConeGeometry(ob.r, colH, 6), coreMat); main.position.y = colH / 2; main.castShadow = true; group.add(main);
+        for (let i = 0; i < 5; i++) { const h = colH * (0.4 + Math.random() * 0.4); const sh = new THREE.Mesh(new THREE.ConeGeometry(ob.r * 0.5, h, 5), iceMat); const a = i / 5 * 6.283; sh.position.set(Math.cos(a) * ob.r * 0.9, h / 2, Math.sin(a) * ob.r * 0.9); sh.rotation.z = (Math.random() - 0.5) * 0.5; sh.castShadow = true; group.add(sh); }
+        const l = new THREE.PointLight(theme.accent, 0.4, 220); l.position.y = colH * 0.6; l.layers.enableAll(); group.add(l);
+    } else { // stone / marble — fluted shaft, plinth + capital
+        const isMarble = style === 'marble';
+        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(ob.r, ob.r * 1.06, colH, isMarble ? 20 : 16),
+            new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: isMarble ? 0.5 : 0.85, metalness: 0.02 }));
+        shaft.position.y = colH / 2; shaft.castShadow = shaft.receiveShadow = true; group.add(shaft);
+        const baseMat = new THREE.MeshStandardMaterial({ color: theme.capColor, roughness: 0.85, metalness: 0.02 });
+        const plinth = new THREE.Mesh(new THREE.BoxGeometry(ob.r * 2.7, 18, ob.r * 2.7), baseMat); plinth.position.y = 9; plinth.castShadow = plinth.receiveShadow = true; group.add(plinth);
+        const capital = new THREE.Mesh(new THREE.BoxGeometry(ob.r * 2.7, 16, ob.r * 2.7), baseMat); capital.position.y = colH - 8; capital.castShadow = true; group.add(capital);
+        if (!isMarble) { // glowing accent orb crowns non-marble stone columns
+            const orb = new THREE.Mesh(new THREE.SphereGeometry(ob.r * 0.55, 12, 12), new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.9 }));
+            orb.position.y = colH + ob.r * 0.5; group.add(orb);
+            const l = new THREE.PointLight(theme.accent, 0.5, 220); l.position.y = colH + ob.r * 0.5; l.layers.enableAll(); group.add(l);
+        }
+    }
     group.position.set(worldX(ob.x), 0, worldZ(ob.y));
     mapGroup.add(group);
     return group;
 }
 
 // A solid block: short ones read as jump-on cover platforms, tall ones as
-// full interior walls (collision is the same — you can only get on top of
-// something within jump reach). Textured with the ribbed wall panel and
-// capped with a glowing accent trim so the top edge is clear to aim for.
-function buildPlatformMesh(p, accent) {
+// full interior walls (collision is the same). Uses the theme wall texture
+// so interior cover matches the perimeter, with a glowing accent-trimmed top.
+function buildPlatformMesh(p, theme) {
     const group = new THREE.Group();
-    const tex = getWallTexture(accent).clone();
+    const tex = getWallTexture(theme).clone();
     tex.needsUpdate = true;
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(Math.max(1, Math.round(p.hw / 40)), Math.max(1, Math.round(p.height / 60)));
+    const metalish = theme.wallTex === 'metal';
     const slab = new THREE.Mesh(
         new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2),
-        new THREE.MeshStandardMaterial({ map: tex, color: 0x8fa0c0, roughness: 0.7, metalness: 0.35 })
+        new THREE.MeshStandardMaterial({ map: tex, color: theme.wallColor, roughness: metalish ? 0.5 : 0.85, metalness: metalish ? 0.5 : 0.04 })
     );
     slab.position.y = p.height / 2;
     slab.castShadow = true; slab.receiveShadow = true;
@@ -1611,7 +1742,7 @@ function buildPlatformMesh(p, accent) {
 
     const trim = new THREE.Mesh(
         new THREE.BoxGeometry(p.hw * 2 + 3, 3, p.hd * 2 + 3),
-        new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.7 })
+        new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.7 })
     );
     trim.position.y = p.height;
     group.add(trim);
@@ -1622,11 +1753,11 @@ function buildPlatformMesh(p, accent) {
 }
 
 // Solid stair block, floor-to-top — always walkable, no jump required.
-function buildStepMesh(t, accent) {
+function buildStepMesh(t, theme) {
     const group = new THREE.Group();
     const slab = new THREE.Mesh(
         new THREE.BoxGeometry(t.hw * 2, Math.max(6, t.height), t.hd * 2),
-        new THREE.MeshStandardMaterial({ color: 0x1c2438, roughness: 0.85 })
+        new THREE.MeshStandardMaterial({ color: theme.stepColor, roughness: 0.85 })
     );
     slab.position.y = t.height / 2;
     slab.castShadow = true; slab.receiveShadow = true;
@@ -1634,7 +1765,7 @@ function buildStepMesh(t, accent) {
 
     const trim = new THREE.Mesh(
         new THREE.BoxGeometry(t.hw * 2 + 1.5, 1.5, t.hd * 2 + 1.5),
-        new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.5, transparent: true, opacity: 0.7 })
+        new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.5, transparent: true, opacity: 0.7 })
     );
     trim.position.y = t.height;
     group.add(trim);
@@ -1650,12 +1781,12 @@ function buildStepMesh(t, accent) {
 // plus a thin sloped surface on top, so there's no open gap to see or
 // walk through underneath — only a real box primitive is used, since a
 // single hand-rolled wedge mesh risks inverted normals I can't preview.
-function buildRampMesh(t, accent) {
+function buildRampMesh(t, theme) {
     const group = new THREE.Group();
     const length = t.axis === 'x' ? t.hw * 2 : t.hd * 2;
     const width = t.axis === 'x' ? t.hd * 2 : t.hw * 2;
     const angle = Math.atan2(t.to - t.from, length);
-    const supportMat = new THREE.MeshStandardMaterial({ color: 0x1c2438, roughness: 0.85 });
+    const supportMat = new THREE.MeshStandardMaterial({ color: theme.stepColor, roughness: 0.85 });
 
     const SEGMENTS = 6;
     for (let i = 0; i < SEGMENTS; i++) {
@@ -1676,7 +1807,7 @@ function buildRampMesh(t, accent) {
 
     const surface = new THREE.Mesh(
         new THREE.BoxGeometry(length, 4, width),
-        new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.35, transparent: true, opacity: 0.85 })
+        new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.35, transparent: true, opacity: 0.85 })
     );
     surface.position.y = (t.from + t.to) / 2;
     if (t.axis === 'x') surface.rotation.z = angle; else surface.rotation.x = -angle;
@@ -1710,37 +1841,58 @@ let floorMesh = null, floorBaseSize = null;
 let mapEdgeObjects = [];
 let outerWalls = []; // {mesh, side, baseLen} — the 4 enclosing walls; syncArenaCollapse slides + scales them inward as the arena closes
 
-// One enclosing perimeter rampart along a side of the arena, open to the
-// sky above. A stone wall body plus a darker coping cap and a row of
-// battlement merlons along the top, so the arena reads as a sunlit fortress
-// courtyard. side is 'left'|'right'|'top'|'bottom'. Returned (as a group)
-// so syncArenaCollapse can slide/scale it inward. The children keep the
-// wall's full base length so a uniform group.scale along the run works.
-function buildOuterWall(side, accent) {
+// One enclosing perimeter wall along a side of the arena, open to the sky.
+// The wall BODY material + the TOP silhouette both vary by theme.wallStyle
+// (castle battlements, tech rail, desert ziggurat setbacks, marble+ivy,
+// jagged rock teeth, or ice spikes) so each arena's skyline is distinct.
+// side is 'left'|'right'|'top'|'bottom'. Returned as a group so
+// syncArenaCollapse can slide/scale it; children keep the full base length
+// so a uniform group.scale along local X shrinks the run.
+function buildOuterWall(side, theme) {
     const runX = (side === 'top' || side === 'bottom');
     const along = runX ? (ARENA_RIGHT - ARENA_LEFT) : (ARENA_BOTTOM - ARENA_TOP);
-    const wtex = getWallTexture(accent).clone(); wtex.needsUpdate = true; wtex.wrapS = wtex.wrapT = THREE.RepeatWrapping;
+    const wtex = getWallTexture(theme).clone(); wtex.needsUpdate = true; wtex.wrapS = wtex.wrapT = THREE.RepeatWrapping;
     wtex.repeat.set(Math.max(3, Math.round(along / 80)), Math.max(2, Math.round(WALL_HEIGHT / 80)));
     const thick = 18;
     const group = new THREE.Group();
-    const bodyMat = new THREE.MeshStandardMaterial({ map: wtex, color: 0xcbb790, roughness: 0.92, metalness: 0.02 });
-    const capMat = getCachedMaterial('wallCapMat', () => new THREE.MeshStandardMaterial({ color: 0x9c8763, roughness: 0.9 }));
-    // Local space: the run is along the group's local X; buildOuterWall's
-    // caller rotates the group for left/right sides.
+    const metalish = theme.wallTex === 'metal';
+    const bodyMat = new THREE.MeshStandardMaterial({ map: wtex, color: theme.wallColor, roughness: metalish ? 0.5 : 0.9, metalness: metalish ? 0.5 : 0.03 });
+    const capMat = new THREE.MeshStandardMaterial({ color: theme.capColor, roughness: 0.85, metalness: metalish ? 0.4 : 0.03 });
     const body = new THREE.Mesh(new THREE.BoxGeometry(along, WALL_HEIGHT, thick), bodyMat);
     body.position.y = WALL_HEIGHT / 2; body.receiveShadow = true; body.castShadow = true;
     group.add(body);
     const cap = new THREE.Mesh(new THREE.BoxGeometry(along, 12, thick + 8), capMat);
     cap.position.y = WALL_HEIGHT + 6; cap.castShadow = true;
     group.add(cap);
-    // Battlement merlons across the top.
-    const merlonN = Math.max(4, Math.round(along / 90));
-    const merlonMat = capMat;
-    for (let i = 0; i < merlonN; i++) {
-        const mx = -along / 2 + (i + 0.5) * (along / merlonN);
-        const merlon = new THREE.Mesh(new THREE.BoxGeometry(along / merlonN * 0.5, 24, thick + 6), merlonMat);
-        merlon.position.set(mx, WALL_HEIGHT + 24, 0); merlon.castShadow = true;
-        group.add(merlon);
+    const topY = WALL_HEIGHT + 12;
+    const N = Math.max(4, Math.round(along / 90));
+    const seg = along / N;
+    const addTop = (w, h, d, x, y, mat) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat || capMat); m.position.set(x, y, 0); m.castShadow = true; group.add(m); return m; };
+    const style = theme.wallStyle;
+    if (style === 'battlement') {
+        for (let i = 0; i < N; i++) addTop(seg * 0.5, 24, thick + 6, -along / 2 + (i + 0.5) * seg, topY + 12);
+    } else if (style === 'techrail') {
+        // flat, with a bright glowing accent rail just above the cap
+        const railMat = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 1.1 });
+        addTop(along, 5, thick + 10, 0, topY + 4, railMat);
+        for (let i = 0; i < N; i++) addTop(6, 16, thick + 8, -along / 2 + (i + 0.5) * seg, topY + 12, capMat); // posts
+    } else if (style === 'ziggurat') {
+        // stepped setback terraces
+        addTop(along, 14, thick - 4, 0, topY + 7, capMat);
+        addTop(along, 12, thick - 12, 0, topY + 19, bodyMat);
+    } else if (style === 'ivy') {
+        // smooth rounded coping + a draped green ivy trim
+        const cop = new THREE.Mesh(new THREE.CylinderGeometry(9, 9, along, 12), capMat);
+        cop.rotation.z = Math.PI / 2; cop.position.y = topY + 4; cop.castShadow = true; group.add(cop);
+        const ivyMat = new THREE.MeshStandardMaterial({ color: 0x4c8a3c, roughness: 0.9 });
+        for (let i = 0; i < N * 2; i++) addTop(seg * 0.35, 10 + Math.random() * 20, thick + 4, -along / 2 + (i + 0.5) * seg * 0.5, WALL_HEIGHT - 12 - Math.random() * 20, ivyMat);
+    } else if (style === 'jagged') {
+        // irregular rock teeth
+        for (let i = 0; i < N * 1.5; i++) { const h = 14 + Math.random() * 40; addTop(seg * (0.4 + Math.random() * 0.4), h, thick + 4, -along / 2 + (i + 0.5) * (along / (N * 1.5)), topY + h / 2, bodyMat); }
+    } else if (style === 'crystal') {
+        // angular ice spikes
+        const iceMat = new THREE.MeshStandardMaterial({ color: 0xdfeffa, roughness: 0.25, metalness: 0.1, transparent: true, opacity: 0.9 });
+        for (let i = 0; i < N * 1.5; i++) { const h = 22 + Math.random() * 34; const sp = new THREE.Mesh(new THREE.ConeGeometry(seg * 0.28, h, 5), iceMat); sp.position.set(-along / 2 + (i + 0.5) * (along / (N * 1.5)), topY + h / 2, 0); sp.rotation.y = Math.random(); sp.castShadow = true; group.add(sp); }
     }
     group.rotation.y = runX ? 0 : Math.PI / 2; // left/right walls run along world Z
     mapGroup.add(group);
@@ -1755,12 +1907,16 @@ function loadMap(map) {
     outerWalls = [];
     sceneryFlames.length = 0; // drop references to the previous map's (now-disposed) brazier flames
 
-    const accent = hexNum(map.accent);
-    const floorTex = getFloorTexture(map, accent);
+    const theme = themeFor(map);
+    applySky(theme);       // recolor the sky dome + sun for this map's time-of-day
+    applyLighting(theme);  // recolor/re-aim the daylight
+    scene.fog.color.set(theme.fog.color); scene.fog.near = theme.fog.near; scene.fog.far = theme.fog.far;
+
+    const floorTex = getFloorTexture(theme);
     floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
     floorBaseSize = { w: ARENA_RIGHT - ARENA_LEFT, d: ARENA_BOTTOM - ARENA_TOP };
     floorTex.repeat.set(floorBaseSize.w / 190, floorBaseSize.d / 190);
-    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, color: 0xd8cdb2, roughness: 0.95, metalness: 0.02 });
+    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, color: theme.floorColor, roughness: theme.floorTex === 'ice' ? 0.4 : 0.95, metalness: theme.floorTex === 'techgrid' ? 0.4 : 0.02 });
     floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it
     floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d), floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
@@ -1768,25 +1924,20 @@ function loadMap(map) {
     floorMesh.receiveShadow = true;
     mapGroup.add(floorMesh);
 
-    outerWalls.push(buildOuterWall('left', accent));
-    outerWalls.push(buildOuterWall('right', accent));
-    outerWalls.push(buildOuterWall('top', accent));
-    outerWalls.push(buildOuterWall('bottom', accent));
+    outerWalls.push(buildOuterWall('left', theme));
+    outerWalls.push(buildOuterWall('right', theme));
+    outerWalls.push(buildOuterWall('top', theme));
+    outerWalls.push(buildOuterWall('bottom', theme));
     syncOuterWalls(); // place them at the full-arena bounds initially
 
     OBSTACLES = map.obstacles.slice(); // copy: buildScenery pushes collidable props onto this, and we must not mutate the source map
     TERRAIN = map.terrain;
     PLATFORMS = map.platforms;
 
-    map.obstacles.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, accent), x: ob.x, y: ob.y }));
-    TERRAIN.forEach(t => mapEdgeObjects.push({ mesh: (t.type === 'ramp' ? buildRampMesh : buildStepMesh)(t, accent), x: t.x, y: t.y }));
-    PLATFORMS.forEach(p => mapEdgeObjects.push({ mesh: buildPlatformMesh(p, accent), x: p.x, y: p.y }));
-    buildScenery(map, accent); // decorative + collidable props (braziers, crates, banners, statues…)
-
-    // Daytime haze, tinted a little toward this map's accent for mood, but
-    // kept light — the sky dome supplies the background, so we don't paint it
-    // over with a dark color anymore.
-    scene.fog.color.copy(new THREE.Color(0xbfe0ff).lerp(new THREE.Color(accent), 0.12));
+    map.obstacles.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, theme), x: ob.x, y: ob.y }));
+    TERRAIN.forEach(t => mapEdgeObjects.push({ mesh: (t.type === 'ramp' ? buildRampMesh : buildStepMesh)(t, theme), x: t.x, y: t.y }));
+    PLATFORMS.forEach(p => mapEdgeObjects.push({ mesh: buildPlatformMesh(p, theme), x: p.x, y: p.y }));
+    buildScenery(map, theme); // decorative + collidable props, themed per map
 
     assertSpawnsClear(map);
 }
@@ -1890,42 +2041,102 @@ function buildBanner(side, accent) {
     rod.rotation.z = Math.PI / 2; rod.position.y = WALL_HEIGHT * 0.55 + 62; g.add(rod);
     return g;
 }
-function buildScenery(map, accent) {
-    const L = ARENA_LEFT, R = ARENA_RIGHT, T = ARENA_TOP, B = ARENA_BOTTOM;
+// --- Themed nature/tech props for the non-castle arenas ---
+function buildBush(theme) {
+    const g = new THREE.Group();
+    const leaf = new THREE.MeshStandardMaterial({ color: 0x4f9440, roughness: 0.92 });
+    for (let i = 0; i < 4; i++) { const s = 10 + Math.random() * 8; const b = new THREE.Mesh(new THREE.SphereGeometry(s, 8, 7), leaf); b.position.set((Math.random() - 0.5) * 16, 10 + Math.random() * 10, (Math.random() - 0.5) * 16); b.castShadow = true; g.add(b); }
+    return g;
+}
+function buildBoulder(theme) {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: 0.96 });
+    const r = 18 + Math.random() * 8;
+    const b = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), mat);
+    b.scale.set(1, 0.78 + Math.random() * 0.3, 1.12); b.position.y = r * 0.7; b.rotation.set(Math.random(), Math.random(), Math.random());
+    b.castShadow = b.receiveShadow = true; g.add(b);
+    return g;
+}
+function buildRock(theme) {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: 0.95 });
+    const r = 12 + Math.random() * 5;
+    const b = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), mat);
+    b.scale.set(1, 0.7, 1); b.position.y = r * 0.6; b.rotation.set(Math.random(), Math.random(), Math.random());
+    b.castShadow = b.receiveShadow = true; g.add(b);
+    return g;
+}
+function buildIceShard(theme) {
+    const g = new THREE.Group();
+    const ice = new THREE.MeshStandardMaterial({ color: 0xdcf0fb, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.9 });
+    const core = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.6, transparent: true, opacity: 0.85 });
+    for (let i = 0; i < 4; i++) { const h = 28 + Math.random() * 38; const c = new THREE.Mesh(new THREE.ConeGeometry(6 + Math.random() * 4, h, 5), i === 0 ? core : ice); c.position.set((Math.random() - 0.5) * 14, h / 2, (Math.random() - 0.5) * 14); c.rotation.z = (Math.random() - 0.5) * 0.4; c.castShadow = true; g.add(c); }
+    const l = new THREE.PointLight(theme.accent, 0.3, 160); l.position.y = 30; l.layers.enableAll(); g.add(l);
+    return g;
+}
+function buildTechPylon(theme) {
+    const g = new THREE.Group();
+    const metal = new THREE.MeshStandardMaterial({ color: 0x2b3a52, roughness: 0.4, metalness: 0.7 });
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(12, 16, 10, 8), metal); base.position.y = 5; base.castShadow = true; g.add(base);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(10, 54, 10), metal); post.position.y = 32; post.castShadow = true; g.add(post);
+    const coreMat = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 1.1 });
+    const core = new THREE.Mesh(new THREE.BoxGeometry(4.5, 44, 4.5), coreMat); core.position.y = 32; g.add(core);
+    const orb = new THREE.Mesh(new THREE.OctahedronGeometry(7, 0), coreMat); orb.position.y = 64; g.add(orb);
+    const l = new THREE.PointLight(theme.accent, 0.7, 240); l.position.y = 60; l.layers.enableAll(); g.add(l);
+    return g;
+}
+function _makeProp(type, theme) {
+    switch (type) {
+        case 'barrel': return buildBarrel(theme.accent);
+        case 'urn': return buildUrn(theme.accent);
+        case 'bush': return buildBush(theme);
+        case 'rock': return buildRock(theme);
+        case 'boulder': return buildBoulder(theme);
+        case 'shard': return buildIceShard(theme);
+        case 'pylon': return buildTechPylon(theme);
+        default: return buildCrate(theme.accent);
+    }
+}
+function _propRadius(type) { return { barrel: 16, urn: 15, bush: 18, rock: 16, boulder: 22, shard: 16, pylon: 14 }[type] || 20; }
+
+function buildScenery(map, theme) {
+    const L = ARENA_LEFT, R = ARENA_RIGHT, T = ARENA_TOP, B = ARENA_BOTTOM, accent = theme.accent, sc = theme.scenery;
     const addSolid = (mesh, x, y, r) => {
         mesh.position.set(worldX(x), 0, worldZ(y)); mesh.rotation.y = Math.random() * Math.PI;
         mapGroup.add(mesh); OBSTACLES.push({ x, y, r, seed: 0 }); mapEdgeObjects.push({ mesh, x, y });
     };
-    // Corner braziers (solid), inset from the walls.
+    // Corner accent prop varies by theme (a fire brazier for stone arenas, a
+    // glowing pylon / ice shard / boulder / bush otherwise).
+    const cornerBuild = { tech: () => buildTechPylon(theme), ice: () => buildIceShard(theme), canyon: () => buildBoulder(theme), grove: () => buildBush(theme) }[sc] || (() => buildBrazier(accent));
     const inset = 110;
     for (const [x, y] of [[L + inset, T + inset], [R - inset, T + inset], [L + inset, B - inset], [R - inset, B - inset]]) {
         if (nearSpawnPt(map, x, y, 90) || spotBlocked(x, y, 30)) continue;
-        addSolid(buildBrazier(accent), x, y, 14);
+        addSolid(cornerBuild(), x, y, sc === 'canyon' ? 20 : 14);
     }
-    // Crates / barrels / urns scattered near the edges (solid). Candidate
-    // spots are skipped if they'd sit on a spawn or clip existing geometry.
-    const candidates = [
-        ['crate', L + 200, T + 90], ['barrel', R - 200, T + 90],
-        ['barrel', L + 90, (T + B) / 2 - 120], ['crate', R - 90, (T + B) / 2 + 120],
-        ['urn', L + 200, B - 90], ['crate', R - 200, B - 90],
-        ['barrel', (L + R) / 2 - 150, T + 100], ['crate', (L + R) / 2 + 150, B - 100],
-        ['urn', (L + R) / 2, T + 110], ['barrel', (L + R) / 2, B - 110]
+    // Scattered solid props (theme-specific set), skipping spawns/geometry.
+    const set = {
+        tech: ['pylon', 'crate', 'pylon', 'crate'], temple: ['urn', 'crate', 'urn', 'barrel'],
+        castle: ['crate', 'barrel', 'urn', 'crate'], grove: ['bush', 'rock', 'urn', 'bush'],
+        canyon: ['rock', 'boulder', 'rock', 'bush'], ice: ['shard', 'crate', 'shard', 'crate']
+    }[sc] || ['crate', 'barrel'];
+    const spots = [
+        [L + 200, T + 90], [R - 200, T + 90], [L + 90, (T + B) / 2 - 120], [R - 90, (T + B) / 2 + 120],
+        [L + 200, B - 90], [R - 200, B - 90], [(L + R) / 2 - 150, T + 100], [(L + R) / 2 + 150, B - 100],
+        [(L + R) / 2, T + 110], [(L + R) / 2, B - 110]
     ];
-    for (const [type, x, y] of candidates) {
-        const r = type === 'barrel' ? 16 : (type === 'urn' ? 15 : 20);
-        if (nearSpawnPt(map, x, y, 80) || spotBlocked(x, y, r + 8)) continue;
-        addSolid(type === 'barrel' ? buildBarrel(accent) : (type === 'urn' ? buildUrn(accent) : buildCrate(accent)), x, y, r);
-    }
-    // Wall banners (decorative) centered on each wall's inner face.
-    const midX = (L + R) / 2, midY = (T + B) / 2, off = 12;
-    const banners = [
-        [midX, T + off, 0], [midX, B - off, Math.PI],
-        [L + off, midY, -Math.PI / 2], [R - off, midY, Math.PI / 2]
-    ];
-    for (const [x, y, rot] of banners) {
-        const bn = buildBanner(null, accent);
-        bn.position.set(worldX(x), 0, worldZ(y)); bn.rotation.y = rot;
-        mapGroup.add(bn); mapEdgeObjects.push({ mesh: bn, x, y });
+    spots.forEach(([x, y], i) => {
+        const type = set[i % set.length], r = _propRadius(type);
+        if (nearSpawnPt(map, x, y, 80) || spotBlocked(x, y, r + 8)) return;
+        addSolid(_makeProp(type, theme), x, y, r);
+    });
+    // Wall banners only for the built/stone arenas (castle/temple/colosseum).
+    if (sc === 'castle' || sc === 'temple' || sc === 'grove') {
+        const midX = (L + R) / 2, midY = (T + B) / 2, off = 12;
+        for (const [x, y, rot] of [[midX, T + off, 0], [midX, B - off, Math.PI], [L + off, midY, -Math.PI / 2], [R - off, midY, Math.PI / 2]]) {
+            const bn = buildBanner(null, accent);
+            bn.position.set(worldX(x), 0, worldZ(y)); bn.rotation.y = rot;
+            mapGroup.add(bn); mapEdgeObjects.push({ mesh: bn, x, y });
+        }
     }
 }
 function updateScenery(dt) {
