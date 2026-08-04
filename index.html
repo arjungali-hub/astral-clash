@@ -1378,8 +1378,8 @@ function applyLighting(theme) {
 // you can tell which arena you're in at a glance. All are DAYTIME (varying
 // from cool clear midday to warm golden hour, never night). ---
 const MAP_THEMES = {
-    // Cyan energy proving ground — dark steel + glowing seams, clear cool midday.
-    'Astral Proving Grounds': {
+    // Cyan energy arena — dark steel + glowing seams, clear cool midday.
+    'Voltaic Nexus': {
         id: 'astral', wallStyle: 'techrail', wallTex: 'metal', wallColor: 0x3a557e, capColor: 0x22314c,
         floorTex: 'techgrid', floorColor: 0xaecbe6, column: 'pylon', stoneColor: 0x3a557e, stepColor: 0x2a3a58,
         sky: ['#1a4fd0', '#3f86e6', '#87bff2', '#cfeaff'],
@@ -1431,6 +1431,42 @@ const MAP_THEMES = {
         sun: { color: 0xeef8ff, pos: [-1400, 2700, 1500], int: 1.65, size: 760 },
         hemi: { sky: 0xeaf7ff, ground: 0x6a8494, int: 0.9 }, ambient: { color: 0xcfe6f2, int: 0.6 },
         fog: { color: 0xdcf0fa, near: 1500, far: 5200 }, scenery: 'ice'
+    },
+    // Volcanic foundry — black basalt with glowing lava seams, smoky warm daylight.
+    'Molten Foundry': {
+        id: 'volcanic', wallStyle: 'jagged', wallTex: 'basalt', wallColor: 0x2e2a33, capColor: 0x1a1720,
+        floorTex: 'lava', floorColor: 0x403a46, column: 'redspire', stoneColor: 0x2a2530, stepColor: 0x241f28,
+        sky: ['#5f5560', '#9a6a55', '#c88a5a', '#e0b487'],
+        sun: { color: 0xff9a50, pos: [-1600, 2200, 1300], int: 1.35, size: 840 },
+        hemi: { sky: 0xd9a878, ground: 0x3a2a28, int: 0.85 }, ambient: { color: 0xc78a60, int: 0.55 },
+        fog: { color: 0xc79070, near: 1100, far: 4200 }, scenery: 'volcanic'
+    },
+    // Overgrown jungle ruins — mossy grey-green stone + vines, humid green daylight.
+    'Overgrown Sanctuary': {
+        id: 'jungle', wallStyle: 'ivy', wallTex: 'mossstone', wallColor: 0x8a9478, capColor: 0x6a7458,
+        floorTex: 'jungle', floorColor: 0x6f8a4a, column: 'stone', stoneColor: 0x7a856a, stepColor: 0x4a5540,
+        sky: ['#5a86b0', '#8fae86', '#b6cf9a', '#dbe8bf'],
+        sun: { color: 0xfff0c8, pos: [-1400, 2500, 1500], int: 1.45, size: 780 },
+        hemi: { sky: 0xcfe0b8, ground: 0x3a4a2a, int: 0.95 }, ambient: { color: 0xbccf9a, int: 0.6 },
+        fog: { color: 0xcfe0b0, near: 1300, far: 4600 }, scenery: 'jungle'
+    },
+    // Sky temple — white marble + gold, bright airy pastel dawn.
+    'Skyward Temple': {
+        id: 'celestial', wallStyle: 'gilded', wallTex: 'cloudmarble', wallColor: 0xf2ecdd, capColor: 0xd9b24a,
+        floorTex: 'cloud', floorColor: 0xeee6d2, column: 'marble', stoneColor: 0xf3ecdc, stepColor: 0xd8cfb8,
+        sky: ['#6aa6e6', '#a9c8f0', '#e6c6d8', '#f7e6c8'],
+        sun: { color: 0xfff0d0, pos: [-1300, 3000, 1500], int: 1.7, size: 860 },
+        hemi: { sky: 0xeaf0ff, ground: 0xc8b88a, int: 1.0 }, ambient: { color: 0xe8e0f0, int: 0.6 },
+        fog: { color: 0xeee0e8, near: 1800, far: 5600 }, scenery: 'celestial'
+    },
+    // Coral reef hollow — pink coral stone + turquoise, bright tropical daylight.
+    'Coral Hollow': {
+        id: 'coral', wallStyle: 'crystal', wallTex: 'coralstone', wallColor: 0xe6a890, capColor: 0xd98a78,
+        floorTex: 'coralsand', floorColor: 0xbfe8dc, column: 'icecrystal', stoneColor: 0xf2b0a0, stepColor: 0xc98a78,
+        sky: ['#2fb0d8', '#6fd0e6', '#bfeaf0', '#f0f8e8'],
+        sun: { color: 0xfffbe8, pos: [-1400, 2800, 1400], int: 1.7, size: 800 },
+        hemi: { sky: 0xdff6ff, ground: 0x4a7a70, int: 0.95 }, ambient: { color: 0xcfeee8, int: 0.6 },
+        fog: { color: 0xd6f0ee, near: 1700, far: 5400 }, scenery: 'coral'
     }
 };
 function themeFor(map) {
@@ -1596,6 +1632,21 @@ function getWallTexture(theme) {
         _blockWall(g, ['#ece4d2', '#e4dbc6', '#f0e8d8', '#dfd6c0'], '#c9bfa8', _marbleVeins);
     } else if (theme.wallTex === 'redrock') {
         _blockWall(g, ['#b0623a', '#a25631', '#bd6e42', '#98502e'], '#6f3a22', _redStrata);
+    } else if (theme.wallTex === 'basalt') {
+        _blockWall(g, ['#2e2a33', '#262230', '#332e3a', '#221e2a'], '#15121a', null);
+        g.strokeStyle = 'rgba(255,110,30,0.85)'; g.lineWidth = 2; // glowing lava seams
+        for (let i = 0; i < 6; i++) { let x = Math.random() * 256, y = Math.random() * 256; g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 4; s++) { x += Math.random() * 50 - 25; y += Math.random() * 50 - 25; g.lineTo(x, y); } g.stroke(); }
+        g.fillStyle = 'rgba(255,170,60,0.7)'; for (let i = 0; i < 22; i++) g.fillRect(Math.random() * 256, Math.random() * 256, 3, 3);
+    } else if (theme.wallTex === 'mossstone') {
+        _blockWall(g, ['#8f9878', '#849072', '#98a082', '#7c886c'], '#4a5240', _speckle('#6a7452'));
+        g.fillStyle = 'rgba(70,110,50,0.4)';
+        for (let i = 0; i < 10; i++) { g.beginPath(); g.ellipse(Math.random() * 256, Math.random() * 256, 10 + Math.random() * 14, 6 + Math.random() * 8, Math.random() * 3, 0, 6.283); g.fill(); }
+    } else if (theme.wallTex === 'cloudmarble') {
+        _blockWall(g, ['#f4eee0', '#efe8d8', '#f6f0e4', '#eae2d2'], '#d8cfba', (g, bx, by, bw, bh) => { g.strokeStyle = 'rgba(200,165,80,0.35)'; g.lineWidth = 1; g.beginPath(); g.moveTo(bx + Math.random() * bw, by); g.lineTo(bx + Math.random() * bw, by + bh); g.stroke(); });
+    } else if (theme.wallTex === 'coralstone') {
+        _blockWall(g, ['#e8b09a', '#dfa088', '#eeb8a2', '#d89680'], '#b07a68', _speckle('#c98a76'));
+        g.fillStyle = 'rgba(150,90,75,0.3)';
+        for (let i = 0; i < 40; i++) { g.beginPath(); g.arc(Math.random() * 256, Math.random() * 256, 1.5 + Math.random() * 2, 0, 6.283); g.fill(); }
     } else { // ashlar granite
         _blockWall(g, ['#9aa0a8', '#8f959e', '#a2a8b0', '#888e97'], '#5c626c', _speckle('#7a808a'));
         g.fillStyle = hexToCss(theme.accent, 0.45); g.fillRect(0, 214, 256, 6);
@@ -1640,6 +1691,28 @@ function getFloorTexture(theme) {
         g.fillStyle = '#c87a4a'; g.fillRect(0, 0, 256, 256);
         for (let y = 0; y < 256; y += 10) { g.fillStyle = `rgba(120,60,35,${0.08 + (y % 30 === 0 ? 0.12 : 0)})`; g.fillRect(0, y, 256, 5); }
         for (let i = 0; i < 400; i++) { g.fillStyle = `rgba(${180 + Math.random() * 40 | 0},${90 + Math.random() * 40 | 0},${50 + Math.random() * 30 | 0},0.15)`; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
+    } else if (theme.floorTex === 'lava') {
+        g.fillStyle = '#332e38'; g.fillRect(0, 0, 256, 256);
+        for (let i = 0; i < 60; i++) { g.fillStyle = `rgba(${30 + Math.random() * 25 | 0},${26 + Math.random() * 20 | 0},${34 + Math.random() * 20 | 0},0.5)`; g.beginPath(); g.arc(Math.random() * 256, Math.random() * 256, 6 + Math.random() * 12, 0, 6.283); g.fill(); }
+        g.strokeStyle = 'rgba(255,105,25,0.9)'; g.lineWidth = 3;
+        for (let i = 0; i < 5; i++) { let x = Math.random() * 256, y = Math.random() * 256; g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 5; s++) { x += Math.random() * 60 - 30; y += Math.random() * 60 - 30; g.lineTo(x, y); } g.stroke(); }
+        g.fillStyle = 'rgba(255,180,70,0.85)'; for (let i = 0; i < 30; i++) g.fillRect(Math.random() * 256, Math.random() * 256, 3, 3);
+    } else if (theme.floorTex === 'jungle') {
+        g.fillStyle = '#5f7a3f'; g.fillRect(0, 0, 256, 256);
+        for (let i = 0; i < 6; i++) { g.fillStyle = 'rgba(105,80,48,0.5)'; g.beginPath(); g.ellipse(Math.random() * 256, Math.random() * 256, 20 + Math.random() * 20, 14 + Math.random() * 12, Math.random() * 3, 0, 6.283); g.fill(); }
+        for (let i = 0; i < 1800; i++) { g.fillStyle = `rgba(${40 + Math.random() * 60 | 0},${80 + Math.random() * 70 | 0},${30 + Math.random() * 40 | 0},0.5)`; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2.6); }
+        for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(${150 + Math.random() * 60 | 0},${130 + Math.random() * 50 | 0},${40 + Math.random() * 30 | 0},0.35)`; g.fillRect(Math.random() * 256, Math.random() * 256, 4, 2); } // fallen leaves
+    } else if (theme.floorTex === 'cloud') {
+        _floorSlabs(g, ['#f2ece0', '#ece5d6', '#f6f0e6', '#e8e0d0'], '#d8cfba', 'rgba(255,255,255,0.22)');
+        g.strokeStyle = 'rgba(200,165,80,0.55)'; g.lineWidth = 2.5; // gold inlay along the joints
+        g.beginPath(); g.moveTo(128, 0); g.lineTo(128, 256); g.moveTo(0, 128); g.lineTo(256, 128); g.stroke();
+        g.fillStyle = 'rgba(210,175,90,0.7)'; for (const [x, y] of [[128, 128], [0, 128], [128, 0], [0, 0]]) { g.beginPath(); g.arc(x, y, 4, 0, 6.283); g.fill(); }
+    } else if (theme.floorTex === 'coralsand') {
+        const gr = g.createLinearGradient(0, 0, 256, 256); gr.addColorStop(0, '#cdeee2'); gr.addColorStop(1, '#b6e2d8');
+        g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+        g.strokeStyle = 'rgba(120,190,180,0.35)'; g.lineWidth = 2;
+        for (let y = 14; y < 256; y += 34) { g.beginPath(); for (let x = 0; x <= 256; x += 8) g.lineTo(x, y + Math.sin(x * 0.05 + y) * 4); g.stroke(); }
+        for (let i = 0; i < 30; i++) { g.fillStyle = `rgba(${230 + Math.random() * 20 | 0},${140 + Math.random() * 50 | 0},${140 + Math.random() * 40 | 0},0.4)`; g.beginPath(); g.arc(Math.random() * 256, Math.random() * 256, 2 + Math.random() * 3, 0, 6.283); g.fill(); } // coral/shell flecks
     } else if (theme.floorTex === 'ice') {
         const gr = g.createLinearGradient(0, 0, 256, 256); gr.addColorStop(0, '#e2f2fb'); gr.addColorStop(1, '#c3e2f0');
         g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
@@ -1698,7 +1771,7 @@ function buildPillarMesh(ob, theme) {
         let y = 0, r = ob.r * 1.15;
         for (let i = 0; i < 5; i++) { const h = colH / 5, rt = r * 0.82; const seg = new THREE.Mesh(new THREE.CylinderGeometry(rt, r, h, 7), rockMat); seg.position.set((Math.random() - 0.5) * 6, y + h / 2, (Math.random() - 0.5) * 6); seg.rotation.y = Math.random(); seg.castShadow = seg.receiveShadow = true; group.add(seg); y += h; r = rt; }
     } else if (style === 'icecrystal') {
-        const iceMat = new THREE.MeshStandardMaterial({ color: 0xdceffa, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.92 });
+        const iceMat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.92 });
         const coreMat = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.7, transparent: true, opacity: 0.85 });
         const main = new THREE.Mesh(new THREE.ConeGeometry(ob.r, colH, 6), coreMat); main.position.y = colH / 2; main.castShadow = true; group.add(main);
         for (let i = 0; i < 5; i++) { const h = colH * (0.4 + Math.random() * 0.4); const sh = new THREE.Mesh(new THREE.ConeGeometry(ob.r * 0.5, h, 5), iceMat); const a = i / 5 * 6.283; sh.position.set(Math.cos(a) * ob.r * 0.9, h / 2, Math.sin(a) * ob.r * 0.9); sh.rotation.z = (Math.random() - 0.5) * 0.5; sh.castShadow = true; group.add(sh); }
@@ -1890,9 +1963,16 @@ function buildOuterWall(side, theme) {
         // irregular rock teeth
         for (let i = 0; i < N * 1.5; i++) { const h = 14 + Math.random() * 40; addTop(seg * (0.4 + Math.random() * 0.4), h, thick + 4, -along / 2 + (i + 0.5) * (along / (N * 1.5)), topY + h / 2, bodyMat); }
     } else if (style === 'crystal') {
-        // angular ice spikes
-        const iceMat = new THREE.MeshStandardMaterial({ color: 0xdfeffa, roughness: 0.25, metalness: 0.1, transparent: true, opacity: 0.9 });
-        for (let i = 0; i < N * 1.5; i++) { const h = 22 + Math.random() * 34; const sp = new THREE.Mesh(new THREE.ConeGeometry(seg * 0.28, h, 5), iceMat); sp.position.set(-along / 2 + (i + 0.5) * (along / (N * 1.5)), topY + h / 2, 0); sp.rotation.y = Math.random(); sp.castShadow = true; group.add(sp); }
+        // angular spikes (ice for the glacier, coral for the reef) — color
+        // follows the theme so the same silhouette reads as either material.
+        const spikeMat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: 0.3, metalness: 0.1, transparent: true, opacity: 0.92 });
+        for (let i = 0; i < N * 1.5; i++) { const h = 22 + Math.random() * 34; const sp = new THREE.Mesh(new THREE.ConeGeometry(seg * 0.28, h, 5), spikeMat); sp.position.set(-along / 2 + (i + 0.5) * (along / (N * 1.5)), topY + h / 2, 0); sp.rotation.y = Math.random(); sp.castShadow = true; group.add(sp); }
+    } else if (style === 'gilded') {
+        // smooth coping + gold finial posts (sky temple)
+        const cop = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, along, 12), capMat);
+        cop.rotation.z = Math.PI / 2; cop.position.y = topY + 3; cop.castShadow = true; group.add(cop);
+        const goldMat = new THREE.MeshStandardMaterial({ color: theme.capColor, roughness: 0.35, metalness: 0.6 });
+        for (let i = 0; i < N; i++) { const fx = -along / 2 + (i + 0.5) * seg; const post = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 18, 8), goldMat); post.position.set(fx, topY + 14, 0); group.add(post); const ball = new THREE.Mesh(new THREE.SphereGeometry(4.5, 8, 8), goldMat); ball.position.set(fx, topY + 26, 0); ball.castShadow = true; group.add(ball); }
     }
     group.rotation.y = runX ? 0 : Math.PI / 2; // left/right walls run along world Z
     mapGroup.add(group);
@@ -1916,7 +1996,8 @@ function loadMap(map) {
     floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
     floorBaseSize = { w: ARENA_RIGHT - ARENA_LEFT, d: ARENA_BOTTOM - ARENA_TOP };
     floorTex.repeat.set(floorBaseSize.w / 190, floorBaseSize.d / 190);
-    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, color: theme.floorColor, roughness: theme.floorTex === 'ice' ? 0.4 : 0.95, metalness: theme.floorTex === 'techgrid' ? 0.4 : 0.02 });
+    const shinyFloor = theme.floorTex === 'ice' || theme.floorTex === 'cloud' || theme.floorTex === 'coralsand';
+    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, color: theme.floorColor, roughness: shinyFloor ? 0.45 : 0.95, metalness: theme.floorTex === 'techgrid' ? 0.4 : 0.03 });
     floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it
     floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d), floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
@@ -2068,7 +2149,7 @@ function buildRock(theme) {
 }
 function buildIceShard(theme) {
     const g = new THREE.Group();
-    const ice = new THREE.MeshStandardMaterial({ color: 0xdcf0fb, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.9 });
+    const ice = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.9 });
     const core = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.6, transparent: true, opacity: 0.85 });
     for (let i = 0; i < 4; i++) { const h = 28 + Math.random() * 38; const c = new THREE.Mesh(new THREE.ConeGeometry(6 + Math.random() * 4, h, 5), i === 0 ? core : ice); c.position.set((Math.random() - 0.5) * 14, h / 2, (Math.random() - 0.5) * 14); c.rotation.z = (Math.random() - 0.5) * 0.4; c.castShadow = true; g.add(c); }
     const l = new THREE.PointLight(theme.accent, 0.3, 160); l.position.y = 30; l.layers.enableAll(); g.add(l);
@@ -2107,7 +2188,11 @@ function buildScenery(map, theme) {
     };
     // Corner accent prop varies by theme (a fire brazier for stone arenas, a
     // glowing pylon / ice shard / boulder / bush otherwise).
-    const cornerBuild = { tech: () => buildTechPylon(theme), ice: () => buildIceShard(theme), canyon: () => buildBoulder(theme), grove: () => buildBush(theme) }[sc] || (() => buildBrazier(accent));
+    const cornerBuild = {
+        tech: () => buildTechPylon(theme), ice: () => buildIceShard(theme), canyon: () => buildBoulder(theme),
+        grove: () => buildBush(theme), jungle: () => buildBush(theme), coral: () => buildIceShard(theme),
+        celestial: () => buildTechPylon(theme)
+    }[sc] || (() => buildBrazier(accent)); // volcanic/temple/castle get fire braziers
     const inset = 110;
     for (const [x, y] of [[L + inset, T + inset], [R - inset, T + inset], [L + inset, B - inset], [R - inset, B - inset]]) {
         if (nearSpawnPt(map, x, y, 90) || spotBlocked(x, y, 30)) continue;
@@ -2117,7 +2202,9 @@ function buildScenery(map, theme) {
     const set = {
         tech: ['pylon', 'crate', 'pylon', 'crate'], temple: ['urn', 'crate', 'urn', 'barrel'],
         castle: ['crate', 'barrel', 'urn', 'crate'], grove: ['bush', 'rock', 'urn', 'bush'],
-        canyon: ['rock', 'boulder', 'rock', 'bush'], ice: ['shard', 'crate', 'shard', 'crate']
+        canyon: ['rock', 'boulder', 'rock', 'bush'], ice: ['shard', 'crate', 'shard', 'crate'],
+        volcanic: ['rock', 'boulder', 'crate', 'rock'], jungle: ['bush', 'rock', 'urn', 'bush'],
+        celestial: ['urn', 'pylon', 'urn', 'crate'], coral: ['shard', 'rock', 'shard', 'crate']
     }[sc] || ['crate', 'barrel'];
     const spots = [
         [L + 200, T + 90], [R - 200, T + 90], [L + 90, (T + B) / 2 - 120], [R - 90, (T + B) / 2 + 120],
@@ -2129,8 +2216,8 @@ function buildScenery(map, theme) {
         if (nearSpawnPt(map, x, y, 80) || spotBlocked(x, y, r + 8)) return;
         addSolid(_makeProp(type, theme), x, y, r);
     });
-    // Wall banners only for the built/stone arenas (castle/temple/colosseum).
-    if (sc === 'castle' || sc === 'temple' || sc === 'grove') {
+    // Wall banners only for the built/stone arenas.
+    if (sc === 'castle' || sc === 'temple' || sc === 'grove' || sc === 'jungle' || sc === 'celestial') {
         const midX = (L + R) / 2, midY = (T + B) / 2, off = 12;
         for (const [x, y, rot] of [[midX, T + off, 0], [midX, B - off, Math.PI], [L + off, midY, -Math.PI / 2], [R - off, midY, Math.PI / 2]]) {
             const bn = buildBanner(null, accent);
@@ -2215,7 +2302,7 @@ function assertSpawnsClear(map) {
 // sizes even though the outer bounds are shared.
 const MAPS = [
     {
-        name: 'Astral Proving Grounds',
+        name: 'Voltaic Nexus',
         accent: '#00f3ff', fogColor: '#0a0d14',
         // Open duelling arena: a ring of columns and a central raised dais.
         spawn1: { x: 280, y: 487 }, spawn2: { x: 1474, y: 487 },
@@ -2335,6 +2422,87 @@ const MAPS = [
             { x: 1115, y: 487, hw: 46, hd: 46, height: 55 },
             { x: 877, y: 250, hw: 230, hd: 26, height: 270 },
             { x: 877, y: 724, hw: 230, hd: 26, height: 270 }
+        ]
+    },
+    {
+        name: 'Molten Foundry',
+        accent: '#ff6a00', fogColor: '#140a06',
+        // Basalt forge: a central dais flanked by two tall lava-wall dividers.
+        spawn1: { x: 260, y: 487 }, spawn2: { x: 1494, y: 487 },
+        obstacles: [
+            { x: 620, y: 280, r: 34, seed: 0.4 }, { x: 1134, y: 280, r: 34, seed: 1.7 },
+            { x: 620, y: 694, r: 34, seed: 2.9 }, { x: 1134, y: 694, r: 34, seed: 4.2 }
+        ],
+        terrain: [
+            { type: 'step', x: 877, y: 200, hw: 200, hd: 36, height: 30 },
+            { type: 'step', x: 877, y: 774, hw: 200, hd: 36, height: 30 }
+        ],
+        platforms: [
+            { x: 877, y: 487, hw: 100, hd: 80, height: 75 },
+            { x: 520, y: 487, hw: 26, hd: 130, height: 270 },
+            { x: 1234, y: 487, hw: 26, hd: 130, height: 270 }
+        ]
+    },
+    {
+        name: 'Overgrown Sanctuary',
+        accent: '#3ddc84', fogColor: '#0a1408',
+        // Jungle ruins: idol columns, two raised mossy platforms, and long
+        // lane-dividing walls north and south.
+        spawn1: { x: 220, y: 250 }, spawn2: { x: 1534, y: 724 },
+        obstacles: [
+            { x: 560, y: 300, r: 32, seed: 0.6 }, { x: 1194, y: 300, r: 32, seed: 2.0 },
+            { x: 560, y: 674, r: 32, seed: 3.3 }, { x: 1194, y: 674, r: 32, seed: 4.8 },
+            { x: 877, y: 487, r: 30, seed: 1.2 }
+        ],
+        terrain: [
+            { type: 'ramp', x: 340, y: 640, hw: 80, hd: 70, axis: 'x', from: 0, to: 30 }
+        ],
+        platforms: [
+            { x: 400, y: 250, hw: 70, hd: 70, height: 60 },
+            { x: 1354, y: 724, hw: 70, hd: 70, height: 60 },
+            { x: 877, y: 250, hw: 180, hd: 26, height: 250 },
+            { x: 877, y: 724, hw: 180, hd: 26, height: 250 }
+        ]
+    },
+    {
+        name: 'Skyward Temple',
+        accent: '#ffd24a', fogColor: '#12100a',
+        // Bright gilded temple: a high central dais climbed via a ramp and
+        // low side platforms, ringed by columns.
+        spawn1: { x: 230, y: 487 }, spawn2: { x: 1524, y: 487 },
+        obstacles: [
+            { x: 700, y: 300, r: 30, seed: 0.5 }, { x: 1054, y: 300, r: 30, seed: 1.9 },
+            { x: 700, y: 674, r: 30, seed: 3.1 }, { x: 1054, y: 674, r: 30, seed: 4.5 }
+        ],
+        terrain: [
+            { type: 'step', x: 877, y: 180, hw: 160, hd: 40, height: 35 },
+            { type: 'step', x: 877, y: 794, hw: 160, hd: 40, height: 35 },
+            { type: 'ramp', x: 400, y: 487, hw: 90, hd: 120, axis: 'x', from: 0, to: 45 }
+        ],
+        platforms: [
+            { x: 877, y: 487, hw: 90, hd: 75, height: 120 },
+            { x: 600, y: 487, hw: 45, hd: 45, height: 60 },
+            { x: 1154, y: 487, hw: 45, hd: 45, height: 60 }
+        ]
+    },
+    {
+        name: 'Coral Hollow',
+        accent: '#ff7fb0', fogColor: '#0a1414',
+        // Reef hollow: coral columns at the corners, a stepping-stone chain
+        // across the middle, and two low cover pieces.
+        spawn1: { x: 200, y: 400 }, spawn2: { x: 1554, y: 574 },
+        obstacles: [
+            { x: 480, y: 250, r: 28, seed: 0.3 }, { x: 480, y: 724, r: 28, seed: 1.6 },
+            { x: 1274, y: 250, r: 28, seed: 3.0 }, { x: 1274, y: 724, r: 28, seed: 4.4 },
+            { x: 877, y: 300, r: 26, seed: 1.1 }, { x: 877, y: 674, r: 26, seed: 5.0 }
+        ],
+        terrain: [],
+        platforms: [
+            { x: 660, y: 487, hw: 45, hd: 45, height: 55 },
+            { x: 877, y: 487, hw: 42, hd: 42, height: 95 },
+            { x: 1094, y: 487, hw: 45, hd: 45, height: 55 },
+            { x: 560, y: 487, hw: 40, hd: 80, height: 65 },
+            { x: 1194, y: 487, hw: 40, hd: 80, height: 65 }
         ]
     }
 ];
