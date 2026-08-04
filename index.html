@@ -356,6 +356,38 @@
             box-shadow: none;
         }
         .btn-tutorial:hover { background: rgba(0, 243, 255, 0.12); box-shadow: 0 0 12px rgba(0, 243, 255, 0.35); }
+        #mapselect-screen {
+            display: none;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
+            align-items: center; justify-content: center; z-index: 25;
+            padding: 20px;
+        }
+        .mapselect-panel { width: min(1000px, 96vw); max-height: 92vh; overflow-y: auto; text-align: center; }
+        .mapselect-panel h3 { color: #00f3ff; margin: 0 0 4px; font-size: 1.5rem; letter-spacing: 1px; }
+        .mapselect-sub { color: #8aa0b8; margin: 0 0 14px; font-size: 0.9rem; }
+        .map-random-btn {
+            width: auto; margin: 0 auto 16px; padding: 10px 26px; font-size: 1.05rem; font-weight: 700;
+            background: linear-gradient(180deg, #1b3a4a, #12232e); border: 1px solid #2dd4bf55;
+            color: #7ff0e0; border-radius: 10px; cursor: pointer; transition: transform .1s, box-shadow .1s;
+        }
+        .map-random-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px #2dd4bf40; border-color: #2dd4bf; }
+        .mapselect-grid {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px;
+        }
+        @media (max-width: 720px) { .mapselect-grid { grid-template-columns: repeat(2, 1fr); } }
+        .map-card {
+            position: relative; border-radius: 10px; overflow: hidden; cursor: pointer;
+            border: 2px solid #ffffff14; background: #0d1420; transition: transform .12s, border-color .12s, box-shadow .12s;
+        }
+        .map-card:hover { transform: translateY(-3px) scale(1.02); border-color: var(--mapaccent, #00f3ff); box-shadow: 0 10px 30px #00000090; }
+        .map-card canvas { display: block; width: 100%; height: auto; }
+        .map-card .map-name {
+            position: absolute; left: 0; right: 0; bottom: 0; padding: 5px 8px;
+            font-size: 0.78rem; font-weight: 700; color: #fff; text-align: left;
+            background: linear-gradient(0deg, rgba(6,10,18,0.92), rgba(6,10,18,0)); text-shadow: 0 1px 3px #000;
+        }
+        .map-card .map-accent-bar { position: absolute; left: 0; top: 0; height: 3px; width: 100%; background: var(--mapaccent, #00f3ff); }
         #tutorial-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -589,6 +621,16 @@
                     </label>
                     <button id="btn-tutorial-close">Got it!</button>
                 </div>
+            </div>
+        </div>
+
+        <div id="mapselect-screen">
+            <div class="menu-section mapselect-panel">
+                <h3>Choose Your Arena</h3>
+                <p class="mapselect-sub">Pick a battleground, or drop into a random one.</p>
+                <button id="btn-map-random" class="map-random-btn">🎲 Random Arena</button>
+                <div class="mapselect-grid" id="mapselect-grid"></div>
+                <button id="btn-mapselect-back" class="btn-back">← Back to Fighters</button>
             </div>
         </div>
     </div>
@@ -1276,7 +1318,10 @@ function positionFpsCamera(cam, f, dt) {
     const ex = worldX(cx), ey = f.z + EYE_HEIGHT, ez = worldZ(cy);
     cam.position.set(ex, ey, ez);
     _fwd.set(f.fx, 0, f.fy).normalize();
-    cam.lookAt(ex + _fwd.x * 20, ey - 4, ez + _fwd.z * 20); // small downward pitch
+    // Steeper downward tilt during the intro drop so you see the arena rushing
+    // up to meet you; a gentle level-ish gaze otherwise.
+    const pitchDrop = (gameState === 'INTRO' && !f.introLanded) ? -22 : -4;
+    cam.lookAt(ex + _fwd.x * 20, ey + pitchDrop, ez + _fwd.z * 20);
     const shakeScale = REDUCED_MOTION ? 0.15 : 1;
     if (cameraShakeMag > 0.05) {
         cam.position.x += (Math.random() - 0.5) * cameraShakeMag * 0.5 * shakeScale;
@@ -4664,11 +4709,94 @@ function refreshMenuUI() {
 // Rolls random fighters for any bot side (their pick is hidden until now),
 // then hands off to startMatch(). The single entry point for actually
 // starting a match from the select screen.
+// --- Map select: after both fighters are locked in, pick an arena (or
+// Random). Each card is a hand-painted thumbnail of that map's theme. ---
+function cssNum(n) { return '#' + (n & 0xffffff).toString(16).padStart(6, '0'); }
+function drawThumbWallTop(g, theme, W, wallTop) {
+    const style = theme.wallStyle, col = cssNum(theme.capColor), body = cssNum(theme.wallColor);
+    const n = 12, seg = W / n, h = 10;
+    g.fillStyle = col;
+    if (style === 'battlement') { for (let i = 0; i < n; i += 2) g.fillRect(i * seg, wallTop - h, seg, h); }
+    else if (style === 'techrail') { g.fillStyle = hexToCss(theme.accent, 0.9); g.fillRect(0, wallTop - 5, W, 3); g.fillStyle = col; for (let i = 0; i < n; i++) g.fillRect(i * seg + seg * 0.35, wallTop - h, 2.5, h); }
+    else if (style === 'ziggurat') { g.fillRect(0, wallTop - 6, W, 6); g.fillStyle = body; g.fillRect(W * 0.12, wallTop - 12, W * 0.76, 6); }
+    else if (style === 'ivy') { g.fillRect(0, wallTop - 5, W, 5); g.fillStyle = '#4c8a3c'; for (let i = 0; i < n * 2; i++) g.fillRect(i * seg * 0.5, wallTop, 3, 4 + ((i * 37) % 9)); }
+    else if (style === 'jagged') { g.beginPath(); g.moveTo(0, wallTop); for (let i = 0; i <= n; i++) { g.lineTo(i * seg, wallTop - (6 + ((i * 53) % 15))); g.lineTo((i + 0.5) * seg, wallTop); } g.lineTo(W, wallTop); g.fill(); }
+    else if (style === 'crystal') { g.fillStyle = cssNum(theme.stoneColor); for (let i = 0; i < n; i++) { const hh = 8 + ((i * 41) % 12); g.beginPath(); g.moveTo(i * seg, wallTop); g.lineTo(i * seg + seg / 2, wallTop - hh); g.lineTo((i + 1) * seg, wallTop); g.fill(); } }
+    else if (style === 'gilded') { g.fillRect(0, wallTop - 4, W, 4); for (let i = 0; i < n; i++) { g.beginPath(); g.arc(i * seg + seg / 2, wallTop - 8, 3, 0, 6.283); g.fill(); } }
+}
+function drawThumbColumns(g, theme, W, wallTop, horizon) {
+    const col = cssNum(theme.stoneColor);
+    for (const cx of [W * 0.34, W * 0.66]) {
+        const top = wallTop + 6, bot = horizon;
+        g.fillStyle = col;
+        if (theme.column === 'pylon') { g.fillRect(cx - 4, top, 8, bot - top); g.fillStyle = hexToCss(theme.accent, 0.9); g.fillRect(cx - 5, top + (bot - top) * 0.3, 10, 2); g.fillRect(cx - 5, top + (bot - top) * 0.6, 10, 2); }
+        else if (theme.column === 'redspire' || theme.column === 'icecrystal') { g.beginPath(); g.moveTo(cx - 8, bot); g.lineTo(cx, top); g.lineTo(cx + 8, bot); g.closePath(); g.fill(); }
+        else { g.fillRect(cx - 6, top, 12, bot - top); g.fillStyle = cssNum(theme.capColor); g.fillRect(cx - 8, top, 16, 5); g.fillRect(cx - 8, bot - 5, 16, 5); }
+    }
+}
+function buildMapThumbnail(map) {
+    const theme = themeFor(map);
+    const W = 240, H = 150;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, theme.sky[0]); sky.addColorStop(0.45, theme.sky[1]); sky.addColorStop(0.8, theme.sky[3]);
+    g.fillStyle = sky; g.fillRect(0, 0, W, H);
+    const sx = W * 0.24, sy = H * 0.24;
+    const sg = g.createRadialGradient(sx, sy, 0, sx, sy, H * 0.5);
+    sg.addColorStop(0, hexToCss(theme.sun.color, 0.95)); sg.addColorStop(0.5, hexToCss(theme.sun.color, 0.2)); sg.addColorStop(1, hexToCss(theme.sun.color, 0));
+    g.fillStyle = sg; g.fillRect(0, 0, W, H);
+    const horizon = H * 0.60, wallTop = H * 0.35;
+    g.fillStyle = cssNum(theme.wallColor); g.fillRect(0, wallTop, W, horizon - wallTop);
+    const wsh = g.createLinearGradient(0, wallTop, 0, horizon); wsh.addColorStop(0, 'rgba(255,255,255,0.08)'); wsh.addColorStop(1, 'rgba(0,0,0,0.28)');
+    g.fillStyle = wsh; g.fillRect(0, wallTop, W, horizon - wallTop);
+    drawThumbWallTop(g, theme, W, wallTop);
+    g.fillStyle = cssNum(theme.capColor); g.fillRect(0, wallTop - 3, W, 3);
+    drawThumbColumns(g, theme, W, wallTop, horizon);
+    g.fillStyle = hexToCss(theme.accent, 0.85); g.fillRect(0, horizon - 2, W, 2);
+    g.fillStyle = cssNum(theme.floorColor); g.fillRect(0, horizon, W, H - horizon);
+    const fsh = g.createLinearGradient(0, horizon, 0, H); fsh.addColorStop(0, 'rgba(0,0,0,0.3)'); fsh.addColorStop(1, 'rgba(255,255,255,0.05)');
+    g.fillStyle = fsh; g.fillRect(0, horizon, W, H - horizon);
+    g.strokeStyle = 'rgba(255,255,255,0.09)'; g.lineWidth = 1;
+    for (let i = -3; i <= 3; i++) { g.beginPath(); g.moveTo(W / 2 + i * 22, horizon); g.lineTo(W / 2 + i * 95, H); g.stroke(); }
+    const vg = g.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.85); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.38)');
+    g.fillStyle = vg; g.fillRect(0, 0, W, H);
+    return c;
+}
+let mapSelectBuilt = false;
+function buildMapSelect() {
+    const grid = document.getElementById('mapselect-grid');
+    grid.innerHTML = '';
+    MAPS.forEach(map => {
+        const card = document.createElement('div'); card.className = 'map-card';
+        card.style.setProperty('--mapaccent', map.accent);
+        card.appendChild(buildMapThumbnail(map));
+        const bar = document.createElement('div'); bar.className = 'map-accent-bar'; card.appendChild(bar);
+        const nm = document.createElement('div'); nm.className = 'map-name'; nm.textContent = map.name; card.appendChild(nm);
+        card.addEventListener('click', () => chooseMap(map));
+        grid.appendChild(card);
+    });
+    mapSelectBuilt = true;
+}
+function openMapSelect() {
+    if (!mapSelectBuilt) buildMapSelect();
+    document.getElementById('ui-overlay').style.display = 'none';
+    document.getElementById('mapselect-screen').style.display = 'flex';
+}
+function chooseMap(map) {
+    document.getElementById('mapselect-screen').style.display = 'none';
+    startMatch(map || undefined); // undefined = random
+}
+document.getElementById('btn-map-random').addEventListener('click', () => chooseMap(null));
+document.getElementById('btn-mapselect-back').addEventListener('click', () => {
+    document.getElementById('mapselect-screen').style.display = 'none';
+    document.getElementById('ui-overlay').style.display = 'flex';
+});
+
 function beginMatch() {
     if (p1IsBot) p1Choice = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].name;
     if (p2IsBot) p2Choice = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].name;
-    document.getElementById('ui-overlay').style.display = 'none';
-    startMatch();
+    openMapSelect(); // pick an arena, then the drop-in intro starts the match
 }
 document.getElementById('btn-start-match').addEventListener('click', () => {
     if (sideReady('p1') && sideReady('p2')) beginMatch();
@@ -4941,10 +5069,16 @@ function startMatch(mapOverride) {
     currentRound = 1;
     matchStats = { p1: freshStats(), p2: freshStats() };
     roundDurations = [];
-    startRound();
+    startRound(true); // the first round of a match opens with the drop-in intro cinematic
 }
 
-function startRound() {
+// --- Intro drop-in cinematic: at match start both fighters plummet from the
+// sky into the arena, frozen, then a "FIGHT!" flash unlocks control. In first
+// person each player's own view falls with them, right into the arena. ---
+const INTRO_DROP_HEIGHT = 540; // world Y the fighters start above their spawn
+let introTimer = 0, introPhase = 'drop';
+
+function startRound(intro) {
     for (const k in keys) keys[k] = false;
     pressed.clear(); // otherwise a stray keypress on a menu/pause screen could fire as a spurious first-frame action
     if (player1) player1.disposeMesh();
@@ -4963,8 +5097,18 @@ function startRound() {
     crushing = false;
     arenaBoundsFromFrac(0); // reset play bounds to the full arena
     roundStartedAt = performance.now();
-    gameState = "FIGHT";
-    sfxRoundStart();
+    if (intro) {
+        // Perch them high above spawn, facing each other, and let the INTRO
+        // game-loop branch drop them in.
+        for (const f of [player1, player2]) { f.z = INTRO_DROP_HEIGHT; f.vz = 0; f.introLanded = false; }
+        player1.setFacing(player2.x - player1.x, player2.y - player1.y);
+        player2.setFacing(player1.x - player2.x, player1.y - player2.y);
+        introTimer = 0; introPhase = 'drop';
+        gameState = "INTRO";
+    } else {
+        gameState = "FIGHT";
+        sfxRoundStart();
+    }
 }
 
 function drawRoundStatus() {
@@ -5054,8 +5198,64 @@ function drawCrosshairs(twoHumans) {
     hudCtx.restore();
 }
 
+// Cinematic overlay during the drop-in intro: letterbox bars, the arena
+// name with an accent glow, the fighter matchup, and a scaling "FIGHT!" once
+// both land. Drawn in raw canvas pixels so it stays crisp and centered.
+function drawIntroOverlay() {
+    const W = hudCanvas.width, H = hudCanvas.height;
+    const accent = (currentMap && currentMap.accent) || '#00f3ff';
+    hudCtx.save();
+    hudCtx.textAlign = 'center';
+    // Letterbox bars slide in over the first ~14 frames, out as FIGHT flashes.
+    const introProg = introPhase === 'drop' ? Math.min(1, introTimer / 14) : (introPhase === 'fight' ? Math.max(0.35, 1 - introTimer / 40) : 1);
+    const barH = H * 0.11 * introProg;
+    hudCtx.fillStyle = 'rgba(6,10,18,0.9)';
+    hudCtx.fillRect(0, 0, W, barH); hudCtx.fillRect(0, H - barH, W, barH);
+    // Arena name (glowing) + matchup, fading in.
+    const nameA = Math.min(1, introTimer / 12 + (introPhase !== 'drop' ? 1 : 0));
+    hudCtx.globalAlpha = nameA;
+    hudCtx.shadowColor = accent; hudCtx.shadowBlur = W * 0.02;
+    hudCtx.fillStyle = '#ffffff';
+    hudCtx.font = `bold ${Math.round(W * 0.045)}px sans-serif`;
+    hudCtx.fillText((currentMap && currentMap.name) || '', W / 2, H * 0.235);
+    hudCtx.shadowBlur = 0;
+    if (player1 && player2) {
+        hudCtx.font = `${Math.round(W * 0.02)}px sans-serif`;
+        hudCtx.fillStyle = '#cbd5e1';
+        hudCtx.fillText(`${player1.name}`, W * 0.5 - W * 0.10, H * 0.235 + W * 0.045);
+        hudCtx.fillStyle = accent; hudCtx.font = `bold ${Math.round(W * 0.02)}px sans-serif`;
+        hudCtx.fillText('VS', W / 2, H * 0.235 + W * 0.045);
+        hudCtx.fillStyle = '#cbd5e1'; hudCtx.font = `${Math.round(W * 0.02)}px sans-serif`;
+        hudCtx.fillText(`${player2.name}`, W * 0.5 + W * 0.10, H * 0.235 + W * 0.045);
+    }
+    hudCtx.globalAlpha = 1;
+    // FIGHT! (scaling punch-in) or a pulsing GET READY.
+    if (introPhase === 'fight') {
+        const t = Math.min(1, introTimer / 12);
+        hudCtx.save();
+        hudCtx.translate(W / 2, H * 0.56);
+        const s = 1.6 - t * 0.6; hudCtx.scale(s, s);
+        hudCtx.globalAlpha = Math.min(1, t * 1.6);
+        hudCtx.shadowColor = accent; hudCtx.shadowBlur = W * 0.035;
+        hudCtx.fillStyle = '#ffffff';
+        hudCtx.font = `bold ${Math.round(W * 0.085)}px sans-serif`;
+        hudCtx.fillText('FIGHT!', 0, 0);
+        hudCtx.strokeStyle = accent; hudCtx.lineWidth = Math.max(2, W * 0.002);
+        hudCtx.strokeText('FIGHT!', 0, 0);
+        hudCtx.restore();
+    } else {
+        hudCtx.globalAlpha = 0.55 + 0.35 * Math.sin(arenaTime * 0.18);
+        hudCtx.fillStyle = accent;
+        hudCtx.font = `bold ${Math.round(W * 0.028)}px sans-serif`;
+        hudCtx.fillText('GET READY', W / 2, H * 0.57);
+        hudCtx.globalAlpha = 1;
+    }
+    hudCtx.restore();
+}
+
 function drawHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+    if (gameState === "INTRO") { drawIntroOverlay(); return; } // cinematic — no combat HUD/crosshairs
     const twoHumans = player1 && player2 && !player1.isBot && !player2.isBot;
     drawCrosshairs(twoHumans);
 
@@ -5269,6 +5469,38 @@ function gameLoop() {
             deathPhase = "attackFinish";
             deathTimer = 0;
             sfxKO();
+        }
+    } else if (gameState === "INTRO") {
+        // Drop-in cinematic: fighters fall from the sky, frozen, then FIGHT!.
+        arenaTime += dt;
+        introTimer += dt;
+        const G = GRAVITY * 1.25;
+        let allLanded = true;
+        for (const f of [player1, player2]) {
+            if (!f.introLanded) {
+                f.vz -= G * dt;
+                f.z += f.vz * dt;
+                const landY = groundLevelAt(f.x + f.width / 2, f.y + f.height / 2);
+                if (f.z <= landY) {
+                    f.z = landY; f.vz = 0; f.introLanded = true;
+                    cameraShakeMag = Math.max(cameraShakeMag, 16); // landing jolt
+                    f.effects.push({ type: 'shockwaveRing', r: 10, max: 95, color: '255,255,255' });
+                    sfxCollapseTick(); // heavy landing thud
+                } else allLanded = false;
+            }
+        }
+        player1.tickEffects(player2, dt);
+        player2.tickEffects(player1, dt);
+        player1.render3D(null, dt);
+        player2.render3D(null, dt);
+        syncArenaCollapse(dt);
+        updateScenery(dt);
+        updateMuzzleFlashes(dt);
+        drawHUD();
+        if (allLanded) {
+            if (introPhase === 'drop') { introPhase = 'set'; introTimer = 0; }
+            else if (introPhase === 'set' && introTimer >= 24) { introPhase = 'fight'; introTimer = 0; sfxRoundStart(); }
+            else if (introPhase === 'fight' && introTimer >= 48) { gameState = "FIGHT"; roundStartedAt = performance.now(); }
         }
     } else if (gameState === "DEATH") {
         arenaTime += dt;
