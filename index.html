@@ -3546,6 +3546,7 @@ class Fighter {
     initMesh() {
         const group = MESH_BUILDERS[this.name](this.color);
         addRimOutline(group, this.color);
+        group.userData.specialAnim = SPECIAL_ANIMS[this.cfg.special] || null; // distinct, more elaborate motion for the special (vs the basic weaponAnim)
 
         // Per-attack animation: capture each weapon arm's rest shoulder
         // rotation once here so animateWeapon() (called every frame from
@@ -4097,6 +4098,9 @@ function buildStaffProp() {
         g.add(prong);
     }
     g.add(shaft, crystal);
+    const charge = new THREE.Mesh(new THREE.SphereGeometry(3, 10, 10),
+        new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    charge.position.copy(crystal.position); g.add(charge); g.userData.chargeOrb = charge; // magical charge glow (animated during casts)
     g.userData.mats = [shaftMat, crystalMat, prongMat];
     g.userData.core = crystal;
     return g;
@@ -4131,6 +4135,9 @@ function buildOrbProp(coreHex, emissiveHex) {
     const haloMat = new THREE.MeshBasicMaterial({ color: hexNum(emissiveHex), transparent: true, opacity: 0.35, side: THREE.DoubleSide });
     const halo = new THREE.Mesh(new THREE.RingGeometry(3.6, 4.6, 20), haloMat);
     g.add(core, halo);
+    const charge = new THREE.Mesh(new THREE.SphereGeometry(3, 10, 10),
+        new THREE.MeshBasicMaterial({ color: hexNum(emissiveHex), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    g.add(charge); g.userData.chargeOrb = charge; // magical charge glow (animated during casts)
     g.userData.mats = [coreMat];
     g.userData.core = core;
     return g;
@@ -4176,6 +4183,15 @@ function buildViewmodel(f, layer) {
     flash.visible = false;
     holder.add(flash);
     holder.userData.flash = flash;
+    // Casters get a magical charge glow at the weapon tip (swells while
+    // charging a shot, separate from the release muzzle flash above).
+    if (f.atkType === 'shard' || f.atkType === 'orb' || f.atkType === 'bolt') {
+        const charge = new THREE.Mesh(new THREE.SphereGeometry(2.2, 10, 10),
+            new THREE.MeshBasicMaterial({ color: hexNum(f.color), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+        charge.position.set(0, 0, -5.5); charge.visible = false;
+        holder.add(charge); holder.userData.charge = charge;
+    }
+    holder.userData.special = f.cfg.special;
     // Place & scale the whole thing in camera space: right of center, below
     // the crosshair line, a short distance in front of the near plane.
     holder.position.set(5.5, -5.5, -10);
@@ -4218,7 +4234,22 @@ function syncViewmodels(dt) {
         let px = bx, py = by + bob, pz = bz, rx = 0, ry = 0, rz = 0;
         if (acting && fd) {
             const su = Math.max(1, fd.startup), av = Math.max(1, fd.active), rc = Math.max(1, fd.recovery);
-            if (kind === 'swing') {
+            if (f.atkKind === 'special') {
+                // Each special has its own elaborate first-person motion.
+                let wind = 0, strike = 0, pg = 1;
+                if (f.atkState === 'startup') wind = 1 - f.atkStateTimer / su;
+                else if (f.atkState === 'active') { wind = 1; strike = 1 - f.atkStateTimer / av; }
+                else { wind = 1; strike = 1; pg = f.atkStateTimer / rc; }
+                const sp = vm.userData.special;
+                if (sp === 'dash') { pz = bz + wind * 3 - strike * 14 * pg; rx = -0.15 * pg; px = bx - strike * 1.5 * pg; } // explosive forward thrust
+                else if (sp === 'groundbreak' || sp === 'shockwave') { const raise = wind * (1 - strike); rx = (-1.2 * raise + 2.0 * strike) * pg; py = by + bob + (raise * 6 - strike * strike * 11) * pg; pz = bz - strike * 4 * pg; } // overhead slam
+                else if (sp === 'flurry') { const p = f.atkState === 'active' ? strike : 0; const reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 2 * 5); pz = bz - reach * 8 - (f.atkState === 'active' ? Math.max(0, 1 - strike * 3) * 4 : 0); px = bx + Math.sin(reach * Math.PI) * 2; } // blink-in stab storm
+                else if (sp === 'ward') { const r = (f.atkState === 'recovery') ? pg : (f.atkState === 'startup' ? wind : 1); rx = -r * 0.6; py = by + bob + r * 3.5; pz = bz + r; } // raise a glowing guard, hold
+                else if (sp === 'thunder') { if (f.atkState === 'active') { rx = -1.0 + strike * 1.6; py = by + bob + 4 - strike * 7; pz = bz - strike * 2; } else { rx = -1.0 * wind; py = by + bob + 4 * wind; pz = bz + wind; } } // point to sky, snap down
+                else if (sp === 'volley') { const r = (f.atkState === 'recovery') ? pg : (f.atkState === 'startup' ? wind : 1); rx = -r * 0.4; ry = (f.atkState === 'active') ? (-0.35 + 0.7 * strike) : 0; py = by + bob + r * 1.5; pz = bz + (f.atkState === 'active' ? Math.abs(Math.sin(strike * Math.PI * 5)) * 1.5 : r); } // sweep the fan
+                else if (sp === 'inferno') { if (f.atkState === 'startup') { pz = bz + wind * 3; py = by + bob - wind * 2; } else { pz = bz - strike * 9 * pg; py = by + bob + strike * 3 * pg; rx = -0.1; } } // draw in, then burst forward
+                else { const t = swingT(f, fd), u = (1 - t) / 2; rz = _vmLerp(1.0, -1.7, u); ry = _vmLerp(-0.55, 0.95, u); rx = _vmLerp(-0.5, 0.5, u); px = bx + _vmLerp(3.5, -4.5, u); py = by + bob + _vmLerp(2, -2.5, u); pz = bz - (f.atkState === 'active' ? 4 : 0); } // reap / bramble — big wide sweep
+            } else if (kind === 'swing') {
                 // Diagonal slash: wind up upper-right, sweep down-left across view.
                 const t = swingT(f, fd), u = (1 - t) / 2; // 0 = wind-up extreme, 1 = follow-through
                 rz = _vmLerp(0.7, -1.35, u); ry = _vmLerp(-0.4, 0.75, u); rx = _vmLerp(-0.45, 0.4, u);
@@ -4255,6 +4286,19 @@ function syncViewmodels(dt) {
             flash.scale.setScalar(0.8 + (1 - t) * 1.8);
             if (t > 0) flash.material.color.set(hexNum(f.color));
         }
+        // Magical charge glow for casters: swells through the wind-up.
+        const charge = vm.userData.charge;
+        if (charge) {
+            let c = 0;
+            if (acting && fd) {
+                if (f.atkState === 'startup') c = 1 - f.atkStateTimer / Math.max(1, fd.startup);
+                else if (f.atkState === 'active') c = 1;
+                else c = (f.atkStateTimer / Math.max(1, fd.recovery)) * 0.4;
+            }
+            charge.visible = c > 0.03;
+            charge.material.opacity = 0.55 * c + (f.atkState === 'active' ? 0.3 * Math.abs(Math.sin(arenaTime * 0.5)) : 0);
+            charge.scale.setScalar(0.5 + c * 2.3);
+        }
     }
 }
 
@@ -4287,6 +4331,7 @@ function buildLyraMesh(color) {
     g.userData.armPos.hand.add(focus);
     g.userData.bodyMats.push(shardMat, ...focus.userData.mats);
     g.userData.weapon = focus.userData.core;
+    g.userData.chargeOrb = focus.userData.chargeOrb;
     g.userData.weaponArm = g.userData.armPos;
     // Forward-thrust cast: one arm punches out ahead to hurl the shard —
     // horizontal, distinct from Seraphine's overhead invocation.
@@ -4348,6 +4393,7 @@ function buildSeraphineMesh(color) {
     g.userData.armPos.hand.add(focus);
     g.userData.bodyMats.push(haloMat, ...focus.userData.mats);
     g.userData.weapon = focus.userData.core;
+    g.userData.chargeOrb = focus.userData.chargeOrb;
     // Overhead invocation: both arms raise high to the sky, distinct from
     // Lyra's forward thrust.
     g.userData.weaponArm = [g.userData.armPos, g.userData.armNeg];
@@ -4391,6 +4437,7 @@ function buildAureliaMesh(color) {
     g.userData.armPos.hand.add(staff);
     g.userData.bodyMats.push(...staff.userData.mats);
     g.userData.weapon = staff.userData.core;
+    g.userData.chargeOrb = staff.userData.chargeOrb;
     // Two-handed forward staff-point cast — levels the staff ahead to loose
     // a bolt; two arms, distinct from Lyra's one-arm shard toss.
     g.userData.weaponArm = [g.userData.armPos, g.userData.armNeg];
@@ -4457,54 +4504,131 @@ function actionPhase(f, fd) {
 function armsOf(f) {
     return Array.isArray(f.mesh.userData.weaponArm) ? f.mesh.userData.weaponArm : [f.mesh.userData.weaponArm];
 }
+// Each special gets its own, more elaborate motion than the basic attack —
+// keyed by the character's `special` id (see initMesh setting specialAnim).
+const SPECIAL_ANIMS = {
+    dash: { type: 'dash' },                              // Kaelen — explosive lunging thrust
+    volley: { type: 'volley' },                          // Lyra — sweeping multi-shot cast
+    shockwave: { type: 'slam' },                         // Gorgonok — two-fisted ground slam
+    flurry: { type: 'blinkflurry', jabs: 5, reachDeg: 105 }, // Voss — blink-in rapid stab storm
+    groundbreak: { type: 'slam', big: true },            // Draven — giant overhead smash
+    ward: { type: 'ward' },                              // Seraphine — raised glowing guard
+    reap: { type: 'reap' },                              // Nyx — spinning scythe reap
+    inferno: { type: 'flameburst' },                     // Ignis — crouch then flame burst
+    thunder: { type: 'skybolt' },                        // Aurelia — call the bolt from the sky
+    bramble: { type: 'whipsweep' }                       // Thorne — huge sweeping lash
+};
+function _applyArms(arms, deg) { for (const a of arms) a.pivot.rotation.z = a.pivot.userData.restRotZ + deg * DEG; }
 function animateWeapon(f) {
-    const anim = f.mesh.userData.weaponAnim;
-    if (!anim) return;
     const acting = f.atkState !== 'idle' && f.atkKind;
-    const fd = acting ? FRAME_DATA[f.name][f.atkKind] : null;
+    const anim = (acting && f.atkKind === 'special' && f.mesh.userData.specialAnim) ? f.mesh.userData.specialAnim : f.mesh.userData.weaponAnim;
     const arms = armsOf(f);
+    const weapon = f.mesh.userData.weapon;
+    const ws = (weapon && weapon.scale) ? weapon : null; // dual-wielders store an array here — only a single mesh is scalable
+    if (ws) ws.scale.setScalar(1); // reset transient weapon scale each frame (additive body offsets are reset by render3D)
+    const chargeOrb = f.mesh.userData.chargeOrb || null; // set by the caster mesh builders
+    if (chargeOrb) chargeOrb.visible = false;
+    if (!anim) return;
+    const fd = acting ? FRAME_DATA[f.name][f.atkKind] : null;
 
+    // Per-phase amounts: wind (0->1 through startup, held), strike (0->1 across
+    // active), and poseGain that eases the whole pose back to rest in recovery.
+    let wind = 0, strike = 0, poseGain = 1;
+    if (acting && fd) {
+        const su = Math.max(1, fd.startup), av = Math.max(1, fd.active), rc = Math.max(1, fd.recovery);
+        if (f.atkState === 'startup') wind = 1 - f.atkStateTimer / su;
+        else if (f.atkState === 'active') { wind = 1; strike = 1 - f.atkStateTimer / av; }
+        else { wind = 1; strike = 1; poseGain = f.atkStateTimer / rc; }
+    }
+
+    // ---- Basic attack motions ----
     if (anim.type === 'swing') {
         const t = acting ? swingT(f, fd) : 0;
         const deg = t >= 0 ? t * anim.backDeg : -t * anim.fwdDeg;
-        for (const arm of arms) arm.pivot.rotation.z = arm.pivot.userData.restRotZ + deg * DEG;
-        // Body twist for wide horizontal cleaves — added on top of the
-        // facing yaw render3D already set this frame.
+        _applyArms(arms, deg);
         if (anim.twistDeg) f.mesh.rotation.y += t * anim.twistDeg * DEG;
     } else if (anim.type === 'stab') {
-        // Both arms thrust forward together, oscillating `jabs` times across
-        // the active window; between jabs they pull most of the way back.
         let reach = 0;
         if (acting) {
-            if (f.atkState === 'active') {
-                const p = fd.active > 0 ? (1 - f.atkStateTimer / fd.active) : 1;
-                reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 2 * anim.jabs); // 0..1..0 per jab
-            } else if (f.atkState === 'startup') {
-                reach = fd.startup > 0 ? -(0.3) * (1 - f.atkStateTimer / fd.startup) : 0; // slight cock-back
-            } else {
-                reach = fd.recovery > 0 ? 0.15 * (f.atkStateTimer / fd.recovery) : 0;
-            }
+            if (f.atkState === 'active') { const p = 1 - f.atkStateTimer / Math.max(1, fd.active); reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 2 * anim.jabs); }
+            else if (f.atkState === 'startup') reach = -0.3 * wind;
+            else reach = 0.15 * poseGain;
         }
-        for (const arm of arms) arm.pivot.rotation.z = arm.pivot.userData.restRotZ + reach * anim.reachDeg * DEG;
+        _applyArms(arms, reach * anim.reachDeg);
     } else if (anim.type === 'flurry') {
-        // Arms alternate: while one punches out the other is drawn back.
         let phase = 0, on = acting && f.atkState === 'active';
-        if (on) { const p = fd.active > 0 ? (1 - f.atkStateTimer / fd.active) : 1; phase = p * Math.PI * 2 * anim.jabs; }
-        arms.forEach((arm, i) => {
-            const s = on ? Math.max(0, Math.sin(phase + i * Math.PI)) : 0; // out of phase per arm
-            arm.pivot.rotation.z = arm.pivot.userData.restRotZ + s * anim.reachDeg * DEG;
-        });
+        if (on) phase = (1 - f.atkStateTimer / Math.max(1, fd.active)) * Math.PI * 2 * anim.jabs;
+        arms.forEach((arm, i) => { const s = on ? Math.max(0, Math.sin(phase + i * Math.PI)) : 0; arm.pivot.rotation.z = arm.pivot.userData.restRotZ + s * anim.reachDeg * DEG; });
     } else if (anim.type === 'cast') {
         let raise = 0;
-        if (acting) {
-            if (f.atkState === 'startup') raise = fd.startup > 0 ? (1 - f.atkStateTimer / fd.startup) : 1;
-            else if (f.atkState === 'active') raise = 1;
-            else raise = fd.recovery > 0 ? (f.atkStateTimer / fd.recovery) : 0;
-        }
-        for (const arm of arms) arm.pivot.rotation.z = arm.pivot.userData.restRotZ + raise * (anim.raiseDeg || 90) * DEG;
-        const peak = anim.peakScale || 1.6;
-        f.mesh.userData.weapon.scale.setScalar(1 + raise * (peak - 1));
+        if (acting) { if (f.atkState === 'startup') raise = wind; else if (f.atkState === 'active') raise = 1; else raise = poseGain; }
+        _applyArms(arms, raise * (anim.raiseDeg || 90));
+        if (ws) ws.scale.setScalar(1 + raise * ((anim.peakScale || 1.6) - 1));
+        _castCharge(chargeOrb, f, wind, strike, poseGain);
+    // ---- Special motions ----
+    } else if (anim.type === 'dash') {
+        _applyArms(arms, (-40 * wind + 120 * strike) * poseGain); // draw back, then drive the blade forward
+        const lunge = strike * strike * 26 * poseGain;
+        f.mesh.position.x += f.fx * lunge; f.mesh.position.z += f.fy * lunge;
+        f.mesh.position.y += Math.sin(strike * Math.PI) * 2 * poseGain;
+    } else if (anim.type === 'slam') {
+        const big = anim.big ? 1.25 : 1;
+        _applyArms(arms, (-95 * wind + 150 * strike) * big * poseGain); // hoist overhead, crash down
+        f.mesh.position.y += (wind * 5 - strike * strike * 9 * big) * poseGain;
+        if (ws) ws.scale.setScalar(1 + (0.25 * wind + 0.45 * strike) * big);
+    } else if (anim.type === 'reap') {
+        _applyArms(arms, (-60 * wind + 70 * strike) * poseGain);
+        f.mesh.rotation.y += -Math.PI * 2 * strike * poseGain; // full spinning reap
+        f.mesh.position.y += Math.sin(strike * Math.PI) * 5 * poseGain;
+        if (ws) ws.scale.setScalar(1 + 0.2 * Math.sin(strike * Math.PI));
+    } else if (anim.type === 'blinkflurry') {
+        const jabs = anim.jabs || 5, reachDeg = anim.reachDeg || 105;
+        const on = f.atkState === 'active';
+        const phase = on ? strike * Math.PI * 2 * jabs : 0;
+        arms.forEach((arm, i) => { const s = on ? Math.max(0, Math.sin(phase + i * Math.PI)) : (f.atkState === 'startup' ? -0.3 * wind : 0); arm.pivot.rotation.z = arm.pivot.userData.restRotZ + s * reachDeg * DEG * (on ? 1 : poseGain); });
+        if (on) { const blink = Math.max(0, 1 - strike * 3); f.mesh.position.x += f.fx * 10 * blink; f.mesh.position.z += f.fy * 10 * blink; } // quick blink-in
+    } else if (anim.type === 'skybolt') {
+        const armDeg = (f.atkState === 'active') ? (-150 + 230 * strike) : -150 * wind; // point to sky, then snap down-forward
+        _applyArms(arms, armDeg * poseGain);
+        f.mesh.position.y += wind * 2 * poseGain;
+        if (ws) ws.scale.setScalar(1 + wind * 0.7 + Math.sin(strike * Math.PI) * 1.1);
+        _castCharge(chargeOrb, f, wind, strike, poseGain);
+    } else if (anim.type === 'flameburst') {
+        if (f.atkState === 'startup') { _applyArms(arms, -50 * wind); f.mesh.position.y -= 4 * wind; }
+        else { _applyArms(arms, (-50 + 160 * strike) * poseGain); f.mesh.position.y += (-4 + strike * 7) * poseGain; }
+        if (ws) ws.scale.setScalar(1 + strike * 0.7);
+    } else if (anim.type === 'volley') {
+        const raise = (f.atkState === 'recovery') ? poseGain : (f.atkState === 'startup' ? wind : 1);
+        _applyArms(arms, raise * 95);
+        if (f.atkState === 'active') f.mesh.rotation.y += (-0.35 + 0.7 * strike) * poseGain; // sweep the fan across
+        if (ws) ws.scale.setScalar(1 + 0.5 * Math.abs(Math.sin(strike * Math.PI * 5)) + raise * 0.3);
+        _castCharge(chargeOrb, f, wind, strike, poseGain);
+    } else if (anim.type === 'ward') {
+        const raise = (f.atkState === 'recovery') ? poseGain : (f.atkState === 'startup' ? wind : 1);
+        _applyArms(arms, raise * 82);
+        if (ws) { ws.scale.setScalar(1 + raise * 0.9); ws.rotation.y += 0.06 * raise; }
+        f.mesh.position.y += Math.sin(arenaTime * 0.12) * 0.6 * raise;
+        _castCharge(chargeOrb, f, wind, strike, poseGain);
+    } else if (anim.type === 'whipsweep') {
+        const t = acting ? swingT(f, fd) : 0;
+        const deg = t >= 0 ? t * -70 : -t * 130;
+        _applyArms(arms, deg);
+        f.mesh.rotation.y += t * 80 * DEG; // big body twist for the wide lash
+        f.mesh.position.y += Math.abs(t) * 2;
     }
+}
+// Magical charge glow at a caster's weapon core: swells + brightens through
+// the wind-up, flickers bright on release, fades out through recovery.
+function _castCharge(chargeOrb, f, wind, strike, poseGain) {
+    if (!chargeOrb) return;
+    let c = 0;
+    if (f.atkState === 'startup') c = wind;
+    else if (f.atkState === 'active') c = 1;
+    else c = poseGain * 0.5;
+    if (c <= 0.02) { chargeOrb.visible = false; return; }
+    chargeOrb.visible = true;
+    chargeOrb.material.opacity = 0.5 * c + (f.atkState === 'active' ? 0.35 * Math.abs(Math.sin(strike * Math.PI * 4)) : 0);
+    chargeOrb.scale.setScalar(0.6 + c * 1.9);
 }
 
 // --- Combat effect meshes: ground-projected rings/streaks rather than
