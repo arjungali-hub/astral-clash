@@ -663,13 +663,25 @@
         </div>
     </div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" onerror="document.getElementById('cdn-error').style.display='flex'"></script>
 <script>
-if (typeof THREE === 'undefined') {
-    document.getElementById('cdn-error').style.display = 'flex';
-    throw new Error('THREE failed to load from CDN — see #cdn-error message.');
+// Three.js is the only external dependency (all audio is synthesized, no asset
+// files). It loads from the CDN, but if that's blocked/offline we fall back to
+// a vendored copy sitting next to this file (three.min.js), and only show
+// #cdn-error if THAT also fails. The whole game is wrapped in bootGame() and
+// started once THREE is actually present, from whichever source provided it.
+function loadThreeFallback() {
+    var s = document.createElement('script');
+    s.src = 'three.min.js';
+    s.onload = function () { bootGame(); };
+    s.onerror = function () { document.getElementById('cdn-error').style.display = 'flex'; };
+    document.head.appendChild(s);
 }
-const canvas = document.getElementById('gameCanvas');
+</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" onerror="loadThreeFallback()"></script>
+<script>
+function bootGame() {
+    if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
+    const canvas = document.getElementById('gameCanvas');
 const hudCanvas = document.getElementById('hudCanvas');
 const hudCtx = hudCanvas.getContext('2d');
 
@@ -5889,6 +5901,10 @@ function gameLoop() {
 }
 
 requestAnimationFrame(gameLoop);
+} // end bootGame()
+// Start immediately if the CDN provided THREE; otherwise loadThreeFallback()'s
+// onload calls bootGame() once the local copy finishes loading.
+if (typeof THREE !== 'undefined') bootGame();
 </script>
 
 </body>
