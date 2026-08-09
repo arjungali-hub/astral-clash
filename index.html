@@ -608,12 +608,12 @@
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">⚔️</div>
                             <h4>Basic vs. Special</h4>
-                            <p>Basic attacks are fast and always available (short cooldown between swings) and hit hard, so don't get comfortable eating them. Your Special needs a full meter — meter builds from both dealing <em>and</em> taking damage, so a losing fighter charges up faster. Each fighter's Special is unique: some blink and combo, some launch, stun, root, burn, pull the enemy in, or strike from range. Read yours (and your opponent's) in the fighter panel.</p>
+                            <p>Basics are fast and always available; your Special needs a full meter, built by both dealing and taking damage. Each fighter's Special is unique — read it (and your opponent's) in the fighter panel.</p>
                         </div>
                         <div class="tutorial-card">
-                            <div class="tutorial-card-icon">⚔️</div>
+                            <div class="tutorial-card-icon">🗡️</div>
                             <h4>The Roster</h4>
-                            <p>Ten fighters, each with a distinct weapon and range: sword, twin daggers, gauntlets, warhammer, scythe, vine-whip and more, plus ranged casters who fling shards, orbs and lightning bolts. Reach and speed vary a lot — read a fighter's stats before you commit to them.</p>
+                            <p>Ten fighters, from twin-dagger rushdown to long-range casters. Reach and speed vary a lot — check a fighter's stats and Special in its detail panel before you commit.</p>
                         </div>
                         <div class="tutorial-card">
                             <div class="tutorial-card-icon">💨</div>
@@ -5021,54 +5021,43 @@ function refreshMenuUI() {
 // --- Map select: after both fighters are locked in, pick an arena (or
 // Random). Each card is a hand-painted thumbnail of that map's theme. ---
 function cssNum(n) { return '#' + (n & 0xffffff).toString(16).padStart(6, '0'); }
-function drawThumbWallTop(g, theme, W, wallTop) {
-    const style = theme.wallStyle, col = cssNum(theme.capColor), body = cssNum(theme.wallColor);
-    const n = 12, seg = W / n, h = 10;
-    g.fillStyle = col;
-    if (style === 'battlement') { for (let i = 0; i < n; i += 2) g.fillRect(i * seg, wallTop - h, seg, h); }
-    else if (style === 'techrail') { g.fillStyle = hexToCss(theme.accent, 0.9); g.fillRect(0, wallTop - 5, W, 3); g.fillStyle = col; for (let i = 0; i < n; i++) g.fillRect(i * seg + seg * 0.35, wallTop - h, 2.5, h); }
-    else if (style === 'ziggurat') { g.fillRect(0, wallTop - 6, W, 6); g.fillStyle = body; g.fillRect(W * 0.12, wallTop - 12, W * 0.76, 6); }
-    else if (style === 'ivy') { g.fillRect(0, wallTop - 5, W, 5); g.fillStyle = '#4c8a3c'; for (let i = 0; i < n * 2; i++) g.fillRect(i * seg * 0.5, wallTop, 3, 4 + ((i * 37) % 9)); }
-    else if (style === 'jagged') { g.beginPath(); g.moveTo(0, wallTop); for (let i = 0; i <= n; i++) { g.lineTo(i * seg, wallTop - (6 + ((i * 53) % 15))); g.lineTo((i + 0.5) * seg, wallTop); } g.lineTo(W, wallTop); g.fill(); }
-    else if (style === 'crystal') { g.fillStyle = cssNum(theme.stoneColor); for (let i = 0; i < n; i++) { const hh = 8 + ((i * 41) % 12); g.beginPath(); g.moveTo(i * seg, wallTop); g.lineTo(i * seg + seg / 2, wallTop - hh); g.lineTo((i + 1) * seg, wallTop); g.fill(); } }
-    else if (style === 'gilded') { g.fillRect(0, wallTop - 4, W, 4); for (let i = 0; i < n; i++) { g.beginPath(); g.arc(i * seg + seg / 2, wallTop - 8, 3, 0, 6.283); g.fill(); } }
-}
-function drawThumbColumns(g, theme, W, wallTop, horizon) {
-    const col = cssNum(theme.stoneColor);
-    for (const cx of [W * 0.34, W * 0.66]) {
-        const top = wallTop + 6, bot = horizon;
-        g.fillStyle = col;
-        if (theme.column === 'pylon') { g.fillRect(cx - 4, top, 8, bot - top); g.fillStyle = hexToCss(theme.accent, 0.9); g.fillRect(cx - 5, top + (bot - top) * 0.3, 10, 2); g.fillRect(cx - 5, top + (bot - top) * 0.6, 10, 2); }
-        else if (theme.column === 'redspire' || theme.column === 'icecrystal') { g.beginPath(); g.moveTo(cx - 8, bot); g.lineTo(cx, top); g.lineTo(cx + 8, bot); g.closePath(); g.fill(); }
-        else { g.fillRect(cx - 6, top, 12, bot - top); g.fillStyle = cssNum(theme.capColor); g.fillRect(cx - 8, top, 16, 5); g.fillRect(cx - 8, bot - 5, 16, 5); }
-    }
-}
+// Top-down PLAN of the actual arena (B9): the thing that differentiates the
+// maps — obstacle/platform/terrain layout — drawn straight from map data, so
+// the picker is honest instead of showing the same faux-perspective scene for
+// all ten. Columns = circles, platforms = rects (brightness keyed to height:
+// short cover reads lighter, tall dividing walls darker/solid), terrain =
+// lighter rects, spawns = accent dots.
 function buildMapThumbnail(map) {
     const theme = themeFor(map);
-    const W = 240, H = 150;
+    const W = 240, H = 150, pad = 8;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const g = c.getContext('2d');
-    const sky = g.createLinearGradient(0, 0, 0, H);
-    sky.addColorStop(0, theme.sky[0]); sky.addColorStop(0.45, theme.sky[1]); sky.addColorStop(0.8, theme.sky[3]);
-    g.fillStyle = sky; g.fillRect(0, 0, W, H);
-    const sx = W * 0.24, sy = H * 0.24;
-    const sg = g.createRadialGradient(sx, sy, 0, sx, sy, H * 0.5);
-    sg.addColorStop(0, hexToCss(theme.sun.color, 0.95)); sg.addColorStop(0.5, hexToCss(theme.sun.color, 0.2)); sg.addColorStop(1, hexToCss(theme.sun.color, 0));
-    g.fillStyle = sg; g.fillRect(0, 0, W, H);
-    const horizon = H * 0.60, wallTop = H * 0.35;
-    g.fillStyle = cssNum(theme.wallColor); g.fillRect(0, wallTop, W, horizon - wallTop);
-    const wsh = g.createLinearGradient(0, wallTop, 0, horizon); wsh.addColorStop(0, 'rgba(255,255,255,0.08)'); wsh.addColorStop(1, 'rgba(0,0,0,0.28)');
-    g.fillStyle = wsh; g.fillRect(0, wallTop, W, horizon - wallTop);
-    drawThumbWallTop(g, theme, W, wallTop);
-    g.fillStyle = cssNum(theme.capColor); g.fillRect(0, wallTop - 3, W, 3);
-    drawThumbColumns(g, theme, W, wallTop, horizon);
-    g.fillStyle = hexToCss(theme.accent, 0.85); g.fillRect(0, horizon - 2, W, 2);
-    g.fillStyle = cssNum(theme.floorColor); g.fillRect(0, horizon, W, H - horizon);
-    const fsh = g.createLinearGradient(0, horizon, 0, H); fsh.addColorStop(0, 'rgba(0,0,0,0.3)'); fsh.addColorStop(1, 'rgba(255,255,255,0.05)');
-    g.fillStyle = fsh; g.fillRect(0, horizon, W, H - horizon);
-    g.strokeStyle = 'rgba(255,255,255,0.09)'; g.lineWidth = 1;
-    for (let i = -3; i <= 3; i++) { g.beginPath(); g.moveTo(W / 2 + i * 22, horizon); g.lineTo(W / 2 + i * 95, H); g.stroke(); }
-    const vg = g.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.85); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.38)');
+    // arena rect maps [ARENA_LEFT..RIGHT] x [ARENA_TOP..BOTTOM] into the padded canvas
+    const aw = ARENA_RIGHT - ARENA_LEFT, ah = ARENA_BOTTOM - ARENA_TOP;
+    const iw = W - pad * 2, ih = H - pad * 2;
+    const tx = x => pad + ((x - ARENA_LEFT) / aw) * iw;
+    const ty = y => pad + ((y - ARENA_TOP) / ah) * ih;
+    const sc = iw / aw; // scale (both axes near-equal since aspect matches)
+    g.fillStyle = '#0d1420'; g.fillRect(0, 0, W, H); // matte behind the plan
+    g.fillStyle = cssNum(theme.floorColor); g.fillRect(pad, pad, iw, ih); // arena floor
+    g.strokeStyle = hexToCss(theme.accent, 0.7); g.lineWidth = 2; g.strokeRect(pad, pad, iw, ih); // accent boundary = walls
+    // terrain (walkable elevation) — lighter blocks
+    g.fillStyle = 'rgba(255,255,255,0.16)';
+    for (const t of (map.terrain || [])) g.fillRect(tx(t.x - t.hw), ty(t.y - t.hd), t.hw * 2 * sc, t.hd * 2 * sc);
+    // platforms — brightness keyed to height (tall = dark solid divider, short = light cover)
+    for (const p of (map.platforms || [])) {
+        const tall = p.height >= 150;
+        g.fillStyle = tall ? 'rgba(10,14,22,0.85)' : 'rgba(255,255,255,0.28)';
+        g.fillRect(tx(p.x - p.hw), ty(p.y - p.hd), p.hw * 2 * sc, p.hd * 2 * sc);
+    }
+    // obstacles (columns) — circles in the wall/stone tone
+    g.fillStyle = cssNum(theme.wallColor);
+    for (const o of (map.obstacles || [])) { g.beginPath(); g.arc(tx(o.x), ty(o.y), Math.max(2, o.r * sc), 0, 6.283); g.fill(); }
+    // spawn points — accent dots
+    g.fillStyle = hexToCss(theme.accent, 1);
+    for (const sp of [map.spawn1, map.spawn2]) { g.beginPath(); g.arc(tx(sp.x), ty(sp.y), 4, 0, 6.283); g.fill(); }
+    // subtle vignette
+    const vg = g.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.8); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.3)');
     g.fillStyle = vg; g.fillRect(0, 0, W, H);
     return c;
 }
