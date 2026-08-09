@@ -1164,6 +1164,16 @@ function arenaBoundsFromFrac(f) {
 function worldX(x) { return x - ARENA_CX; }
 function worldZ(y) { return y - ARENA_CY; }
 
+// Deterministic per-map PRNG. buildOuterWall (ivy/jagged/crystal skylines) and
+// buildScenery (prop orientation) used to call Math.random(), so a map's
+// skyline and props reshuffled every time it loaded — including between rounds
+// of the same match. Seeding a mulberry32 from a hash of the map name (done in
+// loadMap) makes each arena look identical every load, which also aids
+// map recognition. `mapRng()` returns 0..1 like Math.random.
+function hashStr(s) { let h = 1779033703 ^ s.length; for (let i = 0; i < s.length; i++) { h = Math.imul(h ^ s.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; } return h >>> 0; }
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+let mapRng = Math.random; // reseeded per map in loadMap()
+
 // Batch 8: the canvas was being sized straight from getBoundingClientRect()
 // CSS pixels, so on any HiDPI display (2x, 3x) the game rendered at half or
 // a third of native resolution and looked soft/blurry compared to the rest
@@ -1536,7 +1546,7 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
-const MAX_WALK_STEP_UP = 20; // taller single-frame rises than this require an actual jump — see resolveTallTerrain()
+const MAX_WALK_STEP_UP = 30; // rises up to this are walkable (no jump); taller is a wall you must jump — see resolveTallTerrain(). Every 'step' in MAPS is <= 30 so all steps are genuinely walkable; anything taller is modelled as a platform.
 const TURN_SPEED = 0.052; // radians per frame-unit that left/right turns the human player's facing (first-person look)
 const MUZZLE_HEIGHT = 34; // world Y above a fighter's feet where its weapon/hand sits — projectiles + muzzle flashes spawn here
 let OBSTACLES = [], TERRAIN = [], PLATFORMS = [];
@@ -2006,15 +2016,15 @@ function buildOuterWall(side, theme) {
         const cop = new THREE.Mesh(new THREE.CylinderGeometry(9, 9, along, 12), capMat);
         cop.rotation.z = Math.PI / 2; cop.position.y = topY + 4; cop.castShadow = true; group.add(cop);
         const ivyMat = new THREE.MeshStandardMaterial({ color: 0x4c8a3c, roughness: 0.9 });
-        for (let i = 0; i < N * 2; i++) addTop(seg * 0.35, 10 + Math.random() * 20, thick + 4, -along / 2 + (i + 0.5) * seg * 0.5, WALL_HEIGHT - 12 - Math.random() * 20, ivyMat);
+        for (let i = 0; i < N * 2; i++) addTop(seg * 0.35, 10 + mapRng() * 20, thick + 4, -along / 2 + (i + 0.5) * seg * 0.5, WALL_HEIGHT - 12 - mapRng() * 20, ivyMat);
     } else if (style === 'jagged') {
         // irregular rock teeth
-        for (let i = 0; i < N * 1.5; i++) { const h = 14 + Math.random() * 40; addTop(seg * (0.4 + Math.random() * 0.4), h, thick + 4, -along / 2 + (i + 0.5) * (along / (N * 1.5)), topY + h / 2, bodyMat); }
+        for (let i = 0; i < N * 1.5; i++) { const h = 14 + mapRng() * 40; addTop(seg * (0.4 + mapRng() * 0.4), h, thick + 4, -along / 2 + (i + 0.5) * (along / (N * 1.5)), topY + h / 2, bodyMat); }
     } else if (style === 'crystal') {
         // angular spikes (ice for the glacier, coral for the reef) — color
         // follows the theme so the same silhouette reads as either material.
         const spikeMat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: 0.3, metalness: 0.1, transparent: true, opacity: 0.92 });
-        for (let i = 0; i < N * 1.5; i++) { const h = 22 + Math.random() * 34; const sp = new THREE.Mesh(new THREE.ConeGeometry(seg * 0.28, h, 5), spikeMat); sp.position.set(-along / 2 + (i + 0.5) * (along / (N * 1.5)), topY + h / 2, 0); sp.rotation.y = Math.random(); sp.castShadow = true; group.add(sp); }
+        for (let i = 0; i < N * 1.5; i++) { const h = 22 + mapRng() * 34; const sp = new THREE.Mesh(new THREE.ConeGeometry(seg * 0.28, h, 5), spikeMat); sp.position.set(-along / 2 + (i + 0.5) * (along / (N * 1.5)), topY + h / 2, 0); sp.rotation.y = mapRng(); sp.castShadow = true; group.add(sp); }
     } else if (style === 'gilded') {
         // smooth coping + gold finial posts (sky temple)
         const cop = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, along, 12), capMat);
@@ -2034,6 +2044,7 @@ function loadMap(map) {
     mapEdgeObjects = [];
     outerWalls = [];
     sceneryFlames.length = 0; // drop references to the previous map's (now-disposed) brazier flames
+    mapRng = mulberry32(hashStr(map.name)); // deterministic skyline + prop layout for this map
 
     const theme = themeFor(map);
     applySky(theme);       // recolor the sky dome + sun for this map's time-of-day
@@ -2233,7 +2244,7 @@ function _propRadius(type) { return { barrel: 16, urn: 15, bush: 18, rock: 16, b
 function buildScenery(map, theme) {
     const L = ARENA_LEFT, R = ARENA_RIGHT, T = ARENA_TOP, B = ARENA_BOTTOM, accent = theme.accent, sc = theme.scenery;
     const addSolid = (mesh, x, y, r) => {
-        mesh.position.set(worldX(x), 0, worldZ(y)); mesh.rotation.y = Math.random() * Math.PI;
+        mesh.position.set(worldX(x), 0, worldZ(y)); mesh.rotation.y = mapRng() * Math.PI;
         mapGroup.add(mesh); OBSTACLES.push({ x, y, r, seed: 0 }); mapEdgeObjects.push({ mesh, x, y });
     };
     // Corner accent prop varies by theme (a fire brazier for stone arenas, a
@@ -2423,10 +2434,10 @@ const MAPS = [
             { x: 820, y: 487, r: 30, seed: 1.1 }, { x: 934, y: 487, r: 30, seed: 4.4 }
         ],
         terrain: [
-            { type: 'step', x: 877, y: 150, hw: 300, hd: 50, height: 40 },
-            { type: 'step', x: 877, y: 824, hw: 300, hd: 50, height: 40 },
-            { type: 'step', x: 170, y: 487, hw: 50, hd: 220, height: 40 },
-            { type: 'step', x: 1584, y: 487, hw: 50, hd: 220, height: 40 }
+            { type: 'step', x: 877, y: 150, hw: 300, hd: 50, height: 30 },
+            { type: 'step', x: 877, y: 824, hw: 300, hd: 50, height: 30 },
+            { type: 'step', x: 170, y: 487, hw: 50, hd: 220, height: 30 },
+            { type: 'step', x: 1584, y: 487, hw: 50, hd: 220, height: 30 }
         ],
         platforms: [
             { x: 560, y: 300, hw: 50, hd: 50, height: 62 },
@@ -2528,8 +2539,8 @@ const MAPS = [
             { x: 700, y: 674, r: 30, seed: 3.1 }, { x: 1054, y: 674, r: 30, seed: 4.5 }
         ],
         terrain: [
-            { type: 'step', x: 877, y: 180, hw: 160, hd: 40, height: 35 },
-            { type: 'step', x: 877, y: 794, hw: 160, hd: 40, height: 35 },
+            { type: 'step', x: 877, y: 180, hw: 160, hd: 40, height: 30 },
+            { type: 'step', x: 877, y: 794, hw: 160, hd: 40, height: 30 },
             { type: 'ramp', x: 400, y: 487, hw: 90, hd: 120, axis: 'x', from: 0, to: 45 }
         ],
         platforms: [
@@ -2599,7 +2610,7 @@ const CHARACTERS = [
     { name: 'Seraphine', title: 'Astral Warden', color: '#eab308', speed: 2.6, hp: 380, meterRateMult: 0.8,
       atkType: 'orb', dmg: 25, range: 260, halfAngle: 15 * DEG, cooldown: 16,
       special: 'ward', specialName: 'Astral Ward', specialDesc: 'Raise a strong shield that halves incoming damage for several seconds.',
-      desc: 'Support caster, shields and heals.' },
+      desc: 'Ranged warden; shields instead of trading.' },
     { name: 'Nyx', title: 'Umbral Reaper', color: '#7c3aed', speed: 3.2, hp: 380, meterRateMult: 1,
       atkType: 'scythe', dmg: 34, range: 95, halfAngle: 60 * DEG, cooldown: 19,
       special: 'reap', specialName: "Death's Embrace", specialDesc: 'Yank the enemy in, cut them, and root them in place.',
@@ -2638,15 +2649,19 @@ const FRAME_DATA = {
     Aurelia:   { basic: { startup: 9,  active: 2, recovery: 12 }, special: { startup: 14, active: 3, recovery: 18 } },
     Thorne:    { basic: { startup: 11, active: 4, recovery: 17 }, special: { startup: 13, active: 6, recovery: 19 } }
 };
-// Basic-attack cycle (S+A+R vs cooldown, whichever binds) x dmg gives the
-// worst-case (100% uptime, no misses) raw DPS this table targets:
-//   Kaelen 7dmg / 21f(0.35s)  = 20.0 dps -> ~20.0s TTK vs 400 HP
-//   Lyra   6dmg / 20f(0.33s)  = 18.0 dps -> ~20.0s TTK vs 360 HP
-//   Gorgonok 10dmg / 31f(0.52s) = 19.4 dps -> ~22.7s TTK vs 440 HP
-//   Voss   5dmg / 20f(0.33s)  = 15.0 dps -> ~21.3s TTK vs 320 HP
-//   Draven 14dmg / 46f(0.77s) = 18.3 dps -> ~28.4s TTK vs 520 HP
-//   Seraphine 5dmg / 22f(0.37s) = 13.6 dps -> ~27.9s TTK vs 380 HP
-// All land in the 20-40s band the brief targets. Reasoned, not playtested.
+// Basic-attack cycle (max of S+A+R and cooldown) x current dmg gives the
+// worst-case (100% uptime, no misses) raw DPS — recomputed against the
+// post-5x damage numbers, so this now matches the CHARACTERS data above it:
+//   Kaelen   35dmg / 21f(0.35s)  = 100 dps -> ~4.0s TTK vs 400 HP
+//   Lyra     30dmg / 20f(0.33s)  =  90 dps -> ~4.0s TTK vs 360 HP
+//   Gorgonok 50dmg / 31f(0.52s)  =  97 dps -> ~4.6s TTK vs 440 HP
+//   Voss     25dmg / 20f(0.33s)  =  75 dps -> ~4.3s TTK vs 320 HP
+//   Draven   70dmg / 46f(0.77s)  =  91 dps -> ~5.7s TTK vs 520 HP
+//   Seraphine 25dmg / 22f(0.37s) =  68 dps -> ~5.6s TTK vs 380 HP
+// Real fights aren't 100% uptime — spacing, whiffs, dodge i-frames and
+// hitstun stretch this to roughly a 5-15s band. That's why Arena Collapse
+// was retuned to first-crush ~56s (see its constants block): it only ever
+// bites a genuinely stalled round. Reasoned, not playtested.
 
 const DODGE_DIST = 70, DODGE_IFRAMES = 14, DODGE_COOLDOWN = 45;
 
@@ -2891,11 +2906,12 @@ class Fighter {
 
     // groundLevelAt() used to snap a grounded fighter straight up to
     // whatever terrain height was under their new feet, with no limit —
-    // so walking sideways into the base of Sundered Stair's tallest (54
-    // unit) step teleported you onto its top with no jump at all, the
-    // same way a gentle 6-unit lip would. Real stairs still climb for
-    // free step-by-step (each riser here is 18 units, under the cap), but
-    // a big rise in one go now blocks the walk like a wall, same
+    // so walking sideways into the base of a tall step teleported you onto
+    // its top with no jump at all, the same way a gentle 6-unit lip would.
+    // Real stairs still climb for free step-by-step (Sundered Stair's risers
+    // are 20 units each — from the ground onto the 20 step, then 20->40, then
+    // 40->60, every rise <= the 30-unit cap), but a big rise in one go now
+    // blocks the walk like a wall, same
     // axis-separated slide-along-the-wall approach as resolvePlatformWalls
     // above (try the full move, then X-only, then Y-only, then give up
     // and revert both). Only applies while grounded — once you've jumped,
@@ -3190,7 +3206,10 @@ class Fighter {
         this.vz -= GRAVITY * dt;
         const nextZ = this.z + this.vz * dt;
 
-        // Steps/ramps are always steppable (no jump needed). Platforms are
+        // Steps/ramps give walkable ground, but only a rise up to
+        // MAX_WALK_STEP_UP (30) can be climbed on foot in one go — see
+        // resolveTallTerrain (every step in MAPS is <= 30, so all are
+        // walkable; a single step taller than that is a wall). Platforms are
         // one-way high ground: you can only land on top by dropping onto the
         // surface from at/above it (jumped up), never by walking into the
         // footprint at ground level. The condition: descending (vz <= 0),
@@ -5095,10 +5114,16 @@ function togglePause() {
     if (gameState === 'PAUSED') {
         gameState = pausedFromState;
         pausedFromState = null;
+        // Don't count the pause against the round clock (the match-summary
+        // "Round times" line reads from roundStartedAt): push the start
+        // forward by however long we were paused.
+        roundStartedAt += performance.now() - pauseStartedAt;
         document.getElementById('pause-screen').style.display = 'none';
         document.getElementById('ui-overlay').style.display = 'none';
     } else if (gameState === 'FIGHT' || gameState === 'DEATH' || gameState === 'ROUND_END') {
         pausedFromState = gameState;
+        pauseStartedAt = performance.now();
+        cameraShakeMag = 0; // don't leave a frozen shake running under the pause overlay
         gameState = 'PAUSED';
         document.getElementById('pause-controls-reminder').innerHTML =
             `P1: ${controlsSummary('p1')}<br>P2: ${controlsSummary('p2')}`;
@@ -5130,6 +5155,7 @@ let loser = null, winner = null, deathPhase = '', deathTimer = 0, isDraw = false
 // summary. gameState gains two new values: 'PAUSED' and 'ROUND_END' (brief
 // pips/reset screen between rounds). ---
 const ROUNDS_TO_WIN = 2;
+const MAX_ROUNDS = 5; // hard cap so repeated double-KO draws (which advance no one) can't run best-of-3 forever
 const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress can skip it
 
 // --- Arena Collapse: replaces the old flat round timer. There's no clock
@@ -5149,12 +5175,15 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 // already existed, and the map stays fully visible (no obscuring props)
 // while each fighter is crushed in place on their own side.
 //
-// Timing: GRACE_PERIOD 75s of full arena, then a tick every SHRINK_INTERVAL
-// (13s) closing SHRINK_FRAC_STEP (0.13) each time. Crush (frac >= 0.8) lands
-// on the 7th tick, so ~75 + 7·13 ≈ 166s ≈ 2¾ minutes into a fully-stalled
-// round — in the requested 2-3 minute window.
-const GRACE_PERIOD = 75;        // seconds the arena stays full-size before the first collapse tick
-const SHRINK_INTERVAL = 13;     // seconds between each collapse tick after the grace period
+// Timing: retuned for the current (much higher) damage. After the 5x damage
+// pass a decisive round resolves in well under a minute, so the old 2¾-minute
+// window meant collapse essentially never fired. Now GRACE_PERIOD 20s of full
+// arena, then a tick every SHRINK_INTERVAL (6s) closing SHRINK_FRAC_STEP (0.13)
+// each. Crush (frac >= 0.8) lands on the 7th tick, ~20 + 6·6 ≈ 56s into a
+// fully-stalled round — real pressure on a staller, but it won't interrupt a
+// decisive fight.
+const GRACE_PERIOD = 20;        // seconds the arena stays full-size before the first collapse tick
+const SHRINK_INTERVAL = 6;      // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
 const CRUSH_AT_FRAC = 0.8;      // once the collapse fraction passes this, snap fully shut and start crushing
 const CRUSH_DPS = 40;           // flat HP/second lost by BOTH fighters while crushing — same rate regardless of max or current HP
@@ -5171,6 +5200,7 @@ let roundStartedAt = 0;
 let roundDurations = [];
 let matchMap = null;
 let pausedFromState = null;
+let pauseStartedAt = 0;
 
 function freshStats() {
     return { damageDealt: 0, largestHit: 0, specialsUsed: 0 };
@@ -5309,9 +5339,17 @@ function drawRoundStatus() {
         hudCtx.fillStyle = Math.sin(arenaTime * 0.5) > 0 ? "#ef4444" : "#fca5a5";
         hudCtx.fillText("CRUSHING!", VIRTUAL_W / 2, 44);
     } else {
+        // Don't lead the round with a big "collapses in 20s" — it's not the
+        // point yet. Stay silent until the arena is already closing OR the
+        // first tick is within 15s, then fade the counter in over ~5s.
         const collapsed = shrinkTargetFrac > 0.001;
-        hudCtx.fillStyle = shrinkTimer <= 3 ? "#ef4444" : "#e2e8f0";
-        hudCtx.fillText(`${collapsed ? 'Arena closing — next' : 'Arena collapses in'} ${Math.max(0, Math.ceil(shrinkTimer))}s`, VIRTUAL_W / 2, 44);
+        if (collapsed || shrinkTimer <= 15) {
+            hudCtx.save();
+            hudCtx.globalAlpha = collapsed ? 1 : Math.max(0, Math.min(1, (15 - shrinkTimer) / 5));
+            hudCtx.fillStyle = shrinkTimer <= 3 ? "#ef4444" : "#e2e8f0";
+            hudCtx.fillText(`${collapsed ? 'Arena closing — next' : 'Arena collapses in'} ${Math.max(0, Math.ceil(shrinkTimer))}s`, VIRTUAL_W / 2, 44);
+            hudCtx.restore();
+        }
     }
 
     // Round-win pips, one row per player, filled dots for rounds already won.
@@ -5562,7 +5600,16 @@ function endRound() {
     if (!isDraw) roundWins[winner === player1 ? 'p1' : 'p2']++;
     sfxRoundEnd();
 
-    if (roundWins.p1 >= ROUNDS_TO_WIN || roundWins.p2 >= ROUNDS_TO_WIN) {
+    const decided = roundWins.p1 >= ROUNDS_TO_WIN || roundWins.p2 >= ROUNDS_TO_WIN;
+    const capReached = currentRound >= MAX_ROUNDS; // this is the last round we'll play
+    if (decided || capReached) {
+        if (!decided) {
+            // Hit the cap without either side reaching ROUNDS_TO_WIN (a run of
+            // draws). Resolve on round wins; a level score is a match draw,
+            // routed through endMatch's existing isDraw path.
+            if (roundWins.p1 === roundWins.p2) { isDraw = true; winner = null; loser = null; }
+            else { winner = roundWins.p1 > roundWins.p2 ? player1 : player2; loser = winner === player1 ? player2 : player1; isDraw = false; }
+        }
         endMatch();
     } else {
         currentRound++;
