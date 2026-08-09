@@ -669,44 +669,73 @@ let hitStopFrames = 0; // set on a hit; freezes physics/update for a beat
 let cameraShakeMag = 0; // set on a hit; decays each frame, offsets the camera
 
 // Batch 8: floating damage numbers + impact sparks. Plain 2D HUD-space
-// entries (not THREE meshes) — they're drawn on hudCtx in the same fixed
-// 900x500 virtual space the rest of the HUD uses, so no scene disposal
-// concerns apply; startRound()/startMatch() just clear the arrays.
-let damageNumbers = []; // {x, y, amount, life, maxLife}
-let impactSparks = []; // {x, y, life, maxLife, color}
+// entries carry a GAME-space position (x, y) plus the fighter's z (chest
+// height), so drawHitFeedback can project them to screen space per-viewport —
+// they used to be stored/drawn in the old top-down HUD space, which meant
+// nothing in first person. startRound()/startMatch() just clear the arrays.
+let damageNumbers = []; // {x, y, z, amount, life, maxLife}
+let impactSparks = []; // {x, y, z, life, maxLife, color}
 function updateHitFeedback(dt) {
     for (let i = damageNumbers.length - 1; i >= 0; i--) {
-        const d = damageNumbers[i];
-        d.y -= 0.6 * dt;
-        d.life -= dt;
-        if (d.life <= 0) damageNumbers.splice(i, 1);
+        damageNumbers[i].life -= dt; // the upward float is applied in screen space at draw time
+        if (damageNumbers[i].life <= 0) damageNumbers.splice(i, 1);
     }
     for (let i = impactSparks.length - 1; i >= 0; i--) {
-        const s = impactSparks[i];
-        s.life -= dt;
-        if (s.life <= 0) impactSparks.splice(i, 1);
+        impactSparks[i].life -= dt;
+        if (impactSparks[i].life <= 0) impactSparks.splice(i, 1);
     }
 }
+
+// The active 2D-HUD viewports (in hudCanvas PIXELS, which are CSS px * pixel
+// ratio) and which camera renders each — mirrors renderViews' split-screen /
+// full-screen choice so projected overlays land in the right half.
+function hudViewports() {
+    const W = hudCanvas.width, H = hudCanvas.height;
+    if (player1 && player2 && !player1.isBot && !player2.isBot) {
+        return [{ cam: camP1, x: 0, y: 0, w: W / 2, h: H }, { cam: camP2, x: W / 2, y: 0, w: W / 2, h: H }];
+    }
+    const viewer = (player1 && !player1.isBot) ? player1 : ((player2 && !player2.isBot) ? player2 : player1);
+    return [{ cam: viewer === player1 ? camP1 : camP2, x: 0, y: 0, w: W, h: H }];
+}
+
+// Floating damage numbers + impact sparks, projected from their world position
+// into each viewport that can see them (so in split-screen each shows once per
+// half). Drawn in raw canvas pixels — the projected coords are already pixels.
+const _fbVec = new THREE.Vector3();
 function drawHitFeedback() {
-    for (const d of damageNumbers) {
-        const alpha = Math.max(0, d.life / d.maxLife);
-        hudCtx.textAlign = 'center';
-        hudCtx.font = 'bold 13px sans-serif';
-        hudCtx.fillStyle = `rgba(255,214,102,${alpha})`;
-        hudCtx.fillText(Math.round(d.amount).toString(), d.x, d.y);
-        hudCtx.textAlign = 'left';
+    if (!player1 || !player2) return;
+    if (!damageNumbers.length && !impactSparks.length) return;
+    const vps = hudViewports();
+    const fontPx = Math.round(hudCanvas.width * 0.018 * HUD_TEXT_SCALE);
+    hudCtx.save();
+    hudCtx.textAlign = 'center';
+    hudCtx.font = `bold ${fontPx}px sans-serif`;
+    for (const vp of vps) {
+        const project = (e) => {
+            _fbVec.set(worldX(e.x), e.z != null ? e.z : 30, worldZ(e.y)).project(vp.cam);
+            if (_fbVec.z > 1) return null; // behind the camera
+            const sx = vp.x + (_fbVec.x * 0.5 + 0.5) * vp.w;
+            const sy = vp.y + (-_fbVec.y * 0.5 + 0.5) * vp.h;
+            if (sx < vp.x || sx > vp.x + vp.w || sy < vp.y || sy > vp.y + vp.h) return null; // outside this viewport
+            return { sx, sy };
+        };
+        for (const d of damageNumbers) {
+            const p = project(d); if (!p) continue;
+            const alpha = Math.max(0, d.life / d.maxLife);
+            hudCtx.fillStyle = `rgba(255,214,102,${alpha})`;
+            hudCtx.fillText(Math.round(d.amount).toString(), p.sx, p.sy - (1 - alpha) * fontPx * 1.6); // floats up as it fades
+        }
+        for (const s of impactSparks) {
+            const p = project(s); if (!p) continue;
+            const alpha = Math.max(0, s.life / s.maxLife);
+            const r = (1 - alpha) * 22 + 3;
+            hudCtx.globalAlpha = alpha * 0.9;
+            hudCtx.strokeStyle = s.color; hudCtx.lineWidth = 2;
+            hudCtx.beginPath(); hudCtx.arc(p.sx, p.sy, r, 0, Math.PI * 2); hudCtx.stroke();
+            hudCtx.globalAlpha = 1;
+        }
     }
-    for (const s of impactSparks) {
-        const alpha = Math.max(0, s.life / s.maxLife);
-        const r = (1 - alpha) * 22 + 3;
-        hudCtx.globalAlpha = alpha * 0.9;
-        hudCtx.strokeStyle = s.color;
-        hudCtx.lineWidth = 2;
-        hudCtx.beginPath();
-        hudCtx.arc(s.x, s.y, r, 0, Math.PI * 2);
-        hudCtx.stroke();
-        hudCtx.globalAlpha = 1;
-    }
+    hudCtx.restore();
 }
 
 // ?debug=1: hitboxes/hurtboxes, facing vectors, dt, FPS, and each
@@ -5528,6 +5557,7 @@ function drawHUD() {
     hudCtx.textAlign = "left";
 
     hudCtx.restore();
+    drawHitFeedback(); // raw canvas pixels — projected from world space, so outside the virtual-scale block
     drawDebugOverlay();
 }
 
