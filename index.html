@@ -654,6 +654,38 @@ const hudCanvas = document.getElementById('hudCanvas');
 const hudCtx = hudCanvas.getContext('2d');
 
 let gameState = "MENU"; // MENU, INTRO, FIGHT, DEATH, ROUND_END, PAUSED, GAMEOVER
+
+// --- Single screen manager. One source of truth for what's visible, so the
+// ~dozen scattered element.style.display assignments (in three different
+// truthy values) can't drift out of sync — the root cause of modal-leak bugs.
+//   SCREENS live inside #ui-overlay (only one shown at a time; overlay hidden
+//   during a fight). MODALS overlay everything and stack: opening one leaves
+//   whatever's underneath in place, so closing returns there. ---
+const SCREEN_EL = { select: 'select-screen', gameover: 'gameover-screen', pause: 'pause-screen' };
+const MODAL_EL = { tutorial: 'tutorial-screen', settings: 'settings-screen', rebind: 'rebind-screen', audio: 'audio-screen', mapselect: 'mapselect-screen' };
+let currentScreen = 'select'; // matches the initial CSS (select shown)
+let modalStack = [];
+function showScreen(name) {
+    currentScreen = name;
+    for (const k in SCREEN_EL) document.getElementById(SCREEN_EL[k]).style.display = (k === name) ? 'block' : 'none';
+    document.getElementById('ui-overlay').style.display = name ? 'flex' : 'none';
+}
+function hideOverlay() { showScreen(null); } // no screen — used when a match takes over the viewport
+function openModal(name) {
+    if (!modalStack.includes(name)) modalStack.push(name);
+    const el = document.getElementById(MODAL_EL[name]);
+    el.style.zIndex = 40 + modalStack.length; // newest modal always renders on top of any it stacked over
+    el.style.display = 'flex';
+}
+function closeModal() {
+    const name = modalStack.pop();
+    if (name) document.getElementById(MODAL_EL[name]).style.display = 'none';
+    return name;
+}
+function closeAllModals() { while (modalStack.length) closeModal(); }
+function modalOpen() { return modalStack.length > 0; }
+function topModal() { return modalStack[modalStack.length - 1] || null; }
+
 let p1Choice = null;
 let p2Choice = null;
 let player1 = null;
@@ -777,6 +809,7 @@ window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 // permanently "stuck" down since no keyup event ever fires.
 window.addEventListener('blur', () => {
     for (const k in keys) keys[k] = false;
+    pressed.clear(); // otherwise a key pressed just before alt-tab stays queued and fires on return
 });
 
 // localStorage can throw (not just return null) in some private-browsing
@@ -798,6 +831,7 @@ const DEFAULT_BINDINGS = {
     p1: { up: 'w', down: 's', left: 'a', right: 'd', jump: 'e', attack: 'f', special: 'g', dodge: 'shift' },
     p2: { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', jump: '/', attack: 'k', special: 'l', dodge: '.' }
 };
+const RANDOM_KEYS = { p1: 'r', p2: '/' }; // fighter-select "pick a random fighter" keys (not rebindable; named so the label/handler stay in sync)
 let BINDINGS;
 try {
     const saved = JSON.parse(safeLSGet('astralClashBindings'));
@@ -894,11 +928,11 @@ window.addEventListener('keydown', e => {
 }, true);
 function openRebind() {
     buildRebindList();
-    document.getElementById('rebind-screen').style.display = 'flex';
+    openModal('rebind');
 }
 function closeRebind() {
     if (rebindCapture) { rebindCapture.buttonEl.classList.remove('listening'); rebindCapture = null; }
-    document.getElementById('rebind-screen').style.display = 'none';
+    closeModal(); // returns to Settings underneath if it was opened from there
 }
 document.getElementById('btn-open-rebind').addEventListener('click', openRebind);
 document.getElementById('btn-pause-rebind').addEventListener('click', openRebind);
@@ -968,28 +1002,16 @@ document.getElementById('btn-audio-mute').addEventListener('click', () => {
 document.getElementById('btn-open-audio').addEventListener('click', () => {
     unlockAudio(); // opening this screen is itself a user gesture — good a place as any to unlock if it hasn't happened yet
     refreshAudioUI();
-    document.getElementById('audio-screen').style.display = 'flex';
+    openModal('audio');
 });
-document.getElementById('btn-audio-close').addEventListener('click', () => {
-    document.getElementById('audio-screen').style.display = 'none';
-});
+document.getElementById('btn-audio-close').addEventListener('click', () => closeModal());
 
 // Single "Settings" entry point gathering Rebind Keys / HUD Text scale /
-// Audio Settings, which used to be three separate footer buttons. Rebind
-// and Audio still open their own existing screens (unchanged) — this just
-// closes the Settings menu first so the two don't stack.
-document.getElementById('btn-open-settings').addEventListener('click', () => {
-    document.getElementById('settings-screen').style.display = 'flex';
-});
-document.getElementById('btn-settings-close').addEventListener('click', () => {
-    document.getElementById('settings-screen').style.display = 'none';
-});
-document.getElementById('btn-open-rebind').addEventListener('click', () => {
-    document.getElementById('settings-screen').style.display = 'none';
-});
-document.getElementById('btn-open-audio').addEventListener('click', () => {
-    document.getElementById('settings-screen').style.display = 'none';
-});
+// Audio Settings. Rebind and Audio open as modals STACKED on top of Settings
+// (the modal manager keeps Settings underneath), so closing either returns
+// here — no separate "hide Settings first" listeners needed.
+document.getElementById('btn-open-settings').addEventListener('click', () => openModal('settings'));
+document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());
 
 // Tutorial overlay. The controls card is generated from controlsSummary()
 // (same helper the pause-screen reminder uses) so a rebind shows up here
@@ -1002,11 +1024,13 @@ function buildTutorialControls() {
 }
 function openTutorial() {
     buildTutorialControls();
-    document.getElementById('tutorial-screen').style.display = 'flex';
+    openModal('tutorial');
 }
 function closeTutorial() {
-    document.getElementById('tutorial-screen').style.display = 'none';
-    if (document.getElementById('chk-tutorial-hide').checked) safeLSSet('astralClashTutorialSeen', '1');
+    closeModal();
+    // First-visit-only: mark seen on the first close no matter what, so it
+    // stops auto-opening; the checkbox is now redundant but harmless.
+    safeLSSet('astralClashTutorialSeen', '1');
 }
 document.getElementById('btn-open-tutorial').addEventListener('click', openTutorial);
 document.getElementById('btn-tutorial-close').addEventListener('click', closeTutorial);
@@ -5048,18 +5072,14 @@ function buildMapSelect() {
 }
 function openMapSelect() {
     if (!mapSelectBuilt) buildMapSelect();
-    document.getElementById('ui-overlay').style.display = 'none';
-    document.getElementById('mapselect-screen').style.display = 'flex';
+    openModal('mapselect'); // overlays the select screen; Back closes it and reveals fighters again
 }
 function chooseMap(map) {
-    document.getElementById('mapselect-screen').style.display = 'none';
-    startMatch(map || undefined); // undefined = random
+    closeAllModals();
+    startMatch(map || undefined); // undefined = random; startRound() hides the overlay via hideOverlay()
 }
 document.getElementById('btn-map-random').addEventListener('click', () => chooseMap(null));
-document.getElementById('btn-mapselect-back').addEventListener('click', () => {
-    document.getElementById('mapselect-screen').style.display = 'none';
-    document.getElementById('ui-overlay').style.display = 'flex';
-});
+document.getElementById('btn-mapselect-back').addEventListener('click', () => closeModal());
 
 function beginMatch() {
     if (p1IsBot) p1Choice = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].name;
@@ -5128,40 +5148,38 @@ function backToPick(side) {
 }
 
 window.addEventListener('keydown', e => {
-    if (gameState !== 'MENU') return;
+    // A4: never drive fighter select behind an open modal (the tutorial
+    // auto-opens on first load — keys pressed while reading it used to leak
+    // through). A3: confirm/back read from the live bindings, not literals.
+    if (gameState !== 'MENU' || modalOpen()) return;
     const k = e.key.toLowerCase();
     const i1 = P1_KEYS.indexOf(k);
     if (i1 !== -1) previewPick('p1', CHARACTERS[i1].name);
     const i2 = P2_KEYS.indexOf(k);
     if (i2 !== -1) previewPick('p2', CHARACTERS[i2].name);
-    if (k === 'f') confirmPick('p1');
-    if (k === 'g') backToPick('p1');
-    if (k === 'k') confirmPick('p2');
-    if (k === 'l') backToPick('p2');
-    if (k === 'r') randomPick('p1');
-    if (k === '/') randomPick('p2');
+    if (k === BINDINGS.p1.attack) confirmPick('p1');
+    if (k === BINDINGS.p1.special) backToPick('p1');
+    if (k === BINDINGS.p2.attack) confirmPick('p2');
+    if (k === BINDINGS.p2.special) backToPick('p2');
+    if (k === RANDOM_KEYS.p1) randomPick('p1');
+    if (k === RANDOM_KEYS.p2) randomPick('p2');
 });
 
 document.getElementById('btn-play-again').addEventListener('click', () => {
     p1Stage = 'pick'; p2Stage = 'pick'; p1Preview = null; p2Preview = null;
     p1Choice = null; p2Choice = null;
     refreshBotUI('p1'); refreshBotUI('p2'); // restores grid-vs-bot-card display + difficulty visibility for each side
-    document.getElementById('select-screen').style.display = 'block';
-    document.getElementById('gameover-screen').style.display = 'none';
-    document.getElementById('ui-overlay').style.display = 'flex';
+    closeAllModals();
+    showScreen('select');
     gameState = "MENU";
     stopAmbientPad();
 });
 
 document.getElementById('btn-rematch').addEventListener('click', () => {
-    document.getElementById('gameover-screen').style.display = 'none';
-    document.getElementById('ui-overlay').style.display = 'none';
-    startMatch(currentMap); // same fighters, same map — no surprise reroll
+    startMatch(currentMap); // same fighters, same map — no surprise reroll (startMatch hides the overlay)
 });
 
 document.getElementById('btn-reroll-map').addEventListener('click', () => {
-    document.getElementById('gameover-screen').style.display = 'none';
-    document.getElementById('ui-overlay').style.display = 'none';
     startMatch(); // same fighters, explicit new random map
 });
 
@@ -5176,8 +5194,7 @@ function togglePause() {
         // "Round times" line reads from roundStartedAt): push the start
         // forward by however long we were paused.
         roundStartedAt += performance.now() - pauseStartedAt;
-        document.getElementById('pause-screen').style.display = 'none';
-        document.getElementById('ui-overlay').style.display = 'none';
+        hideOverlay();
     } else if (gameState === 'FIGHT' || gameState === 'DEATH' || gameState === 'ROUND_END') {
         pausedFromState = gameState;
         pauseStartedAt = performance.now();
@@ -5185,24 +5202,38 @@ function togglePause() {
         gameState = 'PAUSED';
         document.getElementById('pause-controls-reminder').innerHTML =
             `P1: ${controlsSummary('p1')}<br>P2: ${controlsSummary('p2')}`;
-        document.getElementById('select-screen').style.display = 'none';
-        document.getElementById('gameover-screen').style.display = 'none';
-        document.getElementById('pause-screen').style.display = 'block';
-        document.getElementById('ui-overlay').style.display = 'flex';
+        showScreen('pause');
     }
 }
-window.addEventListener('keydown', e => { if (e.key === 'Escape') togglePause(); });
+// Escape: if a modal is open, close the topmost one (A5 — never unpause out
+// from under an open sub-screen). Otherwise toggle pause. The rebind-capture
+// listener (registered in capture phase) already swallows Escape while
+// listening for a key, so this doesn't fight it.
+window.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || rebindCapture) return;
+    if (modalOpen()) { closeTopModalByEscape(); }
+    else togglePause();
+});
+// Route Escape to the right close handler for the top modal (so e.g. closing
+// rebind also clears rebindCapture / marks the tutorial seen).
+function closeTopModalByEscape() {
+    switch (topModal()) {
+        case 'rebind': closeRebind(); break;
+        case 'tutorial': closeTutorial(); break;
+        case 'mapselect': /* Back to fighters */ closeModal(); break;
+        default: closeModal(); // settings / audio
+    }
+}
 
 document.getElementById('btn-resume').addEventListener('click', togglePause);
 
 document.getElementById('btn-quit-to-menu').addEventListener('click', () => {
     pausedFromState = null;
-    document.getElementById('pause-screen').style.display = 'none';
+    closeAllModals();
     p1Stage = 'pick'; p2Stage = 'pick'; p1Preview = null; p2Preview = null;
     p1Choice = null; p2Choice = null;
     refreshBotUI('p1'); refreshBotUI('p2');
-    document.getElementById('select-screen').style.display = 'block';
-    document.getElementById('ui-overlay').style.display = 'flex';
+    showScreen('select');
     gameState = 'MENU';
     stopAmbientPad();
 });
@@ -5343,6 +5374,8 @@ function resolvePlayerCollision(a, b) {
 // startRound() (called again between rounds by endRound()) resets only
 // the fighters/hazard/pickup/timers, keeping the same map and score.
 function startMatch(mapOverride) {
+    closeAllModals();
+    hideOverlay(); // the match takes over the viewport — no menu/gameover screen behind it
     matchMap = mapOverride || MAPS[Math.floor(Math.random() * MAPS.length)];
     roundWins = { p1: 0, p2: 0 };
     currentRound = 1;
@@ -5700,9 +5733,7 @@ function endMatch() {
         `<div><b>${player2.name} (P2)</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
         `<div>Round times: ${roundTimesStr}</div>`;
 
-    document.getElementById('select-screen').style.display = 'none';
-    document.getElementById('gameover-screen').style.display = 'block';
-    document.getElementById('ui-overlay').style.display = 'flex';
+    showScreen('gameover');
 }
 
 function gameLoop() {
@@ -5816,8 +5847,10 @@ function gameLoop() {
 
         // Skippable after a beat, so a decisive KO doesn't force everyone
         // to sit through the same ~1.5s animation every single round.
+        // Either side's attack key, or Space/Enter as a universal fallback
+        // (read from the live bindings, not hardcoded 'f'/'k').
         const skipRequested = deathTimer >= DEATH_SKIP_AFTER &&
-            (consumePress('f') || consumePress('k') || consumePress(' ') || consumePress('enter'));
+            (consumePress(BINDINGS.p1.attack) || consumePress(BINDINGS.p2.attack) || consumePress(' ') || consumePress('enter'));
 
         if (skipRequested) {
             endRound();
