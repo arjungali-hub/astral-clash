@@ -48,13 +48,11 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            /* Top-aligned + scrollable, not centered: with 10 characters the
-               select screen can now be taller than the viewport, and a
-               vertically *centered* flex column clips equally off the top
-               AND bottom with no way to reach either (there's no overflow
-               here to scroll). Top-aligned + scroll keeps everything
-               reachable; short content (e.g. the pause screen) just sits
-               near the top instead of dead-center, an acceptable trade. */
+            /* #ui-overlay is just the scroll container (the tall 10-character
+               select screen can exceed the viewport). Each screen controls its
+               own vertical alignment: #select-screen is top-aligned so it stays
+               reachable via scroll; the short #pause-screen / #gameover-screen
+               use `margin: auto 0` to centre in the available space. */
             justify-content: flex-start;
             overflow-y: auto;
             padding: 16px 0;
@@ -138,7 +136,16 @@
             /* #ui-overlay itself scrolls now (see above) — a second nested
                scroll region here would just fight it for the mouse wheel. */
         }
-        .side-panel { width: min(340px, 90vw); padding: 14px; margin: 4px; transition: box-shadow 0.2s; }
+        /* Natural row width is ~885px; below that, flex-wrap would drop VS/P2
+           into a meaningless order. Stack P1 / VS / P2 vertically instead (B8). */
+        @media (max-width: 900px) {
+            #select-screen .select-row { flex-direction: column; flex-wrap: nowrap; align-items: center; }
+            .vs-column { min-height: auto; padding-top: 8px; width: min(340px, 90vw); }
+        }
+        /* min-height ~= the 5-row fighter grid's natural height, so swapping
+           in the shorter detail panel (showDetail) doesn't resize the whole
+           row on every preview / back-out (B7). */
+        .side-panel { width: min(340px, 90vw); padding: 14px; margin: 4px; transition: box-shadow 0.2s; min-height: 360px; }
         .side-panel h3 { margin: 0 0 10px; font-size: 1rem; }
         .side-panel .key-hint { color: #64748b; font-weight: normal; font-size: 0.75rem; }
         .pad-badge { font-size: 0.85rem; vertical-align: middle; }
@@ -158,6 +165,10 @@
             gap: 14px;
             padding-top: 40px;
             width: 165px;
+            /* Reserve room for the Start Match + Difficulty buttons (both
+               toggled on/off) so the VS badge doesn't slide as selections
+               change (B6). */
+            min-height: 200px;
         }
         /* Soft radial halo behind the VS badge, so the center of the
            screen reads as the focal point of the matchup. */
@@ -315,8 +326,10 @@
         .detail-actions button { width: auto; flex: 1; padding: 6px 4px; font-size: 0.7rem; margin: 0; }
         .btn-back { background: #334155 !important; color: #fff !important; }
         .btn-back:hover { background: #475569 !important; }
-        #gameover-screen { display: none; }
-        #pause-screen { display: none; }
+        /* Short screens centre themselves in the scroll container (B2). */
+        #gameover-screen { display: none; margin: auto 0; }
+        #pause-screen { display: none; margin: auto 0; }
+        #select-screen { margin-top: 0; }
         #rebind-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -454,18 +467,19 @@
         <canvas id="hudCanvas" width="1170" height="650"></canvas>
 
         <div id="ui-overlay">
-            <div class="brand">
-                <h1>Astral Clash</h1>
-                <div class="brand-divider"></div>
-                <p>Dimensional Arena Fighter</p>
-                <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
-            </div>
-            <p id="touch-warning" style="display:none;color:#f59e0b;font-size:0.75rem;max-width:480px;text-align:center;">This game is keyboard/gamepad-only — no touch controls yet. It'll still load on a touchscreen, but you won't be able to play without a keyboard or a connected gamepad.</p>
-
             <div id="select-screen">
+                <!-- Branding lives inside the select screen so it doesn't show
+                     on Pause / Game Over / Settings (which reuse #ui-overlay). -->
+                <div class="brand">
+                    <h1>Astral Clash</h1>
+                    <div class="brand-divider"></div>
+                    <p>Dimensional Arena Fighter</p>
+                    <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
+                </div>
+                <p id="touch-warning" style="display:none;color:#f59e0b;font-size:0.75rem;max-width:480px;text-align:center;">This game is keyboard/gamepad-only — no touch controls yet. It'll still load on a touchscreen, but you won't be able to play without a keyboard or a connected gamepad.</p>
                 <div class="select-row">
                     <div class="menu-section side-panel">
-                        <h3 id="p1-heading">Player 1 <span class="key-hint">(1-0)</span></h3>
+                        <h3 id="p1-heading">Player 1 <span class="key-hint">(keys on cards)</span></h3>
                         <div class="side-actions">
                             <button id="btn-toggle-bot-p1" class="bot-toggle">Bot: OFF</button>
                             <button id="btn-random-p1" class="bot-toggle">Random (R)</button>
@@ -644,7 +658,8 @@
     <div id="cdn-error">
         <div class="menu-section">
             <h3>Couldn't load Three.js</h3>
-            <p>The game engine failed to load from the CDN (cdn.jsdelivr.net). Check your internet connection, or an ad/script blocker may be blocking jsDelivr, then reload the page.</p>
+            <p>The game engine failed to load from the CDN (cdn.jsdelivr.net). Check your internet connection, or an ad/script blocker may be blocking jsDelivr, then retry.</p>
+            <button onclick="location.reload()">Retry</button>
         </div>
     </div>
 
@@ -1416,13 +1431,10 @@ function decayCameraShake(dt) {
 // scissor rects are in CSS pixels; three.js applies the pixel ratio.
 const _rendSize = new THREE.Vector2();
 function renderViews(dt) {
+    // On the menu the whole 3D scene sits under #ui-overlay's ~opaque
+    // background — invisible. Don't waste a full scene render on it (B15).
+    if (gameState === 'MENU' || !player1 || !player2) return;
     renderer.getSize(_rendSize);
-    if (!player1 || !player2) { // pre-match fallback (menu backdrop)
-        renderer.setScissorTest(false);
-        renderer.setViewport(0, 0, _rendSize.x, _rendSize.y);
-        renderer.render(scene, camP1);
-        return;
-    }
     const W = _rendSize.x, H = _rendSize.y;
     const twoHumans = !player1.isBot && !player2.isBot;
     renderer.setScissorTest(true);
@@ -5592,45 +5604,47 @@ function drawHUD() {
     drawCrosshairs(twoHumans);
 
     // Everything below is written in the fixed virtual space and scaled to
-    // fill the canvas. In split-screen the left third holds P1's HUD (P1's
-    // view is the left half), the right third P2's, and the center column
-    // the shared collapse timer / round banner — all naturally readable in
-    // both halves.
+    // fill the canvas. The per-player HP/meter panels sit left and right; the
+    // SHARED centered elements (map name, collapse timer + pips, round banner,
+    // footer) are drawn once at center in full-screen, or TWICE — centered in
+    // each half — in split-screen, so nothing lands on the seam (B10).
     hudCtx.save();
     hudCtx.scale(hudCanvas.width / VIRTUAL_W, hudCanvas.height / VIRTUAL_H);
 
-    if (currentMap) {
-        hudCtx.fillStyle = "#64748b";
-        hudCtx.font = hudFont(15);
-        hudCtx.textAlign = "center";
-        hudCtx.fillText(currentMap.name, VIRTUAL_W / 2, 24);
-        hudCtx.textAlign = "left";
-    }
-
-    drawRoundStatus();
     drawPlayerHUD(player1, 30, 'P1');
     drawPlayerHUD(player2, VIRTUAL_W - 30 - 420, 'P2');
 
-    if (gameState === "ROUND_END") {
-        hudCtx.textAlign = "center";
-        hudCtx.font = hudFont(34, true);
-        hudCtx.fillStyle = "#00f3ff";
-        const roundText = isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`;
-        hudCtx.fillText(roundText, VIRTUAL_W / 2, 300);
-        hudCtx.font = hudFont(18);
-        hudCtx.fillStyle = "#94a3b8";
-        hudCtx.fillText(`Round ${currentRound} starting...`, VIRTUAL_W / 2, 336);
+    const botNote = [player1.isBot ? 'P1 Bot' : null, player2.isBot ? 'P2 Bot' : null].filter(Boolean).join(' / ');
+    const drawShared = () => {
+        if (currentMap) {
+            hudCtx.fillStyle = "#64748b"; hudCtx.font = hudFont(15); hudCtx.textAlign = "center";
+            hudCtx.fillText(currentMap.name, VIRTUAL_W / 2, 24); hudCtx.textAlign = "left";
+        }
+        drawRoundStatus();
+        if (gameState === "ROUND_END") {
+            hudCtx.textAlign = "center";
+            hudCtx.font = hudFont(34, true); hudCtx.fillStyle = "#00f3ff";
+            hudCtx.fillText(isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`, VIRTUAL_W / 2, 300);
+            hudCtx.font = hudFont(18); hudCtx.fillStyle = "#94a3b8";
+            hudCtx.fillText(`Round ${currentRound} starting...`, VIRTUAL_W / 2, 336);
+            hudCtx.textAlign = "left";
+        }
+        hudCtx.fillStyle = "#64748b"; hudCtx.font = hudFont(13); hudCtx.textAlign = "center";
+        hudCtx.fillText(`Esc for controls / pause${botNote ? '  |  ' + botNote : ''}`, VIRTUAL_W / 2, VIRTUAL_H - 20);
         hudCtx.textAlign = "left";
+    };
+    if (twoHumans) {
+        hudCtx.save(); hudCtx.translate(-VIRTUAL_W / 4, 0); drawShared(); hudCtx.restore(); // centered in the left half
+        hudCtx.save(); hudCtx.translate(VIRTUAL_W / 4, 0); drawShared(); hudCtx.restore(); // and the right half
+    } else {
+        drawShared();
     }
 
-    hudCtx.fillStyle = "#64748b";
-    hudCtx.font = hudFont(13);
-    hudCtx.textAlign = "center";
-    const botNote = [player1.isBot ? 'P1 Bot' : null, player2.isBot ? 'P2 Bot' : null].filter(Boolean).join(' / ');
-    hudCtx.fillText(`Esc for controls / pause${botNote ? '  |  ' + botNote : ''}`, VIRTUAL_W / 2, VIRTUAL_H - 20);
-    hudCtx.textAlign = "left";
-
     hudCtx.restore();
+    if (twoHumans) { // a deliberate seam divider so the split reads as intentional
+        hudCtx.fillStyle = 'rgba(255,255,255,0.18)';
+        hudCtx.fillRect(hudCanvas.width / 2 - 1, 0, 2, hudCanvas.height);
+    }
     drawHitFeedback(); // raw canvas pixels — projected from world space, so outside the virtual-scale block
     drawDebugOverlay();
 }
