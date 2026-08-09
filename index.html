@@ -209,6 +209,11 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.6; }
         }
+        /* Honor the OS "reduce motion" setting: kill the looping menu pulses
+           (the intro drop cinematic is gated in JS off REDUCED_MOTION). */
+        @media (prefers-reduced-motion: reduce) {
+            .vs-status.ready, #btn-start-match { animation: none; }
+        }
         .menu-footer {
             display: flex;
             flex-wrap: wrap;
@@ -5410,12 +5415,19 @@ function startRound(intro) {
     arenaBoundsFromFrac(0); // reset play bounds to the full arena
     roundStartedAt = performance.now();
     if (intro) {
-        // Perch them high above spawn, facing each other, and let the INTRO
-        // game-loop branch drop them in.
-        for (const f of [player1, player2]) { f.z = INTRO_DROP_HEIGHT; f.vz = 0; f.introLanded = false; }
         player1.setFacing(player2.x - player1.x, player2.y - player1.y);
         player2.setFacing(player1.x - player2.x, player1.y - player2.y);
-        introTimer = 0; introPhase = 'drop';
+        if (REDUCED_MOTION) {
+            // Reduced motion: skip the plummet. Place both at ground level and
+            // jump straight to a brief FIGHT! flash.
+            for (const f of [player1, player2]) { f.z = groundLevelAt(f.x + f.width / 2, f.y + f.height / 2); f.vz = 0; f.introLanded = true; }
+            introTimer = 0; introPhase = 'fight'; sfxRoundStart();
+        } else {
+            // Perch them high above spawn, facing each other; the INTRO
+            // game-loop branch drops them in.
+            for (const f of [player1, player2]) { f.z = INTRO_DROP_HEIGHT; f.vz = 0; f.introLanded = false; }
+            introTimer = 0; introPhase = 'drop';
+        }
         gameState = "INTRO";
     } else {
         gameState = "FIGHT";
