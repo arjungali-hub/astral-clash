@@ -652,7 +652,7 @@ const canvas = document.getElementById('gameCanvas');
 const hudCanvas = document.getElementById('hudCanvas');
 const hudCtx = hudCanvas.getContext('2d');
 
-let gameState = "MENU"; // MENU, FIGHT, DEATH, ROUND_END, PAUSED, GAMEOVER
+let gameState = "MENU"; // MENU, INTRO, FIGHT, DEATH, ROUND_END, PAUSED, GAMEOVER
 let p1Choice = null;
 let p2Choice = null;
 let player1 = null;
@@ -1323,7 +1323,10 @@ function positionFpsCamera(cam, f, dt) {
     const pitchDrop = (gameState === 'INTRO' && !f.introLanded) ? -22 : -4;
     cam.lookAt(ex + _fwd.x * 20, ey + pitchDrop, ez + _fwd.z * 20);
     const shakeScale = REDUCED_MOTION ? 0.15 : 1;
-    if (cameraShakeMag > 0.05) {
+    // No shake while paused: the PAUSED branch renders but returns before
+    // decayCameraShake, so an unguarded shake would vibrate the frozen frame
+    // forever if you paused right after a hit.
+    if (cameraShakeMag > 0.05 && gameState !== 'PAUSED') {
         cam.position.x += (Math.random() - 0.5) * cameraShakeMag * 0.5 * shakeScale;
         cam.position.y += (Math.random() - 0.5) * cameraShakeMag * 0.35 * shakeScale;
         cam.position.z += (Math.random() - 0.5) * cameraShakeMag * 0.5 * shakeScale;
@@ -1531,7 +1534,7 @@ function themeFor(map) {
 //               jumped up to it). Walking into its footprint at ground
 //               level just passes underneath, instead of popping you up.
 const PILLAR_CLEAR_HEIGHT = 45;
-const JUMP_VZ = 9, GRAVITY = 0.42, PLATFORM_SAFE_HEIGHT = 30;
+const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
 const MAX_WALK_STEP_UP = 20; // taller single-frame rises than this require an actual jump — see resolveTallTerrain()
 const TURN_SPEED = 0.052; // radians per frame-unit that left/right turns the human player's facing (first-person look)
@@ -2056,9 +2059,11 @@ function loadMap(map) {
     outerWalls.push(buildOuterWall('bottom', theme));
     syncOuterWalls(); // place them at the full-arena bounds initially
 
-    OBSTACLES = map.obstacles.slice(); // copy: buildScenery pushes collidable props onto this, and we must not mutate the source map
-    TERRAIN = map.terrain;
-    PLATFORMS = map.platforms;
+    // Copies, not live references: buildScenery pushes collidable props onto
+    // OBSTACLES, and nothing should ever mutate the source MAPS data.
+    OBSTACLES = map.obstacles.slice();
+    TERRAIN = map.terrain.slice();
+    PLATFORMS = map.platforms.slice();
 
     map.obstacles.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, theme), x: ob.x, y: ob.y }));
     TERRAIN.forEach(t => mapEdgeObjects.push({ mesh: (t.type === 'ramp' ? buildRampMesh : buildStepMesh)(t, theme), x: t.x, y: t.y }));
@@ -2280,12 +2285,15 @@ function updateScenery(dt) {
     }
 }
 
-// --- World-space muzzle flash: a brief bright puff + light at a fighter's
-// weapon tip when it fires, so a shot visibly erupts from the weapon in
-// BOTH players' views (the shooter also gets a viewmodel flash). Kept as a
-// tiny pooled system so rapid fire doesn't churn meshes. ---
+// --- Muzzle flash: a brief bright puff + light at a fighter's weapon tip when
+// it fires, so a shot visibly erupts from the weapon in BOTH players' views
+// (the shooter also gets a viewmodel flash). Kept as a tiny pooled system so
+// rapid fire doesn't churn meshes.
+// Inputs are GAME-space (gameX 60..1695, gameY 60..915) + a world height, the
+// same convention every call site and every other object uses; the game->world
+// conversion (worldX/worldZ, ground at Y=0) happens here. ---
 const muzzleFlashes = [];
-function spawnMuzzleFlash(gx, gy, gz, colorHex) {
+function spawnMuzzleFlash(gameX, gameY, height, colorHex) {
     let mf = muzzleFlashes.find(m => !m.active);
     if (!mf) {
         const core = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8),
@@ -2297,7 +2305,7 @@ function spawnMuzzleFlash(gx, gy, gz, colorHex) {
         mf = { mesh: core, light, life: 0, maxLife: 8, active: false };
         muzzleFlashes.push(mf);
     }
-    mf.mesh.position.set(gx, gy, gz);
+    mf.mesh.position.set(worldX(gameX), height, worldZ(gameY));
     mf.mesh.material.color.set(hexNum(colorHex));
     mf.light.color.set(hexNum(colorHex));
     mf.mesh.visible = true;
@@ -2894,8 +2902,8 @@ class Fighter {
     // landing on something tall from above is exactly the point.
     resolveTallTerrain(oldX, oldY) {
         if (!this.grounded) return;
-        const w2 = this.width / 2;
-        const tooTall = (px, py) => groundLevelAt(px + w2, py + w2) - this.z > MAX_WALK_STEP_UP;
+        const w2 = this.width / 2, h2 = this.height / 2;
+        const tooTall = (px, py) => groundLevelAt(px + w2, py + h2) - this.z > MAX_WALK_STEP_UP;
         if (!tooTall(this.x, this.y)) return;
         if (!tooTall(this.x, oldY)) { this.y = oldY; return; }
         if (!tooTall(oldX, this.y)) { this.x = oldX; return; }
@@ -3078,7 +3086,7 @@ class Fighter {
         if (this.rootedFrames > 0) this.rootedFrames -= dt;
         if (this.burnFrames > 0) {
             this.burnFrames -= dt;
-            this.hp = Math.max(0, this.hp - this.burnDps * dt / 60);
+            this.applyDamage(this.burnDps * dt / 60, {}); // no attacker: shield-reduced + ghost trail, but no knockback/hitstun/sfx
             if (Math.random() < 0.4) this.effects.push({ type: 'shockwaveRing', r: 4, max: 26, color: '248,113,73' }); // little flame flickers
         }
 
@@ -3275,73 +3283,83 @@ class Fighter {
             if (verticalHit(p.z, opponent.z) &&
                 p.x > opponent.x && p.x < opponent.x + opponent.width &&
                 p.y > opponent.y && p.y < opponent.y + opponent.height) {
-                opponent.takeDamage(p.damage, this);
+                const pmag = Math.hypot(p.vx, p.vy) || 1;
+                opponent.takeDamage(p.damage, this, { dx: p.vx / pmag, dy: p.vy / pmag }); // knock back along the shot, not the shooter's current facing
                 removeAndDispose(p.mesh);
                 this.projectiles.splice(i, 1);
-            } else if (p.x < ARENA_LEFT || p.x > ARENA_RIGHT || p.y < ARENA_TOP || p.y > ARENA_BOTTOM) {
+            } else if (p.x < playLeft || p.x > playRight || p.y < playTop || p.y > playBottom) {
+                // Despawn at the CURRENT (shrinking) walls, not the fixed arena
+                // bounds — otherwise shots pass through the closed-in walls
+                // during Arena Collapse into dead space before dying.
                 removeAndDispose(p.mesh);
                 this.projectiles.splice(i, 1);
             }
         }
     }
 
-    takeDamage(amount, attacker) {
+    // A "real" hit from a known attacker. `dir` (optional) is the impact
+    // direction for knockback: melee omits it (defaults to the attacker's
+    // facing); a projectile passes its own normalized velocity, since the
+    // shooter has usually turned since firing and its current facing would
+    // knock you sideways. Dodge i-frames block only this path.
+    takeDamage(amount, attacker, dir) {
         if (this.invulnFrames > 0) return;
-        if (this.shieldFrames > 0) amount *= (1 - this.shieldReduction);
-        this.hp = Math.max(0, this.hp - amount);
+        this.applyDamage(amount, { attacker: attacker || null, dir: dir || null });
+    }
+
+    // Shared damage entry point for EVERY source. Handles shield reduction and
+    // the HP-ghost trail uniformly; only a known attacker also gets knockback/
+    // hitstun/hit-stop/shake/sfx/meter/feedback. Burn DoT routes here (so
+    // Astral Ward halves it like everything else) and the arena crush routes
+    // here with ignoreShield:true — the crush is deliberately unblockable.
+    applyDamage(amount, opts = {}) {
+        const { attacker = null, ignoreShield = false, dir = null } = opts;
+        if (!ignoreShield && this.shieldFrames > 0) amount *= (1 - this.shieldReduction);
+        this.hp = Math.max(0, this.hp - amount); // the per-frame hpGhost ease (render3D) shows the trail for any drop
+        if (!attacker) return;
+
         this.hitFlash = 10;
+        // Getting hit interrupts whatever you were doing — no trading a slow
+        // recovery animation for a free follow-up.
+        this.atkState = 'idle'; this.atkKind = null; this.atkOpponent = null;
 
-        // Only real hits (an attacker is known) trigger knockback/hitstun/
-        // hit-stop/shake. (Damage sources without an attacker — the arena
-        // crush and burn DoT — apply hp loss directly and skip all of this.)
-        if (attacker) {
-            // Getting hit interrupts whatever you were doing — no trading
-            // a slow recovery animation for a free follow-up.
-            this.atkState = 'idle'; this.atkKind = null; this.atkOpponent = null;
+        const kb = Math.min(18, 4 + amount * 0.4);
+        const kdx = dir ? dir.dx : attacker.fx, kdy = dir ? dir.dy : attacker.fy;
+        this.teleportTo(kdx * kb, kdy * kb); // resolved against pillars/platforms, not a raw position add
 
-            const kb = Math.min(18, 4 + amount * 0.4);
-            this.teleportTo(attacker.fx * kb, attacker.fy * kb); // resolved against pillars/platforms, not a raw position add
+        // Hitstun: can't act for a beat, scaling with damage — this is what
+        // makes two melee characters actually trade turns instead of both just
+        // standing inside each other mashing attack.
+        this.hitstunTimer = Math.max(this.hitstunTimer, 8 + amount * 0.5);
 
-            // Hitstun: can't act for a beat, scaling with damage — this is
-            // what makes two melee characters actually trade turns instead
-            // of both just standing inside each other mashing attack.
-            this.hitstunTimer = Math.max(this.hitstunTimer, 8 + amount * 0.5);
+        hitStopFrames = Math.max(hitStopFrames, 3 + Math.min(2, amount / 15));
+        cameraShakeMag = Math.max(cameraShakeMag, 4 + Math.min(10, amount * 0.3));
 
-            hitStopFrames = Math.max(hitStopFrames, 3 + Math.min(2, amount / 15));
-            cameraShakeMag = Math.max(cameraShakeMag, 4 + Math.min(10, amount * 0.3));
+        // Feedback entries carry the fighter's z so drawHitFeedback can float
+        // the number at chest height when it projects them to screen space.
+        damageNumbers.push({ x: this.x + this.width / 2, y: this.y - 6, z: this.z + this.height * 0.5, amount, life: 40, maxLife: 40 });
+        impactSparks.push({ x: this.x + this.width / 2, y: this.y + this.height / 2, z: this.z + this.height * 0.5, life: 14, maxLife: 14, color: attacker.color });
+        attacker.hitLanded = true;
+        sfxImpact(attacker.name, amount);
 
-            damageNumbers.push({ x: this.x + this.width / 2, y: this.y - 6, amount, life: 40, maxLife: 40 });
-            impactSparks.push({ x: this.x + this.width / 2, y: this.y + this.height / 2, life: 14, maxLife: 14, color: attacker.color });
-            attacker.hitLanded = true;
-            sfxImpact(attacker.name, amount);
+        // Hit-direction indicator: a small arrow pointing toward whoever hit
+        // you (uses attacker position, which genuinely wants "where they stand").
+        this.hitDirAngle = Math.atan2(attacker.y - this.y, attacker.x - this.x);
+        this.hitDirTimer = 30;
 
-            // Hit-direction indicator (Batch 8): a small arrow on this
-            // fighter's own HUD panel pointing toward whoever just hit
-            // them, in case the camera shake/hit-stop made it hard to
-            // register which side the hit came from.
-            this.hitDirAngle = Math.atan2(attacker.y - this.y, attacker.x - this.x);
-            this.hitDirTimer = 30;
+        // Unified meter: attacker builds for landing, defender (slower) for
+        // eating — but a landed SPECIAL doesn't build the attacker's meter, or
+        // its own damage would instantly refill the meter it just spent and let
+        // specials chain for free (found during the 5x-damage verification).
+        if (attacker.atkKind !== 'special') {
+            attacker.specialMeter = Math.min(100, attacker.specialMeter + amount * METER_DEALT_RATE * attacker.meterRateMult);
+        }
+        this.specialMeter = Math.min(100, this.specialMeter + amount * METER_TAKEN_RATE * this.meterRateMult);
 
-            // Unified meter: the attacker builds meter for landing a hit,
-            // the defender builds it (slower) for eating one — a losing
-            // fighter comes back online faster instead of just losing harder.
-            // Bug found during verification: a special's own damage used to
-            // count here too, and specials hit hard enough (especially
-            // after the 5x damage pass) to instantly refill the meter that
-            // very same hit just spent — letting a landed special chain
-            // straight into another one for free. Only basic-attack damage
-            // builds meter for the attacker now; landing a special still
-            // deals its damage, it just doesn't pay for its own recast.
-            if (attacker.atkKind !== 'special') {
-                attacker.specialMeter = Math.min(100, attacker.specialMeter + amount * METER_DEALT_RATE * attacker.meterRateMult);
-            }
-            this.specialMeter = Math.min(100, this.specialMeter + amount * METER_TAKEN_RATE * this.meterRateMult);
-
-            if (matchStats) {
-                const s = matchStats[attacker.isPlayerOne ? 'p1' : 'p2'];
-                s.damageDealt += amount;
-                s.largestHit = Math.max(s.largestHit, amount);
-            }
+        if (matchStats) {
+            const s = matchStats[attacker.isPlayerOne ? 'p1' : 'p2'];
+            s.damageDealt += amount;
+            s.largestHit = Math.max(s.largestHit, amount);
         }
     }
 
@@ -3456,7 +3474,7 @@ class Fighter {
                 const ox = this.x + this.width / 2 + this.fx * mfwd, oy = this.y + this.height / 2 + this.fy * mfwd;
                 [-0.5, -0.25, 0, 0.25, 0.5].forEach(offset => {
                     const a = angle + offset;
-                    this.projectiles.push({ x: ox, y: oy,
+                    this.projectiles.push({ x: ox, y: oy, big: true, // bigger meshes than a basic shard — see syncProjectiles' p.big branch
                         vx: Math.cos(a) * 8, vy: Math.sin(a) * 8, damage: 24, color: '#c4b5fd', z: this.z + MUZZLE_HEIGHT });
                 });
                 this.muzzleFlash = 8;
@@ -5618,8 +5636,8 @@ function gameLoop() {
             // max or current HP. tickEffects() (not update()) keeps
             // running so any still-fading effects/particles finish out
             // instead of freezing mid-animation.
-            player1.hp = Math.max(0, player1.hp - CRUSH_DPS * dt / 60);
-            player2.hp = Math.max(0, player2.hp - CRUSH_DPS * dt / 60);
+            player1.applyDamage(CRUSH_DPS * dt / 60, { ignoreShield: true }); // crush is deliberately unblockable
+            player2.applyDamage(CRUSH_DPS * dt / 60, { ignoreShield: true });
             player1.tickEffects(player2, dt);
             player2.tickEffects(player1, dt);
         }
