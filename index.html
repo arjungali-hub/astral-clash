@@ -3211,6 +3211,7 @@ class Fighter {
             this.applyDamage(this.burnDps * dt / 60, {}); // no attacker: shield-reduced + ghost trail, but no knockback/hitstun/sfx
             if (Math.random() < 0.4) this.effects.push({ type: 'shockwaveRing', r: 4, max: 26, color: '248,113,73' }); // little flame flickers
         }
+        this.updateFeedbackFx(dt); // hp-ghost trail + low-HP smoke/heartbeat — SIMULATION, moved out of render3D so "pause" truly freezes
 
         if (this.isBot) {
             const decision = this.botDecide(opponent, dt);
@@ -3885,13 +3886,9 @@ class Fighter {
             return;
         }
         dt = dt || 1;
-
-        // Ghost trail: snaps up instantly on heal (nothing to "trail" from
-        // a gain), decays down toward the real hp at a fixed rate on
-        // damage so the HUD bar shows a fading afterimage of what was just
-        // lost, not just an instant cut.
-        this.hpGhost = this.hpGhost > this.hp ? Math.max(this.hp, this.hpGhost - 0.6 * dt) : this.hp;
-
+        // NOTE: render3D only READS fighter state and updates meshes. The
+        // hp-ghost decay, low-HP smoke and heartbeat that used to live here are
+        // simulation and now run in update()/updateFeedbackFx (see Change 2a).
         this.mesh.position.set(worldX(this.x + this.width / 2), this.z, worldZ(this.y + this.height / 2));
         // Local +X is "forward" for every character mesh; this is the one
         // place that maps the 2D facing vector to a world-space yaw.
@@ -3977,9 +3974,21 @@ class Fighter {
             }
         }
 
-        // Low-HP warning: a slow drift of smoke puffs off the mesh once
-        // below 25% HP, so the danger reads in the 3D view too, not just
-        // the flashing HUD bar.
+        this.syncEffects();
+        this.syncProjectiles();
+    }
+
+    // Simulation for the HP-ghost trail + low-HP smoke/heartbeat. Moved out of
+    // render3D (Change 2a) so it only runs while the game is actually
+    // simulating — "pause" now genuinely freezes it. Spawns particles from
+    // game coords (not the mesh) so it doesn't depend on render having run.
+    updateFeedbackFx(dt) {
+        // Ghost trail: snaps up instantly on heal, decays down toward real hp
+        // on damage so the HUD bar shows a fading afterimage of the loss.
+        this.hpGhost = this.hpGhost > this.hp ? Math.max(this.hp, this.hpGhost - 0.6 * dt) : this.hp;
+
+        // Low-HP warning: a slow drift of smoke puffs + a heartbeat once below
+        // 25% HP, so the danger reads in the 3D view too.
         if (this.hp > 0 && this.hp / this.maxHp < 0.25) {
             sfxHeartbeatTick(arenaTime); // self-throttled — see sfxHeartbeatTick
             this.lowHpSpawnTimer -= dt;
@@ -3990,9 +3999,9 @@ class Fighter {
                     new THREE.MeshBasicMaterial({ color: 0x475569, transparent: true, opacity: 0.7 })
                 );
                 puff.position.set(
-                    this.mesh.position.x + (Math.random() - 0.5) * 14,
-                    this.mesh.position.y + 10,
-                    this.mesh.position.z + (Math.random() - 0.5) * 14
+                    worldX(this.x + this.width / 2) + (Math.random() - 0.5) * 14,
+                    this.z + 10,
+                    worldZ(this.y + this.height / 2) + (Math.random() - 0.5) * 14
                 );
                 scene.add(puff);
                 this.lowHpParticles.push({ mesh: puff, vy: 0.6 + Math.random() * 0.5, life: 40, maxLife: 40 });
@@ -4009,9 +4018,6 @@ class Fighter {
             }
             p.mesh.material.opacity = Math.max(0, (p.life / p.maxLife) * 0.7);
         }
-
-        this.syncEffects();
-        this.syncProjectiles();
     }
 }
 
