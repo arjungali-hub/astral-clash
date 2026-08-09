@@ -141,6 +141,7 @@
         .side-panel { width: min(340px, 90vw); padding: 14px; margin: 4px; transition: box-shadow 0.2s; }
         .side-panel h3 { margin: 0 0 10px; font-size: 1rem; }
         .side-panel .key-hint { color: #64748b; font-weight: normal; font-size: 0.75rem; }
+        .pad-badge { font-size: 0.85rem; vertical-align: middle; }
         .side-actions { display: flex; gap: 8px; margin-bottom: 8px; }
         .side-actions .bot-toggle { flex: 1; margin: 0; }
         .fighter-grid {
@@ -996,7 +997,8 @@ document.getElementById('btn-open-audio').addEventListener('click', () => {
 function buildTutorialControls() {
     document.getElementById('tutorial-controls').innerHTML =
         `<div class="tutorial-controls-row"><b>P1:</b> ${controlsSummary('p1')}</div>` +
-        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>P2:</b> ${controlsSummary('p2')}</div>`;
+        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>P2:</b> ${controlsSummary('p2')}</div>` +
+        `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>🎮 Gamepad:</b> stick move/turn, A jump, B attack, X special, Y dash</div>`;
 }
 function openTutorial() {
     buildTutorialControls();
@@ -2739,19 +2741,40 @@ function inMeleeCone(attacker, defender, range, halfAngle) {
     return angle <= halfAngle;
 }
 
-// Gamepad API: left stick moves, face buttons are Jump/Attack/Special.
-// Works alongside the keyboard — both are polled every frame and merged.
+// Gamepad API: left stick moves, face buttons are Jump/Attack/Special/Dodge
+// (A/B/X/Y). Works alongside the keyboard — both are polled every frame and
+// merged.
+// Which physical pad drives which side is a dynamic mapping (padSlots), not
+// the raw enumeration index: a single controller enumerates at index 0 and
+// would otherwise be locked to P1, and a pad that reconnects at index 2+ would
+// never work at all. The first pad to connect takes the first free side.
 const GAMEPAD_DEADZONE = 0.25;
-const gamepadPrevButtons = { 0: [false, false, false], 1: [false, false, false] };
+const gamepadPrevButtons = {}; // pad index -> [A,B,X,Y] pressed-last-frame, for edge detection
+const padSlots = { p1: null, p2: null }; // side -> gamepad index (null = no pad)
+function assignPad(index) {
+    if (padSlots.p1 === index || padSlots.p2 === index) return;
+    if (padSlots.p1 == null) padSlots.p1 = index;
+    else if (padSlots.p2 == null) padSlots.p2 = index;
+    updatePadIndicators();
+}
+function releasePad(index) {
+    if (padSlots.p1 === index) padSlots.p1 = null;
+    if (padSlots.p2 === index) padSlots.p2 = null;
+    updatePadIndicators();
+}
+function updatePadIndicators() { if (typeof refreshMenuUI === 'function') refreshMenuUI(); } // repaints the side-panel headings (which show a 🎮 badge per assigned pad)
+window.addEventListener('gamepadconnected', e => assignPad(e.gamepad.index));
+window.addEventListener('gamepaddisconnected', e => releasePad(e.gamepad.index));
 function pollGamepad(index) {
+    if (index == null) return null;
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const gp = pads[index];
     if (!gp || !gp.connected) return null;
     const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
     // Face buttons are edge-triggered, same as the keyboard's consumePress
-    // — otherwise holding B/X fires the action every single frame.
-    const now = [0, 1, 2].map(i => !!(gp.buttons[i] && gp.buttons[i].pressed));
-    const prev = gamepadPrevButtons[index];
+    // — otherwise holding a button fires the action every single frame.
+    const now = [0, 1, 2, 3].map(i => !!(gp.buttons[i] && gp.buttons[i].pressed));
+    const prev = gamepadPrevButtons[index] || [false, false, false, false];
     const justPressed = now.map((b, i) => b && !prev[i]);
     gamepadPrevButtons[index] = now;
     return {
@@ -2759,7 +2782,8 @@ function pollGamepad(index) {
         moveY: Math.abs(ay) > GAMEPAD_DEADZONE ? ay : 0,
         jump: justPressed[0],    // A
         attack: justPressed[1],  // B
-        special: justPressed[2]  // X
+        special: justPressed[2], // X
+        dodge: justPressed[3]    // Y
     };
 }
 
@@ -3152,13 +3176,14 @@ class Fighter {
             if (consumePress(b.attack)) this.tryStartAction('basic', opponent);
             if (consumePress(b.special)) this.tryStartAction('special', opponent);
             if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
-            const gp = pollGamepad(0);
+            const gp = pollGamepad(padSlots.p1);
             if (gp) {
                 if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6); // stick X = turn rate
                 if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; } // stick Y = forward/back (up on stick is negative)
                 if (gp.jump) jumpPressed = true;
                 if (gp.attack) this.tryStartAction('basic', opponent);
                 if (gp.special) this.tryStartAction('special', opponent);
+                if (gp.dodge) this.tryDodge(moveX, moveY);
             }
         } else {
             const b = BINDINGS.p2;
@@ -3170,13 +3195,14 @@ class Fighter {
             if (consumePress(b.attack)) this.tryStartAction('basic', opponent);
             if (consumePress(b.special)) this.tryStartAction('special', opponent);
             if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
-            const gp = pollGamepad(1);
+            const gp = pollGamepad(padSlots.p2);
             if (gp) {
                 if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6);
                 if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; }
                 if (gp.jump) jumpPressed = true;
                 if (gp.attack) this.tryStartAction('basic', opponent);
                 if (gp.special) this.tryStartAction('special', opponent);
+                if (gp.dodge) this.tryDodge(moveX, moveY);
             }
         }
 
@@ -4897,8 +4923,8 @@ function sideReady(side) {
 
 function showDetail(side, name, confirmed) {
     const c = CHAR_MAP[name];
-    const confirmKey = side === 'p1' ? 'F' : 'K';
-    const backKey = side === 'p1' ? 'G' : 'L';
+    const confirmKey = keyLabel(BINDINGS[side].attack); // attack = confirm, special = back — read live so rebinds show correctly
+    const backKey = keyLabel(BINDINGS[side].special);
     const detail = document.getElementById(`${side}-detail`);
     detail.style.setProperty('--accent', c.color);
     detail.innerHTML = buildDetailHTML(c, confirmKey, backKey);
@@ -4910,15 +4936,18 @@ function showDetail(side, name, confirmed) {
 }
 
 function headingHTML(num, stage) {
+    const side = num === 1 ? 'p1' : 'p2', b = BINDINGS[side];
     const isBotSide = num === 1 ? p1IsBot : p2IsBot;
     const botTag = isBotSide ? ' <span style="color:#f59e0b">[BOT]</span>' : '';
-    const keys = num === 1 ? '1-0' : 'keys on cards';
-    if (stage === 'pick') return `Player ${num}${botTag} <span class="key-hint">(${keys})</span>`;
+    const padTag = padSlots[side] != null ? ` <span class="pad-badge" title="Gamepad connected">🎮</span>` : '';
+    if (stage === 'pick') return `Player ${num}${botTag}${padTag} <span class="key-hint">(keys on cards)</span>`;
     if (stage === 'preview') {
-        const hint = num === 1 ? 'F confirm / G back' : 'K confirm / L back';
-        return `Player ${num}${botTag} <span class="key-hint">(${hint})</span>`;
+        // Labels come from the live bindings, so a rebound confirm/back key
+        // shows the real key instead of a stale "F"/"G" literal.
+        const hint = `${keyLabel(b.attack)} confirm / ${keyLabel(b.special)} back`;
+        return `Player ${num}${botTag}${padTag} <span class="key-hint">(${hint})</span>`;
     }
-    return `Player ${num}${botTag} <span class="key-hint" style="color:#4ade80">READY</span>`;
+    return `Player ${num}${botTag}${padTag} <span class="key-hint" style="color:#4ade80">READY</span>`;
 }
 
 function refreshMenuUI() {
