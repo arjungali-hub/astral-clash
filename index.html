@@ -5847,6 +5847,133 @@ function endMatch() {
     showScreen('gameover');
 }
 
+// Change 2b: the per-state work is a table of step functions keyed by
+// gameState, rather than an if/else ladder inside gameLoop. gameLoop keeps
+// only the frame-wide concerns (dt, the PAUSED/hit-stop freeze short-circuits,
+// and the shared post-step render) and dispatches the middle through
+// STATE_STEPS. States with no per-frame work (MENU) simply have no entry.
+// Behavior is identical to the old ladder — this is purely structural.
+function stepFight(dt) {
+    arenaTime += dt;
+    updateArenaShrink(dt);
+
+    if (!crushing) {
+        player1.update(player2, dt);
+        player2.update(player1, dt);
+        resolvePlayerCollision(player1, player2);
+    } else {
+        // Arena Collapse's final phase: input/combat frozen, both
+        // fighters take the same flat damage per second regardless of
+        // max or current HP. tickEffects() (not update()) keeps
+        // running so any still-fading effects/particles finish out
+        // instead of freezing mid-animation.
+        player1.applyDamage(CRUSH_DPS * dt / 60, { ignoreShield: true }); // crush is deliberately unblockable
+        player2.applyDamage(CRUSH_DPS * dt / 60, { ignoreShield: true });
+        player1.tickEffects(player2, dt);
+        player2.tickEffects(player1, dt);
+    }
+
+    player1.render3D(null, dt);
+    player2.render3D(null, dt);
+    syncArenaCollapse(dt);
+    updateMuzzleFlashes(dt);
+    updateScenery(dt);
+
+    drawHUD();
+
+    if (player1.hp <= 0 || player2.hp <= 0) {
+        // Don't cut straight to the round result mid-swing: let the
+        // killing blow's animation (and any queued combo follow-up)
+        // finish, then play a defeat animation on the loser(s).
+        decideRoundResult();
+        deathCandidates = isDraw ? [player1, player2] : [loser];
+        gameState = "DEATH";
+        deathPhase = "attackFinish";
+        deathTimer = 0;
+        sfxKO();
+    }
+}
+
+function stepIntro(dt) {
+    // Drop-in cinematic: fighters fall from the sky, frozen, then FIGHT!.
+    arenaTime += dt;
+    introTimer += dt;
+    const G = GRAVITY * 1.25;
+    let allLanded = true;
+    for (const f of [player1, player2]) {
+        if (!f.introLanded) {
+            f.vz -= G * dt;
+            f.z += f.vz * dt;
+            const landY = groundLevelAt(f.x + f.width / 2, f.y + f.height / 2);
+            if (f.z <= landY) {
+                f.z = landY; f.vz = 0; f.introLanded = true;
+                cameraShakeMag = Math.max(cameraShakeMag, 16); // landing jolt
+                f.effects.push({ type: 'shockwaveRing', r: 10, max: 95, color: '255,255,255' });
+                sfxCollapseTick(); // heavy landing thud
+            } else allLanded = false;
+        }
+    }
+    player1.tickEffects(player2, dt);
+    player2.tickEffects(player1, dt);
+    player1.render3D(null, dt);
+    player2.render3D(null, dt);
+    syncArenaCollapse(dt);
+    updateScenery(dt);
+    updateMuzzleFlashes(dt);
+    drawHUD();
+    if (allLanded) {
+        if (introPhase === 'drop') { introPhase = 'set'; introTimer = 0; }
+        else if (introPhase === 'set' && introTimer >= 24) { introPhase = 'fight'; introTimer = 0; sfxRoundStart(); }
+        else if (introPhase === 'fight' && introTimer >= 48) { gameState = "FIGHT"; roundStartedAt = performance.now(); }
+    }
+}
+
+function stepDeath(dt) {
+    arenaTime += dt;
+
+    player1.tickEffects(player2, dt);
+    player2.tickEffects(player1, dt);
+    syncArenaCollapse(dt);
+    updateMuzzleFlashes(dt);
+
+    const showDeathAnim = deathPhase === "defeatAnim";
+    player1.render3D(deathCandidates.includes(player1) && showDeathAnim ? deathTimer / DEFEAT_ANIM_FRAMES : null, dt);
+    player2.render3D(deathCandidates.includes(player2) && showDeathAnim ? deathTimer / DEFEAT_ANIM_FRAMES : null, dt);
+
+    drawHUD();
+    deathTimer += dt;
+
+    // Skippable after a beat, so a decisive KO doesn't force everyone
+    // to sit through the same ~1.5s animation every single round.
+    // Either side's attack key, or Space/Enter as a universal fallback
+    // (read from the live bindings, not hardcoded 'f'/'k').
+    const skipRequested = deathTimer >= DEATH_SKIP_AFTER &&
+        (consumePress(BINDINGS.p1.attack) || consumePress(BINDINGS.p2.attack) || consumePress(' ') || consumePress('enter'));
+
+    if (skipRequested) {
+        endRound();
+    } else if (deathPhase === "attackFinish" && deathTimer >= ATTACK_FINISH_FRAMES) {
+        deathPhase = "defeatAnim";
+        deathTimer = 0;
+        deathCandidates.forEach(f => f.spawnDeathParticles());
+    } else if (deathPhase === "defeatAnim" && deathTimer >= DEFEAT_ANIM_FRAMES) {
+        endRound();
+    }
+}
+
+function stepRoundEnd(dt) {
+    roundEndTimer += dt;
+    drawHUD();
+    if (roundEndTimer >= 90) startRound();
+}
+
+const STATE_STEPS = {
+    FIGHT: stepFight,
+    INTRO: stepIntro,
+    DEATH: stepDeath,
+    ROUND_END: stepRoundEnd,
+};
+
 function gameLoop() {
     const dt = computeDt();
     lastDt = dt;
@@ -5870,113 +5997,8 @@ function gameLoop() {
 
     updateHitFeedback(dt);
 
-    if (gameState === "FIGHT") {
-        arenaTime += dt;
-        updateArenaShrink(dt);
-
-        if (!crushing) {
-            player1.update(player2, dt);
-            player2.update(player1, dt);
-            resolvePlayerCollision(player1, player2);
-        } else {
-            // Arena Collapse's final phase: input/combat frozen, both
-            // fighters take the same flat damage per second regardless of
-            // max or current HP. tickEffects() (not update()) keeps
-            // running so any still-fading effects/particles finish out
-            // instead of freezing mid-animation.
-            player1.applyDamage(CRUSH_DPS * dt / 60, { ignoreShield: true }); // crush is deliberately unblockable
-            player2.applyDamage(CRUSH_DPS * dt / 60, { ignoreShield: true });
-            player1.tickEffects(player2, dt);
-            player2.tickEffects(player1, dt);
-        }
-
-        player1.render3D(null, dt);
-        player2.render3D(null, dt);
-        syncArenaCollapse(dt);
-        updateMuzzleFlashes(dt);
-        updateScenery(dt);
-
-        drawHUD();
-
-        if (player1.hp <= 0 || player2.hp <= 0) {
-            // Don't cut straight to the round result mid-swing: let the
-            // killing blow's animation (and any queued combo follow-up)
-            // finish, then play a defeat animation on the loser(s).
-            decideRoundResult();
-            deathCandidates = isDraw ? [player1, player2] : [loser];
-            gameState = "DEATH";
-            deathPhase = "attackFinish";
-            deathTimer = 0;
-            sfxKO();
-        }
-    } else if (gameState === "INTRO") {
-        // Drop-in cinematic: fighters fall from the sky, frozen, then FIGHT!.
-        arenaTime += dt;
-        introTimer += dt;
-        const G = GRAVITY * 1.25;
-        let allLanded = true;
-        for (const f of [player1, player2]) {
-            if (!f.introLanded) {
-                f.vz -= G * dt;
-                f.z += f.vz * dt;
-                const landY = groundLevelAt(f.x + f.width / 2, f.y + f.height / 2);
-                if (f.z <= landY) {
-                    f.z = landY; f.vz = 0; f.introLanded = true;
-                    cameraShakeMag = Math.max(cameraShakeMag, 16); // landing jolt
-                    f.effects.push({ type: 'shockwaveRing', r: 10, max: 95, color: '255,255,255' });
-                    sfxCollapseTick(); // heavy landing thud
-                } else allLanded = false;
-            }
-        }
-        player1.tickEffects(player2, dt);
-        player2.tickEffects(player1, dt);
-        player1.render3D(null, dt);
-        player2.render3D(null, dt);
-        syncArenaCollapse(dt);
-        updateScenery(dt);
-        updateMuzzleFlashes(dt);
-        drawHUD();
-        if (allLanded) {
-            if (introPhase === 'drop') { introPhase = 'set'; introTimer = 0; }
-            else if (introPhase === 'set' && introTimer >= 24) { introPhase = 'fight'; introTimer = 0; sfxRoundStart(); }
-            else if (introPhase === 'fight' && introTimer >= 48) { gameState = "FIGHT"; roundStartedAt = performance.now(); }
-        }
-    } else if (gameState === "DEATH") {
-        arenaTime += dt;
-
-        player1.tickEffects(player2, dt);
-        player2.tickEffects(player1, dt);
-        syncArenaCollapse(dt);
-        updateMuzzleFlashes(dt);
-
-        const showDeathAnim = deathPhase === "defeatAnim";
-        player1.render3D(deathCandidates.includes(player1) && showDeathAnim ? deathTimer / DEFEAT_ANIM_FRAMES : null, dt);
-        player2.render3D(deathCandidates.includes(player2) && showDeathAnim ? deathTimer / DEFEAT_ANIM_FRAMES : null, dt);
-
-        drawHUD();
-        deathTimer += dt;
-
-        // Skippable after a beat, so a decisive KO doesn't force everyone
-        // to sit through the same ~1.5s animation every single round.
-        // Either side's attack key, or Space/Enter as a universal fallback
-        // (read from the live bindings, not hardcoded 'f'/'k').
-        const skipRequested = deathTimer >= DEATH_SKIP_AFTER &&
-            (consumePress(BINDINGS.p1.attack) || consumePress(BINDINGS.p2.attack) || consumePress(' ') || consumePress('enter'));
-
-        if (skipRequested) {
-            endRound();
-        } else if (deathPhase === "attackFinish" && deathTimer >= ATTACK_FINISH_FRAMES) {
-            deathPhase = "defeatAnim";
-            deathTimer = 0;
-            deathCandidates.forEach(f => f.spawnDeathParticles());
-        } else if (deathPhase === "defeatAnim" && deathTimer >= DEFEAT_ANIM_FRAMES) {
-            endRound();
-        }
-    } else if (gameState === "ROUND_END") {
-        roundEndTimer += dt;
-        drawHUD();
-        if (roundEndTimer >= 90) startRound();
-    }
+    const step = STATE_STEPS[gameState];
+    if (step) step(dt);
 
     decayCameraShake(dt);
     syncViewmodels(dt);
