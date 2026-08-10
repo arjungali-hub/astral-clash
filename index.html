@@ -873,14 +873,68 @@ function consumePress(k) {
     if (pressed.has(k)) { pressed.delete(k); return true; }
     return false;
 }
+// C2: ONE keyboard dispatcher. This used to be five separate keydown
+// listeners (global key-state, rebind capture on the capture phase, a
+// first-gesture audio unlock, menu fighter-select, and Escape/pause) whose
+// correctness depended on capture-vs-bubble phase ordering and each one
+// early-returning to keep out of the others' way. Folding them into a single
+// handler makes the precedence explicit and readable top-to-bottom:
+//   (1) rebind capture wins outright and consumes the key,
+//   (2) first keypress unlocks audio,
+//   (3) global key-state (keys[]/pressed) updates,
+//   (4) Escape closes a modal or toggles pause,
+//   (5) menu fighter-select runs only on the menu with no modal open.
+let kbAudioUnlocked = false;
 window.addEventListener('keydown', e => {
-    // Stop the browser from doing its own thing with keys we use for
-    // gameplay: Space/arrows scroll the page, and Firefox opens quick-find
-    // on '/' — all of which would otherwise fight the player mid-match.
+    // (1) A rebind is listening: take this key as the new binding and consume
+    // it. It must not fall through to keys[]/pressed (else the captured key
+    // reads as "held" the instant the rebind screen closes) or to any
+    // game/menu action. Escape cancels the capture, leaving the binding as-is.
+    if (rebindCapture) {
+        e.preventDefault();
+        const { side, action, buttonEl } = rebindCapture;
+        rebindCapture = null;
+        buttonEl.classList.remove('listening');
+        if (e.key === 'Escape') { buttonEl.textContent = keyLabel(BINDINGS[side][action]); return; }
+        BINDINGS[side][action] = e.key.toLowerCase();
+        saveBindings();
+        buttonEl.textContent = keyLabel(BINDINGS[side][action]);
+        return;
+    }
+    // (2) The first keypress doubles as the user-gesture that unlocks audio
+    // (autoplay policies block AudioContext until then). Idempotent, but gate
+    // it so it's a true once.
+    if (!kbAudioUnlocked) { kbAudioUnlocked = true; unlockAudio(); }
+    // (3) Global key-state. Stop the browser from doing its own thing with keys
+    // we use for gameplay: Space/arrows scroll the page, and Firefox opens
+    // quick-find on '/' — all of which would otherwise fight the player mid-match.
     if (e.key === ' ' || e.key.startsWith('Arrow') || e.key === '/') e.preventDefault();
     const k = e.key.toLowerCase();
     if (!keys[k]) pressed.add(k); // only the true down-transition, not OS key-repeat
     keys[k] = true;
+    // (4) Escape: close the topmost modal (A5 — never unpause out from under an
+    // open sub-screen), otherwise toggle pause. Reserved — it never doubles as
+    // a fighter-select action even if some action were rebound to it.
+    if (e.key === 'Escape') {
+        if (modalOpen()) closeTopModalByEscape();
+        else togglePause();
+        return;
+    }
+    // (5) Fighter-select navigation. A4: never drive select behind an open
+    // modal (the tutorial auto-opens on first load). A3: confirm/back read from
+    // the live bindings, not literals.
+    if (gameState === 'MENU' && !modalOpen()) {
+        const i1 = P1_KEYS.indexOf(k);
+        if (i1 !== -1) previewPick('p1', CHARACTERS[i1].name);
+        const i2 = P2_KEYS.indexOf(k);
+        if (i2 !== -1) previewPick('p2', CHARACTERS[i2].name);
+        if (k === BINDINGS.p1.attack) confirmPick('p1');
+        if (k === BINDINGS.p1.special) backToPick('p1');
+        if (k === BINDINGS.p2.attack) confirmPick('p2');
+        if (k === BINDINGS.p2.special) backToPick('p2');
+        if (k === RANDOM_KEYS.p1) randomPick('p1');
+        if (k === RANDOM_KEYS.p2) randomPick('p2');
+    }
 });
 window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 // Without this, alt-tabbing or losing focus mid-keypress leaves a key
@@ -988,22 +1042,9 @@ function startCapture(side, action, btn) {
     btn.textContent = '...';
     btn.classList.add('listening');
 }
-// Registered on the capture phase so it fires (and can stopImmediatePropagation)
-// before the gameplay/menu keydown listeners further down, which are all
-// bubble-phase — otherwise capturing a rebind key like 'f' would also fire
-// as a live game action the instant the rebind screen closes.
-window.addEventListener('keydown', e => {
-    if (!rebindCapture) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    const { side, action, buttonEl } = rebindCapture;
-    rebindCapture = null;
-    buttonEl.classList.remove('listening');
-    if (e.key === 'Escape') { buttonEl.textContent = keyLabel(BINDINGS[side][action]); return; }
-    BINDINGS[side][action] = e.key.toLowerCase();
-    saveBindings();
-    buttonEl.textContent = keyLabel(BINDINGS[side][action]);
-}, true);
+// Rebind key capture is handled at the top of the single keyboard dispatcher
+// above (C2) — it runs first and consumes the key, so no separate
+// capture-phase listener is needed to pre-empt the gameplay/menu handlers.
 function openRebind() {
     buildRebindList();
     openModal('rebind');
@@ -1054,7 +1095,8 @@ function unlockAudio() {
     initAudio();
     if (actx && actx.state === 'suspended') actx.resume();
 }
-window.addEventListener('keydown', unlockAudio, { once: true });
+// Keyboard's first-gesture audio unlock lives in the single keyboard
+// dispatcher (C2, kbAudioUnlocked gate); pointer needs its own one-shot.
 window.addEventListener('pointerdown', unlockAudio, { once: true });
 function applyAudioSettings() {
     if (!masterGain) return;
@@ -5233,23 +5275,8 @@ function backToPick(side) {
     refreshMenuUI();
 }
 
-window.addEventListener('keydown', e => {
-    // A4: never drive fighter select behind an open modal (the tutorial
-    // auto-opens on first load — keys pressed while reading it used to leak
-    // through). A3: confirm/back read from the live bindings, not literals.
-    if (gameState !== 'MENU' || modalOpen()) return;
-    const k = e.key.toLowerCase();
-    const i1 = P1_KEYS.indexOf(k);
-    if (i1 !== -1) previewPick('p1', CHARACTERS[i1].name);
-    const i2 = P2_KEYS.indexOf(k);
-    if (i2 !== -1) previewPick('p2', CHARACTERS[i2].name);
-    if (k === BINDINGS.p1.attack) confirmPick('p1');
-    if (k === BINDINGS.p1.special) backToPick('p1');
-    if (k === BINDINGS.p2.attack) confirmPick('p2');
-    if (k === BINDINGS.p2.special) backToPick('p2');
-    if (k === RANDOM_KEYS.p1) randomPick('p1');
-    if (k === RANDOM_KEYS.p2) randomPick('p2');
-});
+// (Fighter-select keyboard navigation is handled in the single keyboard
+// dispatcher — see C2 above.)
 
 document.getElementById('btn-play-again').addEventListener('click', () => {
     p1Stage = 'pick'; p2Stage = 'pick'; p1Preview = null; p2Preview = null;
@@ -5291,15 +5318,8 @@ function togglePause() {
         showScreen('pause');
     }
 }
-// Escape: if a modal is open, close the topmost one (A5 — never unpause out
-// from under an open sub-screen). Otherwise toggle pause. The rebind-capture
-// listener (registered in capture phase) already swallows Escape while
-// listening for a key, so this doesn't fight it.
-window.addEventListener('keydown', e => {
-    if (e.key !== 'Escape' || rebindCapture) return;
-    if (modalOpen()) { closeTopModalByEscape(); }
-    else togglePause();
-});
+// (Escape → close-modal-or-pause is handled in the single keyboard dispatcher,
+// C2 above; rebind capture is handled first there, so Escape never fights it.)
 // Route Escape to the right close handler for the top modal (so e.g. closing
 // rebind also clears rebindCapture / marks the tutorial seen).
 function closeTopModalByEscape() {
