@@ -346,8 +346,17 @@
         .fighter-btn .ftitle { font-size: 0.7rem; color: #94a3b8; font-weight: normal; }
         .fighter-btn:hover { background: var(--accent, #00f3ff); box-shadow: 0 0 15px rgba(0, 243, 255, 0.4); }
         .fighter-btn:hover .fname, .fighter-btn:hover .ftitle, .fighter-btn:hover .fkey { color: #0d0f18; }
+        /* B13: the picked card stays lit in the grid while its detail shows
+           alongside, so you always see where your choice sits in the roster. */
+        .fighter-btn.selected { background: var(--accent, #00f3ff); box-shadow: 0 0 15px rgba(0, 243, 255, 0.45); }
+        .fighter-btn.selected .fname, .fighter-btn.selected .ftitle { color: #0d0f18; }
+        .fighter-btn.selected .fkey { background: #0d0f18; color: var(--accent, #00f3ff); }
+        /* Once confirmed the grid stays visible but is locked out (dimmed,
+           un-clickable) until you Back — the picked card keeps full brightness. */
+        .fighter-grid.locked { pointer-events: none; }
+        .fighter-grid.locked .fighter-btn:not(.selected) { opacity: 0.4; }
 
-        .fighter-detail { display: none; text-align: left; }
+        .fighter-detail { display: none; text-align: left; margin-top: 10px; }
         .fighter-detail.confirmed { outline: 2px solid var(--accent); border-radius: 6px; padding: 4px; }
         .detail-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
         .detail-swatch { width: 28px; height: 28px; border-radius: 6px; background: var(--accent); flex-shrink: 0; box-shadow: 0 0 10px var(--accent); }
@@ -5004,9 +5013,19 @@ function buildDetailHTML(c, confirmKey, backKey) {
         </div>`;
 }
 
+// B13: highlight the chosen card in the grid (clearing any previous). Passing
+// null just clears the highlight.
+function markSelected(side, name) {
+    const grid = document.getElementById(`${side}-grid`);
+    grid.querySelectorAll('.fighter-btn').forEach(b => b.classList.toggle('selected', b.dataset.name === name));
+}
+
 function showGrid(side) {
     const isBot = side === 'p1' ? p1IsBot : p2IsBot;
-    document.getElementById(`${side}-grid`).style.display = isBot ? 'none' : 'grid';
+    const grid = document.getElementById(`${side}-grid`);
+    grid.style.display = isBot ? 'none' : 'grid';
+    grid.classList.remove('locked');
+    markSelected(side, null);
     document.getElementById(`${side}-detail`).style.display = 'none';
 }
 
@@ -5027,7 +5046,13 @@ function showDetail(side, name, confirmed) {
     detail.classList.toggle('confirmed', confirmed);
     detail.querySelector('.btn-confirm').addEventListener('click', () => confirmPick(side));
     detail.querySelector('.btn-back').addEventListener('click', () => backToPick(side));
-    document.getElementById(`${side}-grid`).style.display = 'none';
+    // B13: keep the roster grid visible beside the detail instead of replacing
+    // it; mark the chosen card, and lock (dim) the grid once the pick is
+    // confirmed so it reads as final but the choice stays in context.
+    const grid = document.getElementById(`${side}-grid`);
+    grid.style.display = 'grid';
+    grid.classList.toggle('locked', confirmed);
+    markSelected(side, name);
     detail.style.display = 'block';
 }
 
