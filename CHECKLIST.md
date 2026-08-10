@@ -321,6 +321,18 @@ What this checklist **can't** confirm, because it requires an actual browser and
 
 ---
 
+## Post-brief review pass — Part A/B/C bugs + Changes 1-3 + UI refinement (2026-08)
+
+A later review prompt covered 21 correctness bugs (A1-A21), 15 UI items (B1-B15), 3 refactors (C1 screen manager / C2 keyboard dispatcher / C3 reduced-motion), then three follow-up "Changes" (1: vendor three.js as offline fallback + wrap game in `bootGame()`; 2a: move state-changing feedback FX out of `render3D` into `update()`/`updateFeedbackFx`; 2b/3: optional table-driven loop + FighterView split). Each shipped as its own revertable commit — see `git log` for the per-item messages, which carry the root-cause detail that used to live in the batch sections above. Verification for this pass added `realthree_check.js` (runs the page against the *real* downloaded r128 build, drives every character's basic+special animation, loads all 10 maps, builds thumbnails) on top of the existing `node --check` + `mockharness.js`.
+
+**UI refinement sub-batch (this commit):**
+- **B4 button tiers.** Base `button` is now `width:auto` (was full-width via `!important`); `.menu-section button` restores stacked full-width where wanted. Added `.btn-secondary` (cyan outline) and `.btn-tertiary` (slate ghost). `.btn-back` and the map-random button restyled onto those tiers instead of ad-hoc rules.
+- **B5 control affordances.** Bot-mode control is an on/off switch (track + sliding knob via `::before`/`::after`, amber when `.active`). The Random-pick buttons no longer borrow `.bot-toggle` (they're one-shot actions, not toggles) — now `.btn-secondary`. Bot difficulty is a cycler: `.btn-cycler` styled with `‹ Normal ›` guillemets so it reads as a stepper (text set in both the HTML and the JS setter).
+- **B12 de-emoji.** Dropped decorative emoji from the settings buttons (🕹/🔠/🔊), the Settings button gear (⚙), Random Arena (🎲), and the gamepad tutorial line (🎮). Where an icon carried meaning it became an inline SVG: bot-mode die and the pad badge (controller). Verified zero non-ASCII symbols remain in the top-of-file HTML.
+- **Live-feedback fixes.** Removed the split-screen HUD divider line (read as a color seam). `#ui-overlay { padding: 16px 0 44px }` so the Settings button isn't cut off at the bottom when scrolled. Rebind key buttons made uniform-width (110px), slate, left-aligned in flex rows with 64px action labels (they'd regressed to full-width cyan blocks under B4's `.menu-section button` rule). Removed all `.tutorial-card-icon` emoji and the now-redundant "Above All Else, have fun" card (grid no longer needs a filler cell for a multiple-of-three count).
+
+---
+
 ## Verification checklist (run at the end of every batch)
 
 Unchanged from the original brief — these all require an actual browser session (input, visuals, timing, a human on the other side of the bot) that this pass couldn't run. Left unchecked deliberately rather than self-assessed as done; see "Final status" above.
