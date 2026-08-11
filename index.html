@@ -1440,18 +1440,33 @@ function hashStr(s) { let h = 1779033703 ^ s.length; for (let i = 0; i < s.lengt
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 let mapRng = Math.random; // reseeded per map in loadMap()
 
+// Declared here (rather than down by the rest of the touch-controls code)
+// because it's needed immediately below to trim render cost for phone GPUs —
+// see PIXEL_RATIO/antialias/shadowMap.enabled just under this.
+const TOUCH_UI = !!(window.matchMedia && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches) && navigator.maxTouchPoints > 0);
+
 // Batch 8: the canvas was being sized straight from getBoundingClientRect()
 // CSS pixels, so on any HiDPI display (2x, 3x) the game rendered at half or
 // a third of native resolution and looked soft/blurry compared to the rest
 // of the page. Cap at 2x rather than the raw devicePixelRatio (which can be
 // 3+ on some phones/high-end panels) — diminishing visual return past 2x
-// for a game this size, not worth the fill-rate cost.
-const PIXEL_RATIO = Math.min(window.devicePixelRatio || 1, 2);
+// for a game this size, not worth the fill-rate cost. Phone GPUs are a much
+// smaller/weaker fill-rate budget than a desktop one, and the fragment cost
+// of every pass (shadow map, sky/fog, tone mapping) scales with pixel count,
+// so capped-at-2x was still enough to make a real phone chug — cap at 1x
+// there instead (a phone's native resolution is already high enough that
+// the extra sharpness isn't worth 2-4x the pixels).
+const PIXEL_RATIO = Math.min(window.devicePixelRatio || 1, TOUCH_UI ? 1 : 2);
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+// Antialiasing (MSAA) and shadow maps are both disproportionately expensive
+// on mobile tile-based GPUs relative to what they buy visually here — cut
+// both for touch devices rather than ship a "mobile version" that's
+// technically playable but too laggy to actually enjoy. Shadows are purely
+// visual (renderer.shadowMap), so disabling them changes nothing gameplay-wise.
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !TOUCH_UI });
 renderer.setPixelRatio(PIXEL_RATIO);
 renderer.setSize(canvas.width, canvas.height, false);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !TOUCH_UI;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // Filmic tone mapping + sRGB output: makes the whole scene read brighter,
 // more saturated and more "next-gen" than raw linear output — colors and
@@ -5329,7 +5344,8 @@ function randomPick(side) {
 // need no changes at all; touch is just another writer of the same state,
 // keyed off the *live* BINDINGS (so a rebind — even though the touch pads
 // are fixed-function — still reads the right key string).
-const TOUCH_UI = !!(window.matchMedia && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches) && navigator.maxTouchPoints > 0);
+// (TOUCH_UI itself is declared up near the renderer, before it's needed
+// there to trim render cost on phone GPUs — see the comment on PIXEL_RATIO.)
 if (TOUCH_UI) document.getElementById('touch-warning').style.display = 'block';
 
 // held=true mirrors a keydown (marks the down-transition in `pressed` too,
@@ -5357,6 +5373,7 @@ function setupTouchJoystick(zoneEl, side) {
     const knob = zoneEl.querySelector('.touch-joystick-knob');
     const MAX_R = 38, TURN_DEADZONE = 0.12, MOVE_DEADZONE = 0.35;
     let pointerId = null;
+    let centerX = 0, centerY = 0; // cached at pointerdown — see the move() comment
     function apply(dx, dy) {
         const b = BINDINGS[side];
         const nx = dx / MAX_R, ny = dy / MAX_R;
@@ -5370,10 +5387,13 @@ function setupTouchJoystick(zoneEl, side) {
         touchKeySet(b.up, false); touchKeySet(b.down, false);
         knob.style.transform = 'translate(0px, 0px)';
     }
+    // getBoundingClientRect() forces a synchronous layout — fine once per
+    // drag (pointerdown), but the joystick base never actually moves while
+    // held, so re-querying it on every pointermove (which can fire well
+    // over 60Hz on a touchscreen) was forcing a layout flush that often,
+    // stacking on top of the game's own per-frame physics/render work.
     function move(e) {
-        const rect = zoneEl.getBoundingClientRect();
-        let dx = e.clientX - (rect.left + rect.width / 2);
-        let dy = e.clientY - (rect.top + rect.height / 2);
+        let dx = e.clientX - centerX, dy = e.clientY - centerY;
         const len = Math.hypot(dx, dy);
         if (len > MAX_R) { dx = dx / len * MAX_R; dy = dy / len * MAX_R; }
         knob.style.transform = `translate(${dx}px, ${dy}px)`;
@@ -5383,6 +5403,9 @@ function setupTouchJoystick(zoneEl, side) {
         e.preventDefault();
         pointerId = e.pointerId;
         zoneEl.setPointerCapture(pointerId);
+        const rect = zoneEl.getBoundingClientRect();
+        centerX = rect.left + rect.width / 2;
+        centerY = rect.top + rect.height / 2;
         move(e);
     });
     zoneEl.addEventListener('pointermove', e => { if (e.pointerId === pointerId) move(e); });
@@ -5431,21 +5454,37 @@ document.getElementById('touch-pause-btn').addEventListener('click', togglePause
 // same way the split-screen HUD already divides the view when both sides
 // are human. Called every frame from gameLoop() so it tracks gameState/bot
 // toggles/orientation changes without needing its own event wiring.
+// Cached elements + last-applied state so this can run every frame from
+// gameLoop() (needed — gameState/bot-toggle/orientation can all change
+// outside a click handler) without hitting the DOM when nothing actually
+// changed. On a phone CPU, style/class writes aren't "free" just because
+// the browser no-ops an unchanged value — the property read + comparison
+// still happens on the main thread 60x/sec, which adds up next to the
+// actual per-frame budget of computing physics and rendering two 3D views.
+const touchUIEls = TOUCH_UI ? {
+    controls: document.getElementById('touch-controls'),
+    p1: document.getElementById('touch-p1'),
+    p2: document.getElementById('touch-p2'),
+    orientation: document.getElementById('orientation-prompt'),
+} : null;
+let lastTouchUIState = '';
 function syncTouchUI() {
     if (!TOUCH_UI) return;
     const inFight = gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH' || gameState === 'ROUND_END';
-    document.getElementById('touch-controls').style.display = inFight ? 'block' : 'none';
+    const portrait = window.innerHeight > window.innerWidth;
+    const key = inFight + '|' + p1IsBot + '|' + p2IsBot + '|' + portrait;
+    if (key === lastTouchUIState) return;
+    lastTouchUIState = key;
+    touchUIEls.controls.style.display = inFight ? 'block' : 'none';
     const bothHuman = !p1IsBot && !p2IsBot;
-    const p1El = document.getElementById('touch-p1'), p2El = document.getElementById('touch-p2');
-    p1El.style.display = (inFight && !p1IsBot) ? 'flex' : 'none';
-    p2El.style.display = (inFight && !p2IsBot) ? 'flex' : 'none';
-    p1El.classList.toggle('half', bothHuman);
-    p2El.classList.toggle('half', bothHuman);
+    touchUIEls.p1.style.display = (inFight && !p1IsBot) ? 'flex' : 'none';
+    touchUIEls.p2.style.display = (inFight && !p2IsBot) ? 'flex' : 'none';
+    touchUIEls.p1.classList.toggle('half', bothHuman);
+    touchUIEls.p2.classList.toggle('half', bothHuman);
     // The FPS view + HUD are laid out for a wide arena; in portrait the
     // whole scene reads as a squeezed sliver, so block play with a prompt
     // instead — the menu itself stays usable portrait or landscape.
-    document.getElementById('orientation-prompt').style.display =
-        (inFight && window.innerHeight > window.innerWidth) ? 'flex' : 'none';
+    touchUIEls.orientation.style.display = (inFight && portrait) ? 'flex' : 'none';
 }
 
 document.getElementById('btn-random-p1').addEventListener('click', () => randomPick('p1'));
