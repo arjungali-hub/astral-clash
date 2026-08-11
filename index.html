@@ -3418,6 +3418,7 @@ class Fighter {
                 if (gp.special) this.tryStartAction('special', opponent);
                 if (gp.dodge) this.tryDodge(moveX, moveY);
             }
+            if (touchTurn.p1) this.turnBy(touchTurn.p1 * TURN_SPEED * dt); // analog joystick turn, see setupTouchJoystick
         } else {
             const b = BINDINGS.p2;
             if (keys[b.left]) this.turnBy(-TURN_SPEED * dt);
@@ -3437,6 +3438,7 @@ class Fighter {
                 if (gp.special) this.tryStartAction('special', opponent);
                 if (gp.dodge) this.tryDodge(moveX, moveY);
             }
+            if (touchTurn.p2) this.turnBy(touchTurn.p2 * TURN_SPEED * dt);
         }
 
         // Rooted (e.g. Thorne's Bramble Lash): can't move, but can still
@@ -5340,21 +5342,31 @@ function touchKeySet(key, held) {
     else keys[key] = false;
 }
 
-function setupTouchJoystick(zoneEl, getBindings) {
+// Turning is analog (proportional to how far the knob is dragged), not a
+// boolean snap-to-max-speed like the movement axes below — a physical key
+// is either pressed or not, so keys[]-driven turning has no "partial" speed
+// to worry about, but a touch joystick's whole point is fine analog control,
+// and gating turn on a deadzone the same boolean way keyboard movement is
+// gated meant ANY drag past the deadzone instantly snapped to full turn
+// rate, which read as wildly oversensitive compared to a deliberate key tap.
+// touchTurn[side] holds the live -1..1 axis value `update()` reads (see the
+// TURN_SPEED usage there), mirroring how gp.moveX already drives analog
+// gamepad-stick turning.
+const touchTurn = { p1: 0, p2: 0 };
+function setupTouchJoystick(zoneEl, side) {
     const knob = zoneEl.querySelector('.touch-joystick-knob');
-    const MAX_R = 38, DEADZONE = 0.35;
+    const MAX_R = 38, TURN_DEADZONE = 0.12, MOVE_DEADZONE = 0.35;
     let pointerId = null;
     function apply(dx, dy) {
-        const b = getBindings();
+        const b = BINDINGS[side];
         const nx = dx / MAX_R, ny = dy / MAX_R;
-        touchKeySet(b.left, nx < -DEADZONE);
-        touchKeySet(b.right, nx > DEADZONE);
-        touchKeySet(b.up, ny < -DEADZONE); // dragging the knob up = walk forward
-        touchKeySet(b.down, ny > DEADZONE);
+        touchTurn[side] = Math.abs(nx) > TURN_DEADZONE ? nx : 0;
+        touchKeySet(b.up, ny < -MOVE_DEADZONE); // dragging the knob up = walk forward
+        touchKeySet(b.down, ny > MOVE_DEADZONE);
     }
     function reset() {
-        const b = getBindings();
-        touchKeySet(b.left, false); touchKeySet(b.right, false);
+        const b = BINDINGS[side];
+        touchTurn[side] = 0;
         touchKeySet(b.up, false); touchKeySet(b.down, false);
         knob.style.transform = 'translate(0px, 0px)';
     }
@@ -5403,8 +5415,8 @@ function setupTouchButton(btnEl, getKey) {
     btnEl.addEventListener('pointerleave', release); // sliding off a button releases it, like lifting a real one
 }
 
-setupTouchJoystick(document.getElementById('joy-p1'), () => BINDINGS.p1);
-setupTouchJoystick(document.getElementById('joy-p2'), () => BINDINGS.p2);
+setupTouchJoystick(document.getElementById('joy-p1'), 'p1');
+setupTouchJoystick(document.getElementById('joy-p2'), 'p2');
 document.querySelectorAll('#touch-p1 .touch-btn').forEach(b => setupTouchButton(b, () => BINDINGS.p1[b.dataset.action]));
 document.querySelectorAll('#touch-p2 .touch-btn').forEach(b => setupTouchButton(b, () => BINDINGS.p2[b.dataset.action]));
 // No physical Escape key on touch, so the pad gets its own pause button —
