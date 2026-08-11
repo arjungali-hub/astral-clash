@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Astral Clash</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%94%EF%B8%8F%3C/text%3E%3C/svg%3E">
     <style>
@@ -250,7 +250,7 @@
         /* Honor the OS "reduce motion" setting: kill the looping menu pulses
            (the intro drop cinematic is gated in JS off REDUCED_MOTION). */
         @media (prefers-reduced-motion: reduce) {
-            .vs-status.ready, #btn-start-match { animation: none; }
+            .vs-status.ready, #btn-start-match, #orientation-prompt svg { animation: none; }
         }
         .menu-footer {
             display: flex;
@@ -518,6 +518,69 @@
         }
         #cdn-error .menu-section { max-width: 420px; }
         #cdn-error p { color: #94a3b8; font-size: 0.85rem; line-height: 1.5; }
+
+        /* --- Mobile: touch controls + landscape prompt. Auto-shown on
+           coarse-pointer/touch devices (see TOUCH_UI in the script), never on
+           mouse/trackpad — a touch-capable laptop with a fine primary pointer
+           won't get on-screen sticks cluttering the view. --- */
+        @media (pointer: coarse), (hover: none) {
+            #game-container {
+                width: 100vw; height: 100vh; max-height: 100vh;
+                border-radius: 0; border: none; box-shadow: none;
+            }
+            body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); box-sizing: border-box; }
+        }
+        #touch-controls {
+            position: absolute; inset: 0; z-index: 15; display: none;
+        }
+        #touch-controls .touch-side {
+            position: absolute; top: 0; bottom: 0; left: 0; width: 100%;
+            display: flex; flex-direction: row; align-items: flex-end; justify-content: space-between;
+            padding: 0 3vw calc(3vh + env(safe-area-inset-bottom));
+            box-sizing: border-box; pointer-events: none;
+        }
+        #touch-controls .touch-side.half#touch-p1 { width: 50%; left: 0; }
+        #touch-controls .touch-side.half#touch-p2 { width: 50%; left: 50%; flex-direction: row-reverse; }
+        .touch-joystick {
+            width: 100px; height: 100px; border-radius: 50%;
+            background: rgba(13, 20, 32, 0.5); border: 2px solid rgba(0, 243, 255, 0.35);
+            position: relative; pointer-events: auto; touch-action: none; -webkit-touch-callout: none;
+            flex: none;
+        }
+        .touch-joystick-knob {
+            width: 46px; height: 46px; border-radius: 50%; position: absolute; left: 27px; top: 27px;
+            background: rgba(0, 243, 255, 0.55); border: 2px solid rgba(0, 243, 255, 0.9);
+            transition: transform 0.05s linear; pointer-events: none;
+        }
+        .touch-buttons { position: relative; width: 150px; height: 150px; flex: none; pointer-events: none; }
+        .touch-btn {
+            position: absolute; width: 60px; height: 60px; border-radius: 50%;
+            background: rgba(13, 20, 32, 0.5); border: 2px solid rgba(255, 255, 255, 0.25);
+            color: #fff; font-weight: 700; font-size: 0.6rem; letter-spacing: 0.03em;
+            padding: 0; margin: 0; touch-action: none; -webkit-touch-callout: none; user-select: none;
+            pointer-events: auto; box-shadow: none; transition: background 0.08s, border-color 0.08s;
+        }
+        .touch-btn.pressed { background: rgba(0, 243, 255, 0.5); border-color: #00f3ff; }
+        .touch-btn-attack { right: 0; bottom: 0; width: 70px; height: 70px; border-color: rgba(244, 114, 182, 0.55); }
+        .touch-btn-attack.pressed { background: rgba(244, 114, 182, 0.55); border-color: #f472b6; }
+        .touch-btn-special { right: 68px; bottom: 58px; border-color: rgba(0, 243, 255, 0.55); }
+        .touch-btn-jump { right: 6px; bottom: 100px; }
+        .touch-btn-dodge { right: 100px; bottom: 6px; }
+        #touch-pause-btn {
+            position: absolute; top: calc(8px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+            width: 40px; height: 32px; padding: 0; margin: 0; border-radius: 6px;
+            background: rgba(13, 20, 32, 0.55); border: 1px solid rgba(255, 255, 255, 0.25); color: #cbd5e1;
+            font-size: 0.8rem; font-weight: 700; letter-spacing: 2px; pointer-events: auto; touch-action: none;
+        }
+        #touch-pause-btn:hover { background: rgba(13, 20, 32, 0.55); box-shadow: none; }
+        #orientation-prompt {
+            position: absolute; inset: 0; z-index: 50; display: none;
+            align-items: center; justify-content: center; text-align: center; padding: 24px;
+            background: rgba(8, 11, 18, 0.96);
+        }
+        #orientation-prompt svg { width: 46px; height: 46px; margin-bottom: 12px; color: #00f3ff; animation: rotateHint 1.8s ease-in-out infinite; }
+        @keyframes rotateHint { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(-90deg); } }
+        #orientation-prompt p { color: #cbd5e1; font-size: 0.95rem; line-height: 1.5; margin: 0; max-width: 320px; }
     </style>
 </head>
 <body>
@@ -536,7 +599,7 @@
                     <p>Dimensional Arena Fighter</p>
                     <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
                 </div>
-                <p id="touch-warning" style="display:none;color:#f59e0b;font-size:0.75rem;max-width:480px;text-align:center;">This game is keyboard/gamepad-only — no touch controls yet. It'll still load on a touchscreen, but you won't be able to play without a keyboard or a connected gamepad.</p>
+                <p id="touch-warning" style="display:none;color:#8aa0b8;font-size:0.75rem;max-width:480px;text-align:center;">Touch controls: left stick to move/turn, right-side buttons to fight. Best in landscape.</p>
                 <div class="select-row">
                     <div class="menu-section side-panel">
                         <h3 id="p1-heading">Player 1 <span class="key-hint">(keys on cards)</span></h3>
@@ -697,6 +760,34 @@
                 <button id="btn-map-random" class="map-random-btn">Random Arena</button>
                 <div class="mapselect-grid" id="mapselect-grid"></div>
                 <button id="btn-mapselect-back" class="btn-back">← Back to Fighters</button>
+            </div>
+        </div>
+
+        <div id="touch-controls">
+            <button type="button" id="touch-pause-btn">II</button>
+            <div class="touch-side" id="touch-p1">
+                <div class="touch-joystick" id="joy-p1"><div class="touch-joystick-knob"></div></div>
+                <div class="touch-buttons">
+                    <button type="button" class="touch-btn touch-btn-jump" data-action="jump">JUMP</button>
+                    <button type="button" class="touch-btn touch-btn-special" data-action="special">SPC</button>
+                    <button type="button" class="touch-btn touch-btn-dodge" data-action="dodge">DASH</button>
+                    <button type="button" class="touch-btn touch-btn-attack" data-action="attack">ATK</button>
+                </div>
+            </div>
+            <div class="touch-side" id="touch-p2">
+                <div class="touch-joystick" id="joy-p2"><div class="touch-joystick-knob"></div></div>
+                <div class="touch-buttons">
+                    <button type="button" class="touch-btn touch-btn-jump" data-action="jump">JUMP</button>
+                    <button type="button" class="touch-btn touch-btn-special" data-action="special">SPC</button>
+                    <button type="button" class="touch-btn touch-btn-dodge" data-action="dodge">DASH</button>
+                    <button type="button" class="touch-btn touch-btn-attack" data-action="attack">ATK</button>
+                </div>
+            </div>
+        </div>
+        <div id="orientation-prompt">
+            <div class="rotate-card">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M11 18h2"></path></svg>
+                <p>Rotate your device to landscape for the best view — the arena is wider than it is tall.</p>
             </div>
         </div>
     </div>
@@ -5228,13 +5319,121 @@ function randomPick(side) {
     const c = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
     previewPick(side, c.name);
 }
-// Batch 9: no touch input is implemented (see the brief's own scope on
-// this — full virtual-joystick controls are a much larger feature this
-// pass doesn't cover). Rather than silently fail to respond to taps, flag
-// it up front on touch-primary devices that still have no physical
-// keyboard signal available.
-if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0) {
-    document.getElementById('touch-warning').style.display = 'block';
+// --- Mobile: touch controls, on request. A touch-primary device gets a
+// virtual joystick (turn/move, mirroring the keyboard's turn-then-walk FPS
+// controls) + a button cluster (jump/attack/special/dash) per human side,
+// laid on top of the same `keys`/`pressed` state the keyboard dispatcher
+// already drives — so update()'s `keys[b.up]`/`consumePress(b.attack)` etc.
+// need no changes at all; touch is just another writer of the same state,
+// keyed off the *live* BINDINGS (so a rebind — even though the touch pads
+// are fixed-function — still reads the right key string).
+const TOUCH_UI = !!(window.matchMedia && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches) && navigator.maxTouchPoints > 0);
+if (TOUCH_UI) document.getElementById('touch-warning').style.display = 'block';
+
+// held=true mirrors a keydown (marks the down-transition in `pressed` too,
+// so consumePress-gated actions like attack/special/dodge fire once per
+// tap); held=false mirrors a keyup. Same shape as the real listeners at
+// the top of this file.
+function touchKeySet(key, held) {
+    if (!key) return;
+    if (held) { if (!keys[key]) pressed.add(key); keys[key] = true; }
+    else keys[key] = false;
+}
+
+function setupTouchJoystick(zoneEl, getBindings) {
+    const knob = zoneEl.querySelector('.touch-joystick-knob');
+    const MAX_R = 38, DEADZONE = 0.35;
+    let pointerId = null;
+    function apply(dx, dy) {
+        const b = getBindings();
+        const nx = dx / MAX_R, ny = dy / MAX_R;
+        touchKeySet(b.left, nx < -DEADZONE);
+        touchKeySet(b.right, nx > DEADZONE);
+        touchKeySet(b.up, ny < -DEADZONE); // dragging the knob up = walk forward
+        touchKeySet(b.down, ny > DEADZONE);
+    }
+    function reset() {
+        const b = getBindings();
+        touchKeySet(b.left, false); touchKeySet(b.right, false);
+        touchKeySet(b.up, false); touchKeySet(b.down, false);
+        knob.style.transform = 'translate(0px, 0px)';
+    }
+    function move(e) {
+        const rect = zoneEl.getBoundingClientRect();
+        let dx = e.clientX - (rect.left + rect.width / 2);
+        let dy = e.clientY - (rect.top + rect.height / 2);
+        const len = Math.hypot(dx, dy);
+        if (len > MAX_R) { dx = dx / len * MAX_R; dy = dy / len * MAX_R; }
+        knob.style.transform = `translate(${dx}px, ${dy}px)`;
+        apply(dx, dy);
+    }
+    zoneEl.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        pointerId = e.pointerId;
+        zoneEl.setPointerCapture(pointerId);
+        move(e);
+    });
+    zoneEl.addEventListener('pointermove', e => { if (e.pointerId === pointerId) move(e); });
+    function release(e) {
+        if (e.pointerId !== pointerId) return;
+        pointerId = null;
+        reset();
+    }
+    zoneEl.addEventListener('pointerup', release);
+    zoneEl.addEventListener('pointercancel', release);
+}
+
+function setupTouchButton(btnEl, getKey) {
+    let pointerId = null;
+    btnEl.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        pointerId = e.pointerId;
+        btnEl.setPointerCapture(pointerId);
+        btnEl.classList.add('pressed');
+        touchKeySet(getKey(), true);
+    });
+    function release(e) {
+        if (e.pointerId !== pointerId) return;
+        pointerId = null;
+        btnEl.classList.remove('pressed');
+        touchKeySet(getKey(), false);
+    }
+    btnEl.addEventListener('pointerup', release);
+    btnEl.addEventListener('pointercancel', release);
+    btnEl.addEventListener('pointerleave', release); // sliding off a button releases it, like lifting a real one
+}
+
+setupTouchJoystick(document.getElementById('joy-p1'), () => BINDINGS.p1);
+setupTouchJoystick(document.getElementById('joy-p2'), () => BINDINGS.p2);
+document.querySelectorAll('#touch-p1 .touch-btn').forEach(b => setupTouchButton(b, () => BINDINGS.p1[b.dataset.action]));
+document.querySelectorAll('#touch-p2 .touch-btn').forEach(b => setupTouchButton(b, () => BINDINGS.p2[b.dataset.action]));
+// No physical Escape key on touch, so the pad gets its own pause button —
+// same togglePause() the keyboard dispatcher's Escape branch calls, which
+// already no-ops outside FIGHT/DEATH/ROUND_END, so this can't mis-fire
+// during e.g. the INTRO drop.
+document.getElementById('touch-pause-btn').addEventListener('click', togglePause);
+
+// Shown only while a fight is actually live (FIGHT/INTRO/DEATH/ROUND_END,
+// not the menu or a paused/modal screen), only for sides that are human
+// (a bot side gets no pad), and split left/right — mirrored for P2 — the
+// same way the split-screen HUD already divides the view when both sides
+// are human. Called every frame from gameLoop() so it tracks gameState/bot
+// toggles/orientation changes without needing its own event wiring.
+function syncTouchUI() {
+    if (!TOUCH_UI) return;
+    const inFight = gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH' || gameState === 'ROUND_END';
+    document.getElementById('touch-controls').style.display = inFight ? 'block' : 'none';
+    const bothHuman = !p1IsBot && !p2IsBot;
+    const p1El = document.getElementById('touch-p1'), p2El = document.getElementById('touch-p2');
+    p1El.style.display = (inFight && !p1IsBot) ? 'flex' : 'none';
+    p2El.style.display = (inFight && !p2IsBot) ? 'flex' : 'none';
+    p1El.classList.toggle('half', bothHuman);
+    p2El.classList.toggle('half', bothHuman);
+    // The FPS view + HUD are laid out for a wide arena; in portrait the
+    // whole scene reads as a squeezed sliver, so block play with a prompt
+    // instead — the menu itself stays usable portrait or landscape.
+    document.getElementById('orientation-prompt').style.display =
+        (inFight && window.innerHeight > window.innerWidth) ? 'flex' : 'none';
 }
 
 document.getElementById('btn-random-p1').addEventListener('click', () => randomPick('p1'));
@@ -5978,6 +6177,7 @@ function gameLoop() {
     const dt = computeDt();
     lastDt = dt;
     fpsSmoothed = fpsSmoothed * 0.9 + (dt > 0.001 ? (60 / dt) : 60) * 0.1;
+    syncTouchUI();
 
     if (gameState === "PAUSED") {
         renderViews(dt); // keep showing the frozen frame under the pause overlay
