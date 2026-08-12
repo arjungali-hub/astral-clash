@@ -55,6 +55,16 @@
                use `margin: auto 0` to centre in the available space. */
             justify-content: flex-start;
             overflow-y: auto;
+            /* border-box so the padding below is EATEN OUT OF the 100%
+               height instead of added on top of it — with the default
+               content-box, height:100% (of #game-container) plus this
+               padding made the box's real rendered height 60px MORE than
+               its own container, and since the container clips overflow,
+               that excess (the padding, plus a slice of real content right
+               above it — e.g. the footer Settings button) was permanently
+               clipped off regardless of scroll position, since it's a raw
+               geometry overflow, not a scroll-visibility issue. */
+            box-sizing: border-box;
             /* Generous bottom padding so the last element (e.g. the Settings
                footer button) isn't clipped against the container's hidden
                bottom edge when the select screen scrolls. */
@@ -278,29 +288,24 @@
             color: #e2e8f0;
             box-shadow: none;
         }
-        /* Bot toggle reads as an on/off SWITCH (B5): a small track+knob before
-           the label, knob slides right and the track turns amber when active. */
+        /* Bot toggle: state reads from the label text ("Bot: OFF"/"Bot: ON")
+           plus the amber .active fill — used to also draw a track+knob
+           switch graphic before the label, but `.side-actions button`
+           below (higher specificity: class+element beats .bot-toggle's
+           class-only selector) was overriding this rule's reserved 34px
+           left padding down to a plain 10px, so the switch graphic's
+           absolutely-positioned track/knob ended up drawn on top of the
+           label text instead of beside it. Removed rather than fixed the
+           padding fight — the label already fully conveys the state. */
         .bot-toggle {
             width: auto;
-            padding: 6px 12px 6px 34px;
-            position: relative;
             margin: 0 0 6px;
             font-size: 0.74rem;
             background: #334155;
             color: #cbd5e1;
             text-align: left;
         }
-        .bot-toggle::before { /* track */
-            content: ""; position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
-            width: 18px; height: 10px; border-radius: 6px; background: #0d0f18; border: 1px solid #475569;
-        }
-        .bot-toggle::after { /* knob */
-            content: ""; position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-            width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; transition: left .15s, background .15s;
-        }
         .bot-toggle.active { background: #f59e0b; color: #0d0f18; }
-        .bot-toggle.active::before { background: #7c4a06; border-color: #b45309; }
-        .bot-toggle.active::after { left: 18px; background: #0d0f18; }
         /* Shown in place of the fighter grid when a side is set to Bot —
            the bot's fighter is picked randomly at match start, so there's
            nothing for a human to choose here. */
@@ -524,11 +529,29 @@
            mouse/trackpad — a touch-capable laptop with a fine primary pointer
            won't get on-screen sticks cluttering the view. --- */
         @media (pointer: coarse), (hover: none) {
+            /* height:100% (of body's own padded box below), not another
+               100vh — #game-container demanding a second full 100vh INSIDE
+               a body that's already reserved safe-area padding overflowed
+               the body's actual content box on notch/home-indicator phones,
+               and since body centers its child and clips overflow, that
+               pushed the bottom of the container (e.g. the footer Settings
+               button) out past the visible/scrollable area. */
             #game-container {
-                width: 100vw; height: 100vh; max-height: 100vh;
+                width: 100%; height: 100%; max-height: 100%;
                 border-radius: 0; border: none; box-shadow: none;
             }
-            body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); box-sizing: border-box; }
+            body {
+                height: 100vh;
+                padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+                box-sizing: border-box;
+            }
+            /* dvh accounts for the mobile browser's address-bar/toolbar
+               actually being on-screen (100vh is the size with it hidden,
+               which is taller than what's really visible) — progressive
+               enhancement, ignored by browsers that don't support it. */
+            @supports (height: 100dvh) {
+                body { height: 100dvh; }
+            }
         }
         #touch-controls {
             position: absolute; inset: 0; z-index: 15; display: none;
