@@ -2702,7 +2702,14 @@ const MAPS = [
         ],
         platforms: [
             { x: 520, y: 487, hw: 62, hd: 155, height: 110 },
-            { x: 690, y: 487, hw: 52, hd: 110, height: 210 },
+            // Was height 210 — a 100-unit gap from the platform below, which
+            // exceeds a single jump's max height gain (JUMP_VZ^2/(2*GRAVITY)
+            // ~= 96.4 units), making this climb mathematically impossible
+            // with no jump upgrade. Retuned to 200 (a 90-unit gap, the same
+            // margin Skyreach Spire's own tightest tier already uses safely)
+            // so the intended "climb the stair, then two hard-to-reach
+            // platforms" path is actually climbable.
+            { x: 690, y: 487, hw: 52, hd: 110, height: 200 },
             { x: 1080, y: 300, hw: 26, hd: 180, height: 280 }
         ]
     },

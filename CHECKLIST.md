@@ -353,6 +353,16 @@ Resumed after a cut-off session. Two things, both actually visually verified thi
 
 ---
 
+## Progression, co-op, and new-modes pass (2026-08-11)
+
+A large multi-batch feature arc, on request: meta-progression (coins/unlocks/upgrades), a reversible debug "unlock everything" toggle, co-op boss/survival modes, three new objective-based modes (Zone Control, Time Attack, Survival Waves), a platform-reachability fix, and camera pitch. Planned as ten batches (numbered 11-20, continuing this file's own numbering) before any code was written, specifically because the render/camera/HUD/win-condition code turned out to be hardcoded to *exactly two* combatants in more places than just the obvious ones — see each batch's own notes for what that actually required.
+
+**Batch 11 — Reachability audit + fix.** Computed real jump-chain reachability from the live physics constants (`JUMP_VZ=9, GRAVITY=0.42` → max single-jump height gain = `VZ²/(2·GRAVITY) ≈ 96.4` units) against every map's actual platform data, rather than trusting this file's own prior prose about which platforms are "hard to reach" (a standalone audit script, `reachabilitycheck.js`, confirmed several of this file's own past claims about specific heights were already stale from later re-tuning passes — expected, not a new problem, per the standing "verify against live data, not old comments" lesson this file has run into before). **Found a genuine, previously-unnoticed bug:** Sundered Stair's climbing chain had a platform-to-platform gap of 100 units (110→210) — mathematically impossible to jump, exceeding the 96.4-unit max with no margin at all. This wasn't the "climb tier by tier, deliberately hard" design the surrounding comment describes elsewhere in this same map (a genuinely tight-but-possible 90-unit gap exists safely on Skyreach Spire) — it was simply too tall. Retuned the platform from height 210 to 200 (now a 90-unit gap, matching Skyreach Spire's own tightest safe margin). Re-ran the audit against all ten maps afterward: every platform below the file's own documented ~250-height "these are unjumpable interior walls, not perches" line now has a climbable gap; the handful of platforms at or above that line (Twin Ramparts, The Colosseum Ring, Skyreach Spire, The Shattered Bridge, Molten Foundry, Overgrown Sanctuary) were confirmed as exactly that — intentional lane-divider walls with 175-215-unit gaps, correctly left untouched rather than "fixed" into something they were never meant to be. Verified via a full headless-Chrome load/regression pass (zero console errors) on top of the standalone math audit.
+
+**Batches 12-20** (progression economy + shop, debug unlock-all toggle, bot-mode gating, Double Jump upgrade, co-op 3rd-entity infrastructure, Boss Fight, Survival Waves, Zone Control + Time Attack, camera pitch) — in progress; each gets its own entry here as it lands, per this file's own established one-entry-per-batch convention.
+
+---
+
 ## Verification checklist (run at the end of every batch)
 
 Unchanged from the original brief — these all require an actual browser session (input, visuals, timing, a human on the other side of the bot) that this pass couldn't run. Left unchecked deliberately rather than self-assessed as done; see "Final status" above.
