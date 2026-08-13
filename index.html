@@ -360,6 +360,68 @@
            un-clickable) until you Back — the picked card keeps full brightness. */
         .fighter-grid.locked { pointer-events: none; }
         .fighter-grid.locked .fighter-btn:not(.selected) { opacity: 0.4; }
+        /* NOT-YET-PURCHASED cards. Deliberately a different class from the
+           `.locked` grid state above (that one dims the whole grid after a
+           pick is confirmed) — these two "locked" concepts are unrelated and
+           must not collide on one class name. A locked card stays visible
+           and readable (you should want it) but is desaturated, shows its
+           coin price, and routes clicks to the Shop instead of previewPick. */
+        .fighter-btn.roster-locked { border-color: #3b4661; filter: grayscale(0.75) brightness(0.75); }
+        .fighter-btn.roster-locked .fname { color: #94a3b8; }
+        .fighter-btn.roster-locked:hover { background: #1a2235; box-shadow: none; }
+        .fighter-btn.roster-locked:hover .fname { color: #cbd5e1; }
+        .fighter-btn.roster-locked:hover .ftitle, .fighter-btn.roster-locked:hover .fkey { color: #94a3b8; }
+        .fighter-btn .fcost {
+            display: inline-block; background: #0d0f18; border: 1px solid #f59e0b; color: #f59e0b;
+            font-weight: bold; font-size: 0.66rem; padding: 1px 6px; border-radius: 3px; margin-right: 7px;
+        }
+        /* Coin balance, shown on the select screen and in the Shop header. */
+        .coin-balance { color: #f59e0b; font-weight: bold; font-size: 0.9rem; letter-spacing: 0.02em; }
+        .coin-balance::before { content: "\25CF"; margin-right: 5px; color: #fbbf24; }
+        #shop-screen {
+            display: none;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
+            align-items: center; justify-content: center; z-index: 30; padding: 20px;
+        }
+        .shop-panel { width: min(760px, 94vw); max-height: 90vh; overflow-y: auto; text-align: left; }
+        .shop-panel h3 { text-align: center; color: #00f3ff; margin: 0 0 4px; font-size: 1.3rem; }
+        .shop-sub { text-align: center; color: #8aa0b8; margin: 0 0 12px; font-size: 0.8rem; }
+        .shop-head { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; }
+        .shop-card {
+            background: #10151f; border: 1px solid #2e3a59; border-left: 3px solid var(--accent, #00f3ff);
+            border-radius: 6px; padding: 9px 12px; margin-bottom: 8px;
+        }
+        .shop-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+        .shop-card-head > div:first-child { min-width: 0; } /* let the label shrink instead of squeezing the button */
+        .shop-name { font-weight: bold; color: var(--accent, #00f3ff); font-size: 0.92rem; }
+        .shop-title { font-size: 0.66rem; color: #94a3b8; font-weight: normal; }
+        .shop-upgrades { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 6px 10px; }
+        .upg-row { display: flex; align-items: center; gap: 6px; font-size: 0.66rem; color: #94a3b8; }
+        .upg-row .upg-label { width: 46px; flex-shrink: 0; }
+        .upg-pips { display: flex; gap: 3px; flex-shrink: 0; }
+        .upg-pip { width: 9px; height: 9px; border-radius: 2px; background: #1e2637; border: 1px solid #2e3a59; }
+        .upg-pip.filled { background: #00f3ff; border-color: #00f3ff; box-shadow: 0 0 6px rgba(0,243,255,0.5); }
+        /* NOTE the `.menu-section` prefix: `.shop-panel` is itself a
+           `.menu-section`, and `.menu-section button { width: 100% }` (class +
+           element = higher specificity than a lone class) would otherwise
+           stretch every shop button to full width and crush the labels beside
+           them. Same specificity trap that once broke the bot-toggle. */
+        .menu-section .shop-buy {
+            width: auto; margin: 0; padding: 4px 10px; font-size: 0.66rem; font-weight: bold;
+            background: #f59e0b; color: #0d0f18; border: none; border-radius: 4px;
+            flex: 0 0 auto; white-space: nowrap;
+        }
+        /* Only the card-header button gets pushed to the far right; inside an
+           upgrade row the price button should sit next to its own pips, or it
+           reads as belonging to the next column's label. */
+        .shop-card-head .shop-buy { margin-left: auto; }
+        .upg-row .shop-buy { min-width: 44px; text-align: center; }
+        .menu-section .shop-buy:hover { background: #fbbf24; box-shadow: 0 0 10px rgba(245,158,11,0.5); }
+        .menu-section .shop-buy:disabled { background: #334155; color: #64748b; box-shadow: none; }
+        .menu-section .shop-buy.maxed { background: #1e2637; color: #64748b; border: 1px solid #2e3a59; }
+        .shop-locked-note { font-size: 0.66rem; color: #f59e0b; }
+        .shop-owned { font-size: 0.66rem; color: #4ade80; font-weight: bold; flex: 0 0 auto; white-space: nowrap; }
 
         .fighter-detail { display: none; text-align: left; margin-top: 10px; }
         .fighter-detail.confirmed { outline: 2px solid var(--accent); border-radius: 6px; padding: 4px; }
@@ -438,6 +500,26 @@
             box-shadow: none;
         }
         .btn-tutorial:hover { background: rgba(0, 243, 255, 0.12); box-shadow: 0 0 12px rgba(0, 243, 255, 0.35); }
+        /* Every modal overlay is absolutely positioned to #game-container, NOT
+           to the viewport — but the panels inside them were sized with `vh`
+           (90vh/92vh), which is viewport-relative. On any window taller than
+           the container (the normal desktop case: the container is capped at
+           a 1170x650-ish box inside a taller window), 90vh resolves LARGER
+           than the container, so a long panel overflowed its centered parent
+           and got clipped at BOTH ends with no way to scroll to them — the
+           same class of bug as the earlier settings-button clipping, and why
+           the tutorial/shop titles were cut off. Sizing against the modal
+           container's own height (100%, with the container's padding taken out
+           via border-box) keeps every panel inside its parent and lets its own
+           overflow-y actually do the scrolling. */
+        #mapselect-screen, #shop-screen, #tutorial-screen, #settings-screen, #audio-screen, #rebind-screen {
+            box-sizing: border-box;
+        }
+        .mapselect-panel, .shop-panel, .tutorial-panel,
+        #settings-screen .menu-section, #audio-screen .menu-section, #rebind-screen .menu-section {
+            max-height: 100%;
+            box-sizing: border-box;
+        }
         #mapselect-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -620,6 +702,7 @@
                     <h1>Astral Clash</h1>
                     <div class="brand-divider"></div>
                     <p>Dimensional Arena Fighter</p>
+                    <div class="coin-balance" id="coin-balance">0</div>
                     <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
                 </div>
                 <p id="touch-warning" style="display:none;color:#8aa0b8;font-size:0.75rem;max-width:480px;text-align:center;">Touch controls: left stick to move/turn, right-side buttons to fight. Best in landscape.</p>
@@ -661,6 +744,7 @@
                     </div>
                 </div>
                 <div class="menu-footer">
+                    <button id="btn-open-shop">Shop</button>
                     <button id="btn-open-settings">Settings</button>
                 </div>
             </div>
@@ -764,6 +848,10 @@
                             <p>There's no way to get HP back — no health pickups, no regen. Every hit you take counts. Play patient, punish mistakes, and use your dash i-frames and shields to avoid damage rather than trying to out-heal it.</p>
                         </div>
                         <div class="tutorial-card">
+                            <h4>Coins &amp; Unlocks</h4>
+                            <p>You start with three fighters; the rest are unlocked with coins earned from matches (win or lose, though winning pays more). Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate, and Speed — visit the Shop from the menu footer.</p>
+                        </div>
+                        <div class="tutorial-card">
                             <h4>Controls</h4>
                             <div id="tutorial-controls"></div>
                         </div>
@@ -783,6 +871,16 @@
                 <button id="btn-map-random" class="map-random-btn">Random Arena</button>
                 <div class="mapselect-grid" id="mapselect-grid"></div>
                 <button id="btn-mapselect-back" class="btn-back">← Back to Fighters</button>
+            </div>
+        </div>
+
+        <div id="shop-screen">
+            <div class="menu-section shop-panel">
+                <h3>Shop</h3>
+                <p class="shop-sub">Unlock fighters and buy permanent upgrades. Coins are earned from every match.</p>
+                <div class="shop-head"><span class="coin-balance" id="shop-coin-balance">0</span></div>
+                <div id="shop-list"></div>
+                <button id="btn-shop-close" class="btn-back">← Back</button>
             </div>
         </div>
 
@@ -854,7 +952,7 @@ let gameState = "MENU"; // MENU, INTRO, FIGHT, DEATH, ROUND_END, PAUSED, GAMEOVE
 //   during a fight). MODALS overlay everything and stack: opening one leaves
 //   whatever's underneath in place, so closing returns there. ---
 const SCREEN_EL = { select: 'select-screen', gameover: 'gameover-screen', pause: 'pause-screen' };
-const MODAL_EL = { tutorial: 'tutorial-screen', settings: 'settings-screen', rebind: 'rebind-screen', audio: 'audio-screen', mapselect: 'mapselect-screen' };
+const MODAL_EL = { tutorial: 'tutorial-screen', settings: 'settings-screen', rebind: 'rebind-screen', audio: 'audio-screen', mapselect: 'mapselect-screen', shop: 'shop-screen' };
 let currentScreen = 'select'; // matches the initial CSS (select shown)
 let modalStack = [];
 function showScreen(name) {
@@ -1093,6 +1191,116 @@ try {
 }
 function saveBindings() {
     safeLSSet('astralClashBindings', JSON.stringify(BINDINGS));
+}
+
+// --- Batch 12: meta-progression (coins, character unlocks, per-character
+// stat upgrades). Persisted with the same merge-over-defaults idiom as
+// BINDINGS above, so a save written before a field existed (or a corrupted
+// one) degrades to defaults instead of throwing. ---
+//
+// Three starters spanning the three archetypes a new player needs to feel
+// out the game: a balanced melee duelist, a ranged caster, and a tank.
+const STARTER_CHARS = ['Kaelen', 'Lyra', 'Draven'];
+// Unlock prices, tiered loosely by how strong/complex a kit is rather than
+// flat, so the cheap unlocks are also the easier ones to pick up.
+const UNLOCK_COST = { Ignis: 300, Nyx: 400, Aurelia: 450, Seraphine: 500, Gorgonok: 600, Thorne: 700, Voss: 750 };
+const UPGRADE_TRAITS = ['hp', 'dmg', 'special', 'speed'];
+const UPGRADE_TRAIT_LABELS = { hp: 'Health', dmg: 'Damage', special: 'Special', speed: 'Speed' };
+const UPGRADE_COST = [150, 300, 500]; // cost of buying level 1 / 2 / 3
+const MAX_UPGRADE_LEVEL = 3;
+// +5% per level (+15% maxed). Deliberately modest: a fully-upgraded starter
+// should still never eclipse a stock top-tier pick, so upgrades feel like
+// progress without turning the roster into a pay-to-win ladder.
+const UPGRADE_STAT_BONUS = 0.05;
+const DOUBLE_JUMP_COST = 1000; // account-wide, priced above any single unlock as a capstone
+const COIN_AWARDS = {
+    classicWin: 50, classicLoss: 15, classicDraw: 30,
+    zoneWin: 50, zoneLoss: 15,
+    timeattackWin: 50, timeattackLoss: 15,
+    bossWin: 150, bossLoss: 20,
+    survivalPerWave: 40
+};
+
+const PROGRESSION_KEY = 'astralClashProgression';
+const DEFAULT_PROGRESSION = { coins: 0, unlockedChars: STARTER_CHARS.slice(), upgrades: {}, doubleJumpUnlocked: false };
+let progression = (() => {
+    try {
+        const saved = JSON.parse(safeLSGet(PROGRESSION_KEY)) || {};
+        const merged = Object.assign({}, DEFAULT_PROGRESSION, saved);
+        // Defensive: these two are the fields most likely to arrive
+        // malformed from a hand-edited or half-written save, and both are
+        // indexed into directly below.
+        if (!Array.isArray(merged.unlockedChars) || !merged.unlockedChars.length) merged.unlockedChars = STARTER_CHARS.slice();
+        if (!merged.upgrades || typeof merged.upgrades !== 'object') merged.upgrades = {};
+        merged.coins = Number(merged.coins) || 0;
+        return merged;
+    } catch (e) {
+        return Object.assign({}, DEFAULT_PROGRESSION, { unlockedChars: STARTER_CHARS.slice(), upgrades: {} });
+    }
+})();
+function saveProgression() { safeLSSet(PROGRESSION_KEY, JSON.stringify(progression)); }
+
+// Batch 13 sets this; declared here because the accessors below are the
+// single gate every unlock/upgrade check in the game goes through, and they
+// have to read the override. Persisted under its OWN key, never inside
+// `progression` — that's what makes toggling it off restore the real save
+// exactly, since nothing ever writes into `progression` while it's on.
+let debugUnlockAll = safeLSGet('astralClashDebugUnlockAll') === '1';
+
+// THE accessors. Gameplay and UI both go through these rather than reading
+// `progression` directly, so there's exactly one place the debug override
+// has to be honored.
+function isCharUnlocked(name) { return debugUnlockAll || progression.unlockedChars.includes(name); }
+function upgradeLevel(name, trait) {
+    if (debugUnlockAll) return MAX_UPGRADE_LEVEL;
+    const u = progression.upgrades[name];
+    return (u && u[trait]) || 0;
+}
+function isDoubleJumpUnlocked() { return debugUnlockAll || !!progression.doubleJumpUnlocked; }
+// Multiplier a given character's base stat is scaled by, from its upgrades.
+function upgradeMult(name, trait) { return 1 + UPGRADE_STAT_BONUS * upgradeLevel(name, trait); }
+function unlockedCharNames() { return CHARACTERS.filter(c => isCharUnlocked(c.name)).map(c => c.name); }
+
+function addCoins(n) {
+    if (!n) return;
+    progression.coins = Math.max(0, progression.coins + n);
+    saveProgression();
+    refreshCoinDisplays();
+}
+function refreshCoinDisplays() {
+    const txt = String(progression.coins);
+    const a = document.getElementById('coin-balance'), b = document.getElementById('shop-coin-balance');
+    if (a) a.textContent = txt;
+    if (b) b.textContent = txt;
+}
+function buyUnlock(name) {
+    const cost = UNLOCK_COST[name];
+    if (!cost || isCharUnlocked(name) || progression.coins < cost) return false;
+    progression.coins -= cost;
+    progression.unlockedChars.push(name);
+    saveProgression();
+    refreshCoinDisplays(); refreshGridLocks(); buildShop();
+    return true;
+}
+function buyUpgrade(name, trait) {
+    const lvl = upgradeLevel(name, trait);
+    if (lvl >= MAX_UPGRADE_LEVEL) return false;
+    const cost = UPGRADE_COST[lvl];
+    if (progression.coins < cost) return false;
+    progression.coins -= cost;
+    if (!progression.upgrades[name]) progression.upgrades[name] = {};
+    progression.upgrades[name][trait] = lvl + 1;
+    saveProgression();
+    refreshCoinDisplays(); buildShop();
+    return true;
+}
+function buyDoubleJump() {
+    if (isDoubleJumpUnlocked() || progression.coins < DOUBLE_JUMP_COST) return false;
+    progression.coins -= DOUBLE_JUMP_COST;
+    progression.doubleJumpUnlocked = true;
+    saveProgression();
+    refreshCoinDisplays(); buildShop();
+    return true;
 }
 
 // Batch 9: scalable HUD text. The HUD is canvas-drawn, not real DOM text,
@@ -3103,16 +3311,22 @@ class Fighter {
         this.aiThinkTimer = 0; // frames until the bot next reconsiders attacking, not every-frame reaction
         this.vx = 0;
         this.vy = 0;
-        this.maxHp = cfg.hp;
-        this.hp = cfg.hp;
-        this.hpGhost = cfg.hp; // Batch 8: lags behind `hp` on damage so the HUD bar shows a fading "you just lost this much" trail
-        this.speed = cfg.speed;
-        this.attackDmg = cfg.dmg;
+        // Batch 12: apply purchased stat upgrades on top of the base config.
+        // `upgradeMult` returns 1.0 when nothing is bought, so a fresh save
+        // produces exactly the pre-progression numbers. Skipped entirely for
+        // a boss/wave entity (Batch 16+) — those scale off difficulty/wave
+        // instead, and stacking both multiplier systems would double-dip.
+        const um = this.isBossEntity ? (() => 1) : (t => upgradeMult(name, t));
+        this.maxHp = Math.round(cfg.hp * um('hp'));
+        this.hp = this.maxHp;
+        this.hpGhost = this.maxHp; // Batch 8: lags behind `hp` on damage so the HUD bar shows a fading "you just lost this much" trail
+        this.speed = cfg.speed * um('speed');
+        this.attackDmg = cfg.dmg * um('dmg');
         this.attackRange = cfg.range || 0;
         this.halfAngle = cfg.halfAngle || 0;
         this.atkType = cfg.atkType;
         this.cooldownMax = cfg.cooldown;
-        this.meterRateMult = cfg.meterRateMult;
+        this.meterRateMult = cfg.meterRateMult * um('special');
         this.specialMeter = 0;
         this.attackCooldown = 0;
         // Startup/active/recovery state machine (Batch 3b). 'idle' means
@@ -5159,22 +5373,62 @@ function buildGrid(gridId, keyList, side) {
         const btn = document.createElement('button');
         btn.className = 'fighter-btn';
         btn.dataset.name = c.name;
+        btn.dataset.key = keyList[i].toUpperCase();
         btn.style.setProperty('--accent', c.color);
-        btn.title = c.desc;
         btn.innerHTML = `<span><span class="fkey">${keyList[i].toUpperCase()}</span><span class="fname">${c.name}</span></span><span class="ftitle">${c.title}</span>`;
-        btn.addEventListener('click', () => previewPick(side, c.name));
+        // A locked card opens the Shop instead of previewing — clicking the
+        // thing you want and being told where to get it beats a dead button.
+        btn.addEventListener('click', () => {
+            if (!isCharUnlocked(c.name)) { openShop(); return; }
+            previewPick(side, c.name);
+        });
         grid.appendChild(btn);
     });
+    refreshGridLocks();
+}
+// Locked/unlocked is runtime state (a purchase or the Batch 13 debug override
+// can flip it mid-session), but buildGrid only runs once at load — so the
+// lock visuals are applied as a separate pass over the already-built cards
+// rather than by rebuilding the grid.
+function refreshGridLocks() {
+    for (const gridId of ['p1-grid', 'p2-grid']) {
+        const grid = document.getElementById(gridId);
+        if (!grid) continue;
+        grid.querySelectorAll('.fighter-btn').forEach(btn => {
+            const name = btn.dataset.name;
+            const unlocked = isCharUnlocked(name);
+            btn.classList.toggle('roster-locked', !unlocked);
+            const cost = UNLOCK_COST[name];
+            btn.title = unlocked ? CHAR_MAP[name].desc : `Locked — ${cost} coins in the Shop`;
+            // Swap the hotkey pill for a price pill while locked: the hotkey
+            // does nothing on a locked character anyway (previewPick refuses),
+            // so showing the price is strictly more useful there.
+            const pill = btn.querySelector('.fkey, .fcost');
+            if (pill) {
+                pill.className = unlocked ? 'fkey' : 'fcost';
+                pill.textContent = unlocked ? btn.dataset.key : cost;
+            }
+        });
+    }
 }
 buildGrid('p1-grid', P1_KEYS, 'p1');
 buildGrid('p2-grid', P2_KEYS, 'p2');
 
-function statRow(label, value, max) {
+function statRow(label, value, max, lvl) {
     const pct = Math.round((value / max) * 100);
-    return `<div class="stat-row"><span>${label}</span><div class="stat-bar"><div class="stat-fill" style="width:${pct}%"></div></div><span class="stat-val">${value}</span></div>`;
+    // Show the upgrade level inline when there is one, so the numbers on this
+    // panel visibly match what you bought in the Shop.
+    const badge = lvl ? ` <span style="color:#00f3ff">+${lvl}</span>` : '';
+    return `<div class="stat-row"><span>${label}</span><div class="stat-bar"><div class="stat-fill" style="width:${pct}%"></div></div><span class="stat-val">${value}${badge}</span></div>`;
 }
 
 function buildDetailHTML(c, confirmKey, backKey) {
+    // Stats shown here are the EFFECTIVE (upgraded) values the Fighter
+    // constructor will actually use, not the raw config — otherwise buying an
+    // upgrade would change nothing visible until you were already in a match.
+    const hp = Math.round(c.hp * upgradeMult(c.name, 'hp'));
+    const dmg = Math.round(c.dmg * upgradeMult(c.name, 'dmg'));
+    const speed = +(c.speed * upgradeMult(c.name, 'speed')).toFixed(2);
     return `
         <div class="detail-header">
             <span class="detail-swatch"></span>
@@ -5182,9 +5436,9 @@ function buildDetailHTML(c, confirmKey, backKey) {
         </div>
         <p class="detail-desc">${c.desc}</p>
         <div class="detail-stats">
-            ${statRow('Health', c.hp, STAT_MAX.hp)}
-            ${statRow('Damage', c.dmg, STAT_MAX.dmg)}
-            ${statRow('Speed', c.speed, STAT_MAX.speed)}
+            ${statRow('Health', hp, STAT_MAX.hp, upgradeLevel(c.name, 'hp'))}
+            ${statRow('Damage', dmg, STAT_MAX.dmg, upgradeLevel(c.name, 'dmg'))}
+            ${statRow('Speed', speed, STAT_MAX.speed, upgradeLevel(c.name, 'speed'))}
         </div>
         <div class="detail-ability"><span class="ability-label">Special &mdash; ${c.specialName}</span><p>${c.specialDesc}</p></div>
         <div class="detail-actions">
@@ -5273,7 +5527,9 @@ function refreshMenuUI() {
     // (bot-vs-bot, or toggling a side to bot after the other already
     // confirmed). A human confirming as the final action still auto-starts.
     document.getElementById('btn-start-match').style.display = bothReady ? '' : 'none';
+    refreshCoinDisplays(); // coins change on match end / purchases; cheap to keep in sync here
 }
+refreshCoinDisplays(); // initial paint at load, before any menu interaction
 
 // Rolls random fighters for any bot side (their pick is hidden until now),
 // then hands off to startMatch(). The single entry point for actually
@@ -5347,9 +5603,104 @@ function chooseMap(map) {
 document.getElementById('btn-map-random').addEventListener('click', () => chooseMap(null));
 document.getElementById('btn-mapselect-back').addEventListener('click', () => closeModal());
 
+// --- Batch 12: Shop. Rebuilt from scratch on every open/purchase (rather
+// than diffed) — it's a small list and only ever rendered while the game is
+// paused on a menu, so simplicity beats incremental updates here. ---
+function buildShop() {
+    const list = document.getElementById('shop-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    // Account-wide upgrades first — they apply to whoever you play, so they
+    // shouldn't be buried under ten per-character cards.
+    const djCard = document.createElement('div');
+    djCard.className = 'shop-card';
+    djCard.style.setProperty('--accent', '#22d3ee');
+    const djOwned = isDoubleJumpUnlocked();
+    djCard.innerHTML = `<div class="shop-card-head">
+            <div><span class="shop-name">Double Jump</span> <span class="shop-title">— all fighters</span></div>
+            <button class="shop-buy${djOwned ? ' maxed' : ''}" ${djOwned ? 'disabled' : ''} data-dj="1">${djOwned ? 'Owned' : DOUBLE_JUMP_COST + ' coins'}</button>
+        </div>
+        <div class="upg-row"><span>Jump a second time in mid-air — reaches the highest platforms.</span></div>`;
+    if (!djOwned) {
+        const b = djCard.querySelector('[data-dj]');
+        b.disabled = progression.coins < DOUBLE_JUMP_COST;
+        b.addEventListener('click', () => buyDoubleJump());
+    }
+    list.appendChild(djCard);
+
+    CHARACTERS.forEach(c => {
+        const unlocked = isCharUnlocked(c.name);
+        const card = document.createElement('div');
+        card.className = 'shop-card';
+        card.style.setProperty('--accent', c.color);
+
+        const head = document.createElement('div');
+        head.className = 'shop-card-head';
+        head.innerHTML = `<div><span class="shop-name">${c.name}</span> <span class="shop-title">— ${c.title}</span></div>`;
+        if (!unlocked) {
+            const cost = UNLOCK_COST[c.name];
+            const buy = document.createElement('button');
+            buy.className = 'shop-buy';
+            buy.textContent = `Unlock — ${cost} coins`;
+            buy.disabled = progression.coins < cost;
+            buy.addEventListener('click', () => buyUnlock(c.name));
+            head.appendChild(buy);
+        } else {
+            const owned = document.createElement('span');
+            owned.className = 'shop-owned';
+            owned.textContent = 'Unlocked';
+            head.appendChild(owned);
+        }
+        card.appendChild(head);
+
+        // Upgrades are only purchasable on an unlocked character — buying
+        // stat levels for someone you can't play would be a coin trap.
+        if (unlocked) {
+            const grid = document.createElement('div');
+            grid.className = 'shop-upgrades';
+            UPGRADE_TRAITS.forEach(trait => {
+                const lvl = upgradeLevel(c.name, trait);
+                const maxed = lvl >= MAX_UPGRADE_LEVEL;
+                const cost = maxed ? 0 : UPGRADE_COST[lvl];
+                const row = document.createElement('div');
+                row.className = 'upg-row';
+                const pips = Array.from({ length: MAX_UPGRADE_LEVEL },
+                    (_, i) => `<span class="upg-pip${i < lvl ? ' filled' : ''}"></span>`).join('');
+                row.innerHTML = `<span class="upg-label">${UPGRADE_TRAIT_LABELS[trait]}</span><span class="upg-pips">${pips}</span>`;
+                const buy = document.createElement('button');
+                buy.className = `shop-buy${maxed ? ' maxed' : ''}`;
+                buy.textContent = maxed ? 'Max' : `${cost}`;
+                buy.disabled = maxed || progression.coins < cost;
+                if (!maxed) buy.addEventListener('click', () => buyUpgrade(c.name, trait));
+                row.appendChild(buy);
+                grid.appendChild(row);
+            });
+            card.appendChild(grid);
+        } else {
+            const note = document.createElement('div');
+            note.className = 'shop-locked-note';
+            note.textContent = 'Unlock to buy upgrades';
+            card.appendChild(note);
+        }
+        list.appendChild(card);
+    });
+}
+function openShop() {
+    buildShop();
+    refreshCoinDisplays();
+    openModal('shop');
+}
+document.getElementById('btn-open-shop').addEventListener('click', openShop);
+document.getElementById('btn-shop-close').addEventListener('click', () => closeModal());
+
 function beginMatch() {
-    if (p1IsBot) p1Choice = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].name;
-    if (p2IsBot) p2Choice = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].name;
+    // Bot sides roll from the UNLOCKED roster only — rolling a locked
+    // character would let a bot play someone you haven't earned, and (worse)
+    // show you a fighter you can't pick yourself.
+    const pool = unlockedCharNames();
+    if (p1IsBot) p1Choice = pool[Math.floor(Math.random() * pool.length)];
+    if (p2IsBot) p2Choice = pool[Math.floor(Math.random() * pool.length)];
     openMapSelect(); // pick an arena, then the drop-in intro starts the match
 }
 document.getElementById('btn-start-match').addEventListener('click', () => {
@@ -5363,8 +5714,8 @@ document.getElementById('btn-start-match').addEventListener('click', () => {
 function randomPick(side) {
     const stage = side === 'p1' ? p1Stage : p2Stage;
     if (stage === 'confirmed') return;
-    const c = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
-    previewPick(side, c.name);
+    const pool = unlockedCharNames(); // never roll something you can't play
+    previewPick(side, pool[Math.floor(Math.random() * pool.length)]);
 }
 // --- Mobile: touch controls, on request. A touch-primary device gets a
 // virtual joystick (turn/move, mirroring the keyboard's turn-then-walk FPS
@@ -5522,6 +5873,7 @@ document.getElementById('btn-random-p2').addEventListener('click', () => randomP
 
 function previewPick(side, name) {
     if (side === 'p1' ? p1IsBot : p2IsBot) return; // bot sides don't get picked by hand
+    if (!isCharUnlocked(name)) return; // not bought yet — the card's own click handler routes to the Shop
     const stage = side === 'p1' ? p1Stage : p2Stage;
     if (stage === 'confirmed') return; // locked in — must Back out first
     if (side === 'p1') { p1Preview = name; p1Stage = 'preview'; }
@@ -6119,10 +6471,16 @@ function endMatch() {
 
     const s1 = matchStats.p1, s2 = matchStats.p2;
     const roundTimesStr = roundDurations.map((d, i) => `R${i + 1} ${d.toFixed(1)}s`).join(', ');
+    // Batch 12: coins for finishing a match. A loss still pays (less), so a
+    // player who keeps losing to a bot still makes progress toward unlocks
+    // rather than being hard-stuck.
+    const earned = isDraw ? COIN_AWARDS.classicDraw : COIN_AWARDS.classicWin;
+    addCoins(earned);
     document.getElementById('match-summary').innerHTML =
         `<div><b>${player1.name} (P1)</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
         `<div><b>${player2.name} (P2)</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
-        `<div>Round times: ${roundTimesStr}</div>`;
+        `<div>Round times: ${roundTimesStr}</div>` +
+        `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">+${earned} coins</div>`;
 
     showScreen('gameover');
 }
@@ -6285,6 +6643,28 @@ function gameLoop() {
     syncViewmodels(dt);
     renderViews(dt);
     requestAnimationFrame(gameLoop);
+}
+
+// ?debug=1 also exposes a small handle on the game's internals. Everything
+// in this file lives inside bootGame()'s closure (deliberately — no globals
+// leaking onto window), which is good hygiene but leaves automated checks
+// with nothing to inspect but pixels. This gives the existing per-batch
+// verification scripts a way to assert on real state//functions instead,
+// gated behind the same flag as the on-screen debug overlay so a normal
+// player's page still exposes nothing.
+if (DEBUG) {
+    window.ACDebug = {
+        get progression() { return progression; },
+        get debugUnlockAll() { return debugUnlockAll; },
+        get gameState() { return gameState; },
+        get player1() { return player1; },
+        get player2() { return player2; },
+        STARTER_CHARS, UNLOCK_COST, UPGRADE_COST, MAX_UPGRADE_LEVEL, UPGRADE_STAT_BONUS,
+        DOUBLE_JUMP_COST, COIN_AWARDS, CHARACTERS, CHAR_MAP, MAPS,
+        isCharUnlocked, upgradeLevel, upgradeMult, isDoubleJumpUnlocked, unlockedCharNames,
+        addCoins, buyUnlock, buyUpgrade, buyDoubleJump, saveProgression,
+        Fighter, keys, pressed, BINDINGS,
+    };
 }
 
 requestAnimationFrame(gameLoop);
