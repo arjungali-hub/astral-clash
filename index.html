@@ -664,6 +664,24 @@
             transition: transform 0.05s linear; pointer-events: none;
         }
         .touch-buttons { position: relative; width: 150px; height: 150px; flex: none; pointer-events: none; }
+        /* Batch 20: drag-to-look area. Fills the upper ~55% of its side (which
+           had no controls in it) and is positioned absolutely so it does NOT
+           participate in the flex row that lays out the joystick and buttons. */
+        .touch-look {
+            /* Starts below the pause button's row rather than at the very top:
+               the zone is a big transparent click-eater, and as a later sibling
+               it would otherwise paint over (and swallow taps meant for)
+               #touch-pause-btn. The button also carries a higher z-index as a
+               belt-and-braces guard. */
+            position: absolute; left: 0; right: 0; top: 48px; height: calc(55% - 48px);
+            z-index: 1;
+            pointer-events: auto; touch-action: none; -webkit-touch-callout: none;
+            display: flex; align-items: flex-start; justify-content: center;
+        }
+        .touch-look span {
+            margin-top: 6px; font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase;
+            color: rgba(203, 213, 225, 0.32); pointer-events: none; user-select: none;
+        }
         .touch-btn {
             position: absolute; width: 60px; height: 60px; border-radius: 50%;
             background: rgba(13, 20, 32, 0.5); border: 2px solid rgba(255, 255, 255, 0.25);
@@ -682,6 +700,7 @@
             width: 40px; height: 32px; padding: 0; margin: 0; border-radius: 6px;
             background: rgba(13, 20, 32, 0.55); border: 1px solid rgba(255, 255, 255, 0.25); color: #cbd5e1;
             font-size: 0.8rem; font-weight: 700; letter-spacing: 2px; pointer-events: auto; touch-action: none;
+            z-index: 2; /* above the .touch-look drag zones, which are later siblings */
         }
         #touch-pause-btn:hover { background: rgba(13, 20, 32, 0.55); box-shadow: none; }
         /* Transient confirmation for the unlock-everything override. Highest
@@ -848,7 +867,7 @@
                         </div>
                         <div class="tutorial-card">
                             <h4>First-Person View</h4>
-                            <p>You fight through your character's own eyes, weapon in hand. Turn keys rotate your view like looking around, not an instant sidestep — walk forward/back in whatever direction you're currently facing to actually move that way. Two human players share the screen split left/right; against a bot you get the whole screen.</p>
+                            <p>You fight through your character's own eyes, weapon in hand. Turn keys rotate your view like looking around, not an instant sidestep — walk forward/back in whatever direction you're currently facing to actually move that way. Separate <b>look up/down</b> keys aim vertically, and ranged attacks fire along that aim — so you can shoot up at someone on a high perch, or down at the floor from one. On a gamepad the right stick looks; on touch, drag anywhere in the upper half of your side. Two human players share the screen split left/right; against a bot you get the whole screen.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Arena Collapse</h4>
@@ -913,7 +932,10 @@
 
         <div id="touch-controls">
             <button type="button" id="touch-pause-btn">II</button>
+            <!-- The look zones are FIRST in each side so the joystick/buttons,
+                 later in DOM order, keep winning their own hit-tests. -->
             <div class="touch-side" id="touch-p1">
+                <div class="touch-look" id="look-p1"><span>drag to look</span></div>
                 <div class="touch-joystick" id="joy-p1"><div class="touch-joystick-knob"></div></div>
                 <div class="touch-buttons">
                     <button type="button" class="touch-btn touch-btn-jump" data-action="jump">JUMP</button>
@@ -923,6 +945,7 @@
                 </div>
             </div>
             <div class="touch-side" id="touch-p2">
+                <div class="touch-look" id="look-p2"><span>drag to look</span></div>
                 <div class="touch-joystick" id="joy-p2"><div class="touch-joystick-knob"></div></div>
                 <div class="touch-buttons">
                     <button type="button" class="touch-btn touch-btn-jump" data-action="jump">JUMP</button>
@@ -1208,8 +1231,13 @@ const DEFAULT_BINDINGS = {
     // P1 jump is E (not Space): Space is an oversized thumb key that made P1
     // jumping far easier than P2's, so it's rebalanced to a normal key. Dash
     // is Shift (was Ctrl). Both remain rebindable in Settings.
-    p1: { up: 'w', down: 's', left: 'a', right: 'd', jump: 'e', attack: 'f', special: 'g', dodge: 'shift' },
-    p2: { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', jump: '/', attack: 'k', special: 'l', dodge: '.' }
+    // Batch 20 adds lookUp/lookDown (vertical aim). P1 gets R/V — the vertical
+    // column around its existing F/G attack keys. P2 gets ;/' — free keys
+    // right beside its existing K/L/. cluster. Both rebindable like everything
+    // else. (P1's 'r' doubles as the menu-only random-pick shortcut, the same
+    // harmless menu-vs-fight overlap P2's '/' jump already has.)
+    p1: { up: 'w', down: 's', left: 'a', right: 'd', jump: 'e', attack: 'f', special: 'g', dodge: 'shift', lookUp: 'r', lookDown: 'v' },
+    p2: { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', jump: '/', attack: 'k', special: 'l', dodge: '.', lookUp: ';', lookDown: "'" }
 };
 const RANDOM_KEYS = { p1: 'r', p2: '/' }; // fighter-select "pick a random fighter" keys (not rebindable; named so the label/handler stay in sync)
 let BINDINGS;
@@ -1403,10 +1431,10 @@ function keyLabel(k) {
 // both places without them drifting out of sync with each other.
 function controlsSummary(side) {
     const b = BINDINGS[side];
-    return `${keyLabel(b.up)}/${keyLabel(b.down)} Fwd/Back, ${keyLabel(b.left)}/${keyLabel(b.right)} Turn | ${keyLabel(b.jump)} Jump | ${keyLabel(b.attack)}/${keyLabel(b.special)} Atk/Spc | ${keyLabel(b.dodge)} Dash`;
+    return `${keyLabel(b.up)}/${keyLabel(b.down)} Fwd/Back, ${keyLabel(b.left)}/${keyLabel(b.right)} Turn | ${keyLabel(b.lookUp)}/${keyLabel(b.lookDown)} Look Up/Down | ${keyLabel(b.jump)} Jump | ${keyLabel(b.attack)}/${keyLabel(b.special)} Atk/Spc | ${keyLabel(b.dodge)} Dash`;
 }
 
-const REBIND_ACTION_LABELS = { up: 'Up', down: 'Down', left: 'Left', right: 'Right', jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash' };
+const REBIND_ACTION_LABELS = { up: 'Up', down: 'Down', left: 'Left', right: 'Right', jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash', lookUp: 'Look Up', lookDown: 'Look Down' };
 let rebindCapture = null; // { side, action, buttonEl } while waiting on the next keydown
 function buildRebindList() {
     const list = document.getElementById('rebind-list');
@@ -1918,10 +1946,17 @@ function positionFpsCamera(cam, f, dt) {
     const ex = worldX(cx), ey = f.z + EYE_HEIGHT, ez = worldZ(cy);
     cam.position.set(ex, ey, ez);
     _fwd.set(f.fx, 0, f.fy).normalize();
-    // Steeper downward tilt during the intro drop so you see the arena rushing
-    // up to meet you; a gentle level-ish gaze otherwise.
-    const pitchDrop = (gameState === 'INTRO' && !f.introLanded) ? -22 : -4;
-    cam.lookAt(ex + _fwd.x * 20, ey + pitchDrop, ez + _fwd.z * 20);
+    // Vertical aim. The intro drop keeps its own hardcoded steep downward tilt
+    // (it's a cinematic, not something the player is aiming through); in normal
+    // play the look target's height comes from the fighter's own pitch, on top
+    // of the small baseline down-tilt that keeps the floor and the weapon
+    // viewmodel in frame. LOOK_DIST is the (arbitrary) forward distance the
+    // target is placed at, so the vertical offset is tan(pitch) * that.
+    const LOOK_DIST = 20;
+    const pitchDrop = (gameState === 'INTRO' && !f.introLanded)
+        ? -22
+        : -4 + Math.tan(f.pitch || 0) * LOOK_DIST;
+    cam.lookAt(ex + _fwd.x * LOOK_DIST, ey + pitchDrop, ez + _fwd.z * LOOK_DIST);
     const shakeScale = REDUCED_MOTION ? 0.15 : 1;
     // No shake while paused: the PAUSED branch renders but returns before
     // decayCameraShake, so an unguarded shake would vibrate the frozen frame
@@ -2135,6 +2170,25 @@ const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
 const MAX_WALK_STEP_UP = 30; // rises up to this are walkable (no jump); taller is a wall you must jump — see resolveTallTerrain(). Every 'step' in MAPS is <= 30 so all steps are genuinely walkable; anything taller is modelled as a platform.
 const TURN_SPEED = 0.052; // radians per frame-unit that left/right turns the human player's facing (first-person look)
+// Batch 20: vertical look. A little slower than turning (there's far less
+// range to cover), clamped to ±42° — enough to sight the tallest perch from
+// the floor and to shoot down at someone below you, without letting the view
+// roll past the horizon.
+const LOOK_SPEED = 0.038;
+const PITCH_LIMIT = 42 * DEG;
+// Splits a projectile's speed into horizontal/vertical components for a given
+// aim pitch. Straight-line flight (no gravity on projectiles), total speed
+// preserved — so a pitched shot travels the same distance per frame, just
+// aimed. At pitch 0 this returns exactly (fx*speed, fy*speed, 0), i.e. the
+// pre-pitch behavior, which is what keeps bots (pitch always 0) unchanged.
+function projectileVelocity(speed, fx, fy, pitch) {
+    const c = Math.cos(pitch || 0), s = Math.sin(pitch || 0);
+    return { vx: fx * speed * c, vy: fy * speed * c, vz: speed * s };
+}
+// Upward-pitched shots would otherwise climb forever (and leak their meshes,
+// since the horizontal-bounds despawn never fires on a shot going straight
+// up). Comfortably above the tallest map geometry.
+const PROJECTILE_CEILING = 700;
 const MUZZLE_HEIGHT = 34; // world Y above a fighter's feet where its weapon/hand sits — projectiles + muzzle flashes spawn here
 let OBSTACLES = [], TERRAIN = [], PLATFORMS = [];
 
@@ -3348,6 +3402,12 @@ function pollGamepad(index) {
     const gp = pads[index];
     if (!gp || !gp.connected) return null;
     const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+    // Batch 20: right stick Y drives vertical look. An axis, not a button —
+    // all four face buttons are already spoken for, and analog pitch is what
+    // you actually want here anyway. Standard mapping puts the right stick on
+    // axes 2/3; a pad reporting fewer axes just yields 0 (no pitch), which is
+    // exactly the pre-batch behavior.
+    const ry = gp.axes[3] || 0;
     // Face buttons are edge-triggered, same as the keyboard's consumePress
     // — otherwise holding a button fires the action every single frame.
     const now = [0, 1, 2, 3].map(i => !!(gp.buttons[i] && gp.buttons[i].pressed));
@@ -3357,6 +3417,7 @@ function pollGamepad(index) {
     return {
         moveX: Math.abs(ax) > GAMEPAD_DEADZONE ? ax : 0,
         moveY: Math.abs(ay) > GAMEPAD_DEADZONE ? ay : 0,
+        lookY: Math.abs(ry) > GAMEPAD_DEADZONE ? ry : 0,
         jump: justPressed[0],    // A
         attack: justPressed[1],  // B
         special: justPressed[2], // X
@@ -3453,6 +3514,13 @@ class Fighter {
         // "moving up" and "moving down" are no longer indistinguishable.
         this.fx = isPlayerOne ? 1 : -1;
         this.fy = 0;
+        // Batch 20: vertical aim, in radians. Positive = looking UP. Kept
+        // separate from fx/fy (which stay a purely horizontal facing vector,
+        // so all the existing 2D movement/melee/bot math is untouched) and
+        // consumed by positionFpsCamera for the view and by fireProjectile
+        // for a shot's launch angle. Bots leave it at 0 forever, which makes
+        // every bot-fired shot bit-for-bit identical to before this batch.
+        this.pitch = 0;
 
         // Height above whatever terrain sits under (x, y) right now — the
         // arena floor by default, or a step/ramp's height if spawning on
@@ -3493,6 +3561,13 @@ class Fighter {
         const ang = Math.atan2(this.fy, this.fx) + radians;
         this.fx = Math.cos(ang);
         this.fy = Math.sin(ang);
+    }
+
+    // Batch 20: the vertical counterpart of turnBy — look up/down. Clamped so
+    // you can't roll the view past straight up/down (which would invert the
+    // horizon and make the fixed-facing model read as broken).
+    lookBy(radians) {
+        this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch + radians));
     }
 
     // Uses the CURRENT shrinking play bounds (see the Arena Collapse
@@ -3763,6 +3838,8 @@ class Fighter {
             // that way" is how you change direction — same as a real FPS.
             if (keys[b.left]) this.turnBy(-TURN_SPEED * dt);
             if (keys[b.right]) this.turnBy(TURN_SPEED * dt);
+            if (keys[b.lookUp]) this.lookBy(LOOK_SPEED * dt);
+            if (keys[b.lookDown]) this.lookBy(-LOOK_SPEED * dt);
             if (keys[b.up]) { moveX += this.fx; moveY += this.fy; }
             if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
             if (keys[b.jump]) jumpPressed = true;
@@ -3774,16 +3851,20 @@ class Fighter {
             if (gp) {
                 if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6); // stick X = turn rate
                 if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; } // stick Y = forward/back (up on stick is negative)
+                if (gp.lookY) this.lookBy(-gp.lookY * LOOK_SPEED * dt * 1.6); // right stick Y = pitch (up on stick is negative)
                 if (gp.jump) { jumpPressed = true; jumpJustPressed = true; } // pollGamepad already edge-triggers its buttons
                 if (gp.attack) this.tryStartAction('basic', opponent);
                 if (gp.special) this.tryStartAction('special', opponent);
                 if (gp.dodge) this.tryDodge(moveX, moveY);
             }
             if (touchTurn.p1) this.turnBy(touchTurn.p1 * TURN_SPEED * dt); // analog joystick turn, see setupTouchJoystick
+            if (touchLook.p1) this.lookBy(touchLook.p1 * LOOK_SPEED * dt); // drag-to-look zone, see setupTouchLookZone
         } else {
             const b = BINDINGS.p2;
             if (keys[b.left]) this.turnBy(-TURN_SPEED * dt);
             if (keys[b.right]) this.turnBy(TURN_SPEED * dt);
+            if (keys[b.lookUp]) this.lookBy(LOOK_SPEED * dt);
+            if (keys[b.lookDown]) this.lookBy(-LOOK_SPEED * dt);
             if (keys[b.up]) { moveX += this.fx; moveY += this.fy; }
             if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
             if (keys[b.jump]) jumpPressed = true;
@@ -3795,12 +3876,14 @@ class Fighter {
             if (gp) {
                 if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6);
                 if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; }
+                if (gp.lookY) this.lookBy(-gp.lookY * LOOK_SPEED * dt * 1.6);
                 if (gp.jump) { jumpPressed = true; jumpJustPressed = true; }
                 if (gp.attack) this.tryStartAction('basic', opponent);
                 if (gp.special) this.tryStartAction('special', opponent);
                 if (gp.dodge) this.tryDodge(moveX, moveY);
             }
             if (touchTurn.p2) this.turnBy(touchTurn.p2 * TURN_SPEED * dt);
+            if (touchLook.p2) this.lookBy(touchLook.p2 * LOOK_SPEED * dt);
         }
 
         // Rooted (e.g. Thorne's Bramble Lash): can't move, but can still
@@ -3954,6 +4037,7 @@ class Fighter {
             let p = this.projectiles[i];
             p.x += p.vx * dt;
             p.y += p.vy * dt;
+            if (p.vz) p.z += p.vz * dt; // Batch 20: pitched shots climb/descend; level shots (vz 0/absent) are untouched
             // Steps are solid risers, not just a walkable height change —
             // a low-flying shot should thud into the front face of a stair
             // it's below the top of, same as it does against a platform's
@@ -3978,6 +4062,17 @@ class Fighter {
                 // Despawn at the CURRENT (shrinking) walls, not the fixed arena
                 // bounds — otherwise shots pass through the closed-in walls
                 // during Arena Collapse into dead space before dying.
+                removeAndDispose(p.mesh);
+                this.projectiles.splice(i, 1);
+            } else if (p.vz && (p.z <= groundLevelAt(p.x, p.y) || p.z > PROJECTILE_CEILING)) {
+                // Batch 20: pitched shots need vertical bounds too. Downward
+                // ones now bury into whatever surface is under them (a small
+                // dust ring so it reads as an impact rather than a vanish);
+                // upward ones die at a ceiling instead of climbing forever and
+                // leaking meshes. Level shots skip this entirely (vz is 0).
+                if (p.z <= groundLevelAt(p.x, p.y)) {
+                    this.effects.push({ type: 'shockwaveRing', r: 3, max: 22, color: '200,200,200' });
+                }
                 removeAndDispose(p.mesh);
                 this.projectiles.splice(i, 1);
             }
@@ -4058,7 +4153,15 @@ class Fighter {
         const fwd = this.width / 2 + 14;
         const originX = this.x + this.width / 2 + this.fx * fwd;
         const originY = this.y + this.height / 2 + this.fy * fwd;
-        this.projectiles.push({ x: originX, y: originY, vx: this.fx * 7, vy: this.fy * 7, damage: this.attackDmg, color, z: this.z + MUZZLE_HEIGHT });
+        // Batch 20: the shot leaves along the shooter's ACTUAL aim, pitch
+        // included, so looking up at a high perch (or down from one) lets you
+        // hit it instead of firing uselessly level. Straight-line, no gravity:
+        // total speed is preserved and just redirected (horizontal scaled by
+        // cos, vertical by sin), so range/travel-time feel is unchanged. At
+        // pitch 0 — every bot, and any player not looking up/down — cos is 1
+        // and sin is 0, making this bit-for-bit identical to the old behavior.
+        const v = projectileVelocity(7, this.fx, this.fy, this.pitch);
+        this.projectiles.push({ x: originX, y: originY, vx: v.vx, vy: v.vy, vz: v.vz, damage: this.attackDmg, color, z: this.z + MUZZLE_HEIGHT });
         this.muzzleFlash = 7; // drives the viewmodel muzzle flash in the shooter's own view
         spawnMuzzleFlash(originX, originY, this.z + MUZZLE_HEIGHT, color); // world-space flash both players can see
     }
@@ -4161,8 +4264,12 @@ class Fighter {
                 const ox = this.x + this.width / 2 + this.fx * mfwd, oy = this.y + this.height / 2 + this.fy * mfwd;
                 [-0.5, -0.25, 0, 0.25, 0.5].forEach(offset => {
                     const a = angle + offset;
+                    // Batch 20: the whole fan inherits the caster's pitch, so
+                    // an upward volley walls off a high platform's approach
+                    // rather than sailing under it.
+                    const v = projectileVelocity(8, Math.cos(a), Math.sin(a), this.pitch);
                     this.projectiles.push({ x: ox, y: oy, big: true, // bigger meshes than a basic shard — see syncProjectiles' p.big branch
-                        vx: Math.cos(a) * 8, vy: Math.sin(a) * 8, damage: 24, color: '#c4b5fd', z: this.z + MUZZLE_HEIGHT });
+                        vx: v.vx, vy: v.vy, vz: v.vz, damage: 24, color: '#c4b5fd', z: this.z + MUZZLE_HEIGHT });
                 });
                 this.muzzleFlash = 8;
                 spawnMuzzleFlash(ox, oy, this.z + MUZZLE_HEIGHT, '#c4b5fd');
@@ -5880,6 +5987,9 @@ function touchKeySet(key, held) {
 // TURN_SPEED usage there), mirroring how gp.moveX already drives analog
 // gamepad-stick turning.
 const touchTurn = { p1: 0, p2: 0 };
+// Batch 20: vertical-look axis from the drag-to-look zone, same -1..1 analog
+// shape as touchTurn (and read the same way in update()).
+const touchLook = { p1: 0, p2: 0 };
 function setupTouchJoystick(zoneEl, side) {
     const knob = zoneEl.querySelector('.touch-joystick-knob');
     const MAX_R = 38, TURN_DEADZONE = 0.12, MOVE_DEADZONE = 0.35;
@@ -5949,8 +6059,42 @@ function setupTouchButton(btnEl, getKey) {
     btnEl.addEventListener('pointerleave', release); // sliding off a button releases it, like lifting a real one
 }
 
+// Batch 20: drag-to-look. Occupies the upper region of each side's pad area,
+// which had no interactive elements at all (the joystick and buttons sit along
+// the bottom), so it costs no existing control. Vertical drag only — turning
+// already has the joystick's X axis, and making this also turn would fight it.
+// Returns to level on release rather than holding the last angle: a sticky
+// pitch you can't see the cause of reads as a broken camera.
+function setupTouchLookZone(zoneEl, side) {
+    const MAX_DRAG = 90; // px of drag for full look rate
+    let pointerId = null, startY = 0;
+    function release(e) {
+        if (e && e.pointerId !== pointerId) return;
+        pointerId = null;
+        touchLook[side] = 0;
+    }
+    zoneEl.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        pointerId = e.pointerId;
+        zoneEl.setPointerCapture(pointerId);
+        startY = e.clientY;
+        touchLook[side] = 0;
+    });
+    zoneEl.addEventListener('pointermove', e => {
+        if (e.pointerId !== pointerId) return;
+        // Drag UP (negative dy) looks up, matching how you'd push a physical
+        // view around rather than inverted-flightstick style.
+        const dy = startY - e.clientY;
+        touchLook[side] = Math.max(-1, Math.min(1, dy / MAX_DRAG));
+    });
+    zoneEl.addEventListener('pointerup', release);
+    zoneEl.addEventListener('pointercancel', release);
+}
+
 setupTouchJoystick(document.getElementById('joy-p1'), 'p1');
 setupTouchJoystick(document.getElementById('joy-p2'), 'p2');
+setupTouchLookZone(document.getElementById('look-p1'), 'p1');
+setupTouchLookZone(document.getElementById('look-p2'), 'p2');
 document.querySelectorAll('#touch-p1 .touch-btn').forEach(b => setupTouchButton(b, () => BINDINGS.p1[b.dataset.action]));
 document.querySelectorAll('#touch-p2 .touch-btn').forEach(b => setupTouchButton(b, () => BINDINGS.p2[b.dataset.action]));
 // No physical Escape key on touch, so the pad gets its own pause button —
@@ -6795,6 +6939,14 @@ if (DEBUG) {
         addCoins, buyUnlock, buyUpgrade, buyDoubleJump, saveProgression,
         setDebugUnlockAll, toggleDebugUnlockAll, CHEAT_CODE,
         JUMP_VZ, GRAVITY, JUMP_COOLDOWN,
+        LOOK_SPEED, PITCH_LIMIT, TURN_SPEED, MUZZLE_HEIGHT, PROJECTILE_CEILING,
+        projectileVelocity, verticalHit, touchLook, touchTurn,
+        get OBSTACLES() { return OBSTACLES; },
+        get PLATFORMS() { return PLATFORMS; },
+        get TERRAIN() { return TERRAIN; },
+        get camP1() { return camP1; },
+        get camP2() { return camP2; },
+        positionFpsCamera,
         get p1IsBot() { return p1IsBot; },
         get p2IsBot() { return p2IsBot; },
         Fighter, keys, pressed, BINDINGS,
