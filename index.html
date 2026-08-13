@@ -856,7 +856,7 @@
                         </div>
                         <div class="tutorial-card">
                             <h4>Movement &amp; Jumping</h4>
-                            <p>Turn to look around, then walk forward or back in that direction — there's no strafing sideways. Jumping reaches platforms and cover, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges and walls aren't. Use columns and interior walls for cover.</p>
+                            <p>Turn to look around, then walk forward or back in that direction — there's no strafing sideways. Jumping reaches platforms and cover, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges and walls aren't. Use columns and interior walls for cover. Buy <b>Double Jump</b> in the Shop and you can press jump again in mid-air, once per airborne stretch, to reach the tallest perches.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Basic vs. Special</h4>
@@ -3015,7 +3015,13 @@ const MAPS = [
         platforms: [
             { x: 250, y: 487, hw: 110, hd: 150, height: 70 },
             { x: 1504, y: 487, hw: 110, hd: 150, height: 70 },
-            { x: 877, y: 487, hw: 30, hd: 160, height: 285 }
+            // 285 -> 232 (Batch 15): brings the top within a COMFORTABLY-timed
+            // Double Jump (gap 162 from the height-70 platform beside it; the
+            // best-case air jump gains ~184, so this leaves a wide timing
+            // window instead of demanding a frame-perfect apex press). Still
+            // ~5x eye height, so its job as a sight-blocking lane divider is
+            // completely unchanged.
+            { x: 877, y: 487, hw: 30, hd: 160, height: 232 }
         ]
     },
     {
@@ -3036,8 +3042,10 @@ const MAPS = [
         platforms: [
             { x: 560, y: 300, hw: 50, hd: 50, height: 62 },
             { x: 1194, y: 674, hw: 50, hd: 50, height: 62 },
-            { x: 560, y: 674, hw: 26, hd: 110, height: 250 },
-            { x: 1194, y: 300, hw: 26, hd: 110, height: 250 }
+            // 250 -> 225 (Batch 15): comfortable Double Jump reach from the
+            // height-62 cover blocks (gap 163). Still a full sight-blocker.
+            { x: 560, y: 674, hw: 26, hd: 110, height: 225 },
+            { x: 1194, y: 300, hw: 26, hd: 110, height: 225 }
         ]
     },
     {
@@ -3078,8 +3086,10 @@ const MAPS = [
             { x: 790, y: 487, hw: 42, hd: 42, height: 95 },
             { x: 965, y: 487, hw: 42, hd: 42, height: 95 },
             { x: 1115, y: 487, hw: 46, hd: 46, height: 55 },
-            { x: 877, y: 250, hw: 230, hd: 26, height: 270 },
-            { x: 877, y: 724, hw: 230, hd: 26, height: 270 }
+            // 270 -> 255 (Batch 15): comfortable Double Jump reach from the
+            // height-95 stepping stones (gap 160). Still a full sight-blocker.
+            { x: 877, y: 250, hw: 230, hd: 26, height: 255 },
+            { x: 877, y: 724, hw: 230, hd: 26, height: 255 }
         ]
     },
     {
@@ -3097,8 +3107,10 @@ const MAPS = [
         ],
         platforms: [
             { x: 877, y: 487, hw: 100, hd: 80, height: 75 },
-            { x: 520, y: 487, hw: 26, hd: 130, height: 270 },
-            { x: 1234, y: 487, hw: 26, hd: 130, height: 270 }
+            // 270 -> 238 (Batch 15): comfortable Double Jump reach from the
+            // height-75 central platform (gap 163). Still a full sight-blocker.
+            { x: 520, y: 487, hw: 26, hd: 130, height: 238 },
+            { x: 1234, y: 487, hw: 26, hd: 130, height: 238 }
         ]
     },
     {
@@ -3118,8 +3130,10 @@ const MAPS = [
         platforms: [
             { x: 400, y: 250, hw: 70, hd: 70, height: 60 },
             { x: 1354, y: 724, hw: 70, hd: 70, height: 60 },
-            { x: 877, y: 250, hw: 180, hd: 26, height: 250 },
-            { x: 877, y: 724, hw: 180, hd: 26, height: 250 }
+            // 250 -> 222 (Batch 15): comfortable Double Jump reach from the
+            // height-60 cover blocks (gap 162). Still a full sight-blocker.
+            { x: 877, y: 250, hw: 180, hd: 26, height: 222 },
+            { x: 877, y: 724, hw: 180, hd: 26, height: 222 }
         ]
     },
     {
@@ -3422,6 +3436,7 @@ class Fighter {
         this.burnFrames = 0; this.burnDps = 0; // special-inflicted damage-over-time
         this.dodgeCooldown = 0; // Batch 3d
         this.jumpCooldown = 0;
+        this.usedDoubleJump = false; // Batch 15: one air-jump per airborne stretch, reset on landing
         this.hitFlash = 0;
         this.shieldFrames = 0;
         this.shieldReduction = 0.5;
@@ -3716,6 +3731,14 @@ class Fighter {
         this.vy = 0;
         let moveX = 0, moveY = 0;
         let jumpPressed = false;
+        // Batch 15: the ground jump reads a HELD key (fine — `grounded` is what
+        // stops it re-triggering), but a mid-air second jump can't: the same
+        // physical press that started jump 1 is usually still down on the very
+        // next frame, so a held-state check would auto-spend the double jump
+        // one frame after takeoff with no second press from the player. This
+        // tracks a genuine key-DOWN edge instead. Nothing else consumes the
+        // jump key's press, so consumePress is free to use here.
+        let jumpJustPressed = false;
 
         // Special-inflicted status effects (Batch: creative-specials pass).
         // Root blocks movement (handled below); burn drains HP over time as
@@ -3743,6 +3766,7 @@ class Fighter {
             if (keys[b.up]) { moveX += this.fx; moveY += this.fy; }
             if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
             if (keys[b.jump]) jumpPressed = true;
+            if (consumePress(b.jump)) jumpJustPressed = true;
             if (consumePress(b.attack)) this.tryStartAction('basic', opponent);
             if (consumePress(b.special)) this.tryStartAction('special', opponent);
             if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
@@ -3750,7 +3774,7 @@ class Fighter {
             if (gp) {
                 if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6); // stick X = turn rate
                 if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; } // stick Y = forward/back (up on stick is negative)
-                if (gp.jump) jumpPressed = true;
+                if (gp.jump) { jumpPressed = true; jumpJustPressed = true; } // pollGamepad already edge-triggers its buttons
                 if (gp.attack) this.tryStartAction('basic', opponent);
                 if (gp.special) this.tryStartAction('special', opponent);
                 if (gp.dodge) this.tryDodge(moveX, moveY);
@@ -3763,6 +3787,7 @@ class Fighter {
             if (keys[b.up]) { moveX += this.fx; moveY += this.fy; }
             if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
             if (keys[b.jump]) jumpPressed = true;
+            if (consumePress(b.jump)) jumpJustPressed = true;
             if (consumePress(b.attack)) this.tryStartAction('basic', opponent);
             if (consumePress(b.special)) this.tryStartAction('special', opponent);
             if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
@@ -3770,7 +3795,7 @@ class Fighter {
             if (gp) {
                 if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6);
                 if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; }
-                if (gp.jump) jumpPressed = true;
+                if (gp.jump) { jumpPressed = true; jumpJustPressed = true; }
                 if (gp.attack) this.tryStartAction('basic', opponent);
                 if (gp.special) this.tryStartAction('special', opponent);
                 if (gp.dodge) this.tryDodge(moveX, moveY);
@@ -3826,6 +3851,21 @@ class Fighter {
             this.vz = JUMP_VZ;
             this.grounded = false;
             this.jumpCooldown = JUMP_COOLDOWN;
+            this.usedDoubleJump = false; // fresh air-jump for this airborne stretch
+        } else if (jumpJustPressed && !this.grounded && !this.usedDoubleJump && isDoubleJumpUnlocked()) {
+            // Batch 15: the purchased air-jump. RESET-style (vz is set back to
+            // JUMP_VZ, not added to whatever it currently is) — that's the
+            // standard, better-behaved double jump, and it gives a
+            // well-defined total ceiling of ~193 units above the first jump's
+            // start (when spent at the first jump's apex): plenty to clear the
+            // tightest real platform gaps (~90), nowhere near the 150-215-unit
+            // interior "wall" blocks that are meant to stay unclimbable.
+            // NOT gated on jumpCooldown — that's 60 frames, longer than a
+            // jump's own ~43-frame airtime, so gating on it would mean the air
+            // jump could never fire at all.
+            this.vz = JUMP_VZ;
+            this.usedDoubleJump = true;
+            this.effects.push({ type: 'shockwaveRing', r: 6, max: 46, color: '148,226,255' }); // a visible puff so the air-jump reads as deliberate
         }
 
         const footX = this.x + this.width / 2, footY = this.y + this.height / 2;
@@ -3865,6 +3905,7 @@ class Fighter {
             this.z = landHeight;
             this.vz = 0;
             this.grounded = true;
+            this.usedDoubleJump = false; // Batch 15: air-jump re-arms on any landing (ground, step, or platform)
         } else {
             this.z = nextZ;
             this.grounded = false;
@@ -6753,6 +6794,7 @@ if (DEBUG) {
         isCharUnlocked, upgradeLevel, upgradeMult, isDoubleJumpUnlocked, unlockedCharNames,
         addCoins, buyUnlock, buyUpgrade, buyDoubleJump, saveProgression,
         setDebugUnlockAll, toggleDebugUnlockAll, CHEAT_CODE,
+        JUMP_VZ, GRAVITY, JUMP_COOLDOWN,
         get p1IsBot() { return p1IsBot; },
         get p2IsBot() { return p2IsBot; },
         Fighter, keys, pressed, BINDINGS,
