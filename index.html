@@ -488,6 +488,12 @@
         #settings-screen .menu-section { max-width: 320px; }
         .settings-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
         .settings-list button { margin: 0; text-align: left; }
+        .settings-check {
+            display: flex; align-items: center; gap: 8px; margin: 12px 0 4px;
+            font-size: 0.78rem; color: #e2e8f0; cursor: pointer; text-align: left;
+        }
+        .settings-check input { width: auto; margin: 0; flex-shrink: 0; cursor: pointer; }
+        .settings-note { font-size: 0.66rem; color: #64748b; line-height: 1.45; margin: 0 0 4px; text-align: left; }
         .btn-tutorial {
             width: auto;
             background: transparent;
@@ -678,6 +684,22 @@
             font-size: 0.8rem; font-weight: 700; letter-spacing: 2px; pointer-events: auto; touch-action: none;
         }
         #touch-pause-btn:hover { background: rgba(13, 20, 32, 0.55); box-shadow: none; }
+        /* Transient confirmation for the unlock-everything override. Highest
+           z-index and pointer-events:none so it reads over any screen/modal
+           (including mid-fight) without ever eating a click. */
+        /* Bottom-right corner, not centered: centered top covered the game
+           title, and centered bottom collides with the in-fight hint line and
+           the mobile touch buttons. A corner is out of the way of every
+           screen this can appear over. */
+        #debug-toast {
+            position: absolute; right: 14px; bottom: 14px; transform: translateY(8px);
+            z-index: 60; pointer-events: none; opacity: 0; transition: opacity .18s, transform .18s;
+            background: rgba(8, 11, 18, 0.94); border: 1px solid #00f3ff; border-radius: 6px;
+            color: #00f3ff; font-size: 0.76rem; font-weight: bold; padding: 8px 14px;
+            box-shadow: 0 0 18px rgba(0, 243, 255, 0.35); max-width: min(340px, 70%);
+        }
+        #debug-toast.show { opacity: 1; transform: translateY(0); }
+        @media (prefers-reduced-motion: reduce) { #debug-toast { transition: none; } }
         #orientation-prompt {
             position: absolute; inset: 0; z-index: 50; display: none;
             align-items: center; justify-content: center; text-align: center; padding: 24px;
@@ -807,6 +829,11 @@
                         <button id="btn-hud-scale">HUD Text: Normal</button>
                         <button id="btn-open-audio">Audio Settings</button>
                     </div>
+                    <label class="settings-check">
+                        <input type="checkbox" id="chk-unlock-all">
+                        <span>Unlock everything (sandbox)</span>
+                    </label>
+                    <p class="settings-note">Try every fighter and maxed-out upgrades without spending coins. Your real progress is kept separately and comes back exactly as it was when you turn this off &mdash; but bot matches are disabled while it's on, so this is a two-player sandbox.</p>
                     <button id="btn-settings-close" class="btn-back">Close</button>
                 </div>
             </div>
@@ -849,7 +876,7 @@
                         </div>
                         <div class="tutorial-card">
                             <h4>Coins &amp; Unlocks</h4>
-                            <p>You start with three fighters; the rest are unlocked with coins earned from matches (win or lose, though winning pays more). Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate, and Speed — visit the Shop from the menu footer.</p>
+                            <p>You start with three fighters; the rest are unlocked with coins earned from matches (win or lose, though winning pays more). Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate, and Speed — visit the Shop from the menu footer. Want to try everything first? Settings has an "Unlock everything" sandbox that leaves your real progress untouched (bot matches are off while it's on).</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Controls</h4>
@@ -905,6 +932,7 @@
                 </div>
             </div>
         </div>
+        <div id="debug-toast"></div>
         <div id="orientation-prompt">
             <div class="rotate-card">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M11 18h2"></path></svg>
@@ -1124,6 +1152,14 @@ window.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     if (!keys[k]) pressed.add(k); // only the true down-transition, not OS key-repeat
     keys[k] = true;
+    // (3.5) Batch 13: cheat-code buffer. Sits here on purpose — AFTER the
+    // rebind-capture early-return above (so a key being captured for a rebind
+    // never reaches the buffer) and AFTER the keys[]/pressed update (so it
+    // never consumes or blocks a real input; typing part of the code still
+    // moves your fighter normally). The code is long enough that its exact
+    // ordered letters can't plausibly come up during play.
+    cheatBuffer = (cheatBuffer + k).slice(-CHEAT_CODE.length);
+    if (cheatBuffer === CHEAT_CODE) { cheatBuffer = ''; toggleDebugUnlockAll(); }
     // (4) Escape: close the topmost modal (A5 — never unpause out from under an
     // open sub-screen), otherwise toggle pause. Reserved — it never doubles as
     // a fighter-select action even if some action were rebound to it.
@@ -1303,6 +1339,44 @@ function buyDoubleJump() {
     return true;
 }
 
+// --- Batch 13: the "unlock everything" override. Two entry points (a typed
+// cheat code, and a Settings toggle) that both land on this one setter.
+//
+// Crucially this NEVER writes into `progression` — it's a separate flag the
+// accessors above read, so flipping it off restores the real save exactly as
+// it was, with every coin and purchase intact. That's the whole reason it's
+// an override layer rather than "just grant everything."
+const CHEAT_CODE = 'astral'; // typed anywhere; 6 chars in this exact order won't come up during play
+let cheatBuffer = '';
+// A DOM toast rather than a HUD-canvas one: drawHUD() only runs during a
+// fight, but the cheat code is most often typed on the menu, and a
+// confirmation you can't see is worse than none.
+let toastTimer = null;
+function showToast(text) {
+    const el = document.getElementById('debug-toast');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+function setDebugUnlockAll(on) {
+    debugUnlockAll = !!on;
+    safeLSSet('astralClashDebugUnlockAll', debugUnlockAll ? '1' : '0');
+    // Everything gated on the accessors has to re-read them now.
+    refreshGridLocks();
+    refreshCoinDisplays();
+    buildShop();
+    refreshBotUI('p1'); refreshBotUI('p2'); // Batch 14: bot mode is disallowed while unlocked-all
+    syncDebugUnlockUI();
+    showToast(debugUnlockAll ? 'Everything unlocked (sandbox) — bot mode off' : 'Your progression is back');
+}
+function toggleDebugUnlockAll() { setDebugUnlockAll(!debugUnlockAll); }
+function syncDebugUnlockUI() {
+    const chk = document.getElementById('chk-unlock-all');
+    if (chk) chk.checked = debugUnlockAll;
+}
+
 // Batch 9: scalable HUD text. The HUD is canvas-drawn, not real DOM text,
 // so OS/browser zoom doesn't affect it the way it would a normal page —
 // this in-game toggle is the substitute, applied to the load-bearing
@@ -1452,8 +1526,12 @@ document.getElementById('btn-audio-close').addEventListener('click', () => close
 // Audio Settings. Rebind and Audio open as modals STACKED on top of Settings
 // (the modal manager keeps Settings underneath), so closing either returns
 // here — no separate "hide Settings first" listeners needed.
-document.getElementById('btn-open-settings').addEventListener('click', () => openModal('settings'));
+document.getElementById('btn-open-settings').addEventListener('click', () => { syncDebugUnlockUI(); openModal('settings'); });
 document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());
+// Batch 13: the visible half of the unlock-everything override (the other
+// entry point is the typed cheat code in the keyboard dispatcher).
+document.getElementById('chk-unlock-all').addEventListener('change', e => setDebugUnlockAll(e.target.checked));
+syncDebugUnlockUI(); // reflect a persisted override on load
 
 // Tutorial overlay. The controls card is generated from controlsSummary()
 // (same helper the pause-screen reminder uses) so a rebind shows up here
@@ -5331,10 +5409,19 @@ let botDifficulty = 'normal';
 // at match start)" card, disables the now-irrelevant Random button, and
 // shows the difficulty selector only while at least one side is a bot.
 function refreshBotUI(side) {
+    // Batch 14: bot mode belongs to the REAL progression state only. The
+    // unlock-everything sandbox is for two humans to try the whole roster —
+    // letting it also farm coins against a bot with maxed stats would make
+    // the actual progression pointless. Force the toggle off and disable it
+    // (rather than silently ignoring clicks) so it's clear *why* it's gone.
+    const botAllowed = !debugUnlockAll;
+    if (!botAllowed) { if (side === 'p1') p1IsBot = false; else p2IsBot = false; }
     const isBot = side === 'p1' ? p1IsBot : p2IsBot;
     const toggle = document.getElementById(side === 'p1' ? 'btn-toggle-bot-p1' : 'btn-toggle-bot');
     toggle.textContent = isBot ? 'Bot: ON' : 'Bot: OFF';
     toggle.classList.toggle('active', isBot);
+    toggle.disabled = !botAllowed;
+    toggle.title = botAllowed ? '' : 'Bot matches are disabled while "Unlock everything" is on — turn it off in Settings to play against a bot.';
     document.getElementById(side === 'p1' ? 'btn-random-p1' : 'btn-random-p2').disabled = isBot;
     document.getElementById(`${side}-bot-mode`).classList.toggle('show', isBot);
     if (isBot) {
@@ -5352,10 +5439,12 @@ function refreshBotUI(side) {
 }
 
 document.getElementById('btn-toggle-bot').addEventListener('click', () => {
+    if (debugUnlockAll) return; // Batch 14 — see refreshBotUI
     p2IsBot = !p2IsBot;
     refreshBotUI('p2');
 });
 document.getElementById('btn-toggle-bot-p1').addEventListener('click', () => {
+    if (debugUnlockAll) return;
     p1IsBot = !p1IsBot;
     refreshBotUI('p1');
 });
@@ -6663,6 +6752,9 @@ if (DEBUG) {
         DOUBLE_JUMP_COST, COIN_AWARDS, CHARACTERS, CHAR_MAP, MAPS,
         isCharUnlocked, upgradeLevel, upgradeMult, isDoubleJumpUnlocked, unlockedCharNames,
         addCoins, buyUnlock, buyUpgrade, buyDoubleJump, saveProgression,
+        setDebugUnlockAll, toggleDebugUnlockAll, CHEAT_CODE,
+        get p1IsBot() { return p1IsBot; },
+        get p2IsBot() { return p2IsBot; },
         Fighter, keys, pressed, BINDINGS,
     };
 }
