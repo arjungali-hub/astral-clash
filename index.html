@@ -375,9 +375,29 @@
             display: inline-block; background: #0d0f18; border: 1px solid #f59e0b; color: #f59e0b;
             font-weight: bold; font-size: 0.66rem; padding: 1px 6px; border-radius: 3px; margin-right: 7px;
         }
-        /* Coin balance, shown on the select screen and in the Shop header. */
+        /* Coin balance, shown per player on the select screen and in the Shop header. */
         .coin-balance { color: #f59e0b; font-weight: bold; font-size: 0.9rem; letter-spacing: 0.02em; }
         .coin-balance::before { content: "\25CF"; margin-right: 5px; color: #fbbf24; }
+        /* Batch 21: each side panel owns its purse + a shortcut into that
+           player's Shop tab, so whose coins are whose is never ambiguous. */
+        .side-purse {
+            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            margin: 0 0 8px; padding: 5px 9px; border-radius: 5px;
+            background: #0f1420; border: 1px solid #2e3a59;
+        }
+        .menu-section .btn-side-shop {
+            width: auto; margin: 0; padding: 3px 10px; font-size: 0.66rem; font-weight: bold;
+            background: transparent; color: #f59e0b; border: 1px solid #f59e0b; border-radius: 4px;
+        }
+        .menu-section .btn-side-shop:hover { background: rgba(245, 158, 11, 0.14); box-shadow: none; }
+        .shop-tabs { display: flex; justify-content: center; gap: 8px; margin-bottom: 10px; }
+        .menu-section .shop-tab {
+            width: auto; margin: 0; padding: 6px 18px; font-size: 0.76rem; font-weight: bold;
+            background: #1a2235; color: #94a3b8; border: 1px solid #2e3a59; border-radius: 5px;
+        }
+        .menu-section .shop-tab.active { background: #00f3ff; color: #0d0f18; border-color: #00f3ff; }
+        .menu-section .shop-tab:hover { background: #232d47; color: #e2e8f0; box-shadow: none; }
+        .menu-section .shop-tab.active:hover { background: #00f3ff; color: #0d0f18; }
         #shop-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -743,13 +763,16 @@
                     <h1>Astral Clash</h1>
                     <div class="brand-divider"></div>
                     <p>Dimensional Arena Fighter</p>
-                    <div class="coin-balance" id="coin-balance">0</div>
                     <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
                 </div>
                 <p id="touch-warning" style="display:none;color:#8aa0b8;font-size:0.75rem;max-width:480px;text-align:center;">Touch controls: left stick to move/turn, right-side buttons to fight. Best in landscape.</p>
                 <div class="select-row">
                     <div class="menu-section side-panel">
                         <h3 id="p1-heading">Player 1 <span class="key-hint">(keys on cards)</span></h3>
+                        <div class="side-purse">
+                            <span class="coin-balance" id="p1-coins">0</span>
+                            <button class="btn-side-shop" data-shop-side="p1">Shop</button>
+                        </div>
                         <div class="side-actions">
                             <button id="btn-toggle-bot-p1" class="bot-toggle">Bot: OFF</button>
                             <button id="btn-random-p1" class="btn-secondary">Random (R)</button>
@@ -771,6 +794,10 @@
                     </div>
                     <div class="menu-section side-panel">
                         <h3 id="p2-heading">Player 2 <span class="key-hint">(keys on cards)</span></h3>
+                        <div class="side-purse">
+                            <span class="coin-balance" id="p2-coins">0</span>
+                            <button class="btn-side-shop" data-shop-side="p2">Shop</button>
+                        </div>
                         <div class="side-actions">
                             <button id="btn-toggle-bot" class="bot-toggle">Bot: OFF</button>
                             <button id="btn-random-p2" class="btn-secondary">Random (/)</button>
@@ -852,7 +879,7 @@
                         <input type="checkbox" id="chk-unlock-all">
                         <span>Unlock everything (sandbox)</span>
                     </label>
-                    <p class="settings-note">Try every fighter and maxed-out upgrades without spending coins. Your real progress is kept separately and comes back exactly as it was when you turn this off &mdash; but bot matches are disabled while it's on, so this is a two-player sandbox.</p>
+                    <p class="settings-note">Try every fighter and maxed-out upgrades without spending coins, and play against a bot. Each player's real progress is kept separately and comes back exactly as it was when you turn this off. Nothing you do in here earns coins &mdash; progression matches are two players, one keyboard.</p>
                     <button id="btn-settings-close" class="btn-back">Close</button>
                 </div>
             </div>
@@ -895,7 +922,7 @@
                         </div>
                         <div class="tutorial-card">
                             <h4>Coins &amp; Unlocks</h4>
-                            <p>You start with three fighters; the rest are unlocked with coins earned from matches (win or lose, though winning pays more). Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate, and Speed — visit the Shop from the menu footer. Want to try everything first? Settings has an "Unlock everything" sandbox that leaves your real progress untouched (bot matches are off while it's on).</p>
+                            <p><b>Each player has their own coins, unlocks and upgrades.</b> You both start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate, and Speed, plus Double Jump. Open the Shop from your own panel (or the footer) and use the Player 1 / Player 2 tabs. Progression matches are <b>two players</b>; if you want to fight a bot or try the whole roster, turn on the "Unlock everything" sandbox in Settings — it leaves both players' real progress untouched and earns no coins.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Controls</h4>
@@ -923,7 +950,11 @@
         <div id="shop-screen">
             <div class="menu-section shop-panel">
                 <h3>Shop</h3>
-                <p class="shop-sub">Unlock fighters and buy permanent upgrades. Coins are earned from every match.</p>
+                <p class="shop-sub">Each player has their own coins, unlocks and upgrades. Win a match to earn more.</p>
+                <div class="shop-tabs">
+                    <button class="shop-tab" id="shop-tab-p1">Player 1</button>
+                    <button class="shop-tab" id="shop-tab-p2">Player 2</button>
+                </div>
                 <div class="shop-head"><span class="coin-balance" id="shop-coin-balance">0</span></div>
                 <div id="shop-list"></div>
                 <button id="btn-shop-close" class="btn-back">← Back</button>
@@ -1276,7 +1307,10 @@ const MAX_UPGRADE_LEVEL = 3;
 // should still never eclipse a stock top-tier pick, so upgrades feel like
 // progress without turning the roster into a pay-to-win ladder.
 const UPGRADE_STAT_BONUS = 0.05;
-const DOUBLE_JUMP_COST = 1000; // account-wide, priced above any single unlock as a capstone
+const DOUBLE_JUMP_COST = 1000; // applies to all of that player's fighters; priced above any single unlock as a capstone
+// Batch 21: the winner takes the bigger purse. A loss still pays something so a
+// player on a losing streak keeps inching toward their next unlock rather than
+// being hard-stuck with nothing to show for the matches they played.
 const COIN_AWARDS = {
     classicWin: 50, classicLoss: 15, classicDraw: 30,
     zoneWin: 50, zoneLoss: 15,
@@ -1285,24 +1319,46 @@ const COIN_AWARDS = {
     survivalPerWave: 40
 };
 
+// Batch 21: progression is PER PLAYER. P1 and P2 each keep their own coins,
+// unlocked roster, upgrades, and Double Jump — two people sharing one machine
+// each build their own account, and coins are earned by winning rather than
+// pooled. So every accessor and mutator below takes a `side` ('p1'|'p2') as its
+// first argument; there is no such thing as "the" progression anymore.
 const PROGRESSION_KEY = 'astralClashProgression';
-const DEFAULT_PROGRESSION = { coins: 0, unlockedChars: STARTER_CHARS.slice(), upgrades: {}, doubleJumpUnlocked: false };
+const SIDES = ['p1', 'p2'];
+function freshSideProgress() { return { coins: 0, unlockedChars: STARTER_CHARS.slice(), upgrades: {}, doubleJumpUnlocked: false }; }
+// Repairs one side's blob: these are the fields everything downstream indexes
+// into directly, so a hand-edited/half-written save must not reach them raw.
+function repairSideProgress(raw) {
+    const s = Object.assign(freshSideProgress(), raw || {});
+    if (!Array.isArray(s.unlockedChars) || !s.unlockedChars.length) s.unlockedChars = STARTER_CHARS.slice();
+    if (!s.upgrades || typeof s.upgrades !== 'object') s.upgrades = {};
+    s.coins = Number(s.coins) || 0;
+    s.doubleJumpUnlocked = !!s.doubleJumpUnlocked;
+    return s;
+}
 let progression = (() => {
     try {
         const saved = JSON.parse(safeLSGet(PROGRESSION_KEY)) || {};
-        const merged = Object.assign({}, DEFAULT_PROGRESSION, saved);
-        // Defensive: these two are the fields most likely to arrive
-        // malformed from a hand-edited or half-written save, and both are
-        // indexed into directly below.
-        if (!Array.isArray(merged.unlockedChars) || !merged.unlockedChars.length) merged.unlockedChars = STARTER_CHARS.slice();
-        if (!merged.upgrades || typeof merged.upgrades !== 'object') merged.upgrades = {};
-        merged.coins = Number(merged.coins) || 0;
-        return merged;
+        // Migration: Batch 12's shape was a single shared blob with `coins` at
+        // the top level. If we find that, copy it to BOTH sides rather than
+        // picking a winner — nobody should lose progress they already earned
+        // just because the save format changed under them.
+        const isLegacy = saved && saved.coins !== undefined && !saved.p1 && !saved.p2;
+        if (isLegacy) return { p1: repairSideProgress(saved), p2: repairSideProgress(JSON.parse(JSON.stringify(saved))) };
+        return { p1: repairSideProgress(saved.p1), p2: repairSideProgress(saved.p2) };
     } catch (e) {
-        return Object.assign({}, DEFAULT_PROGRESSION, { unlockedChars: STARTER_CHARS.slice(), upgrades: {} });
+        return { p1: freshSideProgress(), p2: freshSideProgress() };
     }
 })();
 function saveProgression() { safeLSSet(PROGRESSION_KEY, JSON.stringify(progression)); }
+function prog(side) { return progression[side] || progression.p1; }
+// Which player's account the Shop modal is currently showing. Declared HERE,
+// not next to buildShop() far below, because refreshCoinDisplays() reads it and
+// runs during initial load — a `let` further down the file is still in its
+// temporal dead zone at that point and throws. (Same TDZ trap that has bitten
+// this file before with `camera` and the geometry caches.)
+let shopSide = 'p1';
 
 // Batch 13 sets this; declared here because the accessors below are the
 // single gate every unlock/upgrade check in the game goes through, and they
@@ -1313,55 +1369,64 @@ let debugUnlockAll = safeLSGet('astralClashDebugUnlockAll') === '1';
 
 // THE accessors. Gameplay and UI both go through these rather than reading
 // `progression` directly, so there's exactly one place the debug override
-// has to be honored.
-function isCharUnlocked(name) { return debugUnlockAll || progression.unlockedChars.includes(name); }
-function upgradeLevel(name, trait) {
+// has to be honored — and exactly one place that knows a side owns its stuff.
+function isCharUnlocked(side, name) { return debugUnlockAll || prog(side).unlockedChars.includes(name); }
+function upgradeLevel(side, name, trait) {
     if (debugUnlockAll) return MAX_UPGRADE_LEVEL;
-    const u = progression.upgrades[name];
+    const u = prog(side).upgrades[name];
     return (u && u[trait]) || 0;
 }
-function isDoubleJumpUnlocked() { return debugUnlockAll || !!progression.doubleJumpUnlocked; }
-// Multiplier a given character's base stat is scaled by, from its upgrades.
-function upgradeMult(name, trait) { return 1 + UPGRADE_STAT_BONUS * upgradeLevel(name, trait); }
-function unlockedCharNames() { return CHARACTERS.filter(c => isCharUnlocked(c.name)).map(c => c.name); }
+function isDoubleJumpUnlocked(side) { return debugUnlockAll || !!prog(side).doubleJumpUnlocked; }
+// Multiplier a given character's base stat is scaled by, from that side's upgrades.
+function upgradeMult(side, name, trait) { return 1 + UPGRADE_STAT_BONUS * upgradeLevel(side, name, trait); }
+function unlockedCharNames(side) { return CHARACTERS.filter(c => isCharUnlocked(side, c.name)).map(c => c.name); }
+// Convenience for the Fighter class, which knows isPlayerOne rather than a side key.
+function sideOf(fighter) { return fighter.isPlayerOne ? 'p1' : 'p2'; }
 
-function addCoins(n) {
+function addCoins(side, n) {
     if (!n) return;
-    progression.coins = Math.max(0, progression.coins + n);
+    // Never bank coins while the sandbox override is on: everything is already
+    // unlocked there, and since the override deliberately doesn't touch the
+    // real save, letting it *pay into* that save would turn the sandbox into a
+    // farming shortcut for the progression it exists to bypass.
+    if (debugUnlockAll) return;
+    prog(side).coins = Math.max(0, prog(side).coins + n);
     saveProgression();
     refreshCoinDisplays();
 }
 function refreshCoinDisplays() {
-    const txt = String(progression.coins);
-    const a = document.getElementById('coin-balance'), b = document.getElementById('shop-coin-balance');
-    if (a) a.textContent = txt;
-    if (b) b.textContent = txt;
+    for (const side of SIDES) {
+        const el = document.getElementById(`${side}-coins`);
+        if (el) el.textContent = String(prog(side).coins);
+    }
+    const shopEl = document.getElementById('shop-coin-balance');
+    if (shopEl) shopEl.textContent = String(prog(shopSide).coins);
 }
-function buyUnlock(name) {
+function buyUnlock(side, name) {
     const cost = UNLOCK_COST[name];
-    if (!cost || isCharUnlocked(name) || progression.coins < cost) return false;
-    progression.coins -= cost;
-    progression.unlockedChars.push(name);
+    if (!cost || isCharUnlocked(side, name) || prog(side).coins < cost) return false;
+    prog(side).coins -= cost;
+    prog(side).unlockedChars.push(name);
     saveProgression();
     refreshCoinDisplays(); refreshGridLocks(); buildShop();
     return true;
 }
-function buyUpgrade(name, trait) {
-    const lvl = upgradeLevel(name, trait);
+function buyUpgrade(side, name, trait) {
+    const lvl = upgradeLevel(side, name, trait);
     if (lvl >= MAX_UPGRADE_LEVEL) return false;
     const cost = UPGRADE_COST[lvl];
-    if (progression.coins < cost) return false;
-    progression.coins -= cost;
-    if (!progression.upgrades[name]) progression.upgrades[name] = {};
-    progression.upgrades[name][trait] = lvl + 1;
+    if (prog(side).coins < cost) return false;
+    prog(side).coins -= cost;
+    if (!prog(side).upgrades[name]) prog(side).upgrades[name] = {};
+    prog(side).upgrades[name][trait] = lvl + 1;
     saveProgression();
     refreshCoinDisplays(); buildShop();
     return true;
 }
-function buyDoubleJump() {
-    if (isDoubleJumpUnlocked() || progression.coins < DOUBLE_JUMP_COST) return false;
-    progression.coins -= DOUBLE_JUMP_COST;
-    progression.doubleJumpUnlocked = true;
+function buyDoubleJump(side) {
+    if (isDoubleJumpUnlocked(side) || prog(side).coins < DOUBLE_JUMP_COST) return false;
+    prog(side).coins -= DOUBLE_JUMP_COST;
+    prog(side).doubleJumpUnlocked = true;
     saveProgression();
     refreshCoinDisplays(); buildShop();
     return true;
@@ -1397,7 +1462,7 @@ function setDebugUnlockAll(on) {
     buildShop();
     refreshBotUI('p1'); refreshBotUI('p2'); // Batch 14: bot mode is disallowed while unlocked-all
     syncDebugUnlockUI();
-    showToast(debugUnlockAll ? 'Everything unlocked (sandbox) — bot mode off' : 'Your progression is back');
+    showToast(debugUnlockAll ? 'Sandbox on — everything unlocked, bot matches available' : 'Your progression is back — two players only');
 }
 function toggleDebugUnlockAll() { setDebugUnlockAll(!debugUnlockAll); }
 function syncDebugUnlockUI() {
@@ -3469,7 +3534,9 @@ class Fighter {
         // produces exactly the pre-progression numbers. Skipped entirely for
         // a boss/wave entity (Batch 16+) — those scale off difficulty/wave
         // instead, and stacking both multiplier systems would double-dip.
-        const um = this.isBossEntity ? (() => 1) : (t => upgradeMult(name, t));
+        // Batch 21: upgrades come from THIS SIDE's own progression, so P1's
+        // purchases never buff P2's fighter (and vice versa) even in a mirror match.
+        const um = this.isBossEntity ? (() => 1) : (t => upgradeMult(isPlayerOne ? 'p1' : 'p2', name, t));
         this.maxHp = Math.round(cfg.hp * um('hp'));
         this.hp = this.maxHp;
         this.hpGhost = this.maxHp; // Batch 8: lags behind `hp` on damage so the HUD bar shows a fading "you just lost this much" trail
@@ -3935,7 +4002,7 @@ class Fighter {
             this.grounded = false;
             this.jumpCooldown = JUMP_COOLDOWN;
             this.usedDoubleJump = false; // fresh air-jump for this airborne stretch
-        } else if (jumpJustPressed && !this.grounded && !this.usedDoubleJump && isDoubleJumpUnlocked()) {
+        } else if (jumpJustPressed && !this.grounded && !this.usedDoubleJump && isDoubleJumpUnlocked(sideOf(this))) {
             // Batch 15: the purchased air-jump. RESET-style (vz is set back to
             // JUMP_VZ, not added to whatever it currently is) — that's the
             // standard, better-behaved double jump, and it gives a
@@ -5557,19 +5624,20 @@ let botDifficulty = 'normal';
 // at match start)" card, disables the now-irrelevant Random button, and
 // shows the difficulty selector only while at least one side is a bot.
 function refreshBotUI(side) {
-    // Batch 14: bot mode belongs to the REAL progression state only. The
-    // unlock-everything sandbox is for two humans to try the whole roster —
-    // letting it also farm coins against a bot with maxed stats would make
-    // the actual progression pointless. Force the toggle off and disable it
-    // (rather than silently ignoring clicks) so it's clear *why* it's gone.
-    const botAllowed = !debugUnlockAll;
+    // Batch 21b: bot mode exists ONLY in the unlock-everything sandbox.
+    // Progression is strictly two humans: coins are earned by beating a real
+    // opponent, so unlocks can't be farmed against an AI. The sandbox is where
+    // you go to practice or mess about solo, and it deliberately pays nothing
+    // (see addCoins). Force the toggle off and disable it (rather than
+    // silently ignoring clicks) so it's clear *why* it's unavailable.
+    const botAllowed = debugUnlockAll;
     if (!botAllowed) { if (side === 'p1') p1IsBot = false; else p2IsBot = false; }
     const isBot = side === 'p1' ? p1IsBot : p2IsBot;
     const toggle = document.getElementById(side === 'p1' ? 'btn-toggle-bot-p1' : 'btn-toggle-bot');
     toggle.textContent = isBot ? 'Bot: ON' : 'Bot: OFF';
     toggle.classList.toggle('active', isBot);
     toggle.disabled = !botAllowed;
-    toggle.title = botAllowed ? '' : 'Bot matches are disabled while "Unlock everything" is on — turn it off in Settings to play against a bot.';
+    toggle.title = botAllowed ? '' : 'Bot matches are only available in the "Unlock everything" sandbox (Settings) — progression matches are two players.';
     document.getElementById(side === 'p1' ? 'btn-random-p1' : 'btn-random-p2').disabled = isBot;
     document.getElementById(`${side}-bot-mode`).classList.toggle('show', isBot);
     if (isBot) {
@@ -5587,12 +5655,12 @@ function refreshBotUI(side) {
 }
 
 document.getElementById('btn-toggle-bot').addEventListener('click', () => {
-    if (debugUnlockAll) return; // Batch 14 — see refreshBotUI
+    if (!debugUnlockAll) return; // Batch 21b — bot mode is sandbox-only; see refreshBotUI
     p2IsBot = !p2IsBot;
     refreshBotUI('p2');
 });
 document.getElementById('btn-toggle-bot-p1').addEventListener('click', () => {
-    if (debugUnlockAll) return;
+    if (!debugUnlockAll) return;
     p1IsBot = !p1IsBot;
     refreshBotUI('p1');
 });
@@ -5616,7 +5684,9 @@ function buildGrid(gridId, keyList, side) {
         // A locked card opens the Shop instead of previewing — clicking the
         // thing you want and being told where to get it beats a dead button.
         btn.addEventListener('click', () => {
-            if (!isCharUnlocked(c.name)) { openShop(); return; }
+            // A locked card opens the Shop on THIS side's tab, so the fix for
+            // "I can't pick this" is one click from the complaint.
+            if (!isCharUnlocked(side, c.name)) { openShop(side); return; }
             previewPick(side, c.name);
         });
         grid.appendChild(btn);
@@ -5626,14 +5696,15 @@ function buildGrid(gridId, keyList, side) {
 // Locked/unlocked is runtime state (a purchase or the Batch 13 debug override
 // can flip it mid-session), but buildGrid only runs once at load — so the
 // lock visuals are applied as a separate pass over the already-built cards
-// rather than by rebuilding the grid.
+// rather than by rebuilding the grid. Batch 21: each grid reads its OWN side's
+// unlocks, so the two rosters can legitimately differ.
 function refreshGridLocks() {
-    for (const gridId of ['p1-grid', 'p2-grid']) {
-        const grid = document.getElementById(gridId);
+    for (const side of SIDES) {
+        const grid = document.getElementById(`${side}-grid`);
         if (!grid) continue;
         grid.querySelectorAll('.fighter-btn').forEach(btn => {
             const name = btn.dataset.name;
-            const unlocked = isCharUnlocked(name);
+            const unlocked = isCharUnlocked(side, name);
             btn.classList.toggle('roster-locked', !unlocked);
             const cost = UNLOCK_COST[name];
             btn.title = unlocked ? CHAR_MAP[name].desc : `Locked — ${cost} coins in the Shop`;
@@ -5659,13 +5730,14 @@ function statRow(label, value, max, lvl) {
     return `<div class="stat-row"><span>${label}</span><div class="stat-bar"><div class="stat-fill" style="width:${pct}%"></div></div><span class="stat-val">${value}${badge}</span></div>`;
 }
 
-function buildDetailHTML(c, confirmKey, backKey) {
+function buildDetailHTML(side, c, confirmKey, backKey) {
     // Stats shown here are the EFFECTIVE (upgraded) values the Fighter
     // constructor will actually use, not the raw config — otherwise buying an
     // upgrade would change nothing visible until you were already in a match.
-    const hp = Math.round(c.hp * upgradeMult(c.name, 'hp'));
-    const dmg = Math.round(c.dmg * upgradeMult(c.name, 'dmg'));
-    const speed = +(c.speed * upgradeMult(c.name, 'speed')).toFixed(2);
+    // Read from THIS side's upgrades, so each player sees their own numbers.
+    const hp = Math.round(c.hp * upgradeMult(side, c.name, 'hp'));
+    const dmg = Math.round(c.dmg * upgradeMult(side, c.name, 'dmg'));
+    const speed = +(c.speed * upgradeMult(side, c.name, 'speed')).toFixed(2);
     return `
         <div class="detail-header">
             <span class="detail-swatch"></span>
@@ -5673,9 +5745,9 @@ function buildDetailHTML(c, confirmKey, backKey) {
         </div>
         <p class="detail-desc">${c.desc}</p>
         <div class="detail-stats">
-            ${statRow('Health', hp, STAT_MAX.hp, upgradeLevel(c.name, 'hp'))}
-            ${statRow('Damage', dmg, STAT_MAX.dmg, upgradeLevel(c.name, 'dmg'))}
-            ${statRow('Speed', speed, STAT_MAX.speed, upgradeLevel(c.name, 'speed'))}
+            ${statRow('Health', hp, STAT_MAX.hp, upgradeLevel(side, c.name, 'hp'))}
+            ${statRow('Damage', dmg, STAT_MAX.dmg, upgradeLevel(side, c.name, 'dmg'))}
+            ${statRow('Speed', speed, STAT_MAX.speed, upgradeLevel(side, c.name, 'speed'))}
         </div>
         <div class="detail-ability"><span class="ability-label">Special &mdash; ${c.specialName}</span><p>${c.specialDesc}</p></div>
         <div class="detail-actions">
@@ -5713,7 +5785,7 @@ function showDetail(side, name, confirmed) {
     const backKey = keyLabel(BINDINGS[side].special);
     const detail = document.getElementById(`${side}-detail`);
     detail.style.setProperty('--accent', c.color);
-    detail.innerHTML = buildDetailHTML(c, confirmKey, backKey);
+    detail.innerHTML = buildDetailHTML(side, c, confirmKey, backKey);
     detail.classList.toggle('confirmed', confirmed);
     detail.querySelector('.btn-confirm').addEventListener('click', () => confirmPick(side));
     detail.querySelector('.btn-back').addEventListener('click', () => backToPick(side));
@@ -5842,32 +5914,44 @@ document.getElementById('btn-mapselect-back').addEventListener('click', () => cl
 
 // --- Batch 12: Shop. Rebuilt from scratch on every open/purchase (rather
 // than diffed) — it's a small list and only ever rendered while the game is
-// paused on a menu, so simplicity beats incremental updates here. ---
+// paused on a menu, so simplicity beats incremental updates here.
+// Batch 21: the shop shows ONE player's account at a time, switched by the
+// tabs at the top. Two separate shops would have duplicated all of this for
+// no benefit; a tab makes whose coins you're spending unambiguous.
+// (`shopSide` itself is declared up with the progression state — it's read by
+// refreshCoinDisplays, which runs during load, long before this point.) ---
 function buildShop() {
     const list = document.getElementById('shop-list');
     if (!list) return;
+    const side = shopSide;
     list.innerHTML = '';
 
-    // Account-wide upgrades first — they apply to whoever you play, so they
-    // shouldn't be buried under ten per-character cards.
+    // Reflect which tab is active and whose purse is shown.
+    SIDES.forEach(s => {
+        const tab = document.getElementById(`shop-tab-${s}`);
+        if (tab) tab.classList.toggle('active', s === side);
+    });
+
+    // Applies to all of this player's fighters, so it goes above the
+    // ten per-character cards rather than being buried among them.
     const djCard = document.createElement('div');
     djCard.className = 'shop-card';
     djCard.style.setProperty('--accent', '#22d3ee');
-    const djOwned = isDoubleJumpUnlocked();
+    const djOwned = isDoubleJumpUnlocked(side);
     djCard.innerHTML = `<div class="shop-card-head">
-            <div><span class="shop-name">Double Jump</span> <span class="shop-title">— all fighters</span></div>
+            <div><span class="shop-name">Double Jump</span> <span class="shop-title">— all of ${side === 'p1' ? 'P1' : 'P2'}'s fighters</span></div>
             <button class="shop-buy${djOwned ? ' maxed' : ''}" ${djOwned ? 'disabled' : ''} data-dj="1">${djOwned ? 'Owned' : DOUBLE_JUMP_COST + ' coins'}</button>
         </div>
         <div class="upg-row"><span>Jump a second time in mid-air — reaches the highest platforms.</span></div>`;
     if (!djOwned) {
         const b = djCard.querySelector('[data-dj]');
-        b.disabled = progression.coins < DOUBLE_JUMP_COST;
-        b.addEventListener('click', () => buyDoubleJump());
+        b.disabled = prog(side).coins < DOUBLE_JUMP_COST;
+        b.addEventListener('click', () => buyDoubleJump(side));
     }
     list.appendChild(djCard);
 
     CHARACTERS.forEach(c => {
-        const unlocked = isCharUnlocked(c.name);
+        const unlocked = isCharUnlocked(side, c.name);
         const card = document.createElement('div');
         card.className = 'shop-card';
         card.style.setProperty('--accent', c.color);
@@ -5880,8 +5964,8 @@ function buildShop() {
             const buy = document.createElement('button');
             buy.className = 'shop-buy';
             buy.textContent = `Unlock — ${cost} coins`;
-            buy.disabled = progression.coins < cost;
-            buy.addEventListener('click', () => buyUnlock(c.name));
+            buy.disabled = prog(side).coins < cost;
+            buy.addEventListener('click', () => buyUnlock(side, c.name));
             head.appendChild(buy);
         } else {
             const owned = document.createElement('span');
@@ -5897,7 +5981,7 @@ function buildShop() {
             const grid = document.createElement('div');
             grid.className = 'shop-upgrades';
             UPGRADE_TRAITS.forEach(trait => {
-                const lvl = upgradeLevel(c.name, trait);
+                const lvl = upgradeLevel(side, c.name, trait);
                 const maxed = lvl >= MAX_UPGRADE_LEVEL;
                 const cost = maxed ? 0 : UPGRADE_COST[lvl];
                 const row = document.createElement('div');
@@ -5908,8 +5992,8 @@ function buildShop() {
                 const buy = document.createElement('button');
                 buy.className = `shop-buy${maxed ? ' maxed' : ''}`;
                 buy.textContent = maxed ? 'Max' : `${cost}`;
-                buy.disabled = maxed || progression.coins < cost;
-                if (!maxed) buy.addEventListener('click', () => buyUpgrade(c.name, trait));
+                buy.disabled = maxed || prog(side).coins < cost;
+                if (!maxed) buy.addEventListener('click', () => buyUpgrade(side, c.name, trait));
                 row.appendChild(buy);
                 grid.appendChild(row);
             });
@@ -5923,21 +6007,29 @@ function buildShop() {
         list.appendChild(card);
     });
 }
-function openShop() {
+function openShop(side) {
+    if (side) shopSide = side;
     buildShop();
     refreshCoinDisplays();
     openModal('shop');
 }
-document.getElementById('btn-open-shop').addEventListener('click', openShop);
+document.getElementById('btn-open-shop').addEventListener('click', () => openShop());
 document.getElementById('btn-shop-close').addEventListener('click', () => closeModal());
+SIDES.forEach(s => {
+    const tab = document.getElementById(`shop-tab-${s}`);
+    if (tab) tab.addEventListener('click', () => { shopSide = s; buildShop(); refreshCoinDisplays(); });
+});
+// Per-side shortcut straight into that player's tab, from their own panel.
+document.querySelectorAll('[data-shop-side]').forEach(b =>
+    b.addEventListener('click', () => openShop(b.dataset.shopSide)));
 
 function beginMatch() {
-    // Bot sides roll from the UNLOCKED roster only — rolling a locked
-    // character would let a bot play someone you haven't earned, and (worse)
-    // show you a fighter you can't pick yourself.
-    const pool = unlockedCharNames();
-    if (p1IsBot) p1Choice = pool[Math.floor(Math.random() * pool.length)];
-    if (p2IsBot) p2Choice = pool[Math.floor(Math.random() * pool.length)];
+    // Bot sides roll from THAT SIDE's unlocked roster only — rolling a locked
+    // character would show a fighter that side can't actually pick. (Bots only
+    // exist in the sandbox now, where everything is unlocked, so this is
+    // effectively the full roster there — but the gate stays correct either way.)
+    if (p1IsBot) { const pool = unlockedCharNames('p1'); p1Choice = pool[Math.floor(Math.random() * pool.length)]; }
+    if (p2IsBot) { const pool = unlockedCharNames('p2'); p2Choice = pool[Math.floor(Math.random() * pool.length)]; }
     openMapSelect(); // pick an arena, then the drop-in intro starts the match
 }
 document.getElementById('btn-start-match').addEventListener('click', () => {
@@ -5951,7 +6043,7 @@ document.getElementById('btn-start-match').addEventListener('click', () => {
 function randomPick(side) {
     const stage = side === 'p1' ? p1Stage : p2Stage;
     if (stage === 'confirmed') return;
-    const pool = unlockedCharNames(); // never roll something you can't play
+    const pool = unlockedCharNames(side); // never roll something THIS side can't play
     previewPick(side, pool[Math.floor(Math.random() * pool.length)]);
 }
 // --- Mobile: touch controls, on request. A touch-primary device gets a
@@ -6147,7 +6239,7 @@ document.getElementById('btn-random-p2').addEventListener('click', () => randomP
 
 function previewPick(side, name) {
     if (side === 'p1' ? p1IsBot : p2IsBot) return; // bot sides don't get picked by hand
-    if (!isCharUnlocked(name)) return; // not bought yet — the card's own click handler routes to the Shop
+    if (!isCharUnlocked(side, name)) return; // not bought yet — the card's own click handler routes to the Shop
     const stage = side === 'p1' ? p1Stage : p2Stage;
     if (stage === 'confirmed') return; // locked in — must Back out first
     if (side === 'p1') { p1Preview = name; p1Stage = 'preview'; }
@@ -6745,16 +6837,29 @@ function endMatch() {
 
     const s1 = matchStats.p1, s2 = matchStats.p2;
     const roundTimesStr = roundDurations.map((d, i) => `R${i + 1} ${d.toFixed(1)}s`).join(', ');
-    // Batch 12: coins for finishing a match. A loss still pays (less), so a
-    // player who keeps losing to a bot still makes progress toward unlocks
-    // rather than being hard-stuck.
-    const earned = isDraw ? COIN_AWARDS.classicDraw : COIN_AWARDS.classicWin;
-    addCoins(earned);
+    // Batch 21: coins go to each player's OWN purse, and the winner takes the
+    // bigger share — the outcome has to actually matter for progression, which
+    // a flat "everyone gets the same" payout wouldn't do. A loss still pays
+    // something so the losing side keeps inching toward their next unlock.
+    // (addCoins is a no-op while the sandbox override is on — see its comment.)
+    let earnedP1, earnedP2;
+    if (isDraw) {
+        earnedP1 = earnedP2 = COIN_AWARDS.classicDraw;
+    } else if (winner === player1) {
+        earnedP1 = COIN_AWARDS.classicWin; earnedP2 = COIN_AWARDS.classicLoss;
+    } else {
+        earnedP1 = COIN_AWARDS.classicLoss; earnedP2 = COIN_AWARDS.classicWin;
+    }
+    addCoins('p1', earnedP1);
+    addCoins('p2', earnedP2);
+    const coinLine = debugUnlockAll
+        ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
+        : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} coins &nbsp;·&nbsp; P2 +${earnedP2} coins</div>`;
     document.getElementById('match-summary').innerHTML =
         `<div><b>${player1.name} (P1)</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
         `<div><b>${player2.name} (P2)</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
         `<div>Round times: ${roundTimesStr}</div>` +
-        `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">+${earned} coins</div>`;
+        coinLine;
 
     showScreen('gameover');
 }
@@ -6936,7 +7041,7 @@ if (DEBUG) {
         STARTER_CHARS, UNLOCK_COST, UPGRADE_COST, MAX_UPGRADE_LEVEL, UPGRADE_STAT_BONUS,
         DOUBLE_JUMP_COST, COIN_AWARDS, CHARACTERS, CHAR_MAP, MAPS,
         isCharUnlocked, upgradeLevel, upgradeMult, isDoubleJumpUnlocked, unlockedCharNames,
-        addCoins, buyUnlock, buyUpgrade, buyDoubleJump, saveProgression,
+        addCoins, buyUnlock, buyUpgrade, buyDoubleJump, saveProgression, prog, SIDES, sideOf,
         setDebugUnlockAll, toggleDebugUnlockAll, CHEAT_CODE,
         JUMP_VZ, GRAVITY, JUMP_COOLDOWN,
         LOOK_SPEED, PITCH_LIMIT, TURN_SPEED, MUZZLE_HEIGHT, PROJECTILE_CEILING,
