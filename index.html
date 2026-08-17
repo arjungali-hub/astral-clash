@@ -390,6 +390,34 @@
             background: transparent; color: #f59e0b; border: 1px solid #f59e0b; border-radius: 4px;
         }
         .menu-section .btn-side-shop:hover { background: rgba(245, 158, 11, 0.14); box-shadow: none; }
+        /* Batch 19: game-mode selector. Sits with the branding, not buried in a
+           footer — which mode you're playing changes the whole match, so it
+           belongs where you see it before picking fighters. */
+        .btn-mode {
+            width: auto; background: transparent; color: #a855f7; border: 1px solid #a855f7;
+            padding: 7px 18px; font-size: 0.8rem; font-weight: bold; margin: 6px 4px 0;
+            box-shadow: none;
+        }
+        .btn-mode:hover { background: rgba(168, 85, 247, 0.14); box-shadow: 0 0 12px rgba(168, 85, 247, 0.35); }
+        #modeselect-screen {
+            display: none;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
+            align-items: center; justify-content: center; z-index: 30; padding: 20px; box-sizing: border-box;
+        }
+        .modeselect-panel { width: min(560px, 94vw); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
+        .modeselect-panel h3 { color: #a855f7; margin: 0 0 4px; font-size: 1.3rem; }
+        .mode-card {
+            display: block; width: 100%; text-align: left; margin: 0 0 8px; padding: 11px 14px;
+            background: #10151f; color: #e2e8f0; border: 1px solid #2e3a59; border-left: 3px solid #2e3a59;
+            border-radius: 6px; font-weight: normal; box-shadow: none;
+        }
+        .mode-card:hover { background: #161d2c; border-color: #a855f7; box-shadow: none; }
+        .mode-card.active { border-color: #a855f7; border-left-color: #a855f7; background: #1a1430; }
+        .mode-card .mode-name { display: block; font-weight: bold; font-size: 0.94rem; color: #e2e8f0; margin-bottom: 3px; }
+        .mode-card.active .mode-name { color: #c084fc; }
+        .mode-card .mode-blurb { display: block; font-size: 0.7rem; color: #94a3b8; line-height: 1.45; }
+        .mode-card .mode-current { float: right; font-size: 0.64rem; color: #a855f7; font-weight: bold; }
         .shop-tabs { display: flex; justify-content: center; gap: 8px; margin-bottom: 10px; }
         .menu-section .shop-tab {
             width: auto; margin: 0; padding: 6px 18px; font-size: 0.76rem; font-weight: bold;
@@ -538,10 +566,10 @@
            container's own height (100%, with the container's padding taken out
            via border-box) keeps every panel inside its parent and lets its own
            overflow-y actually do the scrolling. */
-        #mapselect-screen, #shop-screen, #tutorial-screen, #settings-screen, #audio-screen, #rebind-screen {
+        #mapselect-screen, #shop-screen, #tutorial-screen, #settings-screen, #audio-screen, #rebind-screen, #modeselect-screen {
             box-sizing: border-box;
         }
-        .mapselect-panel, .shop-panel, .tutorial-panel,
+        .mapselect-panel, .shop-panel, .tutorial-panel, .modeselect-panel,
         #settings-screen .menu-section, #audio-screen .menu-section, #rebind-screen .menu-section {
             max-height: 100%;
             box-sizing: border-box;
@@ -763,6 +791,7 @@
                     <h1>Astral Clash</h1>
                     <div class="brand-divider"></div>
                     <p>Dimensional Arena Fighter</p>
+                    <button id="btn-open-modeselect" class="btn-mode">Mode: Classic Versus</button>
                     <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
                 </div>
                 <p id="touch-warning" style="display:none;color:#8aa0b8;font-size:0.75rem;max-width:480px;text-align:center;">Touch controls: left stick to move/turn, right-side buttons to fight. Best in landscape.</p>
@@ -921,6 +950,10 @@
                             <p>There's no way to get HP back — no health pickups, no regen. Every hit you take counts. Play patient, punish mistakes, and use your dash i-frames and shields to avoid damage rather than trying to out-heal it.</p>
                         </div>
                         <div class="tutorial-card">
+                            <h4>Game Modes</h4>
+                            <p>Pick a mode from the button under the title. <b>Classic Versus</b> is best of 3 rounds. <b>Zone Control</b> puts a glowing ring at the arena's centre — stand in it <em>alone</em> to bank control time, and knock your opponent out of it; first to 45 seconds wins. <b>Time Attack</b> is one continuous fight with instant respawns, first to 3 knockouts. In the two continuous modes a knockout costs you tempo, not the match.</p>
+                        </div>
+                        <div class="tutorial-card">
                             <h4>Coins &amp; Unlocks</h4>
                             <p><b>Each player has their own coins, unlocks and upgrades.</b> You both start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate, and Speed, plus Double Jump. Open the Shop from your own panel (or the footer) and use the Player 1 / Player 2 tabs. Progression matches are <b>two players</b>; if you want to fight a bot or try the whole roster, turn on the "Unlock everything" sandbox in Settings — it leaves both players' real progress untouched and earns no coins.</p>
                         </div>
@@ -944,6 +977,15 @@
                 <button id="btn-map-random" class="map-random-btn">Random Arena</button>
                 <div class="mapselect-grid" id="mapselect-grid"></div>
                 <button id="btn-mapselect-back" class="btn-back">← Back to Fighters</button>
+            </div>
+        </div>
+
+        <div id="modeselect-screen">
+            <div class="menu-section modeselect-panel">
+                <h3>Game Mode</h3>
+                <p class="shop-sub">What are you playing for? You can change this any time before the match starts.</p>
+                <div id="modeselect-list"></div>
+                <button id="btn-modeselect-close" class="btn-back">← Back</button>
             </div>
         </div>
 
@@ -1034,7 +1076,7 @@ let gameState = "MENU"; // MENU, INTRO, FIGHT, DEATH, ROUND_END, PAUSED, GAMEOVE
 //   during a fight). MODALS overlay everything and stack: opening one leaves
 //   whatever's underneath in place, so closing returns there. ---
 const SCREEN_EL = { select: 'select-screen', gameover: 'gameover-screen', pause: 'pause-screen' };
-const MODAL_EL = { tutorial: 'tutorial-screen', settings: 'settings-screen', rebind: 'rebind-screen', audio: 'audio-screen', mapselect: 'mapselect-screen', shop: 'shop-screen' };
+const MODAL_EL = { tutorial: 'tutorial-screen', settings: 'settings-screen', rebind: 'rebind-screen', audio: 'audio-screen', mapselect: 'mapselect-screen', shop: 'shop-screen', modeselect: 'modeselect-screen' };
 let currentScreen = 'select'; // matches the initial CSS (select shown)
 let modalStack = [];
 function showScreen(name) {
@@ -1353,6 +1395,52 @@ let progression = (() => {
 })();
 function saveProgression() { safeLSSet(PROGRESSION_KEY, JSON.stringify(progression)); }
 function prog(side) { return progression[side] || progression.p1; }
+// --- Batch 19: game modes. `matchMode` is deliberately ORTHOGONAL to
+// `gameState`: gameState says where we are in the round lifecycle
+// (INTRO/FIGHT/DEATH/...), matchMode says what winning means. Everything
+// defaults to 'classic', which is the pre-batch behavior byte-for-byte, and
+// every mode-specific branch is an explicit check against this — so a mode
+// that doesn't care about a given system simply never appears in it.
+//
+// Classic keeps best-of-3 rounds. The two new PvP modes are single continuous
+// matches with respawns, so they deliberately skip the round/pip machinery
+// entirely rather than trying to nest "best of 3 first-to-3-KOs", which would
+// have meant resetting score mid-match and syncing it with collapse timers for
+// no benefit anyone asked for.
+//
+// Declared up here with the other early state (not down with the match-
+// structure constants where it thematically belongs) because the menu code
+// builds the mode button during load and reads modeInfo() — a `let`/`const`
+// further down the file is still in its temporal dead zone at that point. Same
+// trap as `shopSide` just below, and the historical `camera` regression.
+const MATCH_MODES = [
+    { id: 'classic', name: 'Classic Versus', blurb: 'Best of 3 rounds. Knock your opponent out to win a round.' },
+    { id: 'zone', name: 'Zone Control', blurb: 'Hold the glowing ring at the center. First to 45 seconds of control wins — knock them out of it.' },
+    { id: 'timeattack', name: 'Time Attack', blurb: 'Continuous fight with instant respawns. First to 3 knockouts wins.' },
+];
+let matchMode = 'classic';
+function modeInfo(id) { return MATCH_MODES.find(m => m.id === (id || matchMode)) || MATCH_MODES[0]; }
+// True for the modes that run as one continuous match with respawns instead of
+// discrete best-of-3 rounds. Used in enough places that naming it beats
+// repeating the id list.
+function isContinuousMode() { return matchMode === 'zone' || matchMode === 'timeattack'; }
+
+// Zone Control. The ring sits at arena center — which is also where Arena
+// Collapse converges, so the shrinking walls naturally squeeze both fighters
+// toward the contested point instead of fighting the mode.
+const ZONE_RADIUS = 130;
+const ZONE_TARGET = 45;   // seconds of held control needed to win
+let zoneScore = { p1: 0, p2: 0 };
+let zoneMesh = null;      // ground ring, rebuilt per round
+let zoneHolder = null;    // 'p1' | 'p2' | null (contested or empty) — drives the ring's color
+
+// Time Attack. A fixed count, not player-configurable: 3 echoes the existing
+// best-of-3 motif, and at this game's real time-to-kill it lands a match at
+// roughly 1-3 minutes, matching the pacing everything else is tuned to.
+const TIME_ATTACK_KOS = 3;
+let koTally = { p1: 0, p2: 0 };
+const RESPAWN_INVULN = 60; // frames of i-frames after respawning, so you can't be spawn-camped
+
 // Which player's account the Shop modal is currently showing. Declared HERE,
 // not next to buildShop() far below, because refreshCoinDisplays() reads it and
 // runs during initial load — a `let` further down the file is still in its
@@ -3723,6 +3811,37 @@ class Fighter {
         return false;
     }
 
+    // Batch 19: put this fighter back in the fight mid-match, at full HP and
+    // at `spawn`, without ending the round. Used by the continuous modes (Zone
+    // Control / Time Attack), where a knockout is a setback rather than the end
+    // of the match. Everything that could carry across a death is explicitly
+    // cleared — leaving stale hitstun, a burn tick, an in-flight action or old
+    // projectiles attached to a "fresh" fighter is exactly the kind of thing
+    // that produces a fighter who respawns already staggered or on fire.
+    respawn(spawn) {
+        this.hp = this.maxHp;
+        this.hpGhost = this.maxHp;
+        this.x = spawn.x; this.y = spawn.y;
+        this.z = groundLevelAt(spawn.x + this.width / 2, spawn.y + this.height / 2);
+        this.vx = this.vy = this.vz = 0;
+        this.grounded = true;
+        this.usedDoubleJump = false;
+        this.pitch = 0;
+        this.atkState = 'idle'; this.atkStateTimer = 0; this.atkKind = null; this.atkOpponent = null;
+        this.attackCooldown = 0; this.jumpCooldown = 0; this.dodgeCooldown = 0;
+        this.hitstunTimer = 0; this.rootedFrames = 0;
+        this.burnFrames = 0; this.burnDps = 0;
+        this.shieldFrames = 0;
+        this.hitFlash = 0; this.hitDirTimer = 0;
+        this.specialMeter = 0;
+        this.invulnFrames = RESPAWN_INVULN; // brief grace so you can't be spawn-camped
+        // Drop anything still in flight from before the KO.
+        this.projectiles.forEach(p => removeAndDispose(p.mesh));
+        this.projectiles.length = 0;
+        this.queue.length = 0;
+        this.effects.push({ type: 'shockwaveRing', r: 8, max: 70, color: '255,255,255' }); // visible "I'm back" pop
+    }
+
     // Moves by (dx, dy) in short steps, stopping just short of the first
     // pillar/platform it would cross, instead of teleporting straight
     // through solid geometry and getting violently resolved back out on
@@ -6007,6 +6126,40 @@ function buildShop() {
         list.appendChild(card);
     });
 }
+// --- Batch 19: game-mode select. A modal following the mapselect precedent
+// (opened mid-flow, closes back to whatever was underneath) rather than a new
+// top-level screen. Deliberately NOT a gate in front of fighter-select:
+// 'classic' is already a valid choice, so nothing needs to be blocked until a
+// mode is explicitly chosen — same flag-don't-block stance as the existing
+// mirror-match handling. ---
+function buildModeSelect() {
+    const list = document.getElementById('modeselect-list');
+    if (!list) return;
+    list.innerHTML = '';
+    MATCH_MODES.forEach(m => {
+        const btn = document.createElement('button');
+        btn.className = 'mode-card' + (m.id === matchMode ? ' active' : '');
+        btn.dataset.mode = m.id;
+        btn.innerHTML = `${m.id === matchMode ? '<span class="mode-current">SELECTED</span>' : ''}` +
+            `<span class="mode-name">${m.name}</span><span class="mode-blurb">${m.blurb}</span>`;
+        btn.addEventListener('click', () => { setMatchMode(m.id); closeModal(); });
+        list.appendChild(btn);
+    });
+}
+function setMatchMode(id) {
+    matchMode = id;
+    refreshModeUI();
+    buildModeSelect();
+}
+function refreshModeUI() {
+    const b = document.getElementById('btn-open-modeselect');
+    if (b) b.textContent = `Mode: ${modeInfo().name}`;
+    refreshMenuUI();
+}
+document.getElementById('btn-open-modeselect').addEventListener('click', () => { buildModeSelect(); openModal('modeselect'); });
+document.getElementById('btn-modeselect-close').addEventListener('click', () => closeModal());
+refreshModeUI();
+
 function openShop(side) {
     if (side) shopSide = side;
     buildShop();
@@ -6404,6 +6557,61 @@ function freshStats() {
 // every frame, and flips on `crushing` once it passes CRUSH_AT_FRAC (see
 // the constants block for the full design rationale). Called every frame
 // from gameLoop's FIGHT branch.
+// --- Batch 19: Zone Control. A ground ring at arena center; standing in it
+// ALONE accrues control time. Contested (both inside) or empty accrues to
+// nobody — the simplest rule that still makes "knock them out of the ring" the
+// core play, and it avoids arguing about partial/split scoring.
+//
+// Containment is a flat 2D x/y test that deliberately IGNORES height. Several
+// maps have a platform sitting essentially at arena center, so a "must be on
+// the floor" test would have made the zone unreachable on those maps; ignoring
+// z instead means standing on that central platform also contests the ring,
+// which is a free bit of verticality rather than a bug.
+function buildZoneMesh() {
+    disposeZoneMesh();
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(
+        new THREE.RingGeometry(ZONE_RADIUS - 8, ZONE_RADIUS, 48),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    const fill = new THREE.Mesh(
+        new THREE.CircleGeometry(ZONE_RADIUS - 8, 48),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.10, side: THREE.DoubleSide, depthWrite: false })
+    );
+    fill.rotation.x = -Math.PI / 2;
+    g.add(ring, fill);
+    g.position.set(worldX(ARENA_CX), 1.5, worldZ(ARENA_CY)); // just above the floor to avoid z-fighting
+    g.userData.ring = ring; g.userData.fill = fill;
+    scene.add(g);
+    zoneMesh = g;
+}
+function disposeZoneMesh() {
+    if (zoneMesh) { removeAndDispose(zoneMesh); zoneMesh = null; }
+}
+function inZone(f) {
+    const cx = f.x + f.width / 2, cy = f.y + f.height / 2;
+    return Math.hypot(cx - ARENA_CX, cy - ARENA_CY) <= ZONE_RADIUS;
+}
+function updateZoneControl(dt) {
+    if (matchMode !== 'zone') return;
+    const p1In = player1.hp > 0 && inZone(player1);
+    const p2In = player2.hp > 0 && inZone(player2);
+    zoneHolder = (p1In && !p2In) ? 'p1' : (p2In && !p1In) ? 'p2' : null;
+    if (zoneHolder && !crushing) zoneScore[zoneHolder] += dt / 60;
+    // Tint the ring to whoever holds it (white while contested/empty) and pulse
+    // it while it's being held, so control is readable from inside the fight
+    // rather than only on the HUD.
+    if (zoneMesh) {
+        const held = zoneHolder ? (zoneHolder === 'p1' ? 0x00f3ff : 0xf472b6) : 0xffffff;
+        zoneMesh.userData.ring.material.color.setHex(held);
+        zoneMesh.userData.fill.material.color.setHex(held);
+        const pulse = zoneHolder ? 0.55 + 0.25 * Math.sin(arenaTime * 0.2) : 0.4;
+        zoneMesh.userData.ring.material.opacity = pulse;
+        zoneMesh.userData.fill.material.opacity = zoneHolder ? 0.16 : 0.08;
+    }
+}
+
 function updateArenaShrink(dt) {
     if (!crushing) {
         shrinkTimer -= dt / 60;
@@ -6485,6 +6693,12 @@ function startMatch(mapOverride) {
     currentRound = 1;
     matchStats = { p1: freshStats(), p2: freshStats() };
     roundDurations = [];
+    // Batch 19: per-mode match state. Reset here (not in startRound) because in
+    // the continuous modes the whole match IS one round — resetting per round
+    // would wipe the score every knockout.
+    zoneScore = { p1: 0, p2: 0 };
+    koTally = { p1: 0, p2: 0 };
+    zoneHolder = null;
     startRound(true); // the first round of a match opens with the drop-in intro cinematic
 }
 
@@ -6512,6 +6726,10 @@ function startRound(intro) {
     shrinkFrac = 0; shrinkTargetFrac = 0;
     crushing = false;
     arenaBoundsFromFrac(0); // reset play bounds to the full arena
+    // Batch 19: the Zone Control ring. Built per round because loadMap() clears
+    // the scene's map group; disposed for every other mode so a leftover ring
+    // can't linger into a Classic match.
+    if (matchMode === 'zone') buildZoneMesh(); else disposeZoneMesh();
     roundStartedAt = performance.now();
     if (intro) {
         player1.setFacing(player2.x - player1.x, player2.y - player1.y);
@@ -6554,14 +6772,55 @@ function drawRoundStatus() {
         }
     }
 
-    // Round-win pips, one row per player, filled dots for rounds already won.
-    const pipY = { p1: 58, p2: 58 };
-    for (let i = 0; i < ROUNDS_TO_WIN; i++) {
-        const filled1 = i < roundWins.p1, filled2 = i < roundWins.p2;
-        hudCtx.fillStyle = filled1 ? '#00f3ff' : '#1e293b';
-        hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 - 20 - i * 12, pipY.p1, 4, 0, Math.PI * 2); hudCtx.fill();
-        hudCtx.fillStyle = filled2 ? '#00f3ff' : '#1e293b';
-        hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 + 20 + i * 12, pipY.p2, 4, 0, Math.PI * 2); hudCtx.fill();
+    // Batch 19: the progress readout is per mode — round pips only mean
+    // something in Classic.
+    // The per-player HP/meter panels occupy y 46-108 out to 420px wide, and in
+    // split-screen this shared block is re-drawn centered in each HALF — so a
+    // wide centered readout at the pips' y would sit straight on top of a
+    // panel. The mode readouts therefore live BELOW the panels (y >= 120),
+    // which is clear in both split and full-screen layouts.
+    const MODE_Y = 124;
+    if (matchMode === 'zone') {
+        // One track per player, growing from the outside toward the middle, so
+        // "who is closer to winning" reads as two bars racing inward.
+        const BW = 120, BH = 9, gap = 26;
+        const leftX = VIRTUAL_W / 2 - gap / 2 - BW, rightX = VIRTUAL_W / 2 + gap / 2;
+        [['p1', leftX, '#00f3ff'], ['p2', rightX, '#f472b6']].forEach(([side, x, col]) => {
+            hudCtx.fillStyle = 'rgba(15,20,32,0.75)'; hudCtx.fillRect(x, MODE_Y, BW, BH);
+            const w = BW * Math.min(1, zoneScore[side] / ZONE_TARGET);
+            hudCtx.fillStyle = col;
+            // P1 grows rightward, P2 leftward — both toward the contested centre.
+            hudCtx.fillRect(side === 'p1' ? x + BW - w : x, MODE_Y, w, BH);
+            if (zoneHolder === side) { // held right now: outline so it reads at a glance
+                hudCtx.strokeStyle = '#ffffff'; hudCtx.lineWidth = 1.5;
+                hudCtx.strokeRect(x - 1, MODE_Y - 1, BW + 2, BH + 2);
+            }
+        });
+        hudCtx.font = hudFont(11);
+        hudCtx.fillStyle = zoneHolder ? '#e2e8f0' : '#64748b';
+        hudCtx.fillText(zoneHolder ? `${zoneHolder === 'p1' ? 'P1' : 'P2'} holds the zone` : 'Zone contested', VIRTUAL_W / 2, MODE_Y - 4);
+        hudCtx.fillStyle = '#94a3b8';
+        hudCtx.fillText(`${Math.floor(zoneScore.p1)}s`, leftX - 16, MODE_Y + BH);
+        hudCtx.fillText(`${Math.floor(zoneScore.p2)}s`, rightX + BW + 16, MODE_Y + BH);
+    } else if (matchMode === 'timeattack') {
+        for (let i = 0; i < TIME_ATTACK_KOS; i++) {
+            hudCtx.fillStyle = i < koTally.p1 ? '#00f3ff' : '#1e293b';
+            hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 - 20 - i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
+            hudCtx.fillStyle = i < koTally.p2 ? '#f472b6' : '#1e293b';
+            hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 + 20 + i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
+        }
+        hudCtx.font = hudFont(11); hudCtx.fillStyle = '#64748b';
+        hudCtx.fillText(`First to ${TIME_ATTACK_KOS} KOs`, VIRTUAL_W / 2, MODE_Y - 12);
+    } else {
+        // Round-win pips, one row per player, filled dots for rounds already won.
+        const pipY = { p1: 58, p2: 58 };
+        for (let i = 0; i < ROUNDS_TO_WIN; i++) {
+            const filled1 = i < roundWins.p1, filled2 = i < roundWins.p2;
+            hudCtx.fillStyle = filled1 ? '#00f3ff' : '#1e293b';
+            hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 - 20 - i * 12, pipY.p1, 4, 0, Math.PI * 2); hudCtx.fill();
+            hudCtx.fillStyle = filled2 ? '#00f3ff' : '#1e293b';
+            hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 + 20 + i * 12, pipY.p2, 4, 0, Math.PI * 2); hudCtx.fill();
+        }
     }
     hudCtx.textAlign = "left";
 }
@@ -6826,12 +7085,18 @@ function endMatch() {
     // death sequence, in-flight projectiles can still land and drop the
     // original winner to 0 hp too, and re-deriving from current hp would
     // crown the fighter who actually lost first.
+    disposeZoneMesh(); // Batch 19: the ring belongs to a live match only
     let winnerText;
     if (isDraw) {
         winnerText = "Draw!";
     } else {
         const winnerLabel = winner === player1 ? 'Player 1' : 'Player 2';
-        winnerText = `${winner.name} (${winnerLabel}) Wins the Match! (${roundWins.p1}-${roundWins.p2})`;
+        // Batch 19: each mode reports its own score, not round pips it never used.
+        let score;
+        if (matchMode === 'zone') score = `${Math.floor(zoneScore.p1)}s-${Math.floor(zoneScore.p2)}s held`;
+        else if (matchMode === 'timeattack') score = `${koTally.p1}-${koTally.p2} KOs`;
+        else score = `${roundWins.p1}-${roundWins.p2}`;
+        winnerText = `${winner.name} (${winnerLabel}) Wins ${modeInfo().name}! (${score})`;
     }
     document.getElementById('winner-title').innerText = winnerText;
 
@@ -6842,13 +7107,18 @@ function endMatch() {
     // a flat "everyone gets the same" payout wouldn't do. A loss still pays
     // something so the losing side keeps inching toward their next unlock.
     // (addCoins is a no-op while the sandbox override is on — see its comment.)
+    // Batch 19: each mode has its own payout keys (all currently the same
+    // numbers, but kept separate so a mode can be re-tuned without touching
+    // the others). Draws only exist as a classic-style even split.
+    const winKey = matchMode === 'zone' ? 'zoneWin' : matchMode === 'timeattack' ? 'timeattackWin' : 'classicWin';
+    const lossKey = matchMode === 'zone' ? 'zoneLoss' : matchMode === 'timeattack' ? 'timeattackLoss' : 'classicLoss';
     let earnedP1, earnedP2;
     if (isDraw) {
         earnedP1 = earnedP2 = COIN_AWARDS.classicDraw;
     } else if (winner === player1) {
-        earnedP1 = COIN_AWARDS.classicWin; earnedP2 = COIN_AWARDS.classicLoss;
+        earnedP1 = COIN_AWARDS[winKey]; earnedP2 = COIN_AWARDS[lossKey];
     } else {
-        earnedP1 = COIN_AWARDS.classicLoss; earnedP2 = COIN_AWARDS.classicWin;
+        earnedP1 = COIN_AWARDS[lossKey]; earnedP2 = COIN_AWARDS[winKey];
     }
     addCoins('p1', earnedP1);
     addCoins('p2', earnedP2);
@@ -6870,9 +7140,46 @@ function endMatch() {
 // and the shared post-step render) and dispatches the middle through
 // STATE_STEPS. States with no per-frame work (MENU) simply have no entry.
 // Behavior is identical to the old ladder — this is purely structural.
+// Batch 19: resolve a continuous mode's own win condition. Returns true if the
+// match ended. Arena Collapse's crush is reused as the safety valve for both
+// modes — if a match somehow stalls to the point the walls slam shut, it's
+// settled on the mode's own score rather than by grinding both fighters down
+// (which, with respawns, would never actually resolve).
+function resolveContinuousMode() {
+    if (matchMode === 'zone') {
+        const reached = zoneScore.p1 >= ZONE_TARGET || zoneScore.p2 >= ZONE_TARGET;
+        if (!reached && !crushing) return false;
+        if (Math.abs(zoneScore.p1 - zoneScore.p2) < 0.05) { isDraw = true; winner = loser = null; }
+        else {
+            isDraw = false;
+            winner = zoneScore.p1 > zoneScore.p2 ? player1 : player2;
+            loser = winner === player1 ? player2 : player1;
+        }
+        endMatch();
+        return true;
+    }
+    if (matchMode === 'timeattack') {
+        const reached = koTally.p1 >= TIME_ATTACK_KOS || koTally.p2 >= TIME_ATTACK_KOS;
+        if (!reached && !crushing) return false;
+        if (koTally.p1 === koTally.p2) { isDraw = true; winner = loser = null; }
+        else {
+            isDraw = false;
+            winner = koTally.p1 > koTally.p2 ? player1 : player2;
+            loser = winner === player1 ? player2 : player1;
+        }
+        endMatch();
+        return true;
+    }
+    return false;
+}
+
 function stepFight(dt) {
     arenaTime += dt;
     updateArenaShrink(dt);
+    updateZoneControl(dt);
+    // Score/crush win conditions are checked before combat so a match that's
+    // already decided doesn't run another frame of fighting first.
+    if (isContinuousMode() && resolveContinuousMode()) return;
 
     if (!crushing) {
         player1.update(player2, dt);
@@ -6967,15 +7274,46 @@ function stepDeath(dt) {
     const skipRequested = deathTimer >= DEATH_SKIP_AFTER &&
         (consumePress(BINDINGS.p1.attack) || consumePress(BINDINGS.p2.attack) || consumePress(' ') || consumePress('enter'));
 
+    // Batch 19: in the continuous modes a knockout is a setback, not the end of
+    // the match — the KO animation still plays in full (it's good feel and the
+    // player needs to register what happened), but what follows it is a respawn
+    // rather than a round result.
+    const finish = () => { if (isContinuousMode()) finishContinuousKO(); else endRound(); };
+
     if (skipRequested) {
-        endRound();
+        finish();
     } else if (deathPhase === "attackFinish" && deathTimer >= ATTACK_FINISH_FRAMES) {
         deathPhase = "defeatAnim";
         deathTimer = 0;
         deathCandidates.forEach(f => f.spawnDeathParticles());
     } else if (deathPhase === "defeatAnim" && deathTimer >= DEFEAT_ANIM_FRAMES) {
-        endRound();
+        finish();
     }
+}
+
+// One knockout resolved inside a continuous match: credit it (Time Attack),
+// respawn whoever went down, and hand control back to FIGHT. `winner`/`loser`/
+// `isDraw` were already worked out by decideRoundResult() at the moment of the
+// KO, so the "who killed whom" question is answered the same way as classic.
+function finishContinuousKO() {
+    if (matchMode === 'timeattack' && !isDraw && winner) {
+        koTally[winner === player1 ? 'p1' : 'p2']++;
+    }
+    // Respawn everyone who actually hit 0 — that's both fighters on a double-KO,
+    // which decideRoundResult already models as a draw.
+    const down = isDraw ? [player1, player2] : [loser];
+    for (const f of down) {
+        if (!f) continue;
+        f.respawn(f === player1 ? matchMap.spawn1 : matchMap.spawn2);
+    }
+    // Both fighters face each other again, as at round start.
+    player1.setFacing(player2.x - player1.x, player2.y - player1.y);
+    player2.setFacing(player1.x - player2.x, player1.y - player2.y);
+    deathCandidates = [];
+    loser = null; winner = null; isDraw = false; deathPhase = ''; deathTimer = 0;
+    // If that KO was the deciding one, resolveContinuousMode() ends the match on
+    // the next FIGHT frame rather than duplicating the check here.
+    gameState = 'FIGHT';
 }
 
 function stepRoundEnd(dt) {
@@ -7045,6 +7383,18 @@ if (DEBUG) {
         setDebugUnlockAll, toggleDebugUnlockAll, CHEAT_CODE,
         JUMP_VZ, GRAVITY, JUMP_COOLDOWN,
         LOOK_SPEED, PITCH_LIMIT, TURN_SPEED, MUZZLE_HEIGHT, PROJECTILE_CEILING,
+        // Batch 19 game modes
+        MATCH_MODES, ZONE_RADIUS, ZONE_TARGET, TIME_ATTACK_KOS, RESPAWN_INVULN,
+        setMatchMode, isContinuousMode, inZone, resolveContinuousMode, finishContinuousKO,
+        get matchMode() { return matchMode; },
+        get zoneScore() { return zoneScore; },
+        get zoneHolder() { return zoneHolder; },
+        get koTally() { return koTally; },
+        get zoneMesh() { return zoneMesh; },
+        get matchMap() { return matchMap; },
+        get crushing() { return crushing; },
+        get winner() { return winner; },
+        get isDraw() { return isDraw; },
         projectileVelocity, verticalHit, touchLook, touchTurn,
         get OBSTACLES() { return OBSTACLES; },
         get PLATFORMS() { return PLATFORMS; },
