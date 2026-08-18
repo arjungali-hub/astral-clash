@@ -1417,6 +1417,8 @@ const MATCH_MODES = [
     { id: 'classic', name: 'Classic Versus', blurb: 'Best of 3 rounds. Knock your opponent out to win a round.' },
     { id: 'zone', name: 'Zone Control', blurb: 'Hold the glowing ring at the center. First to 45 seconds of control wins — knock them out of it.' },
     { id: 'timeattack', name: 'Time Attack', blurb: 'Continuous fight with instant respawns. First to 3 knockouts wins.' },
+    { id: 'boss', name: 'Boss Fight (Co-op)', blurb: 'Both players team up against Karrigos, the Hollow Titan. Its attacks are slow and telegraphed — punish the wind-up. If either of you falls, the run is over.', coop: true },
+    { id: 'survival', name: 'Survival Waves (Co-op)', blurb: 'Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.', coop: true },
 ];
 let matchMode = 'classic';
 function modeInfo(id) { return MATCH_MODES.find(m => m.id === (id || matchMode)) || MATCH_MODES[0]; }
@@ -1424,6 +1426,21 @@ function modeInfo(id) { return MATCH_MODES.find(m => m.id === (id || matchMode))
 // discrete best-of-3 rounds. Used in enough places that naming it beats
 // repeating the id list.
 function isContinuousMode() { return matchMode === 'zone' || matchMode === 'timeattack'; }
+// Batch 16: co-op modes — P1 and P2 are TEAMMATES against a third combatant.
+function isCoopMode() { return !!modeInfo().coop; }
+
+// The co-op third combatant. One slot, deliberately: supporting an arbitrary
+// number of simultaneous enemies would mean rewriting the render/HUD/target
+// code that assumes a small fixed cast, which is a much bigger change than
+// this needs. Survival Waves gets its "endless enemies" by reusing this one
+// slot sequentially rather than by holding many at once.
+let bossEntity = null;
+let waveNumber = 0;         // Survival Waves: how many have been cleared
+let coopResultText = '';    // filled by endCoopMatch for the game-over screen
+// Co-op-only combatants, kept OUT of CHARACTERS so buildGrid (which iterates
+// CHARACTERS unconditionally) can never turn one into a pickable fighter.
+// Populated by Batch 17; declared here because the Fighter constructor reads it.
+const BOSS_MAP = {};
 
 // Zone Control. The ring sits at arena center — which is also where Arena
 // Collapse converges, so the shrinking walls naturally squeeze both fighters
@@ -2069,6 +2086,12 @@ function applySky(theme) {
 const LAYER_DEFAULT = 0; // environment, projectiles, effects — everyone sees these
 const LAYER_P1_BODY = 1, LAYER_P2_BODY = 2;
 const LAYER_P1_VM = 3, LAYER_P2_VM = 4;
+// Batch 16: the co-op third combatant (boss / wave enemy). It owns no camera —
+// nobody plays from its eyes — so it needs exactly one body layer that BOTH
+// player cameras enable. Kept separate from LAYER_DEFAULT so it can still be
+// hidden/shown as a unit if that's ever wanted, and so it isn't lit or culled
+// by accident along with the environment.
+const LAYER_BOSS_BODY = 5;
 function setLayerRecursive(obj, n) { obj.layers.set(n); obj.traverse(c => c.layers.set(n)); }
 
 // Two first-person cameras, one per fighter (eye at the head, looking the
@@ -2080,6 +2103,10 @@ function makeFpsCamera(ownBodyLayer, ownVmLayer) {
     cam.layers.enable(LAYER_DEFAULT);
     cam.layers.enable(ownBodyLayer === LAYER_P1_BODY ? LAYER_P2_BODY : LAYER_P1_BODY); // see the OTHER fighter's body, not our own
     cam.layers.enable(ownVmLayer); // see our own viewmodel
+    // Batch 16: both cameras always see the co-op third combatant. Enabling it
+    // unconditionally is a no-op when no boss exists (nothing is on that layer),
+    // so this costs nothing outside the co-op modes.
+    cam.layers.enable(LAYER_BOSS_BODY);
     return cam;
 }
 const camP1 = makeFpsCamera(LAYER_P1_BODY, LAYER_P1_VM);
@@ -3500,6 +3527,51 @@ function distBetween(a, b) {
     return Math.sqrt(dx * dx + dy * dy);
 }
 
+// --- Batch 16: target resolution for co-op.
+//
+// Combat is single-opponent-shaped much deeper than the win check: `update()`
+// passes one `opponent` into tryStartAction(), which STORES it on the fighter
+// (`atkOpponent`) at the moment startup begins, and doBasicAttack/doSpecial
+// later resolve against that stored reference. tickEffects() likewise tests
+// in-flight projectiles against exactly that one opponent. So a fighter is
+// structurally incapable of hitting anyone but "the other player" unless the
+// target is resolved differently at the few places it's chosen.
+//
+// These two helpers are that seam. In every non-co-op mode they return the
+// caller's existing values unchanged, so the classic/zone/timeattack paths are
+// byte-for-byte what they were — there is no behavioral risk outside co-op.
+function isAlive(f) { return !!f && f.hp > 0; }
+const EMPTY_TARGETS = []; // shared empty array so the common (non-co-op) path allocates nothing
+
+// Who should this attacker actually be swinging at right now?
+//   co-op: a player aims at the boss; the boss aims at the nearer live player.
+//   otherwise: unchanged — the single opponent it was already given.
+function pickTarget(attacker, defaultOpponent) {
+    if (!isCoopMode()) return defaultOpponent;
+    if (attacker && attacker.isBossEntity) {
+        const cands = [player1, player2].filter(isAlive);
+        if (!cands.length) return defaultOpponent;
+        return cands.reduce((best, f) => distBetween(attacker, f) < distBetween(attacker, best) ? f : best);
+    }
+    // A human/teammate in co-op: the boss is the only valid target. Friendly
+    // fire is deliberately off — you're on the same side, and a teammate who
+    // can be shot by their partner is a worse experience, not a harder one.
+    return isAlive(bossEntity) ? bossEntity : defaultOpponent;
+}
+
+// Extra bodies a fighter's projectiles should also be tested against, beyond
+// the one `opponent` tickEffects already checks. Empty (and therefore a no-op)
+// outside co-op.
+function getExtraCombatTargets(fighter) {
+    if (!isCoopMode() || !fighter) return EMPTY_TARGETS;
+    if (fighter.isBossEntity) {
+        // The boss's shots can hit either player; tickEffects is called with one
+        // of them, so the other is the "extra".
+        return [player1, player2].filter(f => isAlive(f) && f !== fighter);
+    }
+    return isAlive(bossEntity) ? [bossEntity] : EMPTY_TARGETS;
+}
+
 // A fighter's hurtbox spans this many units above their current z; a hit
 // needs the attacker's (or a projectile's) height within HEIGHT_TOLERANCE
 // of that band to land — this is what makes jumping over an attack, or a
@@ -3604,7 +3676,13 @@ function steerAroundObstacles(fromX, fromY, dirX, dirY) {
 
 class Fighter {
     constructor(name, x, y, isPlayerOne, isBot) {
-        const cfg = CHAR_MAP[name];
+        // Batch 16: BOSS_MAP holds co-op-only combatants (the boss). They're kept
+        // OUT of CHARACTERS on purpose — buildGrid iterates CHARACTERS
+        // unconditionally, so anything in there becomes a pickable fighter on the
+        // select screen. Falling back to BOSS_MAP here is what lets the same
+        // Fighter class be constructed from a non-roster name without throwing on
+        // `cfg.color` a line later.
+        const cfg = CHAR_MAP[name] || BOSS_MAP[name];
         this.cfg = cfg;
         this.name = name;
         this.x = x;
@@ -3964,6 +4042,9 @@ class Fighter {
                 // Ranged can fire across most of the arena (the projectile
                 // flies until it hits or leaves); melee needs to be in reach.
                 const inRange = isRanged ? dist < 360 : dist < (this.attackRange || 55) + 15;
+                // botDecide's own `opponent` parameter already IS the resolved
+                // target — update() passes pickTarget()'s result in — so this
+                // must not reference update()'s `target` local (not in scope).
                 if (inRange && Math.random() < atkChance) this.tryStartAction('basic', opponent);
             }
             // Save the special for when it can actually connect: in melee/AOE
@@ -4013,8 +4094,15 @@ class Fighter {
         }
         this.updateFeedbackFx(dt); // hp-ghost trail + low-HP smoke/heartbeat — SIMULATION, moved out of render3D so "pause" truly freezes
 
+        // Batch 16: in co-op the fighter handed to us as `opponent` is actually
+        // our TEAMMATE, so every attack/AI decision below has to aim at the
+        // resolved target instead. Resolved once here rather than at each of the
+        // ~9 action call sites, so there's a single place this can be wrong.
+        // Outside co-op pickTarget returns `opponent` untouched.
+        const target = pickTarget(this, opponent);
+
         if (this.isBot) {
-            const decision = this.botDecide(opponent, dt);
+            const decision = this.botDecide(target, dt);
             moveX = decision.moveX; moveY = decision.moveY; jumpPressed = decision.jumpPressed;
         } else if (this.isPlayerOne) {
             const b = BINDINGS.p1;
@@ -4030,8 +4118,8 @@ class Fighter {
             if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
             if (keys[b.jump]) jumpPressed = true;
             if (consumePress(b.jump)) jumpJustPressed = true;
-            if (consumePress(b.attack)) this.tryStartAction('basic', opponent);
-            if (consumePress(b.special)) this.tryStartAction('special', opponent);
+            if (consumePress(b.attack)) this.tryStartAction('basic', target);
+            if (consumePress(b.special)) this.tryStartAction('special', target);
             if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
             const gp = pollGamepad(padSlots.p1);
             if (gp) {
@@ -4039,8 +4127,8 @@ class Fighter {
                 if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; } // stick Y = forward/back (up on stick is negative)
                 if (gp.lookY) this.lookBy(-gp.lookY * LOOK_SPEED * dt * 1.6); // right stick Y = pitch (up on stick is negative)
                 if (gp.jump) { jumpPressed = true; jumpJustPressed = true; } // pollGamepad already edge-triggers its buttons
-                if (gp.attack) this.tryStartAction('basic', opponent);
-                if (gp.special) this.tryStartAction('special', opponent);
+                if (gp.attack) this.tryStartAction('basic', target);
+                if (gp.special) this.tryStartAction('special', target);
                 if (gp.dodge) this.tryDodge(moveX, moveY);
             }
             if (touchTurn.p1) this.turnBy(touchTurn.p1 * TURN_SPEED * dt); // analog joystick turn, see setupTouchJoystick
@@ -4055,8 +4143,8 @@ class Fighter {
             if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
             if (keys[b.jump]) jumpPressed = true;
             if (consumePress(b.jump)) jumpJustPressed = true;
-            if (consumePress(b.attack)) this.tryStartAction('basic', opponent);
-            if (consumePress(b.special)) this.tryStartAction('special', opponent);
+            if (consumePress(b.attack)) this.tryStartAction('basic', target);
+            if (consumePress(b.special)) this.tryStartAction('special', target);
             if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
             const gp = pollGamepad(padSlots.p2);
             if (gp) {
@@ -4064,8 +4152,8 @@ class Fighter {
                 if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; }
                 if (gp.lookY) this.lookBy(-gp.lookY * LOOK_SPEED * dt * 1.6);
                 if (gp.jump) { jumpPressed = true; jumpJustPressed = true; }
-                if (gp.attack) this.tryStartAction('basic', opponent);
-                if (gp.special) this.tryStartAction('special', opponent);
+                if (gp.attack) this.tryStartAction('basic', target);
+                if (gp.special) this.tryStartAction('special', target);
                 if (gp.dodge) this.tryDodge(moveX, moveY);
             }
             if (touchTurn.p2) this.turnBy(touchTurn.p2 * TURN_SPEED * dt);
@@ -4237,11 +4325,24 @@ class Fighter {
                 this.projectiles.splice(i, 1);
                 continue;
             }
-            if (verticalHit(p.z, opponent.z) &&
-                p.x > opponent.x && p.x < opponent.x + opponent.width &&
-                p.y > opponent.y && p.y < opponent.y + opponent.height) {
+            // Batch 16: test the single `opponent` this was called with, PLUS any
+            // co-op extras (the boss, or the other player for a boss's shot).
+            //
+            // The primary opponent is tested with EXACTLY the original predicate
+            // — deliberately without an is-alive guard. A shot can still land on
+            // a fighter who has already hit 0 HP during the death sequence, which
+            // endMatch()'s "use the winner decided at KO time, don't re-derive
+            // from current hp" comment explicitly depends on. Adding a liveness
+            // check here would have quietly changed that. The co-op extras DO get
+            // the guard, since a corpse shouldn't soak shots meant for the boss.
+            const inBox = t => verticalHit(p.z, t.z) &&
+                p.x > t.x && p.x < t.x + t.width &&
+                p.y > t.y && p.y < t.y + t.height;
+            let hitBody = inBox(opponent) ? opponent : null;
+            if (!hitBody) hitBody = getExtraCombatTargets(this).find(t => isAlive(t) && inBox(t)) || null;
+            if (hitBody) {
                 const pmag = Math.hypot(p.vx, p.vy) || 1;
-                opponent.takeDamage(p.damage, this, { dx: p.vx / pmag, dy: p.vy / pmag }); // knock back along the shot, not the shooter's current facing
+                hitBody.takeDamage(p.damage, this, { dx: p.vx / pmag, dy: p.vy / pmag }); // knock back along the shot, not the shooter's current facing
                 removeAndDispose(p.mesh);
                 this.projectiles.splice(i, 1);
             } else if (p.x < playLeft || p.x > playRight || p.y < playTop || p.y > playBottom) {
@@ -4563,13 +4664,20 @@ class Fighter {
         // paths (Fighter.render3D, ~line 1900) revert to the *tinted*
         // color, not the original — otherwise a hit would visibly "untint"
         // P2 for a frame.
-        if (!this.isPlayerOne) {
+        // Batch 16: this is a P1-vs-P2 readability tweak, so a boss (which is
+        // neither, and already visually distinct) is excluded — darkening it
+        // would just mute its own palette for no benefit.
+        if (!this.isPlayerOne && !this.isBossEntity) {
             for (const m of group.userData.bodyMats) {
                 m.color.offsetHSL(0, 0, -0.14);
                 m.userData.origColor = m.color.clone();
             }
         }
-        group.add(makeNameSprite(this.isPlayerOne ? 'P1' : 'P2', this.isPlayerOne ? '#00f3ff' : '#f472b6'));
+        // Batch 16: a boss is labelled by its own name in a threatening amber
+        // rather than P1/P2 — it belongs to neither side.
+        group.add(this.isBossEntity
+            ? makeNameSprite(this.name, '#f59e0b')
+            : makeNameSprite(this.isPlayerOne ? 'P1' : 'P2', this.isPlayerOne ? '#00f3ff' : '#f472b6'));
 
         const flashLight = new THREE.PointLight(0xffffff, 0, 70);
         flashLight.position.y = 16;
@@ -4612,7 +4720,8 @@ class Fighter {
         group.add(specialReadyRing);
         this.specialReadyRing = specialReadyRing;
 
-        if (!this.isPlayerOne) {
+        // The P2 ground ring is another P1-vs-P2 tell; a boss doesn't get one.
+        if (!this.isPlayerOne && !this.isBossEntity) {
             const p2Ring = new THREE.Mesh(
                 new THREE.RingGeometry(19, 21, 32),
                 new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
@@ -4629,7 +4738,8 @@ class Fighter {
         // inside your head) while the opponent's camera still shows it. Any
         // lights inside the group (hit-flash, Seraphine's glow) get all
         // layers re-enabled so they still illuminate the layer-0 environment.
-        setLayerRecursive(group, this.isPlayerOne ? LAYER_P1_BODY : LAYER_P2_BODY);
+        setLayerRecursive(group, this.isBossEntity ? LAYER_BOSS_BODY
+            : (this.isPlayerOne ? LAYER_P1_BODY : LAYER_P2_BODY));
         group.traverse(n => { if (n.isLight) n.layers.enableAll(); });
         scene.add(group);
     }
@@ -5937,17 +6047,23 @@ function refreshMenuUI() {
     document.getElementById('p1-heading').innerHTML = headingHTML(1, p1Stage);
     document.getElementById('p2-heading').innerHTML = headingHTML(2, p2Stage);
     const status = document.getElementById('vs-status');
+    // Batch 16: in co-op the two players are TEAMMATES, so the versus framing
+    // ("VS", "Mirror match!") reads as nonsense — swap the badge for TEAM and
+    // suppress the mirror note, which only means anything in a matchup.
+    const coop = isCoopMode();
+    const vsLabel = document.querySelector('.vs-label');
+    if (vsLabel) vsLabel.textContent = coop ? 'TEAM' : 'VS';
     // Batch 9: duplicate picks aren't blocked (mirror matches are a
     // supported, intentional matchup — see Batch 8's mirror-readability
     // work), just flagged so it's clearly a choice, not confusion.
-    const mirrorMatch = p1Preview && p2Preview && p1Preview === p2Preview &&
+    const mirrorMatch = !coop && p1Preview && p2Preview && p1Preview === p2Preview &&
         (p1Stage === 'preview' || p1Stage === 'confirmed') && (p2Stage === 'preview' || p2Stage === 'confirmed');
     const p1Ready = sideReady('p1'), p2Ready = sideReady('p2');
     const bothReady = p1Ready && p2Ready;
-    if (bothReady) status.textContent = 'Ready to fight!';
+    if (bothReady) status.textContent = coop ? 'Ready — good luck!' : 'Ready to fight!';
     else if (p1Ready) status.textContent = 'Waiting for P2...';
     else if (p2Ready) status.textContent = 'Waiting for P1...';
-    else status.textContent = 'Choose your fighters';
+    else status.textContent = coop ? 'Choose your team' : 'Choose your fighters';
     if (mirrorMatch) status.textContent += ' (Mirror match!)';
     status.classList.toggle('ready', bothReady); // pulsing cyan payoff the instant both sides lock in
     // Explicit Start button appears once both sides are ready — it's the
@@ -6490,6 +6606,7 @@ document.getElementById('btn-quit-to-menu').addEventListener('click', () => {
     p1Stage = 'pick'; p2Stage = 'pick'; p1Preview = null; p2Preview = null;
     p1Choice = null; p2Choice = null;
     refreshBotUI('p1'); refreshBotUI('p2');
+    disposeBoss(); disposeZoneMesh(); // Batch 16/19: don't leave mode props in the scene
     showScreen('select');
     gameState = 'MENU';
     stopAmbientPad();
@@ -6613,6 +6730,14 @@ function updateZoneControl(dt) {
 }
 
 function updateArenaShrink(dt) {
+    // Batch 16: no collapse in co-op. The mechanic exists to stop two players
+    // stalling each other out — in PvE the boss IS the pressure, and a shrinking
+    // arena would simply crush the team long before they could work through a
+    // boss-sized HP pool (or, in Survival, guarantee a loss on a run that's
+    // meant to be open-ended). Leaving the bounds at full size also means
+    // `crushing` stays false, so the collapse-based safety valve the PvP
+    // continuous modes use never fires here either.
+    if (isCoopMode()) return;
     if (!crushing) {
         shrinkTimer -= dt / 60;
         if (shrinkTimer <= 0) {
@@ -6699,6 +6824,8 @@ function startMatch(mapOverride) {
     zoneScore = { p1: 0, p2: 0 };
     koTally = { p1: 0, p2: 0 };
     zoneHolder = null;
+    waveNumber = 0;
+    coopResultText = '';
     startRound(true); // the first round of a match opens with the drop-in intro cinematic
 }
 
@@ -6730,6 +6857,11 @@ function startRound(intro) {
     // the scene's map group; disposed for every other mode so a leftover ring
     // can't linger into a Classic match.
     if (matchMode === 'zone') buildZoneMesh(); else disposeZoneMesh();
+    // Batch 16: the co-op challenger. Disposed for every other mode so a boss
+    // can never linger into a PvP match.
+    if (matchMode === 'boss') spawnBossForFight();
+    else if (matchMode === 'survival') spawnNextWave();
+    else disposeBoss();
     roundStartedAt = performance.now();
     if (intro) {
         player1.setFacing(player2.x - player1.x, player2.y - player1.y);
@@ -6752,9 +6884,38 @@ function startRound(intro) {
     }
 }
 
+// Batch 16: the boss bar. Drawn ONCE in raw virtual space (not inside
+// drawShared, which is re-drawn per split-screen half) — a boss bar duplicated
+// left and right would read as two bosses.
+function drawBossHUD() {
+    const BW = 560, BH = 16;
+    const x = (VIRTUAL_W - BW) / 2, y = 150;
+    const frac = Math.max(0, bossEntity.hp) / bossEntity.maxHp;
+    hudCtx.fillStyle = 'rgba(10,14,22,0.8)';
+    hudCtx.fillRect(x - 2, y - 2, BW + 4, BH + 4);
+    hudCtx.fillStyle = '#2a1608';
+    hudCtx.fillRect(x, y, BW, BH);
+    // Amber, and it flashes when the boss is nearly down.
+    const low = frac < 0.25;
+    hudCtx.fillStyle = low && Math.sin(arenaTime * 0.4) > 0 ? '#fca5a5' : '#f59e0b';
+    hudCtx.fillRect(x, y, BW * frac, BH);
+    hudCtx.strokeStyle = '#f59e0b'; hudCtx.lineWidth = 1.5;
+    hudCtx.strokeRect(x, y, BW, BH);
+    hudCtx.textAlign = 'center';
+    hudCtx.font = hudFont(15, true); hudCtx.fillStyle = '#fde68a';
+    const label = matchMode === 'survival' ? `Wave ${waveNumber + 1} — ${bossEntity.name}` : bossEntity.name;
+    hudCtx.fillText(label, VIRTUAL_W / 2, y - 8);
+    hudCtx.font = hudFont(12); hudCtx.fillStyle = '#e2e8f0';
+    hudCtx.fillText(`${Math.max(0, Math.ceil(bossEntity.hp))} / ${bossEntity.maxHp}`, VIRTUAL_W / 2, y + BH + 14);
+    hudCtx.textAlign = 'left';
+}
+
 function drawRoundStatus() {
     hudCtx.textAlign = "center";
     hudCtx.font = hudFont(14, true);
+    // Batch 16: co-op has no collapse and no round pips — the boss bar is the
+    // only progress readout it needs, so this whole block is skipped.
+    if (isCoopMode()) { hudCtx.textAlign = "left"; return; }
     if (crushing) {
         hudCtx.fillStyle = Math.sin(arenaTime * 0.5) > 0 ? "#ef4444" : "#fca5a5";
         hudCtx.fillText("CRUSHING!", VIRTUAL_W / 2, 44);
@@ -6959,6 +7120,10 @@ function drawHUD() {
 
     drawPlayerHUD(player1, 30, 'P1');
     drawPlayerHUD(player2, VIRTUAL_W - 30 - 420, 'P2');
+    // Batch 16: the co-op challenger gets a wide bar across the top centre —
+    // the conventional boss-bar placement, and the one region the two
+    // side panels leave free in both split and full-screen layouts.
+    if (bossEntity) drawBossHUD();
 
     const botNote = [player1.isBot ? 'P1 Bot' : null, player2.isBot ? 'P2 Bot' : null].filter(Boolean).join(' / ');
     const drawShared = () => {
@@ -7173,6 +7338,123 @@ function resolveContinuousMode() {
     return false;
 }
 
+// --- Batch 16: co-op result path. PvE can't reuse endRound/endMatch's
+// best-of-3 machinery: roundWins, pips and "player1 beat player2" are all
+// *versus* concepts, and in co-op the two players are teammates, so that text
+// would read as nonsense ("Kaelen (Player 1) Wins" when Kaelen is your ally).
+// One attempt, one outcome. ---
+function endCoopMatch(won, detail) {
+    gameState = 'GAMEOVER';
+    disposeZoneMesh();
+    isDraw = false; winner = null; loser = null;
+    coopResultText = detail || '';
+    document.getElementById('winner-title').innerText = won ? 'Victory!' : 'Defeat';
+
+    // Coins are a TEAM payout here — both players did the same fight, so both
+    // get the same amount. (No-op while the sandbox override is on.)
+    let earned;
+    if (matchMode === 'survival') earned = waveNumber * COIN_AWARDS.survivalPerWave;
+    else earned = won ? COIN_AWARDS.bossWin : COIN_AWARDS.bossLoss;
+    addCoins('p1', earned);
+    addCoins('p2', earned);
+
+    const s1 = matchStats.p1, s2 = matchStats.p2;
+    const coinLine = debugUnlockAll
+        ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
+        : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">Each player +${earned} coins</div>`;
+    document.getElementById('match-summary').innerHTML =
+        `<div>${coopResultText}</div>` +
+        `<div><b>${player1.name} (P1)</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
+        `<div><b>${player2.name} (P2)</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
+        coinLine;
+    showScreen('gameover');
+}
+
+// --- Batch 16: spawning/retiring the co-op third combatant. ---
+function disposeBoss() {
+    if (bossEntity) { bossEntity.disposeMesh(); bossEntity = null; }
+}
+// Build the third combatant from a config name, positioned at arena centre so
+// both players start with it in front of them. `scale` multiplies HP/damage
+// (difficulty tiers for the boss, wave number for Survival).
+function spawnCoopEntity(name, hpMult, dmgMult) {
+    disposeBoss();
+    const f = new Fighter(name, ARENA_CX - 20, ARENA_CY - 20, false, true); // isBot: reuses the existing AI pipeline
+    f.isBossEntity = true;
+    // Applied AFTER construction, on top of the base config. The Fighter
+    // constructor already skipped player upgrade multipliers for a boss entity
+    // (see `um` there), so these are the only multipliers in play — the two
+    // systems can't double-dip.
+    f.maxHp = Math.round(f.maxHp * hpMult);
+    f.hp = f.maxHp;
+    f.hpGhost = f.maxHp;
+    f.attackDmg *= dmgMult;
+    f.initMesh();
+    bossEntity = f;
+    return f;
+}
+
+// Boss Fight's challenger. Difficulty tiers reuse the EXISTING BOT_DIFFICULTY
+// order rather than inventing a parallel system, so the difficulty cycler
+// already on the select screen drives the boss too with no new UI.
+const BOSS_NAME = 'Karrigos';
+const BOSS_HP_BASE_MULT = 5;  // it fights two players at once, so it needs a real pool
+function spawnBossForFight() {
+    const tier = Math.max(0, DIFFICULTY_ORDER.indexOf(botDifficulty));
+    const hpMult = BOSS_HP_BASE_MULT * (1 + tier * 0.4);
+    const dmgMult = 1 + tier * 0.25;
+    // Batch 17 registers Karrigos in BOSS_MAP; until then fall back to a heavy
+    // roster character so this batch stands up on its own.
+    const name = BOSS_MAP[BOSS_NAME] ? BOSS_NAME : 'Gorgonok';
+    return spawnCoopEntity(name, hpMult, dmgMult);
+}
+// Survival Waves' next challenger: an ordinary roster fighter, scaled by how
+// far the run has got. Reuses botDecide unchanged — these are normal characters
+// played hard, which is exactly what makes them read as "challengers" rather
+// than as a second boss.
+function spawnNextWave() {
+    const c = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+    // Compounds with, rather than replaces, the difficulty tier — two
+    // independent multiplier sources, same pattern as the boss above.
+    const tier = Math.max(0, DIFFICULTY_ORDER.indexOf(botDifficulty));
+    const hpMult = 1.6 * (1 + 0.15 * waveNumber) * (1 + tier * 0.2);
+    const dmgMult = (1 + 0.10 * waveNumber) * (1 + tier * 0.15);
+    return spawnCoopEntity(c.name, hpMult, dmgMult);
+}
+
+// The boss went down. Boss Fight ends in victory; Survival Waves counts the
+// clear and sends in the next, tougher challenger (Batch 18 supplies them).
+function onBossDefeated() {
+    if (matchMode === 'survival') {
+        waveNumber++;
+        addCoins('p1', COIN_AWARDS.survivalPerWave);
+        addCoins('p2', COIN_AWARDS.survivalPerWave);
+        showToast(`Wave ${waveNumber} cleared`);
+        spawnNextWave();
+        return false; // the run continues
+    }
+    endCoopMatch(true, `${bossEntity.name} defeated with ${Math.max(0, Math.ceil(player1.hp))} and ${Math.max(0, Math.ceil(player2.hp))} HP left.`);
+    return true;
+}
+
+// Co-op win/loss, checked every FIGHT frame. Deliberate scope cut: if EITHER
+// player goes down the run ends. A "downed but revivable" teammate mechanic
+// would need a new player-facing sub-state (spectating, revive timers, a revive
+// interaction) that doesn't exist anywhere in this file, which is a bigger
+// feature than the boss itself — flagged rather than half-built.
+function resolveCoopMode() {
+    if (!isCoopMode()) return false;
+    if (!isAlive(player1) || !isAlive(player2)) {
+        const fallen = !isAlive(player1) ? player1.name : player2.name;
+        endCoopMatch(false, matchMode === 'survival'
+            ? `${fallen} fell on wave ${waveNumber + 1}. Waves cleared: ${waveNumber}.`
+            : `${fallen} fell. ${bossEntity ? bossEntity.name + ' had ' + Math.max(0, Math.ceil(bossEntity.hp)) + ' HP left.' : ''}`);
+        return true;
+    }
+    if (bossEntity && !isAlive(bossEntity)) return onBossDefeated();
+    return false;
+}
+
 function stepFight(dt) {
     arenaTime += dt;
     updateArenaShrink(dt);
@@ -7180,11 +7462,21 @@ function stepFight(dt) {
     // Score/crush win conditions are checked before combat so a match that's
     // already decided doesn't run another frame of fighting first.
     if (isContinuousMode() && resolveContinuousMode()) return;
+    if (isCoopMode() && resolveCoopMode()) return;
 
     if (!crushing) {
         player1.update(player2, dt);
         player2.update(player1, dt);
         resolvePlayerCollision(player1, player2);
+        // Batch 16: the boss simulates like any other fighter — same update
+        // pipeline, so it inherits movement, gravity, hitstun, the action state
+        // machine and every animation for free. Its `opponent` argument is a
+        // stand-in that pickTarget immediately replaces with the nearer live
+        // player, which is why passing player1 here is harmless.
+        // Deliberately NOT fed through resolvePlayerCollision: a much larger
+        // body shoving the players around adds feel risk for no requested
+        // benefit, so the boss overlaps rather than pushes.
+        if (bossEntity && isAlive(bossEntity)) bossEntity.update(player1, dt);
     } else {
         // Arena Collapse's final phase: input/combat frozen, both
         // fighters take the same flat damage per second regardless of
@@ -7195,17 +7487,22 @@ function stepFight(dt) {
         player2.applyDamage(CRUSH_DPS * dt / 60, { ignoreShield: true });
         player1.tickEffects(player2, dt);
         player2.tickEffects(player1, dt);
+        if (bossEntity && isAlive(bossEntity)) bossEntity.tickEffects(player1, dt);
     }
 
     player1.render3D(null, dt);
     player2.render3D(null, dt);
+    if (bossEntity) bossEntity.render3D(null, dt);
     syncArenaCollapse(dt);
     updateMuzzleFlashes(dt);
     updateScenery(dt);
 
     drawHUD();
 
-    if (player1.hp <= 0 || player2.hp <= 0) {
+    // Co-op resolves its own win/loss above (resolveCoopMode) — a player hitting
+    // 0 there ends the run rather than starting a versus death sequence, so the
+    // PvP KO path below is skipped entirely.
+    if (!isCoopMode() && (player1.hp <= 0 || player2.hp <= 0)) {
         // Don't cut straight to the round result mid-swing: let the
         // killing blow's animation (and any queued combo follow-up)
         // finish, then play a defeat animation on the loser(s).
@@ -7241,6 +7538,7 @@ function stepIntro(dt) {
     player2.tickEffects(player1, dt);
     player1.render3D(null, dt);
     player2.render3D(null, dt);
+    if (bossEntity) bossEntity.render3D(null, dt); // Batch 16: visible while the players drop in
     syncArenaCollapse(dt);
     updateScenery(dt);
     updateMuzzleFlashes(dt);
@@ -7386,6 +7684,14 @@ if (DEBUG) {
         // Batch 19 game modes
         MATCH_MODES, ZONE_RADIUS, ZONE_TARGET, TIME_ATTACK_KOS, RESPAWN_INVULN,
         setMatchMode, isContinuousMode, inZone, resolveContinuousMode, finishContinuousKO,
+        // Batch 16 co-op
+        isCoopMode, pickTarget, getExtraCombatTargets, isAlive,
+        spawnCoopEntity, spawnBossForFight, spawnNextWave, disposeBoss, endCoopMatch, resolveCoopMode,
+        BOSS_MAP, BOSS_NAME, LAYER_BOSS_BODY, camP1, camP2,
+        get bossEntity() { return bossEntity; },
+        get waveNumber() { return waveNumber; },
+        get botDifficulty() { return botDifficulty; },
+        setBotDifficulty(d) { botDifficulty = d; },
         get matchMode() { return matchMode; },
         get zoneScore() { return zoneScore; },
         get zoneHolder() { return zoneHolder; },
