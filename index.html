@@ -950,8 +950,12 @@
                             <p>There's no way to get HP back — no health pickups, no regen. Every hit you take counts. Play patient, punish mistakes, and use your dash i-frames and shields to avoid damage rather than trying to out-heal it.</p>
                         </div>
                         <div class="tutorial-card">
+                            <h4>Co-op: Boss &amp; Survival</h4>
+                            <p>Two co-op modes put you and Player 2 on the <b>same team</b>. <b>Boss Fight</b> pits you against <b>Karrigos, the Hollow Titan</b> — enormous, slow, and enormously strong. Every one of its attacks has a long, obvious wind-up: a shockwave Ground Slam, a Charge at whoever's closest, and an Ember Nova spread. Watch the tell, get clear, then punish the recovery. It has a huge health pool, so you'll need to trade patiently rather than rush it. <b>Survival Waves</b> throws an endless run of ever-tougher challengers at you, one at a time, paying coins for every wave you clear. In both, the run ends the moment <b>either</b> of you falls — so keep each other alive. The Bot difficulty setting scales the boss.</p>
+                        </div>
+                        <div class="tutorial-card">
                             <h4>Game Modes</h4>
-                            <p>Pick a mode from the button under the title. <b>Classic Versus</b> is best of 3 rounds. <b>Zone Control</b> puts a glowing ring at the arena's centre — stand in it <em>alone</em> to bank control time, and knock your opponent out of it; first to 45 seconds wins. <b>Time Attack</b> is one continuous fight with instant respawns, first to 3 knockouts. In the two continuous modes a knockout costs you tempo, not the match.</p>
+                            <p>Pick a mode from the button under the title. <b>Classic Versus</b> is best of 3 rounds. <b>Zone Control</b> puts a glowing ring at the arena's centre — stand in it <em>alone</em> to bank control time, and knock your opponent out of it; first to 45 seconds wins. <b>Time Attack</b> is one continuous fight with instant respawns, first to 3 knockouts. In the two continuous modes a knockout costs you tempo, not the match. The last two modes are co-op — see the card beside this one.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Coins &amp; Unlocks</h4>
@@ -1812,7 +1816,8 @@ function synthNoise(duration, opts = {}) {
 // (plus shard/orb for the two ranged casters) — reused here as a sound
 // identity too, so impact/whiff timbre matches what's on screen.
 const SFX_TYPE_BY_CHAR = { Kaelen: 'slash', Lyra: 'shard', Gorgonok: 'hammer', Voss: 'dagger', Draven: 'hammer', Seraphine: 'orb',
-    Nyx: 'scythe', Ignis: 'punch', Aurelia: 'bolt', Thorne: 'whip' };
+    Nyx: 'scythe', Ignis: 'punch', Aurelia: 'bolt', Thorne: 'whip',
+    Karrigos: 'hammer' }; // Batch 17: the boss lands like a falling rock — reuses the heaviest existing impact
 const IMPACT_SFX = {
     slash: (pitch, peak) => { synthTone(520 * pitch, 0.12, { type: 'triangle', freqEnd: 260 * pitch, peak: peak * 0.5 }); synthNoise(0.08, { peak: peak * 0.3, filterFreq: 3000, filterType: 'highpass' }); },
     punch: (pitch, peak) => { synthTone(140 * pitch, 0.14, { type: 'sine', freqEnd: 60 * pitch, peak: peak * 0.7 }); synthNoise(0.07, { peak: peak * 0.4, filterFreq: 800, filterType: 'lowpass' }); },
@@ -3472,6 +3477,36 @@ const CHARACTERS = [
 ];
 const CHAR_MAP = Object.fromEntries(CHARACTERS.map(c => [c.name, c]));
 
+// --- Batch 17: Karrigos, the Hollow Titan (co-op boss).
+// Same config shape as a CHARACTERS entry, so the Fighter constructor reads it
+// without special-casing — but stored in BOSS_MAP (declared far earlier, since
+// the constructor needs it) specifically so it is NOT in CHARACTERS, which
+// buildGrid iterates unconditionally to build the pickable roster.
+//
+// Base HP here is a normal-ish number; spawnBossForFight multiplies it by
+// BOSS_HP_BASE_MULT and the difficulty tier, so the real pool is thousands.
+// Reach is long (it's huge) and damage is high per hit, but every swing is
+// slow and telegraphed — see FRAME_DATA.Karrigos.
+Object.assign(BOSS_MAP, {
+    Karrigos: {
+        // Very dark, desaturated stone. This has to be MUCH darker than it looks
+        // in isolation: the arenas are brightly lit (sun + hemisphere + ambient)
+        // and the renderer uses filmic tone mapping at exposure 1.1, so a mid-grey
+        // albedo like #6b6259 rendered as pale beige plastic. The existing dark
+        // trim (#3f2a20) is what actually reads as "dark" under that lighting, so
+        // the body is pitched to match it.
+        name: 'Karrigos', title: 'The Hollow Titan', color: '#3a352f',
+        speed: 1.5,            // ponderous — you can always outrun it, which is the point
+        hp: 620, meterRateMult: 3.4, // high meter rate: its big attacks come around on a rhythm rather than needing to "earn" them
+        atkType: 'hammer',     // reuses the existing heavy-burst effect + impact sound
+        dmg: 58, range: 108, halfAngle: 62 * DEG, cooldown: 34,
+        special: 'titan',      // cycles Ground Slam -> Charge -> Ember Nova (see doSpecial)
+        specialName: 'Titan\'s Wrath',
+        specialDesc: 'Cycles between a shockwave Ground Slam, a telegraphed Charge, and an Ember Nova spread.',
+        desc: 'A mountain that learned to move. Slow, enormous, and utterly unbothered.',
+    },
+});
+
 // Batch 3b: every attack/special is startup -> active -> recovery,
 // not an instant hit. Startup is the visible tell an opponent reacts to;
 // active is the (usually short) hitbox window; recovery is the whiff-
@@ -3489,7 +3524,13 @@ const FRAME_DATA = {
     Nyx:       { basic: { startup: 9,  active: 5, recovery: 15 }, special: { startup: 12, active: 6, recovery: 18 } },
     Ignis:     { basic: { startup: 4,  active: 6, recovery: 10 }, special: { startup: 10, active: 5, recovery: 16 } },
     Aurelia:   { basic: { startup: 9,  active: 2, recovery: 12 }, special: { startup: 14, active: 3, recovery: 18 } },
-    Thorne:    { basic: { startup: 11, active: 4, recovery: 17 }, special: { startup: 13, active: 6, recovery: 19 } }
+    Thorne:    { basic: { startup: 11, active: 4, recovery: 17 }, special: { startup: 13, active: 6, recovery: 19 } },
+    // Batch 17: Karrigos. Startups are far longer than anything on the roster
+    // (Draven, the slowest fighter, is 16/20) — that IS the boss design: every
+    // attack has a big readable wind-up you're meant to see coming and punish,
+    // and a long recovery that rewards you for spacing rather than trading.
+    // Difficulty tiers shorten these via `telegraphMult`, not by editing this.
+    Karrigos:  { basic: { startup: 26, active: 8, recovery: 34 }, special: { startup: 38, active: 10, recovery: 42 } }
 };
 // Basic-attack cycle (max of S+A+R and cooldown) x current dmg gives the
 // worst-case (100% uptime, no misses) raw DPS — recomputed against the
@@ -4464,7 +4505,11 @@ class Fighter {
         const fd = FRAME_DATA[this.name][kind];
         this.atkState = 'startup';
         this.atkKind = kind;
-        this.atkStateTimer = fd.startup;
+        // Batch 17: `telegraphMult` (boss only, 1 for everyone else) scales the
+        // WIND-UP only, never the active or recovery windows — so a higher
+        // difficulty makes the boss's tells harder to react to without also
+        // shrinking the punish window that makes the fight fair.
+        this.atkStateTimer = fd.startup * (this.telegraphMult || 1);
         this.atkOpponent = opponent;
         this.hitLanded = false; // Batch 10: tracked through to the active->recovery transition below to decide whiff vs already-covered-by-impact-sound
         sfxWindup(this.name, kind);
@@ -4522,8 +4567,15 @@ class Fighter {
         const angle = Math.atan2(this.fy, this.fx);
         this.effects.push({ type: this.atkType, life: 14, maxLife: 14, angle, range: this.attackRange, halfAngle: this.halfAngle });
 
-        if (inMeleeCone(this, opponent, this.attackRange, this.halfAngle)) {
-            opponent.takeDamage(this.attackDmg, this);
+        // Batch 16/17: a co-op boss's melee sweep is wide enough that it should
+        // catch anyone standing in it, not just the one target it committed to
+        // at wind-up — otherwise two players could stand shoulder to shoulder
+        // and one would be immune. Outside co-op getExtraCombatTargets is empty,
+        // so this stays a single-target check exactly as before.
+        for (const t of [opponent, ...getExtraCombatTargets(this)]) {
+            if (inMeleeCone(this, t, this.attackRange, this.halfAngle)) {
+                t.takeDamage(this.attackDmg, this);
+            }
         }
     }
 
@@ -4560,6 +4612,64 @@ class Fighter {
                 });
                 this.muzzleFlash = 8;
                 spawnMuzzleFlash(ox, oy, this.z + MUZZLE_HEIGHT, '#c4b5fd');
+                break;
+            }
+            // --- Batch 17: Karrigos' three attacks, cycled so the fight has a
+            // readable rhythm you can learn (slam -> charge -> nova) rather than
+            // random pressure. Each hits BOTH players where that makes sense —
+            // it's a co-op boss, so an attack only one player has to respect
+            // wouldn't create shared problems to solve.
+            case 'titan': {
+                this.titanMove = ((this.titanMove || 0) + 1) % 3;
+                // Everyone the boss can legitimately hit — resolved through the
+                // Batch 16 seam so this doesn't hardcode player1/player2.
+                const victims = [opponent, ...getExtraCombatTargets(this)].filter(isAlive);
+                if (this.titanMove === 0) {
+                    // GROUND SLAM: a wide shockwave centred on the boss. Punishes
+                    // standing next to it; the answer is to back off during the
+                    // long wind-up.
+                    this.effects.push({ type: 'shockwaveRing', r: 14, max: 240, color: '249,115,22' });
+                    cameraShakeMag = Math.max(cameraShakeMag, 22);
+                    for (const v of victims) {
+                        if (distBetween(this, v) < 240 && v.invulnFrames <= 0) {
+                            v.takeDamage(this.attackDmg * 1.15, this);
+                            const kx = v.x - this.x, ky = v.y - this.y, kl = Math.hypot(kx, ky) || 1;
+                            v.teleportTo((kx / kl) * 90, (ky / kl) * 90);
+                            v.hitstunTimer = Math.max(v.hitstunTimer, 26);
+                        }
+                    }
+                } else if (this.titanMove === 1) {
+                    // CHARGE: closes the gap on its current target and hits hard
+                    // in a line. The answer is to dodge sideways, not backwards.
+                    const dx = opponent.x - this.x, dy = opponent.y - this.y, dl = Math.hypot(dx, dy) || 1;
+                    this.setFacing(dx, dy);
+                    this.teleportTo(dx - (dx / dl) * 40, dy - (dy / dl) * 40);
+                    this.effects.push({ type: 'shockwaveRing', r: 8, max: 110, color: '253,186,116' });
+                    cameraShakeMag = Math.max(cameraShakeMag, 16);
+                    for (const v of victims) {
+                        if (distBetween(this, v) < 120 && v.invulnFrames <= 0) {
+                            v.takeDamage(this.attackDmg * 1.4, this);
+                            v.hitstunTimer = Math.max(v.hitstunTimer, 22);
+                        }
+                    }
+                } else {
+                    // EMBER NOVA: a ring of projectiles, so hiding at range isn't
+                    // free either. Reuses the ordinary projectile struct, so these
+                    // collide with geometry and can be dodged like any shot.
+                    const base = Math.atan2(this.fy, this.fx);
+                    for (let k = -3; k <= 3; k++) {
+                        const a = base + k * 0.26;
+                        const v = projectileVelocity(6.5, Math.cos(a), Math.sin(a), 0);
+                        this.projectiles.push({
+                            x: this.x + this.width / 2 + Math.cos(a) * 34,
+                            y: this.y + this.height / 2 + Math.sin(a) * 34,
+                            vx: v.vx, vy: v.vy, vz: 0, big: true,
+                            damage: this.attackDmg * 0.75, color: '#f97316', z: this.z + MUZZLE_HEIGHT,
+                        });
+                    }
+                    this.muzzleFlash = 10;
+                    spawnMuzzleFlash(this.x + this.width / 2, this.y + this.height / 2, this.z + MUZZLE_HEIGHT, '#f97316');
+                }
                 break;
             }
             case 'shockwave': { // Gorgonok — Seismic Slam: shorter AOE that LAUNCHES the enemy away, resetting the fight.
@@ -4644,7 +4754,7 @@ class Fighter {
     // to it. Called once, right after construction, from startRound().
     initMesh() {
         const group = MESH_BUILDERS[this.name](this.color);
-        addRimOutline(group, this.color);
+        addRimOutline(group, this.color, this.isBossEntity ? { color: '#140f0c', scale: 1.04 } : undefined);
         group.userData.specialAnim = SPECIAL_ANIMS[this.cfg.special] || null; // distinct, more elaborate motion for the special (vs the basic weaponAnim)
 
         // Per-attack animation: capture each weapon arm's rest shoulder
@@ -5018,8 +5128,19 @@ function makeNameSprite(text, color) {
 // free), add a slightly-scaled BackSide clone sharing the same geometry.
 // Front faces of the real mesh still win the depth test everywhere except
 // right at the silhouette edge, which is exactly where a rim should show.
-function addRimOutline(group, colorHex) {
-    const outlineColor = new THREE.Color(colorHex).offsetHSL(0, 0, 0.25).getHex();
+// `opts.color` overrides the derived rim colour and `opts.scale` its thickness.
+// Both exist for Batch 17's boss: this shell is an UNLIT MeshBasicMaterial, so
+// it renders at flat full brightness regardless of scene lighting, and the
+// default (body colour lightened 25%) on a 1.5x-scaled boss with chunky limbs
+// produced a thick pale-cream border that swamped the actual stone body and made
+// the whole boss read as beige plastic. A dark, tighter rim instead gives it a
+// crisp silhouette that holds up on both pale and dark maps.
+function addRimOutline(group, colorHex, opts) {
+    opts = opts || {};
+    const outlineColor = opts.color !== undefined
+        ? new THREE.Color(opts.color).getHex()
+        : new THREE.Color(colorHex).offsetHSL(0, 0, 0.25).getHex();
+    const scale = opts.scale || 1.08;
     const mat = getCachedMaterial(`rimOutline:${outlineColor}`, () => new THREE.MeshBasicMaterial({ color: outlineColor, side: THREE.BackSide }));
     const targets = [];
     group.traverse(node => { if (node.isMesh && node.castShadow) targets.push(node); });
@@ -5027,7 +5148,7 @@ function addRimOutline(group, colorHex) {
         const outline = new THREE.Mesh(node.geometry, mat);
         outline.position.copy(node.position);
         outline.rotation.copy(node.rotation);
-        outline.scale.copy(node.scale).multiplyScalar(1.08);
+        outline.scale.copy(node.scale).multiplyScalar(scale);
         node.parent.add(outline);
     }
 }
@@ -5571,7 +5692,91 @@ function buildThorneMesh(color) {
     return g;
 }
 
+// --- Batch 17: Karrigos, the Hollow Titan. Co-op boss.
+// Built from the SAME buildHumanoidBase rig as the roster (scaled up and
+// re-skinned) rather than new geometry: the rig already carries shoulder
+// pivots, hand sockets and the animation hooks every attack type drives, so
+// reusing it means the boss inherits all of that for free and only its
+// silhouette and materials are new work. A golem also isn't on the roster
+// thematically — none of the ten are giants — so it reads as a boss without
+// needing a new art pipeline. ---
+function buildKarrigosMesh(color) {
+    const g = buildHumanoidBase(color, {
+        trimColor: '#241d18',
+        // Heavy, wide, low-slung: broad torso, thick limbs, small head — the
+        // proportions do most of the "this is not a duellist" work.
+        torsoD: 16, torsoW: 26, torsoH: 26, legW: 9, legH: 18, legGap: 6,
+        armW: 8, armLen: 20, headR: 6,
+        bodyMatOpts: { roughness: 0.95, metalness: 0.05 }, // dead stone, not armour
+    });
+    // Massive stone fists. Deliberately NOT buildFistProp — that one bolts on
+    // bright gold emissive knuckles (right for Ignis' burning gauntlets, wrong
+    // for a golem, and on screen it read as pale cream plastic). These are just
+    // rough rock blocks in the body's own stone tone.
+    const rockMat = makeMat('#332e29', { roughness: 0.98, metalness: 0.02 });
+    const buildStoneFist = () => {
+        const fg = new THREE.Group();
+        const knuckle = new THREE.Mesh(new THREE.BoxGeometry(11, 11, 11), rockMat);
+        knuckle.position.x = 5; knuckle.castShadow = true;
+        const spur = new THREE.Mesh(new THREE.BoxGeometry(4, 8, 8), rockMat);
+        spur.position.x = 11;
+        fg.add(knuckle, spur);
+        fg.userData.mats = [rockMat];
+        return fg;
+    };
+    const fistL = buildStoneFist(), fistR = buildStoneFist();
+    g.userData.armPos.hand.add(fistL);
+    g.userData.armNeg.hand.add(fistR);
+    g.userData.bodyMats.push(rockMat);
+
+    // Glowing ember seams: the cracks where the stone has split.
+    //
+    // Deliberately an UNLIT MeshBasicMaterial rather than a lit/emissive one.
+    // The arenas are brightly lit (sun + hemisphere + ambient) and the renderer
+    // tone-maps at exposure 1.1, which multiplies a lit surface's albedo by
+    // roughly 3x here — a lit orange plus emissive clipped straight to
+    // pale yellow-white, so the "embers" rendered as blank beige panels. Unlit
+    // means the colour on screen is exactly the colour chosen, which is the only
+    // reliable way to get a hot-crack read against every map's lighting.
+    const emberMat = new THREE.MeshBasicMaterial({ color: hexNum('#ff4d0d') });
+    const seams = [];
+    [[0, 34, 0, 15, 1.6], [0, 26, 7, 9, 1.2], [0, 26, -7, 9, 1.2], [0, 44, 0, 7, 1.1]].forEach(([x, y, z, w, h]) => {
+        const seam = new THREE.Mesh(new THREE.BoxGeometry(1.5, h, w), emberMat);
+        seam.position.set(8.2 + x, y, z);
+        g.add(seam);
+        seams.push(seam);
+    });
+    // Cracked shoulder plating, so the silhouette reads as armoured rock.
+    const plateMat = makeMat('#241f1c', { roughness: 0.98, metalness: 0.02 });
+    for (const side of [-1, 1]) {
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(13, 7, 11), plateMat);
+        plate.position.set(0, 40, side * 13);
+        plate.castShadow = true;
+        g.add(plate);
+    }
+    g.userData.bodyMats.push(plateMat);
+
+    // A hollow, ember-lit skull: two glowing eyes in a dark head.
+    for (const side of [-1, 1]) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), emberMat);
+        eye.position.set(6, 48, side * 2.4);
+        g.add(eye);
+    }
+    g.userData.emberSeams = seams;
+    g.userData.emberMat = emberMat;
+
+    g.userData.weapon = [fistL, fistR];
+    g.userData.weaponArm = [g.userData.armPos, g.userData.armNeg];
+    // Slow two-armed overhead smash for the basic — long, obvious, punishable.
+    g.userData.weaponAnim = { type: 'swing', backDeg: -70, fwdDeg: 120, twistDeg: 10 };
+    // Scale the whole rig up. Done here rather than by inflating every
+    // dimension above so the proportions stay the tuned ones.
+    g.scale.setScalar(1.5);
+    return g;
+}
+
 const MESH_BUILDERS = {
+    Karrigos: buildKarrigosMesh,
     Kaelen: buildKaelenMesh,
     Lyra: buildLyraMesh,
     Gorgonok: buildGorgonokMesh,
@@ -7377,10 +7582,21 @@ function disposeBoss() {
 // Build the third combatant from a config name, positioned at arena centre so
 // both players start with it in front of them. `scale` multiplies HP/damage
 // (difficulty tiers for the boss, wave number for Survival).
-function spawnCoopEntity(name, hpMult, dmgMult) {
+function spawnCoopEntity(name, hpMult, dmgMult, opts) {
+    opts = opts || {};
     disposeBoss();
     const f = new Fighter(name, ARENA_CX - 20, ARENA_CY - 20, false, true); // isBot: reuses the existing AI pipeline
     f.isBossEntity = true;
+    // A visually much larger body needs a matching hurtbox, or shots that
+    // clearly connect on screen would pass through its edges.
+    if (opts.hitboxSize) {
+        f.width = f.height = opts.hitboxSize;
+        f.x = ARENA_CX - opts.hitboxSize / 2;
+        f.y = ARENA_CY - opts.hitboxSize / 2;
+    }
+    // Scales the WIND-UP of its attacks only (see tryStartAction) — this is the
+    // difficulty knob that actually changes how hard the fight is to read.
+    f.telegraphMult = opts.telegraphMult || 1;
     // Applied AFTER construction, on top of the base config. The Fighter
     // constructor already skipped player upgrade multipliers for a boss entity
     // (see `um` there), so these are the only multipliers in play — the two
@@ -7403,10 +7619,14 @@ function spawnBossForFight() {
     const tier = Math.max(0, DIFFICULTY_ORDER.indexOf(botDifficulty));
     const hpMult = BOSS_HP_BASE_MULT * (1 + tier * 0.4);
     const dmgMult = 1 + tier * 0.25;
-    // Batch 17 registers Karrigos in BOSS_MAP; until then fall back to a heavy
-    // roster character so this batch stands up on its own.
+    // Easy leaves the full wind-up; Insane cuts it to 70%. Deliberately NOT
+    // steeper: at 0.15/tier the basic's 26-frame tell dropped to 14.3, which is
+    // shorter than Draven's 16 and would have made the boss's attacks less
+    // readable than an ordinary fighter's — the opposite of the design. At
+    // 0.10/tier the floor is 18.2, still the longest tell in the game.
+    const telegraphMult = 1 - tier * 0.10;
     const name = BOSS_MAP[BOSS_NAME] ? BOSS_NAME : 'Gorgonok';
-    return spawnCoopEntity(name, hpMult, dmgMult);
+    return spawnCoopEntity(name, hpMult, dmgMult, { telegraphMult, hitboxSize: 60 });
 }
 // Survival Waves' next challenger: an ordinary roster fighter, scaled by how
 // far the run has got. Reuses botDecide unchanged — these are normal characters
