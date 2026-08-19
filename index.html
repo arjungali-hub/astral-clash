@@ -1462,6 +1462,12 @@ const TIME_ATTACK_KOS = 3;
 let koTally = { p1: 0, p2: 0 };
 const RESPAWN_INVULN = 60; // frames of i-frames after respawning, so you can't be spawn-camped
 
+// Batch 18: Survival Waves pacing. A short breather between waves so a cleared
+// wave feels like an accomplishment and you get a moment to reposition, rather
+// than the next challenger materialising on top of you mid-swing.
+const WAVE_BREAK_FRAMES = 150; // ~2.5s
+let waveBreakTimer = 0;
+
 // Which player's account the Shop modal is currently showing. Declared HERE,
 // not next to buildShop() far below, because refreshCoinDisplays() reads it and
 // runs during initial load — a `let` further down the file is still in its
@@ -6754,6 +6760,10 @@ document.getElementById('btn-play-again').addEventListener('click', () => {
     p1Stage = 'pick'; p2Stage = 'pick'; p1Preview = null; p2Preview = null;
     p1Choice = null; p2Choice = null;
     refreshBotUI('p1'); refreshBotUI('p2'); // restores grid-vs-bot-card display + difficulty visibility for each side
+    // Batch 18: drop mode props on the way out, same as Return to Menu already
+    // did. Without this, a co-op boss's mesh (or Zone Control's ring) stayed in
+    // the scene behind the select screen and was still there in the next match.
+    disposeBoss(); disposeZoneMesh();
     closeAllModals();
     showScreen('select');
     gameState = "MENU";
@@ -7030,6 +7040,7 @@ function startMatch(mapOverride) {
     koTally = { p1: 0, p2: 0 };
     zoneHolder = null;
     waveNumber = 0;
+    waveBreakTimer = 0;
     coopResultText = '';
     startRound(true); // the first round of a match opens with the drop-in intro cinematic
 }
@@ -7112,6 +7123,20 @@ function drawBossHUD() {
     hudCtx.fillText(label, VIRTUAL_W / 2, y - 8);
     hudCtx.font = hudFont(12); hudCtx.fillStyle = '#e2e8f0';
     hudCtx.fillText(`${Math.max(0, Math.ceil(bossEntity.hp))} / ${bossEntity.maxHp}`, VIRTUAL_W / 2, y + BH + 14);
+    hudCtx.textAlign = 'left';
+}
+
+// Batch 18: the between-wave breather readout. Occupies the same top-centre slot
+// the boss bar uses, so the eye doesn't have to move to find "what's next".
+function drawWaveBreakHUD() {
+    const y = 150;
+    hudCtx.textAlign = 'center';
+    hudCtx.font = hudFont(20, true);
+    hudCtx.fillStyle = '#4ade80';
+    hudCtx.fillText(`Wave ${waveNumber} cleared`, VIRTUAL_W / 2, y);
+    hudCtx.font = hudFont(13);
+    hudCtx.fillStyle = '#fde68a';
+    hudCtx.fillText(`Wave ${waveNumber + 1} incoming in ${Math.max(1, Math.ceil(waveBreakTimer / 60))}...`, VIRTUAL_W / 2, y + 22);
     hudCtx.textAlign = 'left';
 }
 
@@ -7329,6 +7354,7 @@ function drawHUD() {
     // the conventional boss-bar placement, and the one region the two
     // side panels leave free in both split and full-screen layouts.
     if (bossEntity) drawBossHUD();
+    else if (matchMode === 'survival' && waveBreakTimer > 0) drawWaveBreakHUD();
 
     const botNote = [player1.isBot ? 'P1 Bot' : null, player2.isBot ? 'P2 Bot' : null].filter(Boolean).join(' / ');
     const drawShared = () => {
@@ -7585,14 +7611,16 @@ function disposeBoss() {
 function spawnCoopEntity(name, hpMult, dmgMult, opts) {
     opts = opts || {};
     disposeBoss();
-    const f = new Fighter(name, ARENA_CX - 20, ARENA_CY - 20, false, true); // isBot: reuses the existing AI pipeline
+    const at = opts.spawnAt || { x: ARENA_CX, y: ARENA_CY };
+    const f = new Fighter(name, at.x - 20, at.y - 20, false, true); // isBot: reuses the existing AI pipeline
     f.isBossEntity = true;
     // A visually much larger body needs a matching hurtbox, or shots that
     // clearly connect on screen would pass through its edges.
     if (opts.hitboxSize) {
         f.width = f.height = opts.hitboxSize;
-        f.x = ARENA_CX - opts.hitboxSize / 2;
-        f.y = ARENA_CY - opts.hitboxSize / 2;
+        f.x = at.x - opts.hitboxSize / 2;
+        f.y = at.y - opts.hitboxSize / 2;
+        f.z = groundLevelAt(at.x, at.y); // re-seat: the constructor measured ground with the old footprint
     }
     // Scales the WIND-UP of its attacks only (see tryStartAction) — this is the
     // difficulty knob that actually changes how hard the fight is to read.
@@ -7639,7 +7667,31 @@ function spawnNextWave() {
     const tier = Math.max(0, DIFFICULTY_ORDER.indexOf(botDifficulty));
     const hpMult = 1.6 * (1 + 0.15 * waveNumber) * (1 + tier * 0.2);
     const dmgMult = (1 + 0.10 * waveNumber) * (1 + tier * 0.15);
-    return spawnCoopEntity(c.name, hpMult, dmgMult);
+    // Batch 18: come in from the corner FURTHEST from both players rather than
+    // at arena centre — spawning a fresh enemy in someone's face is the cheapest
+    // possible source of unavoidable damage, and it reads as unfair rather than
+    // as difficulty.
+    return spawnCoopEntity(c.name, hpMult, dmgMult, { spawnAt: farthestSpawnFromPlayers() });
+}
+// Of the arena's four inset corners, the one whose nearest player is furthest
+// away. Corners (rather than the map's own spawn points) so this works the same
+// on every map without needing per-map wave-spawn data.
+function farthestSpawnFromPlayers() {
+    const inset = 140;
+    const corners = [
+        { x: ARENA_LEFT + inset, y: ARENA_TOP + inset },
+        { x: ARENA_RIGHT - inset, y: ARENA_TOP + inset },
+        { x: ARENA_LEFT + inset, y: ARENA_BOTTOM - inset },
+        { x: ARENA_RIGHT - inset, y: ARENA_BOTTOM - inset },
+    ];
+    const live = [player1, player2].filter(isAlive);
+    if (!live.length) return corners[0];
+    let best = corners[0], bestScore = -Infinity;
+    for (const c of corners) {
+        const score = Math.min(...live.map(p => Math.hypot((p.x + p.width / 2) - c.x, (p.y + p.height / 2) - c.y)));
+        if (score > bestScore) { bestScore = score; best = c; }
+    }
+    return best;
 }
 
 // The boss went down. Boss Fight ends in victory; Survival Waves counts the
@@ -7649,8 +7701,13 @@ function onBossDefeated() {
         waveNumber++;
         addCoins('p1', COIN_AWARDS.survivalPerWave);
         addCoins('p2', COIN_AWARDS.survivalPerWave);
-        showToast(`Wave ${waveNumber} cleared`);
-        spawnNextWave();
+        showToast(`Wave ${waveNumber} cleared  ·  +${COIN_AWARDS.survivalPerWave} coins each`);
+        sfxRoundEnd();
+        // Batch 18: clear the field and start the breather. The next challenger
+        // is spawned by the timer in stepFight, not here, so the players get a
+        // moment to reposition instead of the next wave landing mid-swing.
+        disposeBoss();
+        waveBreakTimer = WAVE_BREAK_FRAMES;
         return false; // the run continues
     }
     endCoopMatch(true, `${bossEntity.name} defeated with ${Math.max(0, Math.ceil(player1.hp))} and ${Math.max(0, Math.ceil(player2.hp))} HP left.`);
@@ -7667,8 +7724,8 @@ function resolveCoopMode() {
     if (!isAlive(player1) || !isAlive(player2)) {
         const fallen = !isAlive(player1) ? player1.name : player2.name;
         endCoopMatch(false, matchMode === 'survival'
-            ? `${fallen} fell on wave ${waveNumber + 1}. Waves cleared: ${waveNumber}.`
-            : `${fallen} fell. ${bossEntity ? bossEntity.name + ' had ' + Math.max(0, Math.ceil(bossEntity.hp)) + ' HP left.' : ''}`);
+            ? `${fallen} fell on wave ${waveNumber + 1}.  <b>Waves cleared: ${waveNumber}</b>`
+            : `${fallen} fell. ${bossEntity ? bossEntity.name + ' had ' + Math.max(0, Math.ceil(bossEntity.hp)) + ' HP (' + Math.round(100 * bossEntity.hp / bossEntity.maxHp) + '%) left.' : ''}`);
         return true;
     }
     if (bossEntity && !isAlive(bossEntity)) return onBossDefeated();
@@ -7683,6 +7740,13 @@ function stepFight(dt) {
     // already decided doesn't run another frame of fighting first.
     if (isContinuousMode() && resolveContinuousMode()) return;
     if (isCoopMode() && resolveCoopMode()) return;
+    // Batch 18: Survival's between-wave breather. Ticked here (not in
+    // onBossDefeated) so the countdown runs on real frames and the next
+    // challenger arrives after the players have had a beat to reposition.
+    if (matchMode === 'survival' && !bossEntity && waveBreakTimer > 0) {
+        waveBreakTimer -= dt;
+        if (waveBreakTimer <= 0) { waveBreakTimer = 0; spawnNextWave(); sfxRoundStart(); }
+    }
 
     if (!crushing) {
         player1.update(player2, dt);
@@ -7910,6 +7974,9 @@ if (DEBUG) {
         BOSS_MAP, BOSS_NAME, LAYER_BOSS_BODY, camP1, camP2,
         get bossEntity() { return bossEntity; },
         get waveNumber() { return waveNumber; },
+        get waveBreakTimer() { return waveBreakTimer; },
+        WAVE_BREAK_FRAMES, farthestSpawnFromPlayers,
+        ARENA_LEFT, ARENA_RIGHT, ARENA_TOP, ARENA_BOTTOM, ARENA_CX, ARENA_CY,
         get botDifficulty() { return botDifficulty; },
         setBotDifficulty(d) { botDifficulty = d; },
         get matchMode() { return matchMode; },
