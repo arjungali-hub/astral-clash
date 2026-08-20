@@ -1467,6 +1467,13 @@ const RESPAWN_INVULN = 60; // frames of i-frames after respawning, so you can't 
 // than the next challenger materialising on top of you mid-swing.
 const WAVE_BREAK_FRAMES = 150; // ~2.5s
 let waveBreakTimer = 0;
+// Fraction of max HP each player recovers per wave cleared, on request.
+// Deliberately PARTIAL rather than a full top-up: waves scale up, so incoming
+// damage per wave eventually outgrows a fixed 30% patch, which is what gives a
+// run a natural end instead of turning it into an unbounded grind. It's also the
+// only place in the game that restores HP — the no-healing rule still holds
+// everywhere else (see the tutorial's No Healing card).
+const WAVE_HEAL_PCT = 0.30;
 
 // Which player's account the Shop modal is currently showing. Declared HERE,
 // not next to buildShop() far below, because refreshCoinDisplays() reads it and
@@ -1962,6 +1969,16 @@ let mapRng = Math.random; // reseeded per map in loadMap()
 // because it's needed immediately below to trim render cost for phone GPUs —
 // see PIXEL_RATIO/antialias/shadowMap.enabled just under this.
 const TOUCH_UI = !!(window.matchMedia && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches) && navigator.maxTouchPoints > 0);
+// Rebinding is a keyboard-only concept — the touch pads are fixed-function, so
+// on a touch device the whole screen is a dead end that only advertises controls
+// the player doesn't have. Hidden rather than disabled: there's nothing useful
+// behind it to hint at. (The pause screen's Rebind shortcut goes too.)
+if (TOUCH_UI) {
+    for (const id of ['btn-open-rebind', 'btn-pause-rebind']) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    }
+}
 
 // Batch 8: the canvas was being sized straight from getBoundingClientRect()
 // CSS pixels, so on any HiDPI display (2x, 3x) the game rendered at half or
@@ -3481,6 +3498,20 @@ const CHARACTERS = [
       special: 'bramble', specialName: 'Bramble Lash', specialDesc: 'A wide thorn-arc that ensnares (roots) the enemy in place.',
       desc: 'Longest melee reach, controls space.' }
 ];
+// Batch 22: present the roster in PRICE order — the three free starters first,
+// then unlocks cheapest-to-priciest — so the grid reads as a progression ladder
+// instead of an arbitrary sequence with locked cards scattered through it.
+//
+// Sorted in place rather than at render time on purpose: the select-screen
+// hotkeys are POSITIONAL (`P1_KEYS[i]` pairs with `CHARACTERS[i]`, and the
+// keyboard handler resolves a key back via `P1_KEYS.indexOf(k)`), so reordering
+// the array reorders the hotkeys to match automatically and keeps the two in
+// step. A display-only sort would have silently desynced card labels from the
+// keys that actually select them. Everything else that touches characters is
+// name-keyed (CHAR_MAP, FRAME_DATA, MESH_BUILDERS, SFX_TYPE_BY_CHAR), so it's
+// unaffected. Array#sort is stable, so equal-priced entries keep their
+// hand-authored relative order.
+CHARACTERS.sort((a, b) => (UNLOCK_COST[a.name] || 0) - (UNLOCK_COST[b.name] || 0));
 const CHAR_MAP = Object.fromEntries(CHARACTERS.map(c => [c.name, c]));
 
 // --- Batch 17: Karrigos, the Hollow Titan (co-op boss).
@@ -7135,8 +7166,10 @@ function drawWaveBreakHUD() {
     hudCtx.fillStyle = '#4ade80';
     hudCtx.fillText(`Wave ${waveNumber} cleared`, VIRTUAL_W / 2, y);
     hudCtx.font = hudFont(13);
+    hudCtx.fillStyle = '#86efac';
+    hudCtx.fillText(`+${Math.round(WAVE_HEAL_PCT * 100)}% HP recovered`, VIRTUAL_W / 2, y + 20);
     hudCtx.fillStyle = '#fde68a';
-    hudCtx.fillText(`Wave ${waveNumber + 1} incoming in ${Math.max(1, Math.ceil(waveBreakTimer / 60))}...`, VIRTUAL_W / 2, y + 22);
+    hudCtx.fillText(`Wave ${waveNumber + 1} incoming in ${Math.max(1, Math.ceil(waveBreakTimer / 60))}...`, VIRTUAL_W / 2, y + 40);
     hudCtx.textAlign = 'left';
 }
 
@@ -7701,7 +7734,19 @@ function onBossDefeated() {
         waveNumber++;
         addCoins('p1', COIN_AWARDS.survivalPerWave);
         addCoins('p2', COIN_AWARDS.survivalPerWave);
-        showToast(`Wave ${waveNumber} cleared  ·  +${COIN_AWARDS.survivalPerWave} coins each`);
+        // Partial heal for surviving the wave (see WAVE_HEAL_PCT). hpGhost is
+        // snapped up too: it normally LAGS hp to draw the "you just lost this
+        // much" trail on damage, so left alone it would render the heal as a
+        // phantom missing chunk.
+        let healed = 0;
+        for (const p of [player1, player2]) {
+            const before = p.hp;
+            p.hp = Math.min(p.maxHp, p.hp + p.maxHp * WAVE_HEAL_PCT);
+            p.hpGhost = p.hp;
+            healed = Math.max(healed, p.hp - before);
+            if (p.hp > before) p.effects.push({ type: 'shockwaveRing', r: 6, max: 62, color: '74,222,128' });
+        }
+        showToast(`Wave ${waveNumber} cleared  ·  +${COIN_AWARDS.survivalPerWave} coins each  ·  +${Math.round(WAVE_HEAL_PCT * 100)}% HP`);
         sfxRoundEnd();
         // Batch 18: clear the field and start the breather. The next challenger
         // is spawned by the timer in stepFight, not here, so the players get a
