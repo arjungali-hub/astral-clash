@@ -951,7 +951,8 @@
                         </div>
                         <div class="tutorial-card">
                             <h4>Co-op: Boss &amp; Survival</h4>
-                            <p>Two co-op modes put you and Player 2 on the <b>same team</b>. <b>Boss Fight</b> pits you against <b>Karrigos, the Hollow Titan</b> — enormous, slow, and enormously strong. Every one of its attacks has a long, obvious wind-up: a shockwave Ground Slam, a Charge at whoever's closest, and an Ember Nova spread. Watch the tell, get clear, then punish the recovery. It has a huge health pool, so you'll need to trade patiently rather than rush it. <b>Survival Waves</b> throws an endless run of ever-tougher challengers at you, one at a time, paying coins for every wave you clear. In both, the run ends the moment <b>either</b> of you falls — so keep each other alive. The Bot difficulty setting scales the boss.</p>
+                            <p>Two co-op modes put you and Player 2 on the <b>same team</b>. <b>Boss Fight</b> pits you against <b>Karrigos, the Hollow Titan</b> — enormous, slow, and enormously strong. Every one of its attacks has a long, obvious wind-up: a shockwave Ground Slam, a Charge at whoever's closest, and an Ember Nova spread. Watch the tell, get clear, then punish the recovery.</p>
+                            <p><b>Survival Waves</b> sends <b>squads</b> of lesser creatures at you — darting <b>Grint</b>, fire-spitting <b>Slagling</b>, and heavy <b>Hollowkin</b> — with more of them each wave. Clear a wave to bank coins and recover <b>30% of your health</b>. Every <b>5th wave</b> is a Karrigos boss wave instead. In both modes the run ends the moment <b>either</b> of you falls, so keep each other alive; the Bot difficulty setting scales everything.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Game Modes</h4>
@@ -1438,9 +1439,17 @@ function isCoopMode() { return !!modeInfo().coop; }
 // code that assumes a small fixed cast, which is a much bigger change than
 // this needs. Survival Waves gets its "endless enemies" by reusing this one
 // slot sequentially rather than by holding many at once.
-let bossEntity = null;
+// Batch 23: co-op enemies are now a LIST, not a single slot. Survival needs
+// several weaker enemies at once, which the one-slot design (Batch 16) couldn't
+// express. `bossEntity` is kept as a derived convenience — it means "the single
+// notable enemy, if there is exactly one" (a Boss Fight boss, or a boss wave) —
+// so the boss-bar HUD and the boss-specific paths keep reading naturally, while
+// everything that must handle a crowd iterates `coopEnemies`.
+let coopEnemies = [];
 let waveNumber = 0;         // Survival Waves: how many have been cleared
 let coopResultText = '';    // filled by endCoopMatch for the game-over screen
+let isBossWave = false;     // true while the current Survival wave is a boss wave
+function liveEnemies() { return coopEnemies.filter(e => e && e.hp > 0); }
 // Co-op-only combatants, kept OUT of CHARACTERS so buildGrid (which iterates
 // CHARACTERS unconditionally) can never turn one into a pickable fighter.
 // Populated by Batch 17; declared here because the Fighter constructor reads it.
@@ -1830,7 +1839,8 @@ function synthNoise(duration, opts = {}) {
 // identity too, so impact/whiff timbre matches what's on screen.
 const SFX_TYPE_BY_CHAR = { Kaelen: 'slash', Lyra: 'shard', Gorgonok: 'hammer', Voss: 'dagger', Draven: 'hammer', Seraphine: 'orb',
     Nyx: 'scythe', Ignis: 'punch', Aurelia: 'bolt', Thorne: 'whip',
-    Karrigos: 'hammer' }; // Batch 17: the boss lands like a falling rock — reuses the heaviest existing impact
+    Karrigos: 'hammer', // Batch 17: the boss lands like a falling rock — reuses the heaviest existing impact
+    Grint: 'dagger', Slagling: 'shard', Hollowkin: 'punch' }; // Batch 23: minions borrow the impact that matches their weapon
 const IMPACT_SFX = {
     slash: (pitch, peak) => { synthTone(520 * pitch, 0.12, { type: 'triangle', freqEnd: 260 * pitch, peak: peak * 0.5 }); synthNoise(0.08, { peak: peak * 0.3, filterFreq: 3000, filterType: 'highpass' }); },
     punch: (pitch, peak) => { synthTone(140 * pitch, 0.14, { type: 'sine', freqEnd: 60 * pitch, peak: peak * 0.7 }); synthNoise(0.07, { peak: peak * 0.4, filterFreq: 800, filterType: 'lowpass' }); },
@@ -3524,7 +3534,39 @@ const CHAR_MAP = Object.fromEntries(CHARACTERS.map(c => [c.name, c]));
 // BOSS_HP_BASE_MULT and the difficulty tier, so the real pool is thousands.
 // Reach is long (it's huge) and damage is high per hit, but every swing is
 // slow and telegraphed — see FRAME_DATA.Karrigos.
+// --- Batch 23: Survival-only enemies.
+// Purpose-built minions rather than reskinned roster fighters, on request: a
+// wave of "Thornes" reads as a mirror match gone wrong, whereas these are
+// obviously *other things* — and because they're only ever AI-controlled they
+// can be lopsided (very fast and fragile, or slow and shielded) in ways a
+// player-pickable character couldn't fairly be.
+//
+// They live in BOSS_MAP alongside Karrigos for the same load-bearing reason:
+// anything in CHARACTERS becomes a pickable fighter on the select screen.
+// Each is individually much weaker than a roster fighter — several at once is
+// the threat, not any one of them.
 Object.assign(BOSS_MAP, {
+    Grint: {
+        name: 'Grint', title: 'Scrapling', color: '#84cc16',
+        speed: 4.4, hp: 130, meterRateMult: 0.5,   // fastest thing in the game, dies to a stiff breeze
+        atkType: 'dagger', dmg: 16, range: 52, halfAngle: 45 * DEG, cooldown: 14,
+        special: 'dash', specialName: 'Skitter', specialDesc: 'Darts through its target.',
+        desc: 'Tiny, frantic, and never alone.',
+    },
+    Slagling: {
+        name: 'Slagling', title: 'Cinder Caster', color: '#fb923c',
+        speed: 2.4, hp: 150, meterRateMult: 0.6,   // ranged chip damage; forces you to close
+        atkType: 'shard', dmg: 14, range: 240, halfAngle: 16 * DEG, cooldown: 30,
+        special: 'volley', specialName: 'Cinder Spray', specialDesc: 'Spits a fan of molten shards.',
+        desc: 'Hangs back and lobs fire. Punish it for existing.',
+    },
+    Hollowkin: {
+        name: 'Hollowkin', title: 'Husk', color: '#64748b',
+        speed: 2.0, hp: 260, meterRateMult: 0.7,   // the anvil of a wave: soaks hits, hits back hard
+        atkType: 'punch', dmg: 26, range: 62, halfAngle: 42 * DEG, cooldown: 26,
+        special: 'shockwave', specialName: 'Collapse', specialDesc: 'A short shockwave that shoves you off.',
+        desc: 'Slow, heavy, and unbothered by your first few hits.',
+    },
     Karrigos: {
         // Very dark, desaturated stone. This has to be MUCH darker than it looks
         // in isolation: the arenas are brightly lit (sun + hemisphere + ambient)
@@ -3567,7 +3609,13 @@ const FRAME_DATA = {
     // attack has a big readable wind-up you're meant to see coming and punish,
     // and a long recovery that rewards you for spacing rather than trading.
     // Difficulty tiers shorten these via `telegraphMult`, not by editing this.
-    Karrigos:  { basic: { startup: 26, active: 8, recovery: 34 }, special: { startup: 38, active: 10, recovery: 42 } }
+    Karrigos:  { basic: { startup: 26, active: 8, recovery: 34 }, special: { startup: 38, active: 10, recovery: 42 } },
+    // Batch 23: Survival minions. Short windows across the board — they're meant
+    // to feel like pressure rather than like duels, and a long tell on something
+    // that dies in two hits would just read as it standing still.
+    Grint:     { basic: { startup: 4,  active: 3, recovery: 9  }, special: { startup: 6,  active: 4, recovery: 12 } },
+    Slagling:  { basic: { startup: 10, active: 2, recovery: 14 }, special: { startup: 14, active: 3, recovery: 20 } },
+    Hollowkin: { basic: { startup: 13, active: 5, recovery: 20 }, special: { startup: 18, active: 6, recovery: 26 } }
 };
 // Basic-attack cycle (max of S+A+R and cooldown) x current dmg gives the
 // worst-case (100% uptime, no misses) raw DPS — recomputed against the
@@ -3634,7 +3682,11 @@ function pickTarget(attacker, defaultOpponent) {
     // A human/teammate in co-op: the boss is the only valid target. Friendly
     // fire is deliberately off — you're on the same side, and a teammate who
     // can be shot by their partner is a worse experience, not a harder one.
-    return isAlive(bossEntity) ? bossEntity : defaultOpponent;
+    // Batch 23: aim at the NEAREST live enemy rather than a fixed one, so a
+    // player fighting a crowd swings at whatever is actually on top of them.
+    const foes = liveEnemies();
+    if (!foes.length) return defaultOpponent;
+    return foes.reduce((best, e) => distBetween(attacker, e) < distBetween(attacker, best) ? e : best);
 }
 
 // Extra bodies a fighter's projectiles should also be tested against, beyond
@@ -3647,7 +3699,10 @@ function getExtraCombatTargets(fighter) {
         // of them, so the other is the "extra".
         return [player1, player2].filter(f => isAlive(f) && f !== fighter);
     }
-    return isAlive(bossEntity) ? [bossEntity] : EMPTY_TARGETS;
+    // A player's shot can hit ANY live enemy, not just the one it was aimed at —
+    // firing into a crowd should connect with whatever it runs into.
+    const foes = liveEnemies();
+    return foes.length ? foes : EMPTY_TARGETS;
 }
 
 // A fighter's hurtbox spans this many units above their current z; a hit
@@ -5812,8 +5867,65 @@ function buildKarrigosMesh(color) {
     return g;
 }
 
+// --- Batch 23: Survival minion meshes. All three reuse buildHumanoidBase with
+// deliberately off-model proportions so they read as *not people* at a glance,
+// which matters when three of them are converging on you at once: Grint is
+// tiny and spindly, Slagling is a hunched lantern-carrier, Hollowkin is a
+// squat slab. Silhouette does the identification work, not detail. ---
+function buildGrintMesh(color) {
+    const g = buildHumanoidBase(color, {
+        trimColor: '#3f6212', torsoD: 5, torsoW: 7, torsoH: 12,
+        legW: 2.4, legH: 11, legGap: 2.4, armW: 2.2, armLen: 12, headR: 4.2,
+    });
+    const claw = buildDaggerProp('#d9f99d', '#84cc16');
+    g.userData.armPos.hand.add(claw);
+    g.userData.bodyMats.push(...claw.userData.mats);
+    g.userData.weapon = claw;
+    g.userData.weaponArm = g.userData.armPos;
+    g.userData.weaponAnim = { type: 'stab', reachDeg: 90, jabs: 2 };
+    g.scale.setScalar(0.72); // clearly smaller than a fighter
+    return g;
+}
+function buildSlaglingMesh(color) {
+    const g = buildHumanoidBase(color, {
+        trimColor: '#7c2d12', torsoD: 7, torsoW: 10, torsoH: 14,
+        legW: 3.2, legH: 10, armW: 2.8, armLen: 16, headR: 4.6,
+    });
+    // A held ember-orb it casts from. Unlit so it stays a hot point of light
+    // against every map's lighting (same reasoning as Karrigos' seams).
+    const orb = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.SphereGeometry(3.2, 10, 10), new THREE.MeshBasicMaterial({ color: hexNum('#ff6a1f') }));
+    core.position.x = 5;
+    orb.add(core);
+    g.userData.armPos.hand.add(orb);
+    g.userData.weapon = orb;
+    g.userData.weaponArm = g.userData.armPos;
+    g.userData.weaponAnim = { type: 'cast', raiseDeg: 70 };
+    g.scale.setScalar(0.86);
+    return g;
+}
+function buildHollowkinMesh(color) {
+    const g = buildHumanoidBase(color, {
+        trimColor: '#334155', torsoD: 13, torsoW: 20, torsoH: 17,
+        legW: 6.5, legH: 11, legGap: 5, armW: 6, armLen: 14, headR: 4.4,
+        bodyMatOpts: { roughness: 0.9, metalness: 0.08 },
+    });
+    const fist = buildFistProp('#94a3b8');
+    fist.scale.setScalar(1.25);
+    g.userData.armPos.hand.add(fist);
+    g.userData.bodyMats.push(...fist.userData.mats);
+    g.userData.weapon = fist;
+    g.userData.weaponArm = g.userData.armPos;
+    g.userData.weaponAnim = { type: 'swing', backDeg: -30, fwdDeg: 100 };
+    g.scale.setScalar(1.08);
+    return g;
+}
+
 const MESH_BUILDERS = {
     Karrigos: buildKarrigosMesh,
+    Grint: buildGrintMesh,
+    Slagling: buildSlaglingMesh,
+    Hollowkin: buildHollowkinMesh,
     Kaelen: buildKaelenMesh,
     Lyra: buildLyraMesh,
     Gorgonok: buildGorgonokMesh,
@@ -7106,9 +7218,12 @@ function startRound(intro) {
     if (matchMode === 'zone') buildZoneMesh(); else disposeZoneMesh();
     // Batch 16: the co-op challenger. Disposed for every other mode so a boss
     // can never linger into a PvP match.
+    // Batch 23: clear the field FIRST. spawnCoopEntity now appends (a wave is a
+    // group), so without this an explicit rematch would stack the new match's
+    // enemies on top of the old ones.
+    disposeBoss();
     if (matchMode === 'boss') spawnBossForFight();
     else if (matchMode === 'survival') spawnNextWave();
-    else disposeBoss();
     roundStartedAt = performance.now();
     if (intro) {
         player1.setFacing(player2.x - player1.x, player2.y - player1.y);
@@ -7135,25 +7250,65 @@ function startRound(intro) {
 // drawShared, which is re-drawn per split-screen half) — a boss bar duplicated
 // left and right would read as two bosses.
 function drawBossHUD() {
-    const BW = 560, BH = 16;
-    const x = (VIRTUAL_W - BW) / 2, y = 150;
-    const frac = Math.max(0, bossEntity.hp) / bossEntity.maxHp;
-    hudCtx.fillStyle = 'rgba(10,14,22,0.8)';
-    hudCtx.fillRect(x - 2, y - 2, BW + 4, BH + 4);
-    hudCtx.fillStyle = '#2a1608';
-    hudCtx.fillRect(x, y, BW, BH);
-    // Amber, and it flashes when the boss is nearly down.
-    const low = frac < 0.25;
-    hudCtx.fillStyle = low && Math.sin(arenaTime * 0.4) > 0 ? '#fca5a5' : '#f59e0b';
-    hudCtx.fillRect(x, y, BW * frac, BH);
-    hudCtx.strokeStyle = '#f59e0b'; hudCtx.lineWidth = 1.5;
-    hudCtx.strokeRect(x, y, BW, BH);
+    const foes = coopEnemies.filter(Boolean);
+    if (!foes.length) return;
+    // Batch 23: two layouts. A lone notable enemy (Boss Fight, or a Survival
+    // boss wave) gets the full-width bar it deserves; a wave of minions gets a
+    // compact row of small bars, because six full-width bars would bury the
+    // arena and none of them individually matters that much.
+    const single = foes.length === 1;
+    const y = 150;
     hudCtx.textAlign = 'center';
-    hudCtx.font = hudFont(15, true); hudCtx.fillStyle = '#fde68a';
-    const label = matchMode === 'survival' ? `Wave ${waveNumber + 1} — ${bossEntity.name}` : bossEntity.name;
-    hudCtx.fillText(label, VIRTUAL_W / 2, y - 8);
-    hudCtx.font = hudFont(12); hudCtx.fillStyle = '#e2e8f0';
-    hudCtx.fillText(`${Math.max(0, Math.ceil(bossEntity.hp))} / ${bossEntity.maxHp}`, VIRTUAL_W / 2, y + BH + 14);
+
+    if (single) {
+        const f = foes[0], BW = 560, BH = 16, x = (VIRTUAL_W - BW) / 2;
+        const frac = Math.max(0, f.hp) / f.maxHp;
+        hudCtx.fillStyle = 'rgba(10,14,22,0.8)';
+        hudCtx.fillRect(x - 2, y - 2, BW + 4, BH + 4);
+        hudCtx.fillStyle = '#2a1608';
+        hudCtx.fillRect(x, y, BW, BH);
+        // Amber, and it flashes when the boss is nearly down.
+        const low = frac < 0.25;
+        hudCtx.fillStyle = low && Math.sin(arenaTime * 0.4) > 0 ? '#fca5a5' : '#f59e0b';
+        hudCtx.fillRect(x, y, BW * frac, BH);
+        hudCtx.strokeStyle = '#f59e0b'; hudCtx.lineWidth = 1.5;
+        hudCtx.strokeRect(x, y, BW, BH);
+        hudCtx.font = hudFont(15, true); hudCtx.fillStyle = '#fde68a';
+        const label = matchMode === 'survival'
+            ? `Wave ${waveNumber + 1}${isBossWave ? ' — BOSS' : ''} · ${f.name}`
+            : f.name;
+        hudCtx.fillText(label, VIRTUAL_W / 2, y - 8);
+        hudCtx.font = hudFont(12); hudCtx.fillStyle = '#e2e8f0';
+        hudCtx.fillText(`${Math.max(0, Math.ceil(f.hp))} / ${f.maxHp}`, VIRTUAL_W / 2, y + BH + 14);
+        hudCtx.textAlign = 'left';
+        return;
+    }
+
+    // Crowd: one small bar each, laid out in a centred row. A dead minion keeps
+    // its (empty) slot rather than the row re-flowing mid-fight, which would
+    // make the remaining bars jump around exactly when you're reading them.
+    const alive = foes.filter(f => f.hp > 0).length;
+    hudCtx.font = hudFont(13, true); hudCtx.fillStyle = '#fde68a';
+    hudCtx.fillText(`Wave ${waveNumber + 1}  ·  ${alive} of ${foes.length} left`, VIRTUAL_W / 2, y - 6);
+    const BW = 96, BH = 10, gap = 10;
+    const totalW = foes.length * BW + (foes.length - 1) * gap;
+    let x = (VIRTUAL_W - totalW) / 2;
+    for (const f of foes) {
+        const frac = Math.max(0, f.hp) / f.maxHp;
+        hudCtx.fillStyle = 'rgba(10,14,22,0.8)';
+        hudCtx.fillRect(x - 1, y - 1, BW + 2, BH + 2);
+        hudCtx.fillStyle = '#2a1608';
+        hudCtx.fillRect(x, y, BW, BH);
+        if (frac > 0) {
+            hudCtx.fillStyle = f.color || '#f59e0b';
+            hudCtx.fillRect(x, y, BW * frac, BH);
+        }
+        hudCtx.strokeStyle = frac > 0 ? '#f59e0b' : '#3f3f46'; hudCtx.lineWidth = 1;
+        hudCtx.strokeRect(x, y, BW, BH);
+        hudCtx.font = hudFont(9); hudCtx.fillStyle = frac > 0 ? '#cbd5e1' : '#52525b';
+        hudCtx.fillText(f.name, x + BW / 2, y + BH + 11);
+        x += BW + gap;
+    }
     hudCtx.textAlign = 'left';
 }
 
@@ -7386,7 +7541,7 @@ function drawHUD() {
     // Batch 16: the co-op challenger gets a wide bar across the top centre —
     // the conventional boss-bar placement, and the one region the two
     // side panels leave free in both split and full-screen layouts.
-    if (bossEntity) drawBossHUD();
+    if (coopEnemies.length) drawBossHUD();
     else if (matchMode === 'survival' && waveBreakTimer > 0) drawWaveBreakHUD();
 
     const botNote = [player1.isBot ? 'P1 Bot' : null, player2.isBot ? 'P2 Bot' : null].filter(Boolean).join(' / ');
@@ -7634,16 +7789,19 @@ function endCoopMatch(won, detail) {
     showScreen('gameover');
 }
 
-// --- Batch 16: spawning/retiring the co-op third combatant. ---
+// --- Batch 16/23: spawning/retiring co-op enemies. ---
 function disposeBoss() {
-    if (bossEntity) { bossEntity.disposeMesh(); bossEntity = null; }
+    for (const e of coopEnemies) if (e) e.disposeMesh();
+    coopEnemies = [];
+    isBossWave = false;
 }
-// Build the third combatant from a config name, positioned at arena centre so
-// both players start with it in front of them. `scale` multiplies HP/damage
-// (difficulty tiers for the boss, wave number for Survival).
+// Build one co-op enemy from a config name. Appends to `coopEnemies` (it no
+// longer replaces the previous one — a wave spawns several), so callers that
+// want a clean field call disposeBoss() first.
+// `hpMult`/`dmgMult` scale it: difficulty tier for a boss, wave number for a
+// Survival wave.
 function spawnCoopEntity(name, hpMult, dmgMult, opts) {
     opts = opts || {};
-    disposeBoss();
     const at = opts.spawnAt || { x: ARENA_CX, y: ARENA_CY };
     const f = new Fighter(name, at.x - 20, at.y - 20, false, true); // isBot: reuses the existing AI pipeline
     f.isBossEntity = true;
@@ -7667,7 +7825,7 @@ function spawnCoopEntity(name, hpMult, dmgMult, opts) {
     f.hpGhost = f.maxHp;
     f.attackDmg *= dmgMult;
     f.initMesh();
-    bossEntity = f;
+    coopEnemies.push(f);
     return f;
 }
 
@@ -7689,22 +7847,77 @@ function spawnBossForFight() {
     const name = BOSS_MAP[BOSS_NAME] ? BOSS_NAME : 'Gorgonok';
     return spawnCoopEntity(name, hpMult, dmgMult, { telegraphMult, hitboxSize: 60 });
 }
-// Survival Waves' next challenger: an ordinary roster fighter, scaled by how
-// far the run has got. Reuses botDecide unchanged — these are normal characters
-// played hard, which is exactly what makes them read as "challengers" rather
-// than as a second boss.
+// --- Batch 23: Survival wave composition.
+// An ordinary wave is a GROUP of purpose-built minions (Grint/Slagling/
+// Hollowkin) rather than one scaled-up roster fighter: several weaker bodies
+// converging is a different, more interesting problem than a single duel, and
+// it's what makes two players coordinate instead of both duelling the same
+// target. Every BOSS_WAVE_EVERY-th wave replaces the group with Karrigos, so
+// the run has a rhythm and a recurring "did we survive it" checkpoint.
+const SURVIVAL_MINIONS = ['Grint', 'Slagling', 'Hollowkin'];
+const BOSS_WAVE_EVERY = 5;
+const MAX_WAVE_ENEMIES = 5; // ceiling: past this the arena reads as a mob, not a fight
+function isBossWaveNumber(n) { return n > 0 && n % BOSS_WAVE_EVERY === 0; }
+// How many minions this wave fields. Starts at 2 and grows slowly, so the early
+// waves teach the enemy types before the crowd gets genuinely hard to track.
+function waveEnemyCount(n) { return Math.min(MAX_WAVE_ENEMIES, 2 + Math.floor((n - 1) / 3)); }
+
 function spawnNextWave() {
-    const c = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+    disposeBoss(); // clean field first — spawnCoopEntity now appends
+    const n = waveNumber + 1; // the wave about to be fought
     // Compounds with, rather than replaces, the difficulty tier — two
     // independent multiplier sources, same pattern as the boss above.
     const tier = Math.max(0, DIFFICULTY_ORDER.indexOf(botDifficulty));
-    const hpMult = 1.6 * (1 + 0.15 * waveNumber) * (1 + tier * 0.2);
-    const dmgMult = (1 + 0.10 * waveNumber) * (1 + tier * 0.15);
-    // Batch 18: come in from the corner FURTHEST from both players rather than
-    // at arena centre — spawning a fresh enemy in someone's face is the cheapest
-    // possible source of unavoidable damage, and it reads as unfair rather than
-    // as difficulty.
-    return spawnCoopEntity(c.name, hpMult, dmgMult, { spawnAt: farthestSpawnFromPlayers() });
+
+    if (isBossWaveNumber(n)) {
+        isBossWave = true;
+        // A boss wave scales with how deep the run is AND with difficulty. Its
+        // pool is smaller than Boss Fight's dedicated boss (that mode is the
+        // whole match; here it's one wave of many).
+        const bossTier = Math.floor(n / BOSS_WAVE_EVERY); // 1st boss wave, 2nd, ...
+        const hpMult = 3.2 * (1 + 0.45 * (bossTier - 1)) * (1 + tier * 0.25);
+        const dmgMult = (1 + 0.12 * n) * (1 + tier * 0.15);
+        spawnCoopEntity(BOSS_NAME, hpMult, dmgMult, {
+            telegraphMult: 1 - tier * 0.10,
+            hitboxSize: 60,
+            spawnAt: farthestSpawnFromPlayers(),
+        });
+        return coopEnemies;
+    }
+
+    isBossWave = false;
+    const count = waveEnemyCount(n);
+    // Minions are individually weak, so their scaling is gentler than the old
+    // single-enemy curve — the wave's threat comes mostly from the head count.
+    const hpMult = (1 + 0.13 * (n - 1)) * (1 + tier * 0.2);
+    const dmgMult = (1 + 0.08 * (n - 1)) * (1 + tier * 0.15);
+    // Spread them around the arena's edge rather than stacking them on one
+    // corner: a single clump can be fought as one blob (and can bunch up on
+    // geometry), whereas spread arrivals actually force the two players apart.
+    const base = farthestSpawnFromPlayers();
+    // Draw WITHOUT replacement from a shuffled pool (wrapping when the wave is
+    // bigger than the roster) rather than rolling each slot independently. Independent
+    // rolls happily produced "two Hollowkin" — same silhouette twice, and a wave
+    // made of two tanks is far harder than two skitterers, so the difficulty
+    // swung wildly between same-numbered waves. This guarantees a mixed squad,
+    // which is both more readable and much more consistently tuned.
+    const pool = [];
+    while (pool.length < count) {
+        const shuffled = SURVIVAL_MINIONS.slice().sort(() => Math.random() - 0.5);
+        pool.push(...shuffled);
+    }
+    for (let i = 0; i < count; i++) {
+        const name = pool[i];
+        // Fan them out around the chosen arrival corner, clamped inside the arena.
+        const ang = (i / count) * Math.PI * 2;
+        const spread = 90 + i * 26;
+        const at = {
+            x: Math.max(ARENA_LEFT + 60, Math.min(ARENA_RIGHT - 60, base.x + Math.cos(ang) * spread)),
+            y: Math.max(ARENA_TOP + 60, Math.min(ARENA_BOTTOM - 60, base.y + Math.sin(ang) * spread)),
+        };
+        spawnCoopEntity(name, hpMult, dmgMult, { spawnAt: at });
+    }
+    return coopEnemies;
 }
 // Of the arena's four inset corners, the one whose nearest player is furthest
 // away. Corners (rather than the map's own spawn points) so this works the same
@@ -7755,7 +7968,7 @@ function onBossDefeated() {
         waveBreakTimer = WAVE_BREAK_FRAMES;
         return false; // the run continues
     }
-    endCoopMatch(true, `${bossEntity.name} defeated with ${Math.max(0, Math.ceil(player1.hp))} and ${Math.max(0, Math.ceil(player2.hp))} HP left.`);
+    endCoopMatch(true, `${BOSS_NAME} defeated with ${Math.max(0, Math.ceil(player1.hp))} and ${Math.max(0, Math.ceil(player2.hp))} HP left.`);
     return true;
 }
 
@@ -7770,10 +7983,14 @@ function resolveCoopMode() {
         const fallen = !isAlive(player1) ? player1.name : player2.name;
         endCoopMatch(false, matchMode === 'survival'
             ? `${fallen} fell on wave ${waveNumber + 1}.  <b>Waves cleared: ${waveNumber}</b>`
-            : `${fallen} fell. ${bossEntity ? bossEntity.name + ' had ' + Math.max(0, Math.ceil(bossEntity.hp)) + ' HP (' + Math.round(100 * bossEntity.hp / bossEntity.maxHp) + '%) left.' : ''}`);
+            : `${fallen} fell. ${(() => {
+                const b = liveEnemies()[0];
+                return b ? `${b.name} had ${Math.max(0, Math.ceil(b.hp))} HP (${Math.round(100 * b.hp / b.maxHp)}%) left.` : '';
+            })()}`);
         return true;
     }
-    if (bossEntity && !isAlive(bossEntity)) return onBossDefeated();
+    // Batch 23: the wave is cleared when EVERY enemy is down, not just one.
+    if (coopEnemies.length && !liveEnemies().length) return onBossDefeated();
     return false;
 }
 
@@ -7788,7 +8005,7 @@ function stepFight(dt) {
     // Batch 18: Survival's between-wave breather. Ticked here (not in
     // onBossDefeated) so the countdown runs on real frames and the next
     // challenger arrives after the players have had a beat to reposition.
-    if (matchMode === 'survival' && !bossEntity && waveBreakTimer > 0) {
+    if (matchMode === 'survival' && !coopEnemies.length && waveBreakTimer > 0) {
         waveBreakTimer -= dt;
         if (waveBreakTimer <= 0) { waveBreakTimer = 0; spawnNextWave(); sfxRoundStart(); }
     }
@@ -7805,7 +8022,7 @@ function stepFight(dt) {
         // Deliberately NOT fed through resolvePlayerCollision: a much larger
         // body shoving the players around adds feel risk for no requested
         // benefit, so the boss overlaps rather than pushes.
-        if (bossEntity && isAlive(bossEntity)) bossEntity.update(player1, dt);
+        for (const e of coopEnemies) if (isAlive(e)) e.update(player1, dt);
     } else {
         // Arena Collapse's final phase: input/combat frozen, both
         // fighters take the same flat damage per second regardless of
@@ -7816,12 +8033,12 @@ function stepFight(dt) {
         player2.applyDamage(CRUSH_DPS * dt / 60, { ignoreShield: true });
         player1.tickEffects(player2, dt);
         player2.tickEffects(player1, dt);
-        if (bossEntity && isAlive(bossEntity)) bossEntity.tickEffects(player1, dt);
+        for (const e of coopEnemies) if (isAlive(e)) e.tickEffects(player1, dt);
     }
 
     player1.render3D(null, dt);
     player2.render3D(null, dt);
-    if (bossEntity) bossEntity.render3D(null, dt);
+    for (const e of coopEnemies) e.render3D(null, dt);
     syncArenaCollapse(dt);
     updateMuzzleFlashes(dt);
     updateScenery(dt);
@@ -7867,7 +8084,7 @@ function stepIntro(dt) {
     player2.tickEffects(player1, dt);
     player1.render3D(null, dt);
     player2.render3D(null, dt);
-    if (bossEntity) bossEntity.render3D(null, dt); // Batch 16: visible while the players drop in
+    for (const e of coopEnemies) e.render3D(null, dt); // Batch 16: visible while the players drop in
     syncArenaCollapse(dt);
     updateScenery(dt);
     updateMuzzleFlashes(dt);
@@ -8017,7 +8234,13 @@ if (DEBUG) {
         isCoopMode, pickTarget, getExtraCombatTargets, isAlive,
         spawnCoopEntity, spawnBossForFight, spawnNextWave, disposeBoss, endCoopMatch, resolveCoopMode,
         BOSS_MAP, BOSS_NAME, LAYER_BOSS_BODY, camP1, camP2,
-        get bossEntity() { return bossEntity; },
+        // `bossEntity` keeps meaning "the single notable enemy" for existing
+        // checks; `coopEnemies` is the real list.
+        get bossEntity() { return coopEnemies.length === 1 ? coopEnemies[0] : (liveEnemies()[0] || null); },
+        get coopEnemies() { return coopEnemies; },
+        get isBossWave() { return isBossWave; },
+        liveEnemies, isBossWaveNumber, waveEnemyCount, spawnNextWave,
+        SURVIVAL_MINIONS, BOSS_WAVE_EVERY, MAX_WAVE_ENEMIES, WAVE_HEAL_PCT,
         get waveNumber() { return waveNumber; },
         get waveBreakTimer() { return waveBreakTimer; },
         WAVE_BREAK_FRAMES, farthestSpawnFromPlayers,
