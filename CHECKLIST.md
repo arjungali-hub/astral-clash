@@ -478,6 +478,60 @@ Five requests that turned out to share one root cause: **the UI was lying by omi
 
 ---
 
+## Batches 25-29 - The art overhaul
+
+The brief: characters should have faces and read as human/robot/animal rather than differing only by colour, the arenas should look refined and be *fair*, the crush should be a real cinematic, and the whole thing should look like a commercial shooter instead of clay.
+
+### The pipeline (Batch 25)
+
+- *Characters are Blender-authored now, not primitives.* Kaelen is a 23,332-triangle humanoid with full PBR (base colour + metallic-roughness + normal), a 19-joint skeleton, and six skeletal clips: Idle, Walk, Run, Jump, Hit, Death. The game had **no walk cycle at all** - characters slid with rigid legs - so locomotion is the single biggest contributor to it reading as finished.
+- *Additive by construction.* `initMesh` prefers `buildRiggedCharacter(name)` and falls back to `PROC_MESH_BUILDERS[name]`. Both produce the same `userData` contract, so `animateWeapon`, the hit flash and the death fade need no branching, the roster converts one character at a time, and the game is never in a broken half-state.
+- *Locomotion on an AnimationMixer, attacks still procedural.* The mixer updates BEFORE `animateWeapon` so the tuned per-character attack swing wins on the arms it drives. That layering is what let baked walk/run coexist with all thirteen existing `weaponAnim` types instead of replacing them. `_applyArms` gained an `axis`: a procedural arm is a Group swung about Z, a skeleton's bone about local X with the opposite sign.
+- *Weapons are transplanted off the procedural build* rather than re-declared beside the rig, so there is no second copy of each character's weapon and swing timings to drift.
+- **Measured, not assumed.** Bone positions come from slicing the mesh in Z and clustering vertices by X to find the real shoulder/elbow/wrist/hip/knee/ankle. Heights matched the anatomical fractions (0.80/0.60/0.46/0.50/0.27/0.05 H) to within a percent, but the sideways offsets - how far an A-pose spreads the arms, how wide the stance is - are what actually vary, and those are measured. `art/pipeline.py` encodes the whole process so the remaining roster is one call each.
+- **Three bugs found by measuring rather than guessing:** (1) Rodin's `bbox_condition` *stretches* the model to the requested ratio - asking for 1:1:2.4 produced a cone, not a tall humanoid. (2) Auto-weighting failed for **every** bone (100% unweighted) because the GLB had 11,717 duplicate vertices split along UV seams, so the mesh was not a closed surface and heat diffusion had no solution; welding at 0.0002 fixed it. (3) The transplanted sword rendered as a ~200-unit girder because `animateWeapon` owns `userData.weapon`'s scale and silently overwrote the counter-scale - fixed with an intermediate holder group it cannot see.
+- *Two more that would have been silent:* `addRimOutline` would have cloned the 23k skinned geometry into a plain Mesh - an un-skinned shell frozen in the bind pose at double the vertex cost (rigged characters now opt out entirely, which also looks better); and `disposeObject3D` only protected `.map` behind `keepMap`, so the first `disposeMesh()` would have blanked every other instance's normal and roughness maps.
+- *Tests now serve the repo over HTTP.* `GLTFLoader` fetches with XHR and Chrome blocks XHR to `file://` as cross-origin, so under `file://` every model silently failed and the art assertions would have been quietly testing the procedural fallback.
+
+### Arenas (Batches 26, 29)
+
+- **Fairness first.** Audited all ten maps for 180-degree rotational symmetry. Six passed. **Skyreach Spire had both spawns at y=750 - the same side of the arena** - with its climbing tiers rising from only one of them, so one player started next to the contested high ground and the other across the map. Sundered Stair's staircase existed only on the west side. Overgrown Sanctuary and Skyward Temple each gave exactly one player a ramp onto the high ground. All four redesigned, themes kept.
+- `rotSym()` makes symmetry structural rather than remembered: an author describes half an arena and gets a provably fair whole. Centre pieces are their own twin; ramps get `from`/`to` swapped in the copy, because rotating 180 degrees reverses the axis the slope climbs and otherwise the twin ramp descends into the floor.
+- **Skyward Temple's central dais was unclimbable for half the roster.** Its side steps sat 142 units from the dais edge; clearing that needs the full ~43-frame airtime *and* a fast character - Kaelen covers ~145 units, Draven only ~81. The map's own documented "dais climbed via a ramp and low side platforms" simply did not work for slow characters. Now a 42-unit gap.
+- *A stale comment corrected rather than left to mislead:* Overgrown Sanctuary claimed its 222-high wall was "comfortable Double Jump reach from the height-60 cover blocks (gap 162)". Only the HEIGHT gap is 162 - those blocks are 227 units away horizontally, so it is reachable from them by no jump at all. That is intended (it is a lane divider, not a perch), but the comment said otherwise.
+- *A test that asserted the wrong thing, and was corrected instead of the maps.* A first version required dividers to be Double-Jump reachable; `index.html` defines them as "interior walls / lane dividers", so making six maps' sight blockers climbable would have defeated their purpose. `mapscheck.js` now asserts the opposite - that they stay **unclimbable**, so a divider cannot become a 26-unit-wide camping ledge over the lane it closes off.
+- **Surface relief on every map.** Canvases 256 -> 512, and normal + roughness maps *derived* from each existing canvas rather than authored: the art already encodes relief as brightness (mortar is dark because it is recessed), so a Sobel gradient of luminance is a serviceable height field. All twenty surfaces gain relief at once and each map keeps its hand-drawn identity, which swapping in a few photographic textures would have flattened. The gradient sample **wraps** (a non-wrapping Sobel seams every tile boundary), derived maps are tagged `LinearEncoding` (a normal map is data, not colour), and each material gets its own texture object wrapping the shared canvas because `repeat` lives on the texture and a wall, a platform and the floor tile the same source at different densities.
+
+### Weapons, the first-person arm, and lighting (Batch 28)
+
+- *The blades were a flat `BoxGeometry` slab with a 4-sided cone glued on* - no taper, no cutting edge, no central ridge - so they caught light like a painted plank. The fix is shape: `bladeGeometry()` builds a **diamond cross-section** (two edges, a raised spine) from a list of cross-sections, giving four long faces at different angles to the light. Sword, dagger, hammer, scythe and gauntlet all rebuilt on it.
+- *The first-person arm was one `BoxGeometry(3.4, 3.4, 11)`* - a bare stick in the character's flat body colour, on screen every frame of every match, and looking nothing like the armoured arm the same character now has in third person. Now a tapered forearm with a plated bracer, an armoured glove with knuckle plates, and a thumb over the grip.
+- **Image-based lighting, and the bug that revealed why it was needed.** The rebuilt weapons use physically-correct metal (metalness 1.0), and a fully metallic surface takes its colour *entirely* from what it reflects - so with no environment map a polished steel blade renders **pure black**, which is exactly how the first sword screenshot came out. Metals need an environment, not a brighter base colour. `PMREMGenerator` builds one from the same sky gradient the player is standing under, so reflections match each arena's palette and change with the map; every rough surface gets soft ambient bounce for free.
+- *A precedence bug worth remembering:* `new THREE.CapsuleGeometry ? A : B` constructs before it tests, and `CapsuleGeometry` does not exist until three r140 - so it threw inside `startRound` and produced a black screen with no console error at boot.
+
+### The crush cinematic (Batch 27)
+
+Arena Collapse used to end with both fighters squashed in place while still in first person, which made the most dramatic beat in the match the one you could see least: your own body is hidden from your own camera, so you watched a static wall texture while your health drained.
+
+- Both players now leave first person for a side-on third-person shot of themselves pinned between two grinding slabs, each framed in their own half of the screen.
+- **Each fighter gets their OWN pair of slabs, on that fighter's viewmodel layer.** The two are far apart when the walls slam, so a single shared pair cannot close on both - the first attempt put one pair at the arena centre and neither player had walls near them. The VM layers are the only ones a single camera sees privately.
+- *Each rig also carries a stage floor and a back wall*, neither decorative: the arena's own floor has shrunk to nothing by the time the crush fires (that is what the collapse does), so without them the shot was two figures floating against empty sky.
+- *Each half shows ONE fighter* - the camera enables its own body layer **and disables the opponent's**; without the second half of that swap both appeared in both halves, one behind the other. Both are turned to face the camera, overriding their last combat heading, which otherwise left them crushed in profile or from behind.
+- **The squash was retuned hard.** The first pass drove the footprint to 12% and the height to 175%, which turned a detailed PBR character into a vertical needle - non-uniform scaling that extreme reads as rubber, not force. Now a mild compression (~70% / ~114%), with the violence carried by the walls stopping at body width, a brace pose, contact dust, judder on contact and rising shake. The squash is driven by how far the slabs have actually closed, so the body deforms in step with the thing deforming it.
+- **A real leak, found by testing the exit rather than the entry:** both "Play Again" and "Return to Menu" disposed the boss and zone ring but left the crush running - slabs in the scene, both cameras stuck in third person, viewmodels hidden - because only `startRound()` reset it. One `resetCrush()` now serves all three.
+
+### Where this arc stands
+
+`smoke`, `mapscheck`, `crushcheck` and `batch24check` all green, zero console errors. New permanent suites: `mapscheck.js` (symmetry, reachability, dividers, spawns) and `crushcheck.js` (the cinematic end to end).
+
+**Blocked:** the remaining thirteen characters. Every AI model source is credential-gated - the Rodin free trial ran out of funds mid-arc, Hunyuan3D points at a local server on :8081 that is not running, and Sketchfab and Poly.pizza both need API keys. PolyHaven works but supplies textures and HDRIs, not characters. The pipeline is proven end to end on Kaelen and `art/pipeline.py` reduces each remaining character to one call, so this is a credentials problem rather than an engineering one.
+
+**Reasoned, not playtested:** every animation clip (they are hand-authored keyframes, never watched at 60fps by a human), the crush pacing and framing, the derived-normal strengths per surface, and whether the arena redesigns still play well as spaces rather than merely measuring as fair.
+
+**Also worth knowing:** the game must now be served over HTTP. Opening `index.html` directly falls back to the old procedural meshes, because Chrome blocks the model fetch on `file://`.
+
+---
+
 ## Where this arc landed
 
 All ten planned batches (11-21) are in and pushed, each as its own commit with its own checker script. The nine-suite regression set (`progressioncheck`, `cheatcheck`, `doublejumpcheck`, `reachabilitycheck`, `pitchcheck`, `touchlookcheck`, `modescheck`, `coopcheck`, `bosscheck`, `survivalcheck`, plus the desktop/touch/pause drivers) runs green end to end, and — unlike every batch before this arc — the verification exercises **real game state through the real game loop** rather than only checking that nothing threw, thanks to the `?debug=1`-gated `window.ACDebug` handle added in Batch 12.
@@ -512,4 +566,13 @@ Unchanged from the original brief — these all require an actual browser sessio
 
 ## Out of scope (not to be worked unless explicitly requested)
 
-Online multiplayer, replacing Three.js, splitting into modules, asset pipelines/model loading, new art direction, more characters, more maps.
+Replacing Three.js, splitting into modules, more characters beyond the current roster, more maps.
+
+**No longer out of scope** (explicitly requested since): asset pipelines and
+model loading, and new art direction - both landed in Batches 25-29. Online
+multiplayer is requested and still pending (see below).
+
+**Pending, requested, not started:** removing the local split-screen and touch
+builds and refactoring to online peer-to-peer play over PeerJS, with WASD+arrows
+movement, A/D and Left/Right as strafe, pointer-lock mouse look and left-click
+attack. Archive the split-screen and touch code before stripping it.
