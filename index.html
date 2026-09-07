@@ -2290,6 +2290,7 @@ let crushRigs = null;        // { p1, p2 } - each a Group of two slabs plus a st
 const CRUSH_CAM_IN = 42;     // frames easing from the fighter's eye out to the wide shot
 const CRUSH_GAP_START = 230; // world units between one fighter's slabs when they appear
 const CRUSH_GAP_END = 46;    // where they stop - just narrower than a fighter (width 40)
+const CRUSH_DUST_COUNT = 18; // fixed pool per fighter; never grows (see buildCrushRigs)
 
 function crushGap() {
     // Ease-out: the slabs rush in, then grind the last few units slowly, which
@@ -2314,6 +2315,14 @@ function crushGap() {
 // The stage floor is not decoration either: the arena's own floor has shrunk to
 // nothing by the time the crush fires (that is what the collapse DOES), so
 // without it the cinematic is two figures floating against an empty sky.
+// Built once per round rather than on the frame the walls slam shut.
+//
+// Creating six textured slabs and 36 dust puffs introduces material
+// combinations the scene has not drawn yet, and three.js compiles a shader the
+// first time a material is RENDERED - so building them on demand put a
+// compile stall exactly on the game's most dramatic beat. They are created
+// hidden at round start and pre-compiled, so the crush itself allocates
+// nothing and compiles nothing.
 function buildCrushRigs() {
     disposeCrushRigs();
     const theme = matchMap ? themeFor(matchMap) : null;
@@ -2325,6 +2334,8 @@ function buildCrushRigs() {
     // straight past them into empty sky, which read as a floating diorama
     // rather than a room shutting on someone.
     const backGeo = new THREE.BoxGeometry(300, WALL_HEIGHT * 0.8, 26);
+    const dustGeo = new THREE.SphereGeometry(1, 6, 5);
+    dustGeo.userData.shared = true;
     slabGeo.userData.shared = true;
     stageGeo.userData.shared = true;
     backGeo.userData.shared = true;
@@ -2359,13 +2370,46 @@ function buildCrushRigs() {
         const back = new THREE.Mesh(backGeo, wallMat());
         back.position.set(0, WALL_HEIGHT * 0.4, -95);
         back.receiveShadow = true;
+        back.castShadow = false;   // the two moving slabs already give the depth cue
         back.userData.back = true;
         g.add(back);
+
+        // Contact dust: a FIXED pool of unlit puffs, allocated once here.
+        //
+        // This deliberately does not reuse spawnMuzzleFlash. Muzzle flashes each
+        // carry a PointLight and were built for the occasional gunshot; driving
+        // them as a continuous emitter grew that pool and forced repeated
+        // shader recompiles, which is what made the crush stutter. These have no
+        // light, share one geometry, are all the same material type (so they add
+        // exactly one shader program), and the pool never grows.
+        const dust = [];
+        for (let i = 0; i < CRUSH_DUST_COUNT; i++) {
+            const m = new THREE.Mesh(dustGeo, new THREE.MeshBasicMaterial({
+                color: 0xcbb9a2, transparent: true, opacity: 0, depthWrite: false,
+            }));
+            m.visible = false;
+            m.userData.life = 0;
+            dust.push(m);
+            g.add(m);
+        }
+        g.userData.dust = dust;
+        g.userData.dustNext = 0;
         setLayerRecursive(g, layer);
         scene.add(g);
         return g;
     };
     crushRigs = { p1: make(LAYER_P1_VM), p2: make(LAYER_P2_VM) };
+    // Compile now, while they are still invisible. renderer.compile walks the
+    // scene and builds every material's program up front; without this the
+    // first crush frame pays for all of them at once.
+    try {
+        crushRigs.p1.visible = crushRigs.p2.visible = true;
+        renderer.compile(scene, camP1);
+        renderer.compile(scene, camP2);
+    } catch (e) {
+        console.warn('[astral] crush pre-compile skipped:', e && e.message);
+    }
+    crushRigs.p1.visible = crushRigs.p2.visible = false;
 }
 // One place to undo the crush, called from startRound AND from both menu exits.
 function resetCrush() {
@@ -2384,8 +2428,10 @@ function disposeCrushRigs() {
 }
 
 function syncCrushRigs(dt) {
-    if (!crushing) { disposeCrushRigs(); return; }
-    if (!crushRigs) buildCrushRigs();
+    if (!crushRigs) return;                       // built at round start
+    const show = crushing;
+    for (const k of ['p1', 'p2']) crushRigs[k].visible = show;
+    if (!show) return;
     const gap = crushGap();
     const closed = gap <= CRUSH_GAP_END + 1.5;
     for (const [key, f] of [['p1', player1], ['p2', player2]]) {
@@ -2405,12 +2451,31 @@ function syncCrushRigs(dt) {
                 child.position.y += (Math.random() - 0.5) * 1.4;
             }
         }
-        // Dust thrown up along the contact line.
-        if (!REDUCED_MOTION && crushTime > CRUSH_CAM_IN && Math.random() < 0.4) {
-            spawnMuzzleFlash(
-                f.x + f.width / 2 + (Math.random() - 0.5) * 30,
-                f.y + f.height / 2 + (Math.random() - 0.5) * 60,
-                6 + Math.random() * 44, '#cbb9a2');
+        // Dust thrown up along the contact line, from this rig's own pool.
+        const dust = g.userData.dust;
+        if (dust) {
+            if (!REDUCED_MOTION && crushTime > CRUSH_CAM_IN && Math.random() < 0.5) {
+                const m = dust[g.userData.dustNext % dust.length];
+                g.userData.dustNext++;
+                const side = Math.random() < 0.5 ? -1 : 1;
+                m.position.set(side * (gap / 2 - 2), 4 + Math.random() * 40,
+                               (Math.random() - 0.5) * 34);
+                m.userData.life = 1;
+                m.userData.vy = 0.35 + Math.random() * 0.5;
+                m.userData.vx = side * (0.2 + Math.random() * 0.5);
+                m.scale.setScalar(1.4 + Math.random() * 2.2);
+                m.visible = true;
+            }
+            for (const m of dust) {
+                if (!m.visible) continue;
+                m.userData.life -= 0.028 * dt;
+                if (m.userData.life <= 0) { m.visible = false; m.material.opacity = 0; continue; }
+                m.position.y += m.userData.vy * dt;
+                m.position.x += m.userData.vx * dt;
+                m.userData.vy *= 0.96;
+                m.material.opacity = Math.min(0.55, m.userData.life * 0.7);
+                m.scale.multiplyScalar(1 + 0.02 * dt);
+            }
         }
     }
 }
@@ -3595,8 +3660,18 @@ function updateScenery(dt) {
 // same convention every call site and every other object uses; the game->world
 // conversion (worldX/worldZ, ground at Y=0) happens here. ---
 const muzzleFlashes = [];
+// Batch 30: HARD CAP. Every pool entry carries a PointLight, and changing the
+// number of lights in the scene makes three.js recompile every material's
+// shader - a multi-hundred-millisecond stall. An unbounded pool therefore turned
+// any sustained stream of flashes into a series of frame spikes. Measured during
+// the crush: shader programs went 11 -> 27 and one frame took 2.2 seconds.
+// Beyond the cap, recycle the flash closest to expiring instead of allocating.
+const MUZZLE_FLASH_MAX = 6;
 function spawnMuzzleFlash(gameX, gameY, height, colorHex) {
     let mf = muzzleFlashes.find(m => !m.active);
+    if (!mf && muzzleFlashes.length >= MUZZLE_FLASH_MAX) {
+        mf = muzzleFlashes.reduce((a, b) => (a.life <= b.life ? a : b));
+    }
     if (!mf) {
         const core = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8),
             new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1 }));
@@ -8439,6 +8514,8 @@ function startRound(intro) {
     shrinkTimer = GRACE_PERIOD; // full arena for the grace period, then collapse ticks begin
     shrinkFrac = 0; shrinkTargetFrac = 0;
     resetCrush();           // Batch 27: never let a slab survive into the next round
+    buildCrushRigs();       // Batch 30: pre-build + pre-compile, hidden, so the
+                            // crush itself neither allocates nor compiles
     arenaBoundsFromFrac(0); // reset play bounds to the full arena
     // Batch 19: the Zone Control ring. Built per round because loadMap() clears
     // the scene's map group; disposed for every other mode so a leftover ring
@@ -9497,6 +9574,8 @@ if (DEBUG) {
         // Batch 27 crush cinematic
         get crushTime() { return crushTime; },
         get crushRigs() { return crushRigs; },
+        rendererInfo() { const i = renderer.info; return { programs: i.programs ? i.programs.length : 0, calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures }; },
+        get muzzleFlashPool() { return muzzleFlashes.length; },
         get vmP1() { return vmP1; },
         get vmP2() { return vmP2; },
         resetCrush,

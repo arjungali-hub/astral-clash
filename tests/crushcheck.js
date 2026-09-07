@@ -33,12 +33,19 @@ const H = require('./harness');
             p1SeesOwnBody: (D.camP1.layers.mask & (1 << 1)) !== 0,
             p2SeesOwnBody: (D.camP2.layers.mask & (1 << 2)) !== 0,
             rigs: !!D.crushRigs,
+            rigsVisible: D.crushRigs ? [D.crushRigs.p1.visible, D.crushRigs.p2.visible] : null,
+            lights: (() => { let n = 0; D.camP1.parent.traverse(o => { if (o.isLight) n++; }); return n; })(),
         };
     });
     check('not crushing yet', before.crushing === false);
     check('neither camera renders its own body', !before.p1SeesOwnBody && !before.p2SeesOwnBody,
         JSON.stringify(before));
-    check('no crush slabs exist', before.rigs === false);
+    // Batch 30: the rigs are built and shader-compiled at ROUND START, hidden,
+    // so the crush frame itself allocates nothing and compiles nothing.
+    // Building them on demand put a compile stall on the most dramatic beat.
+    check('crush rigs are pre-built at round start', before.rigs === true);
+    check('but hidden until the crush', before.rigsVisible &&
+        before.rigsVisible.every(v => v === false), JSON.stringify(before.rigsVisible));
 
     section('The crush leaves first person, per the request:');
     await page.evaluate(() => window.ACDebug.forceCrush(0));
@@ -137,6 +144,32 @@ const H = require('./harness');
     check('the body compresses but is not turned into a needle',
         last[0] > 0.6 && last[0] < 0.85 && last[1] > 1.0 && last[1] < 1.3 && last[2] > 0.85,
         `final scale ${JSON.stringify(last)}`);
+
+    // The reported bug: the crush "lags out sometimes". Cause was the dust
+    // emitter reusing spawnMuzzleFlash, whose pool GROWS and whose every entry
+    // carries a PointLight - and changing the scene's light count makes
+    // three.js recompile every material. Measured: shader programs 11 -> 27 and
+    // one 2.2-SECOND frame. Dust is now a fixed, light-free pool.
+    //
+    // Measured on the crush that is already running - an earlier version of
+    // this section re-drove the fighter-select and map-select UI mid-match to
+    // set up its own, which put the game in a state that threw.
+    section('The crush adds no lights (the cause of the stutter):');
+    const lit = await page.evaluate(async () => {
+        const D = window.ACDebug;
+        const count = () => { let n = 0; D.camP1.parent.traverse(o => { if (o.isLight) n++; }); return n; };
+        D.forceCrush(0);
+        const beforeLights = count();
+        const poolBefore = D.muzzleFlashPool;
+        // Run the emitter long enough that an unbounded pool would have grown.
+        for (let i = 0; i < 200; i++) await new Promise(r => requestAnimationFrame(r));
+        return { beforeLights, afterLights: count(),
+                 poolBefore, poolAfter: D.muzzleFlashPool, cap: 6 };
+    });
+    check('no PointLights are added during the crush',
+        lit.afterLights === lit.beforeLights, `${lit.beforeLights} -> ${lit.afterLights}`);
+    check('the muzzle-flash pool stays within its cap',
+        lit.poolAfter <= lit.cap, `${lit.poolBefore} -> ${lit.poolAfter} (cap ${lit.cap})`);
 
     section('Leaving the crush restores first person:');
     // Use the REAL exit the player takes. This found a genuine leak: both menu
