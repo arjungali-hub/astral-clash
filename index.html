@@ -1096,9 +1096,36 @@
 function loadThreeFallback() {
     var s = document.createElement('script');
     s.src = 'three.min.js';
-    s.onload = function () { bootGame(); };
+    s.onload = function () { startGame(); };
     s.onerror = function () { document.getElementById('cdn-error').style.display = 'flex'; };
     document.head.appendChild(s);
+}
+
+// Batch 25: the art overhaul needs two more three.js pieces - GLTFLoader (to
+// load the Blender-authored characters) and SkeletonUtils (to clone a skinned
+// mesh so each fighter gets its own skeleton). Both are r0.128 "examples/js"
+// classic scripts that just define THREE.* globals, so no module refactor.
+//
+// They load from vendor/ rather than a CDN: they MUST execute after THREE
+// exists, and the CDN path can lose that race when three.js itself came from
+// the local fallback. Loading them ourselves, in order, after THREE is
+// confirmed, removes the ordering problem entirely. If either fails the game
+// still runs - buildRiggedCharacter() returns null and every character falls
+// back to its original procedural mesh.
+function loadScriptsThen(srcs, done) {
+    var i = 0;
+    (function next() {
+        if (i >= srcs.length) return done();
+        var s = document.createElement('script');
+        s.src = srcs[i++];
+        s.onload = next;
+        s.onerror = function () { console.warn('[astral] optional script failed:', s.src); next(); };
+        document.head.appendChild(s);
+    })();
+}
+function startGame() {
+    if (typeof THREE === 'undefined') return;
+    loadScriptsThen(['vendor/GLTFLoader.js', 'vendor/SkeletonUtils.js'], function () { bootGame(); });
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" onerror="loadThreeFallback()"></script>
@@ -2495,7 +2522,17 @@ function disposeObject3D(obj) {
             const mats = Array.isArray(node.material) ? node.material : [node.material];
             mats.forEach(m => {
                 if (m.userData.shared) return; // cached/reused elsewhere — freeing it here would break the other user
-                if (m.map && !m.userData.keepMap) m.map.dispose();
+                // Batch 25: keepMap now protects the whole PBR texture set, not
+                // just .map. A rigged character's materials are cloned per
+                // fighter (the hit flash mutates them) but their textures stay
+                // shared with the cached source model, so disposing any of them
+                // here would blank every other instance.
+                if (!m.userData.keepMap) {
+                    for (const slot of ['map', 'normalMap', 'roughnessMap', 'metalnessMap',
+                                        'aoMap', 'emissiveMap', 'alphaMap']) {
+                        if (m[slot]) m[slot].dispose();
+                    }
+                }
                 m.dispose();
             });
         }
@@ -4949,7 +4986,11 @@ class Fighter {
     // (hit-flash light, shield ring, cooldown ring, P2 outline) attached
     // to it. Called once, right after construction, from startRound().
     initMesh() {
-        const group = MESH_BUILDERS[this.name](this.color);
+        // Batch 25: a Blender-authored skinned model when one is loaded for this
+        // character, otherwise the original procedural mesh. Both satisfy the
+        // same userData contract, so nothing downstream needs to know which.
+        const group = buildRiggedCharacter(this.name) || PROC_MESH_BUILDERS[this.name](this.color);
+        this.isRigged = !!group.userData.rigged;
         addRimOutline(group, this.color, this.isBossEntity ? { color: '#140f0c', scale: 1.04 } : undefined);
         group.userData.specialAnim = SPECIAL_ANIMS[this.cfg.special] || null; // distinct, more elaborate motion for the special (vs the basic weaponAnim)
 
@@ -4959,7 +5000,13 @@ class Fighter {
         // actually started (hanging at rest), not a hardcoded assumption.
         if (group.userData.weaponArm) {
             const arms = Array.isArray(group.userData.weaponArm) ? group.userData.weaponArm : [group.userData.weaponArm];
-            for (const arm of arms) arm.pivot.userData.restRotZ = arm.pivot.rotation.z;
+            // Capture BOTH rest axes: a procedural arm is swung about Z, a
+            // skeleton's arm bone about its local X (see _applyArms).
+            for (const arm of arms) {
+                if (!arm || !arm.pivot) continue;
+                arm.pivot.userData.restRotZ = arm.pivot.rotation.z;
+                arm.pivot.userData.restRotX = arm.pivot.rotation.x;
+            }
         }
 
         // Batch 8: mirror-match readability. In a same-character fight the
@@ -5048,6 +5095,36 @@ class Fighter {
             : (this.isPlayerOne ? LAYER_P1_BODY : LAYER_P2_BODY));
         group.traverse(n => { if (n.isLight) n.layers.enableAll(); });
         scene.add(group);
+    }
+
+    // Batch 25: choose and cross-fade the locomotion clip from real fighter
+    // state. No-op for procedural characters (no userData.rig), so the two art
+    // paths coexist with no branching at the call site.
+    updateRigAnimation(dt) {
+        const rig = this.mesh && this.mesh.userData.rig;
+        if (!rig) return;
+        const speed = Math.hypot(this.vx || 0, this.vy || 0);
+        let want;
+        if (this.hp <= 0) want = 'Death';
+        else if (this.hitstunTimer > 0) want = 'Hit';
+        else if (!this.grounded) want = 'Jump';
+        else if (speed > this.speed * 0.55) want = 'Run';
+        else if (speed > 0.12) want = 'Walk';
+        else want = 'Idle';
+        if (!rig.actions[want]) want = rig.actions.Idle ? 'Idle' : null;
+        if (want && rig.current !== want) {
+            const next = rig.actions[want];
+            const prev = rig.current && rig.actions[rig.current];
+            next.reset();
+            // One-shots must not resume mid-clip from a previous play.
+            if (next.loop === THREE.LoopOnce) next.time = 0;
+            next.play();
+            if (prev && prev !== next) next.crossFadeFrom(prev, 0.18, false);
+            rig.current = want;
+        }
+        // dt is in 60fps-equivalent frames throughout this file; the mixer
+        // wants seconds.
+        rig.mixer.update(dt / 60);
     }
 
     disposeMesh() {
@@ -5183,6 +5260,11 @@ class Fighter {
             }
         }
         this.mesh.rotation.x = lean;
+        // Batch 25: locomotion clip first, procedural attack swing second. The
+        // mixer writes every bone including the arms, so animateWeapon has to
+        // run AFTER it to win on the arms it drives - that layering is what
+        // lets baked walk/run coexist with the tuned per-character attacks.
+        this.updateRigAnimation(dt);
         animateWeapon(this);
 
         // Arena Collapse: once the walls have fully closed, crush the whole
@@ -5339,7 +5421,18 @@ function addRimOutline(group, colorHex, opts) {
     const scale = opts.scale || 1.08;
     const mat = getCachedMaterial(`rimOutline:${outlineColor}`, () => new THREE.MeshBasicMaterial({ color: outlineColor, side: THREE.BackSide }));
     const targets = [];
-    group.traverse(node => { if (node.isMesh && node.castShadow) targets.push(node); });
+    // Batch 25: userData.noOutline skips Blender-authored characters. The
+    // inverted-hull trick clones a mesh's geometry into a plain Mesh, which for
+    // a SkinnedMesh would render an un-skinned shell frozen in the bind pose -
+    // and on a 23k-triangle body it would double the vertex count for it. Those
+    // characters read clearly on their own, so they simply don't get an outline.
+    // A rigged character opts out entirely: `noOutline` is inherited down the
+    // subtree, so marking the model root and each weapon holder covers the body
+    // and its props in one check.
+    const optedOut = o => { for (let n = o; n; n = n.parent) if (n.userData && n.userData.noOutline) return true; return false; };
+    group.traverse(node => {
+        if (node.isMesh && node.castShadow && !node.isSkinnedMesh && !optedOut(node)) targets.push(node);
+    });
     for (const node of targets) {
         const outline = new THREE.Mesh(node.geometry, mat);
         outline.position.copy(node.position);
@@ -6025,7 +6118,197 @@ function buildHollowkinMesh(color) {
     return g;
 }
 
-const MESH_BUILDERS = {
+// ---------------------------------------------------------------------------
+// Batch 25: Blender-authored rigged characters.
+//
+// Each entry here replaces that character's procedural primitive mesh with a
+// real skinned GLB (see art/*.blend). Anything NOT listed keeps its original
+// procedural builder untouched, so the roster can be converted one character
+// at a time without the game ever being in a broken half-state.
+//
+// Loading is asynchronous and entirely optional: if the fetch fails - offline,
+// a file:// origin where XHR is blocked, a missing asset - charModels stays
+// empty, buildRiggedCharacter() returns null, and initMesh() falls back to the
+// primitive builder. The game must never fail to start over art.
+const CHAR_MODEL_URLS = {
+    Kaelen: 'assets/chars/kaelen.glb',
+};
+// Total height in world units that a loaded model is scaled to. The procedural
+// rig stands about this tall (hipY 15 + torsoH 20 + head ~13) and EYE_HEIGHT is
+// 46, so matching it keeps cameras, muzzle heights and hitboxes valid.
+const RIG_TARGET_HEIGHT = 50;
+const charModels = {};        // name -> { scene, animations, height }
+let charModelsLoaded = 0, charModelsFailed = 0;
+let modelsReady = null;       // Promise, resolved once every load has settled
+
+// glTF node names are sanitized by three.js (PropertyBinding.sanitizeNodeName
+// strips [ ] . : /), so Blender's "UpperArm.L" arrives as "UpperArmL". Try the
+// plausible spellings rather than depending on one exporter's behaviour.
+function findBone(root, base, side) {
+    const names = side ? [`${base}.${side}`, `${base}${side}`, `${base}_${side}`] : [base];
+    for (const n of names) {
+        const o = root.getObjectByName(n);
+        if (o) return o;
+    }
+    return null;
+}
+
+function preloadCharModels() {
+    const names = Object.keys(CHAR_MODEL_URLS);
+    if (!names.length || typeof THREE.GLTFLoader !== 'function') return Promise.resolve();
+    const loader = new THREE.GLTFLoader();
+    return Promise.all(names.map(name => new Promise(resolve => {
+        loader.load(CHAR_MODEL_URLS[name], gltf => {
+            const box = new THREE.Box3().setFromObject(gltf.scene);
+            charModels[name] = {
+                scene: gltf.scene,
+                animations: gltf.animations || [],
+                height: Math.max(0.001, box.max.y - box.min.y),
+            };
+            charModelsLoaded++;
+            resolve();
+        }, undefined, err => {
+            // Not fatal - this character just keeps its procedural mesh.
+            console.warn('[astral] could not load model for', name, err && err.message);
+            charModelsFailed++;
+            resolve();
+        });
+    })));
+}
+
+// Builds a fighter group from a loaded GLB, satisfying exactly the same
+// userData contract the procedural builders do (see buildHumanoidBase), so
+// every existing consumer - animateWeapon, render3D's hit flash and death
+// fade, initMesh's weapon attachment - keeps working unchanged.
+function buildRiggedCharacter(name) {
+    const m = charModels[name];
+    if (!m || !THREE.SkeletonUtils) return null;
+
+    // A skinned mesh cannot be shared between fighters: each needs its own
+    // skeleton to pose independently. SkeletonUtils.clone rebuilds the bone
+    // hierarchy while still sharing the (large) geometry buffers.
+    const inner = THREE.SkeletonUtils.clone(m.scene);
+
+    const bodyMats = [];
+    inner.traverse(o => {
+        if (!o.isMesh) return;
+        o.castShadow = true;
+        o.receiveShadow = true;
+        o.frustumCulled = false;   // skinned bounds go stale as bones move
+        // Materials are cloned PER FIGHTER because render3D mutates
+        // .color/.opacity for the hit flash and death fade; sharing them
+        // would make one fighter's hit flash the other's too in a mirror
+        // match. Their textures stay shared - see keepMap below.
+        const mats = (Array.isArray(o.material) ? o.material : [o.material]).map(src => {
+            const mat = src.clone();
+            mat.transparent = true;              // death fade animates opacity
+            mat.userData.origColor = mat.color.clone();
+            mat.userData.keepMap = true;         // textures belong to the cached source model
+            bodyMats.push(mat);
+            return mat;
+        });
+        o.material = Array.isArray(o.material) ? mats : mats[0];
+        // Geometry is shared with the cached source; disposeObject3D must not free it.
+        if (o.geometry) o.geometry.userData.shared = true;
+        o.userData.noOutline = true;             // see addRimOutline
+    });
+
+    const g = new THREE.Group();
+    // The model faces Blender -Y, which becomes +Z after the glTF Y-up
+    // conversion. Every consumer in this file assumes local +X is forward
+    // (render3D maps the 2D facing vector straight onto rotation.y), so
+    // rotate the model into that convention here rather than special-casing
+    // rigged characters everywhere downstream.
+    inner.rotation.y = Math.PI / 2;
+    inner.scale.setScalar(RIG_TARGET_HEIGHT / m.height);
+    g.add(inner);
+
+    const arm = (side) => {
+        const pivot = findBone(inner, 'UpperArm', side);
+        const hand = findBone(inner, 'Hand', side);
+        if (!pivot || !hand) return null;
+        // 'x' tells _applyArms to swing about the BONE's local X. On the
+        // procedural rigs the arm is a Group swung about Z; on a real skeleton
+        // the swing axis is local X (measured in Blender: local Z is world +Y
+        // for both sides, so a local-X rotation swings the limb fore/aft).
+        return { pivot, hand, axis: 'x' };
+    };
+    g.userData.bodyMats = bodyMats;
+    g.userData.armPos = arm('L');
+    g.userData.armNeg = arm('R');
+    g.userData.head = findBone(inner, 'Head');
+    g.userData.torso = findBone(inner, 'Chest');
+    g.userData.rigged = true;
+    g.userData.rigScale = RIG_TARGET_HEIGHT / m.height;
+
+    // Rather than re-declare each character's weapon and swing timings beside
+    // the rig (a second copy free to drift from the real one), build the
+    // ORIGINAL procedural mesh once and transplant its hand props and anim
+    // config onto the skeleton. Same weapon, same tuned numbers, one source.
+    const proto = PROC_MESH_BUILDERS[name] ? PROC_MESH_BUILDERS[name](((CHAR_MAP[name] || BOSS_MAP[name] || {}).color) || '#ffffff') : null;
+    if (proto) {
+        const invScale = m.height / RIG_TARGET_HEIGHT;   // props are authored in world units
+        const remap = new Map();
+        for (const key of ['armPos', 'armNeg']) {
+            const pa = proto.userData[key], ra = g.userData[key];
+            if (!pa || !ra) continue;
+            remap.set(pa, ra);
+            // The counter-scale and rotation go on an intermediate HOLDER, not
+            // on the prop itself. animateWeapon() owns userData.weapon's scale
+            // (it pulses it during casts via ws.scale.setScalar), so scaling the
+            // prop directly gets silently overwritten on the first attack - the
+            // weapon then inherits the rig's full 26x and becomes a 200-unit
+            // girder. The holder is invisible to animateWeapon, so it sticks.
+            //
+            // It also carries the axis fix: a bone's local +Y runs along the
+            // bone (wrist -> fingertips) while every prop is authored with local
+            // +X as "forward out of the hand", so rotate +X onto +Y here.
+            const holder = new THREE.Group();
+            holder.scale.setScalar(invScale);
+            holder.rotation.z = Math.PI / 2;
+            holder.userData.noOutline = true;
+            ra.hand.add(holder);
+            for (const child of [...pa.hand.children]) {
+                pa.hand.remove(child);
+                holder.add(child);
+            }
+        }
+        g.userData.weaponAnim = proto.userData.weaponAnim || null;
+        g.userData.specialAnim = proto.userData.specialAnim || null;
+        g.userData.weapon = proto.userData.weapon || null;
+        g.userData.chargeOrb = proto.userData.chargeOrb || null;
+        const wa = proto.userData.weaponArm;
+        g.userData.weaponArm = Array.isArray(wa)
+            ? wa.map(a => remap.get(a)).filter(Boolean)
+            : (remap.get(wa) || g.userData.armPos);
+        // Fold the transplanted props' materials in so the hit flash and death
+        // fade cover the weapon too, exactly as on the procedural rigs.
+        for (const key of ['armPos', 'armNeg']) {
+            const ra = g.userData[key];
+            if (ra) ra.hand.traverse(n => {
+                if (n.material) bodyMats.push(...(Array.isArray(n.material) ? n.material : [n.material]));
+            });
+        }
+    }
+
+    // Locomotion is played by an AnimationMixer; attacks stay procedural (see
+    // animateWeapon) so all thirteen weaponAnim types keep their tuned timing.
+    if (m.animations.length) {
+        const mixer = new THREE.AnimationMixer(inner);
+        const actions = {};
+        for (const clip of m.animations) {
+            const a = mixer.clipAction(clip);
+            const oneShot = /^(Hit|Death|Jump)$/.test(clip.name);
+            a.loop = oneShot ? THREE.LoopOnce : THREE.LoopRepeat;
+            a.clampWhenFinished = oneShot;
+            actions[clip.name] = a;
+        }
+        g.userData.rig = { mixer, actions, current: null };
+    }
+    return g;
+}
+
+const PROC_MESH_BUILDERS = {
     Karrigos: buildKarrigosMesh,
     Grint: buildGrintMesh,
     Slagling: buildSlaglingMesh,
@@ -6089,7 +6372,18 @@ const SPECIAL_ANIMS = {
     thunder: { type: 'skybolt' },                        // Aurelia — call the bolt from the sky
     bramble: { type: 'whipsweep' }                       // Thorne — huge sweeping lash
 };
-function _applyArms(arms, deg) { for (const a of arms) a.pivot.rotation.z = a.pivot.userData.restRotZ + deg * DEG; }
+// Batch 25: `axis` lets one animation path drive both rigs. A procedural arm is
+// a Group hanging down, swung about Z. A skeleton's arm bone swings about its
+// local X, and with the opposite sign (measured in Blender: negative local-X is
+// forward). Everything else - all thirteen anim types, their timings, the
+// special overrides - is untouched.
+function _applyArms(arms, deg) {
+    for (const a of arms) {
+        if (!a || !a.pivot) continue;
+        if (a.axis === 'x') a.pivot.rotation.x = (a.pivot.userData.restRotX || 0) - deg * DEG;
+        else a.pivot.rotation.z = a.pivot.userData.restRotZ + deg * DEG;
+    }
+}
 function animateWeapon(f) {
     const acting = f.atkState !== 'idle' && f.atkKind;
     const anim = (acting && f.atkKind === 'special' && f.mesh.userData.specialAnim) ? f.mesh.userData.specialAnim : f.mesh.userData.weaponAnim;
@@ -8434,6 +8728,13 @@ if (DEBUG) {
         get p1IsBot() { return p1IsBot; },
         get p2IsBot() { return p2IsBot; },
         Fighter, keys, pressed, BINDINGS,
+        // Batch 25 art pipeline
+        CHAR_MODEL_URLS, RIG_TARGET_HEIGHT, charModels,
+        buildRiggedCharacter, findBone, preloadCharModels,
+        get modelsReady() { return modelsReady; },
+        get charModelsLoaded() { return charModelsLoaded; },
+        get charModelsFailed() { return charModelsFailed; },
+        PROC_MESH_BUILDERS,
         // Batch 24
         DODGE_DIST, DODGE_IFRAMES, DODGE_COOLDOWN, STAT_MAX,
         specialHitDmg, specialDamageValue, specialDamageText, characterInfoHTML,
@@ -8443,11 +8744,18 @@ if (DEBUG) {
     };
 }
 
+// Kick the character models off now, at boot, rather than when a match starts:
+// the menu takes many seconds of human time, which is ample. Deliberately NOT
+// awaited - the game is fully playable while this is in flight, and any
+// character whose model hasn't landed yet simply uses its procedural mesh for
+// that round.
+modelsReady = preloadCharModels();
+
 requestAnimationFrame(gameLoop);
 } // end bootGame()
 // Start immediately if the CDN provided THREE; otherwise loadThreeFallback()'s
-// onload calls bootGame() once the local copy finishes loading.
-if (typeof THREE !== 'undefined') bootGame();
+// onload calls startGame() once the local copy finishes loading.
+if (typeof THREE !== 'undefined') startGame();
 </script>
 
 </body>
