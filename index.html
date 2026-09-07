@@ -3310,6 +3310,34 @@ function assertSpawnsClear(map) {
 // are NOT scaled with the arena width — vertical reach is fixed by
 // JUMP_VZ/GRAVITY. Layout density varies map to map so they feel different
 // sizes even though the outer bounds are shared.
+// Batch 26: COMPETITIVE FAIRNESS. Every arena must be symmetric under a
+// 180-degree rotation about the arena centre, so each fighter sees an identical
+// layout from their own spawn - the standard every competitive arena shooter
+// holds to, and something four of these ten maps failed. Two failed outright
+// (a staircase climbing only the west side; a spire whose two spawns sat on the
+// SAME side of the map), and two handed exactly one player a ramp onto the high
+// ground.
+//
+// rotSym() makes that structural rather than something to remember: an author
+// describes HALF an arena and gets a provably fair whole. A feature sitting on
+// the centre point is its own twin and is not duplicated. Ramps get from/to
+// swapped in the copy, because rotating 180 degrees reverses the axis the slope
+// climbs along - without that the twin ramp would descend into the floor.
+// mapscheck.js asserts all ten maps satisfy this.
+function rotSym(items) {
+    const out = [];
+    for (const it of items) {
+        out.push(it);
+        const rx = 2 * ARENA_CX - it.x, ry = 2 * ARENA_CY - it.y;
+        if (Math.abs(rx - it.x) < 1 && Math.abs(ry - it.y) < 1) continue; // centrepiece: its own twin
+        const twin = Object.assign({}, it, { x: rx, y: ry });
+        if (it.seed !== undefined) twin.seed = it.seed + 1.7;  // keep procedural detail from mirroring exactly
+        if (it.type === 'ramp' && it.from !== undefined) { twin.from = it.to; twin.to = it.from; }
+        out.push(twin);
+    }
+    return out;
+}
+
 const MAPS = [
     {
         name: 'Voltaic Nexus',
@@ -3333,30 +3361,32 @@ const MAPS = [
     {
         name: 'Sundered Stair',
         accent: '#f59e0b', fogColor: '#140d08',
-        // A climbing staircase up the west side to a high throne platform,
-        // an interior cover wall on the east, and a ramp back down.
-        spawn1: { x: 220, y: 230 }, spawn2: { x: 1540, y: 740 },
-        obstacles: [
-            { x: 900, y: 300, r: 34, seed: 0.6 }, { x: 900, y: 674, r: 34, seed: 3.1 }
-        ],
-        terrain: [
-            { type: 'step', x: 150, y: 487, hw: 60, hd: 220, height: 20 },
-            { type: 'step', x: 270, y: 487, hw: 60, hd: 220, height: 40 },
-            { type: 'step', x: 390, y: 487, hw: 60, hd: 220, height: 60 },
-            { type: 'ramp', x: 1420, y: 487, hw: 130, hd: 140, axis: 'x', from: 0, to: 55 }
-        ],
-        platforms: [
-            { x: 520, y: 487, hw: 62, hd: 155, height: 110 },
-            // Was height 210 — a 100-unit gap from the platform below, which
-            // exceeds a single jump's max height gain (JUMP_VZ^2/(2*GRAVITY)
-            // ~= 96.4 units), making this climb mathematically impossible
-            // with no jump upgrade. Retuned to 200 (a 90-unit gap, the same
-            // margin Skyreach Spire's own tightest tier already uses safely)
-            // so the intended "climb the stair, then two hard-to-reach
-            // platforms" path is actually climbable.
-            { x: 690, y: 487, hw: 52, hd: 110, height: 200 },
-            { x: 1080, y: 300, hw: 26, hd: 180, height: 280 }
-        ]
+        // Batch 26 REDESIGN. The theme is kept - a broken staircase climbing to
+        // a high throne - but it now climbs from BOTH spawns to one shared
+        // centre throne, rather than a staircase up the west side and a ramp on
+        // the east. Everything below is authored for one half and mirrored by
+        // rotSym, so the two approaches are identical.
+        //
+        // Climb: ground -> 22 -> 46 -> 70 -> 112 -> 200 -> 258 (throne). The
+        // largest gap is 88, inside a single jump's 96.4-unit ceiling
+        // (JUMP_VZ^2 / (2*GRAVITY)), so the whole climb needs no upgrade.
+        spawn1: { x: 220, y: 230 }, spawn2: { x: 1535, y: 745 },
+        obstacles: rotSym([
+            { x: 700, y: 300, r: 34, seed: 0.6 }
+        ]),
+        terrain: rotSym([
+            { type: 'step', x: 170, y: 320, hw: 62, hd: 130, height: 22 },
+            { type: 'step', x: 295, y: 320, hw: 62, hd: 130, height: 46 },
+            { type: 'step', x: 420, y: 320, hw: 62, hd: 130, height: 70 },
+            // A ramp near each spawn, so neither side has a walk-up the other lacks.
+            { type: 'ramp', x: 300, y: 700, hw: 120, hd: 130, axis: 'x', from: 0, to: 50 }
+        ]),
+        platforms: rotSym([
+            { x: 545, y: 320, hw: 60, hd: 112, height: 112 },
+            { x: 700, y: 320, hw: 52, hd: 100, height: 200 },
+            // The contested throne, dead centre: its own rotational twin.
+            { x: 877.5, y: 487.5, hw: 88, hd: 88, height: 258 }
+        ])
     },
     {
         name: 'Twin Ramparts',
@@ -3410,24 +3440,29 @@ const MAPS = [
     {
         name: 'Skyreach Spire',
         accent: '#f43f5e', fogColor: '#170a0d',
-        // Vertical map: three platform tiers climbing to a high central
-        // throne (unreachable in one jump — climb tier by tier), flanked by
-        // two tall interior walls.
-        spawn1: { x: 230, y: 750 }, spawn2: { x: 1524, y: 750 },
-        obstacles: [
-            { x: 600, y: 780, r: 26, seed: 0.5 }, { x: 1154, y: 780, r: 26, seed: 2.0 }
-        ],
-        terrain: [
+        // Batch 26 REDESIGN. Still the vertical map - tiers climbing to a high
+        // central throne - but this was the worst offender: both spawns sat at
+        // y=750, the SAME side of the arena, and the tiers climbed from only one
+        // of them. spawn2 is now the true 180-degree opposite of spawn1 and each
+        // tier is mirrored, which turns the climb into a race instead of a head
+        // start.
+        //
+        // Tiers: ground -> 60 -> 140 -> 230 (throne). Largest gap 90, inside the
+        // 96.4-unit single-jump ceiling.
+        spawn1: { x: 230, y: 750 }, spawn2: { x: 1525, y: 225 },
+        obstacles: rotSym([
+            { x: 600, y: 780, r: 26, seed: 0.5 }
+        ]),
+        terrain: rotSym([
             { type: 'step', x: 877, y: 820, hw: 130, hd: 45, height: 18 },
             { type: 'ramp', x: 400, y: 720, hw: 90, hd: 70, axis: 'x', from: 0, to: 22 }
-        ],
-        platforms: [
-            { x: 877, y: 620, hw: 105, hd: 80, height: 60 },
-            { x: 1150, y: 500, hw: 82, hd: 68, height: 140 },
-            { x: 877, y: 360, hw: 78, hd: 62, height: 230 },
-            { x: 480, y: 340, hw: 26, hd: 150, height: 265 },
-            { x: 1300, y: 340, hw: 26, hd: 150, height: 265 }
-        ]
+        ]),
+        platforms: rotSym([
+            { x: 700, y: 700, hw: 95, hd: 78, height: 60 },
+            { x: 1000, y: 620, hw: 82, hd: 68, height: 140 },
+            { x: 480, y: 340, hw: 26, hd: 150, height: 265 },   // tall lane divider
+            { x: 877.5, y: 487.5, hw: 80, hd: 64, height: 230 } // the spire throne
+        ])
     },
     {
         name: 'The Shattered Bridge',
@@ -3483,14 +3518,20 @@ const MAPS = [
             { x: 560, y: 674, r: 32, seed: 3.3 }, { x: 1194, y: 674, r: 32, seed: 4.8 },
             { x: 877, y: 487, r: 30, seed: 1.2 }
         ],
-        terrain: [
+        // Batch 26: this ramp had no twin, so only one player had a walk-up.
+        terrain: rotSym([
             { type: 'ramp', x: 340, y: 640, hw: 80, hd: 70, axis: 'x', from: 0, to: 30 }
-        ],
+        ]),
         platforms: [
             { x: 400, y: 250, hw: 70, hd: 70, height: 60 },
             { x: 1354, y: 724, hw: 70, hd: 70, height: 60 },
-            // 250 -> 222 (Batch 15): comfortable Double Jump reach from the
-            // height-60 cover blocks (gap 162). Still a full sight-blocker.
+            // 250 -> 222 (Batch 15). NOTE (Batch 26): the original note here
+            // claimed this was "comfortable Double Jump reach from the
+            // height-60 cover blocks (gap 162)". Only the HEIGHT gap is 162 -
+            // those blocks sit 227 units away horizontally, so this wall is not
+            // actually reachable from them by any jump. That is fine and
+            // intended: it is a lane divider, not a perch (see the MAPS header
+            // comment). mapscheck.js now asserts dividers stay unclimbable.
             { x: 877, y: 250, hw: 180, hd: 26, height: 222 },
             { x: 877, y: 724, hw: 180, hd: 26, height: 222 }
         ]
@@ -3505,16 +3546,21 @@ const MAPS = [
             { x: 700, y: 300, r: 30, seed: 0.5 }, { x: 1054, y: 300, r: 30, seed: 1.9 },
             { x: 700, y: 674, r: 30, seed: 3.1 }, { x: 1054, y: 674, r: 30, seed: 4.5 }
         ],
-        terrain: [
+        // Batch 26: the ramp onto the central dais existed only on the west
+        // side, so P1 could walk up while P2 had to jump. Mirrored.
+        terrain: rotSym([
             { type: 'step', x: 877, y: 180, hw: 160, hd: 40, height: 30 },
-            { type: 'step', x: 877, y: 794, hw: 160, hd: 40, height: 30 },
             { type: 'ramp', x: 400, y: 487, hw: 90, hd: 120, axis: 'x', from: 0, to: 45 }
-        ],
-        platforms: [
-            { x: 877, y: 487, hw: 90, hd: 75, height: 120 },
-            { x: 600, y: 487, hw: 45, hd: 45, height: 60 },
-            { x: 1154, y: 487, hw: 45, hd: 45, height: 60 }
-        ]
+        ]),
+        // Batch 26: the side steps sat 142 units from the dais edge. Clearing
+        // that needs the full ~43-frame airtime AND a fast character - Kaelen
+        // covers ~145 units, Draven only ~81 - so the map's own documented
+        // "dais climbed via a ramp and low side platforms" was unclimbable for
+        // half the roster. Moved to a 42-unit gap, which every character makes.
+        platforms: rotSym([
+            { x: 877.5, y: 487.5, hw: 90, hd: 75, height: 120 },  // centre dais: its own twin
+            { x: 700, y: 487.5, hw: 45, hd: 45, height: 60 }      // step up to it
+        ])
     },
     {
         name: 'Coral Hollow',
