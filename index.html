@@ -2180,6 +2180,43 @@ function buildSkyDome() {
 buildSkyDome();
 
 // Redraw the sky gradient + reposition/recolor the sun for a map's theme.
+// --- Batch 28: image-based lighting. -------------------------------------
+// This is the single change that makes the whole game read as lit rather than
+// painted, and it fixed a bug that looked like a material mistake.
+//
+// The rebuilt weapons use physically-correct metal (metalness 1.0), and a fully
+// metallic surface in three.js takes its colour ENTIRELY from what it reflects.
+// With no environment map there is nothing to reflect, so a polished steel
+// blade renders pure BLACK - which is exactly how the first sword screenshot
+// came out. Metals need an environment, not a brighter base colour.
+//
+// The environment is generated from the same sky gradient the player is
+// actually standing under, so reflections match the arena's own palette and
+// change with every map. PMREM pre-filters it into the roughness mip chain that
+// MeshStandardMaterial samples, so rough surfaces get soft ambient bounce and
+// smooth ones get a sharp horizon - the armour, the blades and the arena metal
+// all pick this up for free.
+let pmremGen = null, envRT = null;
+function updateEnvironment() {
+    if (!skyDome || !skyDome.material.map) return;
+    try {
+        if (!pmremGen) {
+            pmremGen = new THREE.PMREMGenerator(renderer);
+            pmremGen.compileEquirectangularShader();
+        }
+        const src = skyDome.material.map;
+        src.mapping = THREE.EquirectangularReflectionMapping;
+        const next = pmremGen.fromEquirectangular(src);
+        if (envRT) envRT.dispose();     // dispose AFTER the new one exists
+        envRT = next;
+        scene.environment = envRT.texture;
+    } catch (e) {
+        // Never let image-based lighting break the game; without it metals just
+        // look flat rather than reflective.
+        console.warn('[astral] environment map unavailable:', e && e.message);
+    }
+}
+
 function applySky(theme) {
     const g = skyTexCanvas.getContext('2d');
     const grad = g.createLinearGradient(0, 0, 0, 256);
@@ -2191,6 +2228,7 @@ function applySky(theme) {
     sunSprite.position.set(theme.sun.pos[0], theme.sun.pos[1], theme.sun.pos[2]);
     sunSprite.scale.set(theme.sun.size, theme.sun.size, 1);
     sunSprite.material.color.set(theme.sun.color);
+    updateEnvironment();   // reflections follow the map's own sky
 }
 
 // --- Rendering layers (three.js): each fighter's body is put on its own
@@ -2283,8 +2321,13 @@ function buildCrushRigs() {
     const floorTex = theme ? getFloorTexture(theme) : null;
     const slabGeo = new THREE.BoxGeometry(30, WALL_HEIGHT * 0.8, 260);
     const stageGeo = new THREE.BoxGeometry(300, 10, 300);
+    // A wall BEHIND the fighter closes the box off. Without it the camera looks
+    // straight past them into empty sky, which read as a floating diorama
+    // rather than a room shutting on someone.
+    const backGeo = new THREE.BoxGeometry(300, WALL_HEIGHT * 0.8, 26);
     slabGeo.userData.shared = true;
     stageGeo.userData.shared = true;
+    backGeo.userData.shared = true;
 
     const make = (layer) => {
         const g = new THREE.Group();
@@ -2298,18 +2341,26 @@ function buildCrushRigs() {
         stage.position.y = -5;
         stage.receiveShadow = true;
         g.add(stage);
-        for (const sign of [-1, 1]) {
-            const mat = new THREE.MeshStandardMaterial({
+        const wallMat = () => {
+            const m = new THREE.MeshStandardMaterial({
                 map: wallTex || null,
                 color: new THREE.Color(theme ? theme.wallColor : '#8b93a3'),
                 roughness: 0.85, metalness: 0.12,
             });
-            mat.userData.keepMap = true;   // textures are shared with the map
-            const slab = new THREE.Mesh(slabGeo, mat);
+            m.userData.keepMap = true;   // textures are shared with the map
+            return m;
+        };
+        for (const sign of [-1, 1]) {
+            const slab = new THREE.Mesh(slabGeo, wallMat());
             slab.castShadow = true;
             slab.userData.sign = sign;
             g.add(slab);
         }
+        const back = new THREE.Mesh(backGeo, wallMat());
+        back.position.set(0, WALL_HEIGHT * 0.4, -95);
+        back.receiveShadow = true;
+        back.userData.back = true;
+        g.add(back);
         setLayerRecursive(g, layer);
         scene.add(g);
         return g;
@@ -2341,6 +2392,8 @@ function syncCrushRigs(dt) {
         const g = crushRigs[key];
         if (!g || !f) continue;
         g.position.set(worldX(f.x + f.width / 2), f.z, worldZ(f.y + f.height / 2));
+        // The rig is axis-aligned with the world, and the fighter is turned to
+        // face the camera (see render3D), so the box stays square to the shot.
         for (const child of g.children) {
             const sign = child.userData.sign;
             if (sign === undefined) continue;   // the stage
@@ -2390,10 +2443,20 @@ function positionCrushCamera(cam, f, dt) {
 // suppressed by hiding the object instead.
 function applyCrushCameraLayers() {
     for (const cam of [camP1, camP2]) {
-        const body = cam.userData.ownBody;
-        if (body === undefined) continue;
-        if (crushing) cam.layers.enable(body);
-        else cam.layers.disable(body);
+        const own = cam.userData.ownBody;
+        if (own === undefined) continue;
+        const other = own === LAYER_P1_BODY ? LAYER_P2_BODY : LAYER_P1_BODY;
+        if (crushing) {
+            // Show MY body and hide the opponent's, so each half of the screen
+            // is one fighter being crushed alone. Without the second half of
+            // that swap both fighters appear in both halves, one behind the
+            // other, and it stops reading as "this is happening to me".
+            cam.layers.enable(own);
+            cam.layers.disable(other);
+        } else {
+            cam.layers.disable(own);
+            cam.layers.enable(other);
+        }
     }
     if (vmP1) vmP1.visible = !crushing;
     if (vmP2) vmP2.visible = !crushing;
@@ -5519,6 +5582,13 @@ class Fighter {
             }
             const head = this.mesh.userData.head;
             if (head && head.isBone) head.rotation.x = -push * 0.5;
+            // Face the camera. The crush camera sits on the fighter's +Z side,
+            // so turning local +X (every rig's "forward") onto world +Z points
+            // them at the viewer. Overrides the facing render3D set above,
+            // which is the fighter's last combat heading and would leave them
+            // crushed in profile or from behind.
+            this.mesh.rotation.y = -Math.PI / 2;
+            this.mesh.rotation.x = 0;   // drop the attack lean; it fights the pose
         }
 
         this.flashLight.intensity = this.hitFlash > 0 ? (this.hitFlash / 10) * 2.2 : 0;
@@ -5767,88 +5837,350 @@ function buildHumanoidBase(color, opts) {
 // bulky hammer head on a handle; a curved scythe; etc.). `userData.mats`
 // lists this weapon's materials so the caller can fold them into the
 // fighter's bodyMats (hit-flash / death-fade). ---
+// --- Batch 28: weapons rebuilt. ------------------------------------------
+// The blades used to be a flat BoxGeometry slab with a 4-sided cone glued on
+// the end: no taper, no cutting edge, no central ridge, so they caught light
+// like a painted plank and read as the crudest thing on screen - especially in
+// first person, where the viewmodel is on screen every single frame.
+//
+// The fix is shape, not texture. A real blade has a DIAMOND cross-section: two
+// edges and a raised spine. That gives four long faces at different angles to
+// the light, which is what makes metal look like metal. bladeGeometry builds
+// that from a list of cross-sections so one function serves swords, daggers and
+// scythe blades at any taper.
+
+// Physically-plausible metal beats the old flat-ish look immediately: real
+// polished steel is fully metallic and quite smooth, and its colour comes from
+// reflection rather than a bright base colour.
+function steelMat(hex) {
+    return makeMat(hex || '#cfd8e3', { metalness: 1.0, roughness: 0.17 });
+}
+function goldMat(hex) {
+    return makeMat(hex || '#d4a13a', { metalness: 1.0, roughness: 0.3 });
+}
+function darkMetalMat(hex) {
+    return makeMat(hex || '#2b303b', { metalness: 0.9, roughness: 0.45 });
+}
+function leatherMat(hex) {
+    return makeMat(hex || '#3a2a1c', { metalness: 0.0, roughness: 0.92 });
+}
+// The glowing edge/energy line. Unlit on purpose: the arenas are bright and
+// tone-mapped at exposure 1.1, so an emissive standard material clips to white
+// and loses its colour - the lesson the Karrigos ember seams already taught.
+function energyMat(hex) {
+    return getCachedMaterial('energy:' + hex, () => new THREE.MeshBasicMaterial({ color: hexNum(hex) }));
+}
 function weaponMat(hex, emissiveHex) {
     return makeMat(hex, { metalness: 0.72, roughness: 0.24, emissive: hexNum(emissiveHex || hex), emissiveIntensity: 0.45 });
 }
+
+// Builds a solid with a diamond cross-section along +X, tapering through the
+// given sections and closing to a point at the tip.
+//   sections: [{ x, w, h }]  w = half-width (edge to edge), h = half-thickness
+// Cached by shape, and flagged shared so disposeObject3D leaves it alone.
+function bladeGeometry(key, sections, tipX) {
+    return getCachedGeometry('blade:' + key, () => {
+        const pos = [], idx = [];
+        const push = (x, y, z) => { pos.push(x, y, z); return pos.length / 3 - 1; };
+        const rings = sections.map(sc => [
+            push(sc.x, 0, sc.w),    // one cutting edge
+            push(sc.x, sc.h, 0),    // spine, front face
+            push(sc.x, 0, -sc.w),   // other cutting edge
+            push(sc.x, -sc.h, 0),   // spine, back face
+        ]);
+        for (let i = 0; i < rings.length - 1; i++) {
+            const a = rings[i], b = rings[i + 1];
+            for (let k = 0; k < 4; k++) {
+                const k2 = (k + 1) % 4;
+                idx.push(a[k], b[k], b[k2]);
+                idx.push(a[k], b[k2], a[k2]);
+            }
+        }
+        // Tip: fan the last ring into a single point.
+        const apex = push(tipX, 0, 0);
+        const last = rings[rings.length - 1];
+        for (let k = 0; k < 4; k++) idx.push(last[k], apex, last[(k + 1) % 4]);
+        // Base cap, so the blade is a closed solid and shadows correctly.
+        const first = rings[0];
+        idx.push(first[0], first[1], first[2]);
+        idx.push(first[0], first[2], first[3]);
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        geo.setIndex(idx);
+        geo.computeVertexNormals();
+        return geo;
+    });
+}
+
+// A wrapped grip: a tapered cylinder plus raised binding rings, which breaks up
+// the silhouette far better than one smooth 6-sided tube.
+function buildGrip(g, mats, x0, len, r, wrapColor) {
+    const gripMat = leatherMat(wrapColor);
+    const grip = new THREE.Mesh(
+        getCachedGeometry(`grip:${len}:${r}`, () => new THREE.CylinderGeometry(r, r * 1.12, len, 14)),
+        gripMat);
+    grip.rotation.z = Math.PI / 2;
+    grip.position.x = x0 + len / 2;
+    g.add(grip);
+    mats.push(gripMat);
+    const bandMat = darkMetalMat('#1c2027');
+    const bandGeo = getCachedGeometry(`gripband:${r}`, () => new THREE.TorusGeometry(r * 1.06, r * 0.2, 6, 12));
+    for (let i = 0; i < 3; i++) {
+        const band = new THREE.Mesh(bandGeo, bandMat);
+        band.rotation.y = Math.PI / 2;
+        band.position.x = x0 + len * (0.2 + i * 0.3);
+        g.add(band);
+    }
+    mats.push(bandMat);
+    return grip;
+}
+
+// A pommel counterweight at the butt of the handle.
+function buildPommel(g, mats, x, r, hex) {
+    const mat = goldMat(hex);
+    const p = new THREE.Mesh(
+        getCachedGeometry(`pommel:${r}`, () => new THREE.SphereGeometry(r, 10, 8)),
+        mat);
+    p.position.x = x;
+    p.scale.x = 0.8;
+    g.add(p);
+    mats.push(mat);
+}
+
 function buildSwordProp(bladeHex, emissiveHex, len, wide) {
     const g = new THREE.Group();
-    const mat = weaponMat(bladeHex, emissiveHex);
-    const w = wide || 5;
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(len, 1.1, w), mat);
-    blade.position.x = 6 + len / 2; blade.castShadow = true;
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(w / 2, 8, 4), mat);
-    tip.rotation.z = -Math.PI / 2; tip.position.x = 6 + len + 4; tip.castShadow = true;
-    const guardMat = makeMat('#eab308', { metalness: 0.6, roughness: 0.4 });
-    const guard = new THREE.Mesh(new THREE.BoxGeometry(2.2, 3.2, w * 2.4), guardMat);
-    guard.position.x = 5;
-    const gripMat = makeMat('#3f2d1e', { roughness: 0.85 });
-    const grip = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 6, 6), gripMat);
-    grip.rotation.z = Math.PI / 2; grip.position.x = 1.5;
-    g.add(blade, tip, guard, grip);
-    g.userData.mats = [mat, guardMat, gripMat];
+    const mats = [];
+    const w = (wide || 5) / 2;
+    const x0 = 8;                      // blade starts past the guard
+    const bl = len;                    // blade length
+    // Wide at the base, narrowing through the length, then a long point: the
+    // profile of an actual cutting sword rather than a constant-width bar.
+    const bladeMat = steelMat(bladeHex);
+    const blade = new THREE.Mesh(bladeGeometry(
+        `sword:${len}:${wide || 5}`,
+        [
+            { x: x0,               w: w,        h: w * 0.30 },
+            { x: x0 + bl * 0.18,   w: w * 0.98, h: w * 0.28 },
+            { x: x0 + bl * 0.62,   w: w * 0.86, h: w * 0.22 },
+            { x: x0 + bl * 0.88,   w: w * 0.55, h: w * 0.16 },
+        ],
+        x0 + bl + w * 0.9), bladeMat);
+    blade.castShadow = true;
+    g.add(blade);
+    mats.push(bladeMat);
+
+    // A glowing fuller down the spine - the character's accent colour, thin
+    // enough to read as an energy line rather than a painted stripe.
+    const eMat = energyMat(emissiveHex || bladeHex);
+    const fuller = new THREE.Mesh(
+        getCachedGeometry(`fuller:${len}`, () => new THREE.BoxGeometry(bl * 0.82, 0.5, 0.9)),
+        eMat);
+    fuller.position.x = x0 + bl * 0.44;
+    g.add(fuller);
+    mats.push(eMat);
+
+    // Swept cross guard: two tapered quillons, not one rectangular block.
+    const guardMat = goldMat('#d9a83c');
+    const quillonGeo = getCachedGeometry('quillon', () => new THREE.CylinderGeometry(1.5, 0.7, w * 2.6, 8));
+    for (const sign of [1, -1]) {
+        const q = new THREE.Mesh(quillonGeo, guardMat);
+        q.position.set(x0 - 1.5, 0, sign * w * 1.3);
+        q.rotation.x = Math.PI / 2;
+        q.rotation.y = sign * 0.22;      // sweep the tips forward
+        g.add(q);
+    }
+    const collar = new THREE.Mesh(
+        getCachedGeometry('collar', () => new THREE.BoxGeometry(3.4, w * 0.9, w * 0.9)),
+        guardMat);
+    collar.position.x = x0 - 1.5;
+    g.add(collar);
+    mats.push(guardMat);
+
+    buildGrip(g, mats, 0.5, 7, 1.25, '#33241a');
+    buildPommel(g, mats, -0.6, 1.7, '#d9a83c');
+
+    g.userData.mats = mats;
     return g;
 }
+
 function buildDaggerProp(bladeHex, emissiveHex) {
     const g = new THREE.Group();
-    const mat = weaponMat(bladeHex, emissiveHex);
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(9, 0.9, 3.4), mat);
-    blade.position.x = 5 + 4.5; blade.castShadow = true;
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(1.7, 4.5, 4), mat);
-    tip.rotation.z = -Math.PI / 2; tip.position.x = 5 + 9 + 2;
-    const guardMat = makeMat('#0f766e', { metalness: 0.6 });
-    const guard = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.4, 7), guardMat);
-    guard.position.x = 4.5;
-    g.add(blade, tip, guard);
-    g.userData.mats = [mat, guardMat];
+    const mats = [];
+    const w = 1.7, x0 = 4.5, bl = 11;
+    const bladeMat = steelMat(bladeHex);
+    // A dagger keeps its width almost to the tip then breaks sharply - that is
+    // what makes it read as a stabbing blade rather than a small sword.
+    const blade = new THREE.Mesh(bladeGeometry(
+        `dagger:${bladeHex}`,
+        [
+            { x: x0,             w: w,        h: w * 0.42 },
+            { x: x0 + bl * 0.55, w: w * 0.95, h: w * 0.34 },
+            { x: x0 + bl * 0.85, w: w * 0.62, h: w * 0.24 },
+        ],
+        x0 + bl + 2.2), bladeMat);
+    blade.castShadow = true;
+    g.add(blade);
+    mats.push(bladeMat);
+
+    const eMat = energyMat(emissiveHex || bladeHex);
+    const edge = new THREE.Mesh(
+        getCachedGeometry('daggerEdge', () => new THREE.BoxGeometry(bl * 0.7, 0.34, 0.6)),
+        eMat);
+    edge.position.x = x0 + bl * 0.42;
+    g.add(edge);
+    mats.push(eMat);
+
+    const guardMat = darkMetalMat('#20242d');
+    const guard = new THREE.Mesh(
+        getCachedGeometry('daggerGuard', () => new THREE.CylinderGeometry(0.55, 1.5, 5.2, 8)),
+        guardMat);
+    guard.rotation.x = Math.PI / 2;
+    guard.position.x = x0 - 0.8;
+    g.add(guard);
+    mats.push(guardMat);
+
+    buildGrip(g, mats, 0.2, 4.4, 0.95, '#241a12');
+    g.userData.mats = mats;
     return g;
 }
+
 function buildHammerProp() {
     const g = new THREE.Group();
-    const handleMat = makeMat('#4b3b2a', { roughness: 0.85 });
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 20, 8), handleMat);
-    handle.rotation.z = Math.PI / 2; handle.position.x = 10; handle.castShadow = true;
-    const headMat = weaponMat('#cbd5e1', '#94a3b8');
-    const head = new THREE.Mesh(new THREE.BoxGeometry(11, 15, 15), headMat);
-    head.position.x = 22; head.castShadow = true;
-    const bandMat = makeMat('#64748b', { metalness: 0.7 });
-    const band = new THREE.Mesh(new THREE.BoxGeometry(2.5, 16.5, 16.5), bandMat);
+    const mats = [];
+    // Haft: a long tapered shaft with a bound grip, so the weight reads as
+    // being at the far end.
+    const haftMat = leatherMat('#2e2118');
+    const haft = new THREE.Mesh(
+        getCachedGeometry('haft', () => new THREE.CylinderGeometry(1.15, 1.5, 20, 12)),
+        haftMat);
+    haft.rotation.z = Math.PI / 2;
+    haft.position.x = 9;
+    g.add(haft);
+    mats.push(haftMat);
+
+    const headMat = darkMetalMat('#4a5261');
+    // The striking head: a broad face, tapered cheeks either side, and a
+    // wedge-shaped rear claw. Three simple pieces, but the silhouette stops
+    // being a cube.
+    const face = new THREE.Mesh(
+        getCachedGeometry('hammerFace', () => new THREE.CylinderGeometry(5.4, 4.6, 7.5, 8)),
+        headMat);
+    face.rotation.z = Math.PI / 2;
+    face.position.x = 22;
+    face.castShadow = true;
+    g.add(face);
+    const claw = new THREE.Mesh(
+        getCachedGeometry('hammerClaw', () => new THREE.ConeGeometry(3.4, 6.5, 6)),
+        headMat);
+    claw.rotation.z = Math.PI / 2;
+    claw.position.x = 15.5;
+    claw.scale.set(1, 1, 0.65);
+    g.add(claw);
+    mats.push(headMat);
+
+    const bandMat = goldMat('#9aa3b2');
+    const band = new THREE.Mesh(
+        getCachedGeometry('hammerBand', () => new THREE.TorusGeometry(5.0, 0.55, 6, 14)),
+        bandMat);
+    band.rotation.y = Math.PI / 2;
     band.position.x = 22;
-    g.add(handle, head, band);
-    g.userData.mats = [handleMat, headMat, bandMat];
+    g.add(band);
+    mats.push(bandMat);
+
+    buildPommel(g, mats, -1.2, 1.9, '#7d8695');
+    g.userData.mats = mats;
     return g;
 }
-// `len` = shaft length. Nyx's on-body scythe is built long so the blade
-// actually reaches the edge of its (long) attack range; the viewmodel uses a
-// shorter, foreshortened version. Blade cluster scales with the shaft.
+
 function buildScytheProp(len = 34) {
     const g = new THREE.Group();
-    const s = Math.min(1.6, len / 34);
-    const shaftMat = makeMat('#1f2937', { roughness: 0.7, metalness: 0.3 });
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, len, 8), shaftMat);
-    shaft.rotation.z = Math.PI / 2; shaft.position.x = len / 2; shaft.castShadow = true;
-    const bladeMat = weaponMat('#c4b5fd', '#7c3aed');
-    // Curved blade approximated by three angled flat segments fanning off
-    // the shaft tip — reads as a scythe's hook, not a straight sword.
-    const bx0 = len + 1;
-    const seg1 = new THREE.Mesh(new THREE.BoxGeometry(14 * s, 1, 5 * s), bladeMat); seg1.position.set(bx0, 5 * s, 0); seg1.rotation.z = 0.5; seg1.castShadow = true;
-    const seg2 = new THREE.Mesh(new THREE.BoxGeometry(11 * s, 1, 4.5 * s), bladeMat); seg2.position.set(bx0 - 7 * s, 12 * s, 0); seg2.rotation.z = 1.1; seg2.castShadow = true;
-    const seg3 = new THREE.Mesh(new THREE.ConeGeometry(2.5 * s, 8 * s, 4), bladeMat); seg3.position.set(bx0 - 14 * s, 17 * s, 0); seg3.rotation.z = 1.9;
-    g.add(shaft, seg1, seg2, seg3);
-    g.userData.mats = [shaftMat, bladeMat];
+    const mats = [];
+    const shaftMat = darkMetalMat('#23262e');
+    const shaft = new THREE.Mesh(
+        getCachedGeometry(`scytheShaft:${len}`, () => new THREE.CylinderGeometry(1.0, 1.3, len, 12)),
+        shaftMat);
+    shaft.rotation.z = Math.PI / 2;
+    shaft.position.x = len / 2;
+    g.add(shaft);
+    mats.push(shaftMat);
+
+    // The blade: five short diamond-section segments swept along an arc, which
+    // gives a genuine curve instead of the old three straight boxes.
+    const bladeMat = steelMat('#dbe3ee');
+    const segGeo = bladeGeometry('scytheSeg', [
+        { x: 0,   w: 2.6, h: 0.75 },
+        { x: 5.5, w: 2.2, h: 0.6 },
+    ], 7.6);
+    const SEGS = 5;
+    for (let i = 0; i < SEGS; i++) {
+        const t = i / SEGS;
+        const seg = new THREE.Mesh(segGeo, bladeMat);
+        const ang = -0.30 - t * 1.15;                  // sweep back around the tip
+        const r = 13 - t * 2.2;
+        seg.position.set(len - 2 + Math.cos(ang) * r * 0.42, Math.sin(ang) * r * 0.9, 0);
+        seg.rotation.z = ang + 0.5;
+        seg.scale.setScalar(1 - t * 0.34);
+        seg.castShadow = true;
+        g.add(seg);
+    }
+    mats.push(bladeMat);
+
+    const eMat = energyMat('#a855f7');
+    const glow = new THREE.Mesh(
+        getCachedGeometry('scytheGlow', () => new THREE.TorusGeometry(7.5, 0.34, 5, 16, Math.PI * 0.85)),
+        eMat);
+    glow.position.set(len - 4, -4.5, 0);
+    glow.rotation.z = 0.5;
+    g.add(glow);
+    mats.push(eMat);
+
+    buildGrip(g, mats, 1.0, 8, 1.15, '#1d1a22');
+    g.userData.mats = mats;
     return g;
 }
+
 function buildFistProp(color) {
     const g = new THREE.Group();
-    const mat = makeMat(color, { emissive: 0xf97316, emissiveIntensity: 0.6, roughness: 0.5 });
-    const gauntlet = new THREE.Mesh(new THREE.BoxGeometry(7, 7, 7), mat);
-    gauntlet.position.x = 3; gauntlet.castShadow = true;
-    const knuckMat = makeMat('#fbbf24', { emissive: 0xf59e0b, emissiveIntensity: 0.7 });
-    const knuck = new THREE.Mesh(new THREE.BoxGeometry(2, 7.5, 7.5), knuckMat);
-    knuck.position.x = 6.5;
-    g.add(gauntlet, knuck);
-    g.userData.mats = [mat, knuck.material];
+    const mats = [];
+    const plateMat = darkMetalMat(color || '#6b7280');
+    // Cuff, back-of-hand plate and four knuckle studs: the old version was a
+    // 7x7x7 cube plus one slab, which is why a "gauntlet" read as a brick.
+    const cuff = new THREE.Mesh(
+        getCachedGeometry('fistCuff', () => new THREE.CylinderGeometry(3.6, 4.2, 5.0, 10)),
+        plateMat);
+    cuff.rotation.z = Math.PI / 2;
+    cuff.position.x = -1.0;
+    g.add(cuff);
+    const back = new THREE.Mesh(
+        getCachedGeometry('fistBack', () => new THREE.BoxGeometry(6.2, 5.4, 6.0)),
+        plateMat);
+    back.position.x = 3.2;
+    back.castShadow = true;
+    g.add(back);
+    mats.push(plateMat);
+
+    const studMat = goldMat('#b9c2d0');
+    const studGeo = getCachedGeometry('fistStud', () => new THREE.SphereGeometry(1.05, 8, 6));
+    for (let i = 0; i < 4; i++) {
+        const stud = new THREE.Mesh(studGeo, studMat);
+        stud.position.set(6.4, 1.6, -2.1 + i * 1.4);
+        g.add(stud);
+    }
+    mats.push(studMat);
+
+    const eMat = energyMat('#fb923c');
+    const vent = new THREE.Mesh(
+        getCachedGeometry('fistVent', () => new THREE.BoxGeometry(0.6, 3.4, 4.6)),
+        eMat);
+    vent.position.set(6.5, -0.6, 0);
+    g.add(vent);
+    mats.push(eMat);
+
+    g.userData.mats = mats;
     return g;
 }
+
 function buildStaffProp() {
     const g = new THREE.Group();
     const shaftMat = makeMat('#334155', { roughness: 0.6, metalness: 0.4 });
@@ -5928,16 +6260,87 @@ function propForAtkType(f) {
         default: return buildFistProp(f.color);
     }
 }
+// Batch 28: the first-person arm.
+//
+// This used to be one BoxGeometry(3.4, 3.4, 11) - a bare rectangular stick in
+// the character's flat body colour. It is on screen every frame of every match,
+// so it was the single most-seen piece of art in the game and also the crudest,
+// and it looked nothing like the armoured arm the same character has in third
+// person now that the bodies are Blender-authored.
+//
+// It is now an armoured forearm: a tapered limb, a plated bracer with a raised
+// rim, an armoured glove with knuckle plates, and a thumb - built to read
+// correctly from the one angle a viewmodel is ever seen from. The palette is
+// taken from the fighter, and the plates use the same metal materials as the
+// rebuilt weapons so the hand and the thing it is holding belong together.
+function buildViewmodelArm(f) {
+    const g = new THREE.Group();
+    const mats = [];
+    const skin = makeMat('#c69c78', { roughness: 0.78, metalness: 0.0 });
+    const plate = makeMat(f.color, { roughness: 0.42, metalness: 0.65 });
+    const trim = darkMetalMat('#242a34');
+
+    // Forearm, tapering from elbow (back, +Z) toward the wrist.
+    const fore = new THREE.Mesh(
+        getCachedGeometry('vmFore', () => new THREE.CylinderGeometry(1.5, 2.0, 11, 12)),
+        skin);
+    fore.rotation.x = Math.PI / 2;
+    fore.position.set(-0.6, -1.4, 4.6);
+    g.add(fore);
+    mats.push(skin);
+
+    // Bracer over the forearm, with a rim at the elbow end.
+    const bracer = new THREE.Mesh(
+        getCachedGeometry('vmBracer', () => new THREE.CylinderGeometry(2.1, 2.35, 6.2, 12, 1, true)),
+        plate);
+    bracer.rotation.x = Math.PI / 2;
+    bracer.position.set(-0.6, -1.4, 6.2);
+    g.add(bracer);
+    const rim = new THREE.Mesh(
+        getCachedGeometry('vmRim', () => new THREE.TorusGeometry(2.3, 0.34, 6, 14)),
+        trim);
+    rim.position.set(-0.6, -1.4, 9.1);
+    g.add(rim);
+
+    // Glove: palm block plus knuckle plates, angled as a closed grip.
+    const palm = new THREE.Mesh(
+        getCachedGeometry('vmPalm', () => new THREE.BoxGeometry(3.3, 3.0, 3.4)),
+        plate);
+    palm.position.set(-0.3, -1.2, 0.6);
+    palm.rotation.y = 0.18;
+    g.add(palm);
+    const knuckleGeo = getCachedGeometry('vmKnuckle', () => new THREE.SphereGeometry(0.62, 8, 6));
+    for (let i = 0; i < 4; i++) {
+        const k = new THREE.Mesh(knuckleGeo, trim);
+        k.position.set(-1.5 + i * 0.85, 0.25, -0.7);
+        g.add(k);
+    }
+    // Thumb, wrapped over the grip - the cue that reads as "a hand holding it".
+    const thumb = new THREE.Mesh(
+        // NOT `new THREE.CapsuleGeometry ? ...` - that constructs before it
+        // tests, and CapsuleGeometry does not exist until three r140.
+        getCachedGeometry('vmThumb', () => new THREE.CylinderGeometry(0.55, 0.5, 2.4, 8)),
+        skin);
+    thumb.rotation.set(1.15, 0, 0.5);
+    thumb.position.set(1.1, -1.0, 0.5);
+    g.add(thumb);
+    mats.push(plate, trim);
+
+    g.userData.mats = mats;
+    return g;
+}
+
 function buildViewmodel(f, layer) {
     const holder = new THREE.Group();
-    // A stub of forearm coming in from the lower edge toward the weapon.
-    const armMat = makeMat(f.color, { roughness: 0.6, metalness: 0.2 });
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(3.4, 3.4, 11), armMat);
-    arm.position.set(-1, -1.5, 4.5);
-    holder.add(arm);
+    holder.add(buildViewmodelArm(f));
     const prop = propForAtkType(f);
     prop.rotation.y = Math.PI / 2; // weapon local +X (its "forward") now points into the screen (-Z)
-    prop.position.set(0, 0, -1);
+    // Batch 28: angle it up and inboard the way a held melee weapon actually
+    // sits, instead of running dead-straight into the screen with the cross
+    // guard filling the lower third of the frame.
+    prop.rotation.z = 0.30;
+    prop.rotation.x = -0.10;
+    prop.position.set(-0.6, -0.8, 1.2);
     holder.add(prop);
     // Muzzle flash at the weapon tip (in front), hidden until this fighter
     // fires — so ranged shots visibly erupt from the weapon in first person.
@@ -5960,8 +6363,8 @@ function buildViewmodel(f, layer) {
     holder.userData.special = f.cfg.special;
     // Place & scale the whole thing in camera space: right of center, below
     // the crosshair line, a short distance in front of the near plane.
-    holder.position.set(5.5, -5.5, -10);
-    holder.scale.setScalar(0.34);
+    holder.position.set(6.0, -6.0, -12);
+    holder.scale.setScalar(0.30);
     holder.userData.baseX = holder.position.x;
     holder.userData.baseY = holder.position.y;
     holder.userData.baseZ = holder.position.z;

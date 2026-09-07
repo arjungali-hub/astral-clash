@@ -52,12 +52,13 @@ const H = require('./harness');
             const f = k === 'p1' ? D.player1 : D.player2;
             g.updateMatrixWorld(true);
             const slabs = g.children.filter(c => c.userData.sign !== undefined);
-            const stage = g.children.find(c => c.userData.sign === undefined);
+            const stage = g.children.find(c => c.userData.sign === undefined && !c.userData.back);
             // Slabs must straddle THIS fighter, not the arena centre.
             const fx = f.x + f.width / 2 - D.ARENA_CX;
             const fz = f.y + f.height / 2 - D.ARENA_CY;
             info[k] = {
                 slabCount: slabs.length,
+                hasBackWall: g.children.some(c => c.userData.back),
                 hasStage: !!stage,
                 rigX: +g.position.x.toFixed(1), rigZ: +g.position.z.toFixed(1),
                 fighterX: +fx.toFixed(1), fighterZ: +fz.toFixed(1),
@@ -69,6 +70,10 @@ const H = require('./harness');
             crushing: D.crushing,
             p1SeesOwnBody: (D.camP1.layers.mask & (1 << 1)) !== 0,
             p2SeesOwnBody: (D.camP2.layers.mask & (1 << 2)) !== 0,
+            p1SeesOther: (D.camP1.layers.mask & (1 << 2)) !== 0,
+            p2SeesOther: (D.camP2.layers.mask & (1 << 1)) !== 0,
+            p1Yaw: +D.player1.mesh.rotation.y.toFixed(4),
+            p2Yaw: +D.player2.mesh.rotation.y.toFixed(4),
             p1VmHidden: D.vmP1 ? !D.vmP1.visible : null,
             info,
         };
@@ -77,13 +82,21 @@ const H = require('./harness');
     check('each camera now renders its OWN fighter (third person)',
         during.p1SeesOwnBody && during.p2SeesOwnBody, JSON.stringify({
             p1: during.p1SeesOwnBody, p2: during.p2SeesOwnBody }));
+    // Each half must show ONE fighter. Without hiding the opponent's layer both
+    // appear in both halves, one behind the other.
+    check('each half hides the OTHER fighter',
+        !during.p1SeesOther && !during.p2SeesOther,
+        JSON.stringify({ p1SeesOther: during.p1SeesOther, p2SeesOther: during.p2SeesOther }));
+    check('both fighters are turned to face the camera',
+        Math.abs(during.p1Yaw + Math.PI / 2) < 0.01 && Math.abs(during.p2Yaw + Math.PI / 2) < 0.01,
+        JSON.stringify({ p1: during.p1Yaw, p2: during.p2Yaw }));
     check('the first-person weapon viewmodel is hidden', during.p1VmHidden === true);
 
     section('Each fighter has their own walls, centred on them:');
     for (const k of ['p1', 'p2']) {
         const i = during.info[k];
-        check(`${k}: two slabs plus a stage floor`, i.slabCount === 2 && i.hasStage,
-            JSON.stringify(i));
+        check(`${k}: two slabs, a stage floor and a back wall`,
+            i.slabCount === 2 && i.hasStage && i.hasBackWall, JSON.stringify(i));
         // This is the bug the first pass had: the rig must track the FIGHTER.
         check(`${k}: walls are positioned on the fighter, not the arena centre`,
             Math.abs(i.rigX - i.fighterX) < 2 && Math.abs(i.rigZ - i.fighterZ) < 2,
