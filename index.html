@@ -2813,7 +2813,113 @@ function _tex(canvas, repeat) {
     if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
     return t;
 }
-function _canvas() { const c = document.createElement('canvas'); c.width = c.height = 256; return c.getContext('2d'); }
+// Batch 29: 512 instead of 256. These tile across a 1635-unit arena floor and
+// 260-unit walls, so at 256 a single texel covered a visible patch of ground.
+// The drawing routines below all work in a 0..256 space, so the context is
+// scaled by 2 and every existing routine gets double the detail for free
+// rather than needing its coordinates rewritten.
+const SURFACE_TEX_SIZE = 512;
+function _canvas() {
+    const c = document.createElement('canvas');
+    c.width = c.height = SURFACE_TEX_SIZE;
+    const g = c.getContext('2d');
+    g.scale(SURFACE_TEX_SIZE / 256, SURFACE_TEX_SIZE / 256);
+    return g;
+}
+
+// --- Derived PBR maps. -----------------------------------------------------
+// The arena had colour textures and nothing else, so every surface was
+// perfectly smooth: mortar courses, panel seams and cracks were painted on and
+// vanished the moment you looked along a wall.
+//
+// Rather than author twenty more textures by hand, these DERIVE a normal map
+// and a roughness map from each existing canvas. That works because the
+// authored art already encodes relief as brightness - mortar lines are dark
+// because they are recessed, block faces have a light-to-dark gradient because
+// they are lit from above - so a Sobel gradient of luminance is a serviceable
+// height field. All twenty surfaces gain real relief at once, and each map
+// keeps the identity someone hand-drew for it.
+function _lumField(canvas) {
+    const w = canvas.width, h = canvas.height;
+    const d = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+    const lum = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+        lum[i] = (d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114) / 255;
+    }
+    return { lum, w, h };
+}
+function _normalCanvas(canvas, strength) {
+    const { lum, w, h } = _lumField(canvas);
+    const out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    const ctx = out.getContext('2d');
+    const img = ctx.createImageData(w, h);
+    // Wrapping sample: these textures tile, so the gradient must tile too or a
+    // bright seam appears down every repeat boundary.
+    const at = (x, y) => lum[(((y % h) + h) % h) * w + (((x % w) + w) % w)];
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const dx = (at(x - 1, y) - at(x + 1, y)) * strength;
+            const dy = (at(x, y - 1) - at(x, y + 1)) * strength;
+            const len = Math.hypot(dx, dy, 1);
+            const i = (y * w + x) * 4;
+            img.data[i]     = ((dx / len) * 0.5 + 0.5) * 255;
+            img.data[i + 1] = ((dy / len) * 0.5 + 0.5) * 255;
+            img.data[i + 2] = ((1 / len) * 0.5 + 0.5) * 255;
+            img.data[i + 3] = 255;
+        }
+    }
+    ctx.putImageData(img, 0, 0);
+    return out;
+}
+function _roughCanvas(canvas, lo, hi) {
+    const { lum, w, h } = _lumField(canvas);
+    const out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    const ctx = out.getContext('2d');
+    const img = ctx.createImageData(w, h);
+    for (let i = 0; i < w * h; i++) {
+        // Darker (recessed, dirtier) reads as rougher; bright faces are
+        // smoother and catch a highlight. Inverted for that reason.
+        const v = Math.max(0, Math.min(1, hi - (hi - lo) * lum[i])) * 255;
+        img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v;
+        img.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return out;
+}
+// Canvases are cached (the derivation is a per-pixel pass, too slow to repeat),
+// but each material gets its OWN THREE texture wrapping the shared canvas so it
+// can carry its own `repeat` - a wall, a platform and the floor all tile the
+// same source at different densities.
+const derivedCanvasCache = {};
+function attachSurfaceMaps(mat, key, opts) {
+    opts = opts || {};
+    if (!mat.map || !mat.map.image) return mat;
+    let entry = derivedCanvasCache[key];
+    if (!entry) {
+        entry = derivedCanvasCache[key] = {
+            n: _normalCanvas(mat.map.image, opts.strength || 2.2),
+            r: _roughCanvas(mat.map.image, opts.lo || 0.35, opts.hi || 0.98),
+        };
+    }
+    const mk = (cv, srgb) => {
+        const t = new THREE.CanvasTexture(cv);
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.anisotropy = 8;
+        // A normal/roughness map is DATA, not colour: tagging it sRGB would
+        // gamma-decode the vectors and flatten the lighting.
+        t.encoding = THREE.LinearEncoding;
+        t.repeat.copy(mat.map.repeat);
+        t.offset.copy(mat.map.offset);
+        return t;
+    };
+    mat.normalMap = mk(entry.n);
+    mat.roughnessMap = mk(entry.r);
+    mat.normalScale = new THREE.Vector2(opts.scale || 1, opts.scale || 1);
+    mat.needsUpdate = true;
+    return mat;
+}
 // Offset ashlar-style block courses shared by stone/sandstone/marble/redrock.
 function _blockWall(g, palette, mortar, detail) {
     g.fillStyle = mortar; g.fillRect(0, 0, 256, 256);
@@ -3041,10 +3147,10 @@ function buildPlatformMesh(p, theme) {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(Math.max(1, Math.round(p.hw / 40)), Math.max(1, Math.round(p.height / 60)));
     const metalish = theme.wallTex === 'metal';
-    const slab = new THREE.Mesh(
-        new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2),
-        new THREE.MeshStandardMaterial({ map: tex, color: theme.wallColor, roughness: metalish ? 0.5 : 0.85, metalness: metalish ? 0.5 : 0.04 })
-    );
+    const slabMat = new THREE.MeshStandardMaterial({ map: tex, color: theme.wallColor, roughness: metalish ? 0.5 : 0.85, metalness: metalish ? 0.5 : 0.04 });
+    attachSurfaceMaps(slabMat, 'wall:' + theme.id, { strength: 2.6, scale: 1.1 });
+    slabMat.userData.keepMap = true;
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2), slabMat);
     slab.position.y = p.height / 2;
     slab.castShadow = true; slab.receiveShadow = true;
     group.add(slab);
@@ -3166,6 +3272,8 @@ function buildOuterWall(side, theme) {
     const group = new THREE.Group();
     const metalish = theme.wallTex === 'metal';
     const bodyMat = new THREE.MeshStandardMaterial({ map: wtex, color: theme.wallColor, roughness: metalish ? 0.5 : 0.9, metalness: metalish ? 0.5 : 0.03 });
+    attachSurfaceMaps(bodyMat, 'wall:' + theme.id, { strength: 2.6, scale: 1.15 });
+    bodyMat.userData.keepMap = true; // maps wrap canvases shared across rounds
     const capMat = new THREE.MeshStandardMaterial({ color: theme.capColor, roughness: 0.85, metalness: metalish ? 0.4 : 0.03 });
     const body = new THREE.Mesh(new THREE.BoxGeometry(along, WALL_HEIGHT, thick), bodyMat);
     body.position.y = WALL_HEIGHT / 2; body.receiveShadow = true; body.castShadow = true;
@@ -3235,6 +3343,11 @@ function loadMap(map) {
     floorTex.repeat.set(floorBaseSize.w / 190, floorBaseSize.d / 190);
     const shinyFloor = theme.floorTex === 'ice' || theme.floorTex === 'cloud' || theme.floorTex === 'coralsand';
     const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, color: theme.floorColor, roughness: shinyFloor ? 0.45 : 0.95, metalness: theme.floorTex === 'techgrid' ? 0.4 : 0.03 });
+    // A shiny floor gets gentler relief: strong normals on a smooth surface
+    // read as crumpled foil rather than polished stone.
+    attachSurfaceMaps(floorMat, 'floor:' + theme.id,
+        shinyFloor ? { strength: 1.2, scale: 0.55, lo: 0.2, hi: 0.7 }
+                   : { strength: 2.4, scale: 1.0 });
     floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it
     floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d), floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
