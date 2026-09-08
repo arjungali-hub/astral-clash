@@ -260,7 +260,7 @@
         /* Honor the OS "reduce motion" setting: kill the looping menu pulses
            (the intro drop cinematic is gated in JS off REDUCED_MOTION). */
         @media (prefers-reduced-motion: reduce) {
-            .vs-status.ready, #btn-start-match, #orientation-prompt svg { animation: none; }
+            .vs-status.ready, #btn-start-match { animation: none; }
         }
         .menu-footer {
             display: flex;
@@ -700,103 +700,12 @@
         #cdn-error .menu-section { max-width: 420px; }
         #cdn-error p { color: #94a3b8; font-size: 0.85rem; line-height: 1.5; }
 
-        /* --- Mobile: touch controls + landscape prompt. Auto-shown on
-           coarse-pointer/touch devices (see TOUCH_UI in the script), never on
-           mouse/trackpad — a touch-capable laptop with a fine primary pointer
-           won't get on-screen sticks cluttering the view. --- */
-        @media (pointer: coarse), (hover: none) {
-            /* height:100% (of body's own padded box below), not another
-               100vh — #game-container demanding a second full 100vh INSIDE
-               a body that's already reserved safe-area padding overflowed
-               the body's actual content box on notch/home-indicator phones,
-               and since body centers its child and clips overflow, that
-               pushed the bottom of the container (e.g. the footer Settings
-               button) out past the visible/scrollable area. */
-            #game-container {
-                width: 100%; height: 100%; max-height: 100%;
-                border-radius: 0; border: none; box-shadow: none;
-            }
-            body {
-                height: 100vh;
-                padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-                box-sizing: border-box;
-            }
-            /* dvh accounts for the mobile browser's address-bar/toolbar
-               actually being on-screen (100vh is the size with it hidden,
-               which is taller than what's really visible) — progressive
-               enhancement, ignored by browsers that don't support it. */
-            @supports (height: 100dvh) {
-                body { height: 100dvh; }
-            }
-        }
-        #touch-controls {
-            position: absolute; inset: 0; z-index: 15; display: none;
-        }
-        #touch-controls .touch-side {
-            position: absolute; top: 0; bottom: 0; left: 0; width: 100%;
-            display: flex; flex-direction: row; align-items: flex-end; justify-content: space-between;
-            padding: 0 3vw calc(3vh + env(safe-area-inset-bottom));
-            box-sizing: border-box; pointer-events: none;
-        }
-        #touch-controls .touch-side.half#touch-p1 { width: 50%; left: 0; }
-        #touch-controls .touch-side.half#touch-p2 { width: 50%; left: 50%; flex-direction: row-reverse; }
-        .touch-joystick {
-            width: 100px; height: 100px; border-radius: 50%;
-            background: rgba(13, 20, 32, 0.5); border: 2px solid rgba(0, 243, 255, 0.35);
-            position: relative; pointer-events: auto; touch-action: none; -webkit-touch-callout: none;
-            flex: none;
-        }
-        .touch-joystick-knob {
-            width: 46px; height: 46px; border-radius: 50%; position: absolute; left: 27px; top: 27px;
-            background: rgba(0, 243, 255, 0.55); border: 2px solid rgba(0, 243, 255, 0.9);
-            transition: transform 0.05s linear; pointer-events: none;
-        }
-        .touch-buttons { position: relative; width: 150px; height: 150px; flex: none; pointer-events: none; }
-        /* Batch 20: drag-to-look area. Fills the upper ~55% of its side (which
-           had no controls in it) and is positioned absolutely so it does NOT
-           participate in the flex row that lays out the joystick and buttons. */
-        .touch-look {
-            /* Starts below the pause button's row rather than at the very top:
-               the zone is a big transparent click-eater, and as a later sibling
-               it would otherwise paint over (and swallow taps meant for)
-               #touch-pause-btn. The button also carries a higher z-index as a
-               belt-and-braces guard. */
-            position: absolute; left: 0; right: 0; top: 48px; height: calc(55% - 48px);
-            z-index: 1;
-            pointer-events: auto; touch-action: none; -webkit-touch-callout: none;
-            display: flex; align-items: flex-start; justify-content: center;
-        }
-        .touch-look span {
-            margin-top: 6px; font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase;
-            color: rgba(203, 213, 225, 0.32); pointer-events: none; user-select: none;
-        }
-        .touch-btn {
-            position: absolute; width: 60px; height: 60px; border-radius: 50%;
-            background: rgba(13, 20, 32, 0.5); border: 2px solid rgba(255, 255, 255, 0.25);
-            color: #fff; font-weight: 700; font-size: 0.6rem; letter-spacing: 0.03em;
-            padding: 0; margin: 0; touch-action: none; -webkit-touch-callout: none; user-select: none;
-            pointer-events: auto; box-shadow: none; transition: background 0.08s, border-color 0.08s;
-        }
-        .touch-btn.pressed { background: rgba(0, 243, 255, 0.5); border-color: #00f3ff; }
-        .touch-btn-attack { right: 0; bottom: 0; width: 70px; height: 70px; border-color: rgba(244, 114, 182, 0.55); }
-        .touch-btn-attack.pressed { background: rgba(244, 114, 182, 0.55); border-color: #f472b6; }
-        .touch-btn-special { right: 68px; bottom: 58px; border-color: rgba(0, 243, 255, 0.55); }
-        .touch-btn-jump { right: 6px; bottom: 100px; }
-        .touch-btn-dodge { right: 100px; bottom: 6px; }
-        #touch-pause-btn {
-            position: absolute; top: calc(8px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
-            width: 40px; height: 32px; padding: 0; margin: 0; border-radius: 6px;
-            background: rgba(13, 20, 32, 0.55); border: 1px solid rgba(255, 255, 255, 0.25); color: #cbd5e1;
-            font-size: 0.8rem; font-weight: 700; letter-spacing: 2px; pointer-events: auto; touch-action: none;
-            z-index: 2; /* above the .touch-look drag zones, which are later siblings */
-        }
-        #touch-pause-btn:hover { background: rgba(13, 20, 32, 0.55); box-shadow: none; }
         /* Transient confirmation for the unlock-everything override. Highest
            z-index and pointer-events:none so it reads over any screen/modal
            (including mid-fight) without ever eating a click. */
         /* Bottom-right corner, not centered: centered top covered the game
            title, and centered bottom collides with the in-fight hint line and
-           the mobile touch buttons. A corner is out of the way of every
+           the in-fight hint line. A corner is out of the way of every
            screen this can appear over. */
         #debug-toast {
             position: absolute; right: 14px; bottom: 14px; transform: translateY(8px);
@@ -807,14 +716,6 @@
         }
         #debug-toast.show { opacity: 1; transform: translateY(0); }
         @media (prefers-reduced-motion: reduce) { #debug-toast { transition: none; } }
-        #orientation-prompt {
-            position: absolute; inset: 0; z-index: 50; display: none;
-            align-items: center; justify-content: center; text-align: center; padding: 24px;
-            background: rgba(8, 11, 18, 0.96);
-        }
-        #orientation-prompt svg { width: 46px; height: 46px; margin-bottom: 12px; color: #00f3ff; animation: rotateHint 1.8s ease-in-out infinite; }
-        @keyframes rotateHint { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(-90deg); } }
-        #orientation-prompt p { color: #cbd5e1; font-size: 0.95rem; line-height: 1.5; margin: 0; max-width: 320px; }
     </style>
 </head>
 <body>
@@ -834,7 +735,6 @@
                     <button id="btn-open-modeselect" class="btn-mode">Mode: Classic Versus</button>
                     <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
                 </div>
-                <p id="touch-warning" style="display:none;color:#8aa0b8;font-size:0.75rem;max-width:480px;text-align:center;">Touch controls: left stick to move/turn, right-side buttons to fight. Best in landscape.</p>
                 <div class="select-row">
                     <div class="menu-section side-panel">
                         <h3 id="p1-heading">Player 1 <span class="key-hint">(keys on cards)</span></h3>
@@ -1045,38 +945,7 @@
             </div>
         </div>
 
-        <div id="touch-controls">
-            <button type="button" id="touch-pause-btn">II</button>
-            <!-- The look zones are FIRST in each side so the joystick/buttons,
-                 later in DOM order, keep winning their own hit-tests. -->
-            <div class="touch-side" id="touch-p1">
-                <div class="touch-look" id="look-p1"><span>drag to look</span></div>
-                <div class="touch-joystick" id="joy-p1"><div class="touch-joystick-knob"></div></div>
-                <div class="touch-buttons">
-                    <button type="button" class="touch-btn touch-btn-jump" data-action="jump">JUMP</button>
-                    <button type="button" class="touch-btn touch-btn-special" data-action="special">SPC</button>
-                    <button type="button" class="touch-btn touch-btn-dodge" data-action="dodge">DASH</button>
-                    <button type="button" class="touch-btn touch-btn-attack" data-action="attack">ATK</button>
-                </div>
-            </div>
-            <div class="touch-side" id="touch-p2">
-                <div class="touch-look" id="look-p2"><span>drag to look</span></div>
-                <div class="touch-joystick" id="joy-p2"><div class="touch-joystick-knob"></div></div>
-                <div class="touch-buttons">
-                    <button type="button" class="touch-btn touch-btn-jump" data-action="jump">JUMP</button>
-                    <button type="button" class="touch-btn touch-btn-special" data-action="special">SPC</button>
-                    <button type="button" class="touch-btn touch-btn-dodge" data-action="dodge">DASH</button>
-                    <button type="button" class="touch-btn touch-btn-attack" data-action="attack">ATK</button>
-                </div>
-            </div>
-        </div>
         <div id="debug-toast"></div>
-        <div id="orientation-prompt">
-            <div class="rotate-card">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M11 18h2"></path></svg>
-                <p>Rotate your device to landscape for the best view — the arena is wider than it is tall.</p>
-            </div>
-        </div>
     </div>
 
     <div id="cdn-error">
@@ -1206,12 +1075,8 @@ function updateHitFeedback(dt) {
 // ratio) and which camera renders each — mirrors renderViews' split-screen /
 // full-screen choice so projected overlays land in the right half.
 function hudViewports() {
-    const W = hudCanvas.width, H = hudCanvas.height;
-    if (player1 && player2 && !player1.isBot && !player2.isBot) {
-        return [{ cam: camP1, x: 0, y: 0, w: W / 2, h: H }, { cam: camP2, x: W / 2, y: 0, w: W / 2, h: H }];
-    }
-    const viewer = (player1 && !player1.isBot) ? player1 : ((player2 && !player2.isBot) ? player2 : player1);
-    return [{ cam: viewer === player1 ? camP1 : camP2, x: 0, y: 0, w: W, h: H }];
+    // Batch 31: a single full-canvas viewport, since there is one view.
+    return [{ cam: localCamera(), x: 0, y: 0, w: hudCanvas.width, h: hudCanvas.height }];
 }
 
 // Floating damage numbers + impact sparks, projected from their world position
@@ -1267,6 +1132,21 @@ function computeDt() {
     return Math.min(dt, 3); // clamp so a tab-switch/lag spike can't jump physics far
 }
 
+// --- Batch 31: ONE local player per client. -------------------------------
+// The game was local split-screen: one keyboard drove two fighters, each with
+// its own 10-action binding set, and the screen was cut in half. Going online
+// means this client owns exactly ONE fighter and renders exactly one view, so
+// almost everything that used to be indexed by side is now indexed by
+// "mine" vs "theirs".
+//
+// LOCAL_SIDE is which fighter this client controls. The host takes 'p1' and
+// the joiner 'p2' (see the lobby), so both clients run the same code with the
+// only difference being this one value. Declared up here with the earliest
+// state because the menu build and renderViews both read it during load.
+let LOCAL_SIDE = 'p1';
+const isLocalSide = side => side === LOCAL_SIDE;
+const otherSide = side => (side === 'p1' ? 'p2' : 'p1');
+
 const keys = {};
 // Batch 3a: attack/special/dodge must fire once per press, not once
 // per frame the key is held. `pressed` records the down-transition only;
@@ -1300,10 +1180,10 @@ window.addEventListener('keydown', e => {
         const { side, action, buttonEl } = rebindCapture;
         rebindCapture = null;
         buttonEl.classList.remove('listening');
-        if (e.key === 'Escape') { buttonEl.textContent = keyLabel(BINDINGS[side][action]); return; }
-        BINDINGS[side][action] = e.key.toLowerCase();
+        if (e.key === 'Escape') { buttonEl.textContent = keyLabel(BINDINGS[action]); return; }
+        BINDINGS[action] = e.key.toLowerCase();
         saveBindings();
-        buttonEl.textContent = keyLabel(BINDINGS[side][action]);
+        buttonEl.textContent = keyLabel(BINDINGS[action]);
         return;
     }
     // (2) The first keypress doubles as the user-gesture that unlocks audio
@@ -1341,10 +1221,11 @@ window.addEventListener('keydown', e => {
         if (i1 !== -1) previewPick('p1', CHARACTERS[i1].name);
         const i2 = P2_KEYS.indexOf(k);
         if (i2 !== -1) previewPick('p2', CHARACTERS[i2].name);
-        if (k === BINDINGS.p1.attack) confirmPick('p1');
-        if (k === BINDINGS.p1.special) backToPick('p1');
-        if (k === BINDINGS.p2.attack) confirmPick('p2');
-        if (k === BINDINGS.p2.special) backToPick('p2');
+        // Batch 31: one local player, so the confirm/back keys act on our own
+        // side. `attack` is bound to the mouse by default, so a keyboard
+        // fallback (Enter / Backspace) is provided for menu use.
+        if (k === BINDINGS.attack || k === 'enter') confirmPick(LOCAL_SIDE);
+        if (k === BINDINGS.special || k === 'backspace') backToPick(LOCAL_SIDE);
         if (k === RANDOM_KEYS.p1) randomPick('p1');
         if (k === RANDOM_KEYS.p2) randomPick('p2');
     }
@@ -1369,35 +1250,106 @@ function safeLSSet(key, val) { try { localStorage.setItem(key, val); } catch (e)
 // stores lowercased `e.key` values (matching how `keys`/`pressed` already
 // key themselves), so a rebound action drops straight into the existing
 // `keys[...]`/`consumePress(...)` lookups elsewhere with no other changes.
+// Batch 31: ONE binding set, for the one fighter this client controls.
+//
+// The old two-side layout existed to fit two players on one keyboard, which
+// forced compromises that no longer apply - P1's jump was moved off Space
+// specifically because an oversized thumb key made P1 jumping easier than P2's.
+// With one player per client, the conventional shooter layout is available:
+// Space to jump, Shift to dash, and the mouse for aiming and attacking.
+//
+// Mouse buttons live in the same `keys`/`pressed` maps as keyboard keys, under
+// the synthetic names 'mouse0'/'mouse2' (see the mousedown handler). That means
+// they flow through consumePress() and the rebind UI unchanged, instead of
+// needing a parallel input path.
+//
+// Arrow keys are hardcoded alternates rather than bindings: the request was for
+// WASD *and* arrows to both work, which is two keys per action, and the binding
+// model is one key per action. They are applied alongside the bound keys.
 const DEFAULT_BINDINGS = {
-    // P1 jump is E (not Space): Space is an oversized thumb key that made P1
-    // jumping far easier than P2's, so it's rebalanced to a normal key. Dash
-    // is Shift (was Ctrl). Both remain rebindable in Settings.
-    // Batch 20 adds lookUp/lookDown (vertical aim). P1 gets R/V — the vertical
-    // column around its existing F/G attack keys. P2 gets ;/' — free keys
-    // right beside its existing K/L/. cluster. Both rebindable like everything
-    // else. (P1's 'r' doubles as the menu-only random-pick shortcut, the same
-    // harmless menu-vs-fight overlap P2's '/' jump already has.)
-    p1: { up: 'w', down: 's', left: 'a', right: 'd', jump: 'e', attack: 'f', special: 'g', dodge: 'shift', lookUp: 'r', lookDown: 'v' },
-    p2: { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', jump: '/', attack: 'k', special: 'l', dodge: '.', lookUp: ';', lookDown: "'" }
+    forward: 'w',
+    back: 's',
+    strafeLeft: 'a',
+    strafeRight: 'd',
+    jump: ' ',
+    dodge: 'shift',
+    attack: 'mouse0',
+    special: 'mouse2',
+    // Keyboard pitch is kept as a fallback for when pointer lock is
+    // unavailable or refused - mouse look is primary but must not be the only
+    // way to aim up at the high platforms Batch 20 made reachable.
+    lookUp: 'r',
+    lookDown: 'v',
 };
-const RANDOM_KEYS = { p1: 'r', p2: '/' }; // fighter-select "pick a random fighter" keys (not rebindable; named so the label/handler stay in sync)
+// Held alongside the bound keys, not instead of them.
+const ARROW_ALTS = { forward: 'arrowup', back: 'arrowdown', strafeLeft: 'arrowleft', strafeRight: 'arrowright' };
 let BINDINGS;
 try {
-    const saved = JSON.parse(safeLSGet('astralClashBindings'));
-    // Merge over the defaults rather than trust the saved blob outright —
-    // covers both a stale save from before an action existed and a
-    // corrupted/partial value.
-    BINDINGS = {
-        p1: Object.assign({}, DEFAULT_BINDINGS.p1, saved && saved.p1),
-        p2: Object.assign({}, DEFAULT_BINDINGS.p2, saved && saved.p2)
-    };
+    // A NEW storage key on purpose. The old value is a { p1:{...}, p2:{...} }
+    // blob whose action names ('up'/'left') no longer exist, so merging it over
+    // these defaults would silently produce a binding set with dead entries.
+    const saved = JSON.parse(safeLSGet('astralClashBindingsV2'));
+    BINDINGS = Object.assign({}, DEFAULT_BINDINGS, saved);
 } catch (e) {
-    BINDINGS = { p1: Object.assign({}, DEFAULT_BINDINGS.p1), p2: Object.assign({}, DEFAULT_BINDINGS.p2) };
+    BINDINGS = Object.assign({}, DEFAULT_BINDINGS);
 }
 function saveBindings() {
-    safeLSSet('astralClashBindings', JSON.stringify(BINDINGS));
+    safeLSSet('astralClashBindingsV2', JSON.stringify(BINDINGS));
 }
+
+// --- Mouse look and mouse buttons. ---------------------------------------
+// Pointer lock is requested by clicking the canvas during a fight, and released
+// automatically by Escape (the browser does that for us) or when the fight ends.
+const MOUSE_SENS_DEFAULT = 0.0022;   // radians of yaw per pixel of movement
+let mouseSensitivity = parseFloat(safeLSGet('astralClashMouseSens') || '') || MOUSE_SENS_DEFAULT;
+let invertMouseY = safeLSGet('astralClashInvertY') === '1';
+let pointerLocked = false;
+// Deltas ACCUMULATE between simulation steps and are drained by the input
+// block. Mouse movement is an absolute delta, so unlike the keyboard turn rate
+// it must NOT be scaled by dt - doing so makes sensitivity depend on framerate.
+let mouseDX = 0, mouseDY = 0;
+
+function wantsPointerLock() {
+    return gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH';
+}
+function requestPointerLock() {
+    if (pointerLocked || !wantsPointerLock()) return;
+    const el = document.getElementById('gameCanvas');
+    if (el && el.requestPointerLock) {
+        try { el.requestPointerLock(); } catch (e) { /* refused; keyboard pitch still works */ }
+    }
+}
+function exitPointerLock() {
+    if (document.exitPointerLock) { try { document.exitPointerLock(); } catch (e) {} }
+}
+document.addEventListener('pointerlockchange', () => {
+    pointerLocked = !!document.pointerLockElement;
+    if (!pointerLocked) { mouseDX = 0; mouseDY = 0; }
+});
+document.addEventListener('mousemove', e => {
+    if (!pointerLocked) return;
+    mouseDX += e.movementX || 0;
+    mouseDY += e.movementY || 0;
+});
+// Mouse buttons as synthetic keys, so they reuse keys[]/pressed/consumePress.
+window.addEventListener('mousedown', e => {
+    const el = document.getElementById('gameCanvas');
+    if (wantsPointerLock() && (e.target === el || pointerLocked)) {
+        requestPointerLock();          // click-to-capture, the standard gesture
+        e.preventDefault();
+    }
+    const k = 'mouse' + e.button;
+    if (!keys[k]) pressed.add(k);
+    keys[k] = true;
+});
+window.addEventListener('mouseup', e => { keys['mouse' + e.button] = false; });
+// Right-click is the special, so suppress the context menu over the canvas.
+window.addEventListener('contextmenu', e => {
+    const el = document.getElementById('gameCanvas');
+    if (pointerLocked || e.target === el) e.preventDefault();
+});
+
+const RANDOM_KEYS = { p1: 'r', p2: '/' }; // fighter-select "pick a random fighter" keys (not rebindable; named so the label/handler stay in sync)
 
 // --- Batch 12: meta-progression (coins, character unlocks, per-character
 // stat upgrades). Persisted with the same merge-over-defaults idiom as
@@ -1694,6 +1646,12 @@ document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale
 document.getElementById('btn-hud-scale').textContent = `HUD Text: ${HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal'}`;
 
 function keyLabel(k) {
+    if (!k) return '--';
+    // Batch 31: mouse buttons live in the same binding map as keys.
+    if (k === 'mouse0') return 'Left Click';
+    if (k === 'mouse1') return 'Middle Click';
+    if (k === 'mouse2') return 'Right Click';
+    if (k.startsWith('mouse')) return 'Mouse ' + k.slice(5);
     if (k === ' ') return 'Space';
     if (k === 'control') return 'Ctrl';
     if (k.startsWith('arrow')) return k.slice(5, 6).toUpperCase() + k.slice(6);
@@ -1702,22 +1660,23 @@ function keyLabel(k) {
 // Used by both the flat HUD strip and the pause-screen reminder, so a
 // rebind (see the pause-screen key-capture UI further down) shows up in
 // both places without them drifting out of sync with each other.
-function controlsSummary(side) {
-    const b = BINDINGS[side];
-    return `${keyLabel(b.up)}/${keyLabel(b.down)} Fwd/Back, ${keyLabel(b.left)}/${keyLabel(b.right)} Turn | ${keyLabel(b.lookUp)}/${keyLabel(b.lookDown)} Look Up/Down | ${keyLabel(b.jump)} Jump | ${keyLabel(b.attack)}/${keyLabel(b.special)} Atk/Spc | ${keyLabel(b.dodge)} Dash`;
+function controlsSummary() {
+    const b = BINDINGS;
+    return `${keyLabel(b.forward)}${keyLabel(b.strafeLeft)}${keyLabel(b.back)}${keyLabel(b.strafeRight)} / Arrows Move + Strafe | Mouse Look | ${keyLabel(b.attack)} Attack | ${keyLabel(b.special)} Special | ${keyLabel(b.jump)} Jump | ${keyLabel(b.dodge)} Dash`;
 }
 
-const REBIND_ACTION_LABELS = { up: 'Up', down: 'Down', left: 'Left', right: 'Right', jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash', lookUp: 'Look Up', lookDown: 'Look Down' };
+const REBIND_ACTION_LABELS = {
+    forward: 'Forward', back: 'Back', strafeLeft: 'Strafe L', strafeRight: 'Strafe R',
+    jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash',
+    lookUp: 'Look Up', lookDown: 'Look Dn',
+};
 let rebindCapture = null; // { side, action, buttonEl } while waiting on the next keydown
 function buildRebindList() {
     const list = document.getElementById('rebind-list');
     list.innerHTML = '';
-    for (const side of ['p1', 'p2']) {
-        const header = document.createElement('div');
-        header.style.cssText = 'margin-top:8px;font-weight:bold;color:#e2e8f0;';
-        header.textContent = side === 'p1' ? 'Player 1' : 'Player 2';
-        list.appendChild(header);
-        for (const action in DEFAULT_BINDINGS[side]) {
+    {
+        const side = null; // Batch 31: a single local binding set, no sides
+        for (const action in DEFAULT_BINDINGS) {
             const row = document.createElement('div');
             row.className = 'rebind-row';
             const label = document.createElement('span');
@@ -1725,7 +1684,7 @@ function buildRebindList() {
             label.textContent = REBIND_ACTION_LABELS[action] || action;
             const btn = document.createElement('button');
             btn.className = 'rebind-key';
-            btn.textContent = keyLabel(BINDINGS[side][action]);
+            btn.textContent = keyLabel(BINDINGS[action]);
             btn.addEventListener('click', () => startCapture(side, action, btn));
             row.appendChild(label);
             row.appendChild(btn);
@@ -1754,7 +1713,7 @@ document.getElementById('btn-open-rebind').addEventListener('click', openRebind)
 document.getElementById('btn-pause-rebind').addEventListener('click', openRebind);
 document.getElementById('btn-rebind-close').addEventListener('click', closeRebind);
 document.getElementById('btn-rebind-reset').addEventListener('click', () => {
-    BINDINGS = { p1: Object.assign({}, DEFAULT_BINDINGS.p1), p2: Object.assign({}, DEFAULT_BINDINGS.p2) };
+    BINDINGS = Object.assign({}, DEFAULT_BINDINGS);
     saveBindings();
     buildRebindList();
 });
@@ -2052,20 +2011,11 @@ function hashStr(s) { let h = 1779033703 ^ s.length; for (let i = 0; i < s.lengt
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 let mapRng = Math.random; // reseeded per map in loadMap()
 
-// Declared here (rather than down by the rest of the touch-controls code)
-// because it's needed immediately below to trim render cost for phone GPUs —
-// see PIXEL_RATIO/antialias/shadowMap.enabled just under this.
-const TOUCH_UI = !!(window.matchMedia && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches) && navigator.maxTouchPoints > 0);
-// Rebinding is a keyboard-only concept — the touch pads are fixed-function, so
-// on a touch device the whole screen is a dead end that only advertises controls
-// the player doesn't have. Hidden rather than disabled: there's nothing useful
-// behind it to hint at. (The pause screen's Rebind shortcut goes too.)
-if (TOUCH_UI) {
-    for (const id of ['btn-open-rebind', 'btn-pause-rebind']) {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    }
-}
+// Batch 31: TOUCH_UI is gone along with the touch control scheme. It used to
+// select a reduced-quality renderer path (no antialias, no shadows, pixel
+// ratio 1) and to hide the rebind UI, since the touch pads were
+// fixed-function. The game requires a mouse to aim and a keyboard to move, so
+// it is desktop-only now and all of those settings are unconditional.
 
 // Batch 8: the canvas was being sized straight from getBoundingClientRect()
 // CSS pixels, so on any HiDPI display (2x, 3x) the game rendered at half or
@@ -2076,19 +2026,13 @@ if (TOUCH_UI) {
 // smaller/weaker fill-rate budget than a desktop one, and the fragment cost
 // of every pass (shadow map, sky/fog, tone mapping) scales with pixel count,
 // so capped-at-2x was still enough to make a real phone chug — cap at 1x
-// there instead (a phone's native resolution is already high enough that
-// the extra sharpness isn't worth 2-4x the pixels).
-const PIXEL_RATIO = Math.min(window.devicePixelRatio || 1, TOUCH_UI ? 1 : 2);
+// there instead.
+const PIXEL_RATIO = Math.min(window.devicePixelRatio || 1, 2);
 
-// Antialiasing (MSAA) and shadow maps are both disproportionately expensive
-// on mobile tile-based GPUs relative to what they buy visually here — cut
-// both for touch devices rather than ship a "mobile version" that's
-// technically playable but too laggy to actually enjoy. Shadows are purely
-// visual (renderer.shadowMap), so disabling them changes nothing gameplay-wise.
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: !TOUCH_UI });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(PIXEL_RATIO);
 renderer.setSize(canvas.width, canvas.height, false);
-renderer.shadowMap.enabled = !TOUCH_UI;
+renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // Filmic tone mapping + sRGB output: makes the whole scene read brighter,
 // more saturated and more "next-gen" than raw linear output — colors and
@@ -2269,6 +2213,14 @@ function makeFpsCamera(ownBodyLayer, ownVmLayer) {
 }
 const camP1 = makeFpsCamera(LAYER_P1_BODY, LAYER_P1_VM);
 const camP2 = makeFpsCamera(LAYER_P2_BODY, LAYER_P2_VM);
+// Batch 31: which fighter and camera belong to THIS client. Both cameras are
+// still built, because LOCAL_SIDE can be either 'p1' (host) or 'p2' (joiner)
+// and each has the correct layer mask already - only one of them is ever
+// rendered. Functions rather than constants because the fighters are rebuilt
+// every round.
+const localFighter = () => (LOCAL_SIDE === 'p1' ? player1 : player2);
+const remoteFighter = () => (LOCAL_SIDE === 'p1' ? player2 : player1);
+const localCamera = () => (LOCAL_SIDE === 'p1' ? camP1 : camP2);
 // Add the cameras to the scene graph so their attached viewmodels (children
 // of the camera) actually render — a child of a camera that isn't in the
 // scene is skipped by the renderer. The cameras themselves render nothing.
@@ -2578,21 +2530,20 @@ function renderViews(dt) {
     if (gameState === 'MENU' || !player1 || !player2) return;
     renderer.getSize(_rendSize);
     const W = _rendSize.x, H = _rendSize.y;
-    const twoHumans = !player1.isBot && !player2.isBot;
-    renderer.setScissorTest(true);
-    if (twoHumans) {
-        renderOneView(camP1, player1, 0, 0, W / 2, H, dt);
-        renderOneView(camP2, player2, W / 2, 0, W / 2, H, dt);
-    } else {
-        // Full screen from whichever side is human (or P1 if neither is).
-        const viewer = !player1.isBot ? player1 : (!player2.isBot ? player2 : player1);
-        renderOneView(viewer === player1 ? camP1 : camP2, viewer, 0, 0, W, H, dt);
-    }
-    renderer.setScissorTest(false);
+    // Batch 31: ONE full-screen view, always, from the fighter this client
+    // controls. The two-viewport split-screen path is gone (archived in
+    // legacy/local-splitscreen.html). Beyond being what online play needs, this
+    // halves the per-frame render cost - the scene was being drawn twice - and
+    // it removes the reason post-processing was previously impractical: an
+    // EffectComposer's full-screen quad passes do not honour an outer scissor
+    // rect, so bloom needed one composer per half.
+    renderOneView(localCamera(), localFighter() || player1, 0, 0, W, H, dt);
 }
 function renderOneView(cam, viewer, x, y, vw, vh, dt) {
+    // The viewport is the whole canvas now, so no scissor is needed. It used to
+    // be essential: renderer.autoClear is true, so each half's clear had to be
+    // confined to its own rect or the second render wiped the first.
     renderer.setViewport(x, y, vw, vh);
-    renderer.setScissor(x, y, vw, vh);
     cam.aspect = vw / vh;
     cam.updateProjectionMatrix();
     positionFpsCamera(cam, viewer, dt);
@@ -4373,6 +4324,9 @@ function pollGamepad(index) {
     // axes 2/3; a pad reporting fewer axes just yields 0 (no pitch), which is
     // exactly the pre-batch behavior.
     const ry = gp.axes[3] || 0;
+    // Batch 31: right stick X turns, now that left stick X strafes to match the
+    // keyboard's A/D. A pad reporting fewer axes yields 0, i.e. no turn.
+    const rx = gp.axes[2] || 0;
     // Face buttons are edge-triggered, same as the keyboard's consumePress
     // — otherwise holding a button fires the action every single frame.
     const now = [0, 1, 2, 3].map(i => !!(gp.buttons[i] && gp.buttons[i].pressed));
@@ -4382,6 +4336,7 @@ function pollGamepad(index) {
     return {
         moveX: Math.abs(ax) > GAMEPAD_DEADZONE ? ax : 0,
         moveY: Math.abs(ay) > GAMEPAD_DEADZONE ? ay : 0,
+        lookX: Math.abs(rx) > GAMEPAD_DEADZONE ? rx : 0,
         lookY: Math.abs(ry) > GAMEPAD_DEADZONE ? ry : 0,
         jump: justPressed[0],    // A
         attack: justPressed[1],  // B
@@ -4844,61 +4799,58 @@ class Fighter {
         if (this.isBot) {
             const decision = this.botDecide(target, dt);
             moveX = decision.moveX; moveY = decision.moveY; jumpPressed = decision.jumpPressed;
-        } else if (this.isPlayerOne) {
-            const b = BINDINGS.p1;
-            // First-person controls: Left/Right TURN (look) instead of
-            // instantly snapping to face sideways; Up/Down walk forward/back
-            // along wherever you're currently facing, so "turn, then walk
-            // that way" is how you change direction — same as a real FPS.
-            if (keys[b.left]) this.turnBy(-TURN_SPEED * dt);
-            if (keys[b.right]) this.turnBy(TURN_SPEED * dt);
-            if (keys[b.lookUp]) this.lookBy(LOOK_SPEED * dt);
-            if (keys[b.lookDown]) this.lookBy(-LOOK_SPEED * dt);
-            if (keys[b.up]) { moveX += this.fx; moveY += this.fy; }
-            if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
-            if (keys[b.jump]) jumpPressed = true;
-            if (consumePress(b.jump)) jumpJustPressed = true;
-            if (consumePress(b.attack)) this.tryStartAction('basic', target);
-            if (consumePress(b.special)) this.tryStartAction('special', target);
-            if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
-            const gp = pollGamepad(padSlots.p1);
-            if (gp) {
-                if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6); // stick X = turn rate
-                if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; } // stick Y = forward/back (up on stick is negative)
-                if (gp.lookY) this.lookBy(-gp.lookY * LOOK_SPEED * dt * 1.6); // right stick Y = pitch (up on stick is negative)
-                if (gp.jump) { jumpPressed = true; jumpJustPressed = true; } // pollGamepad already edge-triggers its buttons
-                if (gp.attack) this.tryStartAction('basic', target);
-                if (gp.special) this.tryStartAction('special', target);
-                if (gp.dodge) this.tryDodge(moveX, moveY);
+        } else if (isLocalSide(sideOf(this))) {
+            // Batch 31: the one fighter this client controls. Replaces the two
+            // mirrored 30-line blocks that read BINDINGS.p1 and BINDINGS.p2.
+            const b = BINDINGS;
+            const held = (action) => keys[b[action]] || keys[ARROW_ALTS[action]];
+
+            // MOUSE LOOK. Applied as a raw radian delta, deliberately NOT
+            // scaled by dt: mouse movement is already an absolute displacement,
+            // so scaling it would make sensitivity depend on framerate. Drained
+            // here so a frame that doesn't step the simulation cannot double-apply.
+            if (mouseDX || mouseDY) {
+                this.turnBy(mouseDX * mouseSensitivity);
+                this.lookBy((invertMouseY ? mouseDY : -mouseDY) * mouseSensitivity);
+                mouseDX = 0; mouseDY = 0;
             }
-            if (touchTurn.p1) this.turnBy(touchTurn.p1 * TURN_SPEED * dt); // analog joystick turn, see setupTouchJoystick
-            if (touchLook.p1) this.lookBy(touchLook.p1 * LOOK_SPEED * dt); // drag-to-look zone, see setupTouchLookZone
-        } else {
-            const b = BINDINGS.p2;
-            if (keys[b.left]) this.turnBy(-TURN_SPEED * dt);
-            if (keys[b.right]) this.turnBy(TURN_SPEED * dt);
+            // Keyboard pitch stays available for when pointer lock is refused.
             if (keys[b.lookUp]) this.lookBy(LOOK_SPEED * dt);
             if (keys[b.lookDown]) this.lookBy(-LOOK_SPEED * dt);
-            if (keys[b.up]) { moveX += this.fx; moveY += this.fy; }
-            if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
+
+            // MOVEMENT. Forward/back along the facing; A/D and Left/Right now
+            // STRAFE rather than turn, which is the whole point of pairing them
+            // with mouse look. The right-hand vector is (fy, -fx): with forward
+            // mapped to world (fx, 0, fy) and up +Y, cross(up, forward) is
+            // (fy, 0, -fx), so that is genuinely screen-right.
+            if (held('forward')) { moveX += this.fx; moveY += this.fy; }
+            if (held('back'))    { moveX -= this.fx; moveY -= this.fy; }
+            if (held('strafeRight')) { moveX += this.fy; moveY -= this.fx; }
+            if (held('strafeLeft'))  { moveX -= this.fy; moveY += this.fx; }
+
             if (keys[b.jump]) jumpPressed = true;
             if (consumePress(b.jump)) jumpJustPressed = true;
             if (consumePress(b.attack)) this.tryStartAction('basic', target);
             if (consumePress(b.special)) this.tryStartAction('special', target);
             if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
-            const gp = pollGamepad(padSlots.p2);
+
+            const gp = pollGamepad(padSlots[LOCAL_SIDE]);
             if (gp) {
-                if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6);
-                if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; }
+                // Left stick X now strafes, to match the keyboard; turning is
+                // the right stick's job alongside pitch.
+                if (gp.moveX) { moveX += gp.moveX * this.fy; moveY += gp.moveX * -this.fx; }
+                if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; } // up on stick is negative
+                if (gp.lookX) this.turnBy(gp.lookX * TURN_SPEED * dt * 1.6);
                 if (gp.lookY) this.lookBy(-gp.lookY * LOOK_SPEED * dt * 1.6);
-                if (gp.jump) { jumpPressed = true; jumpJustPressed = true; }
+                if (gp.jump) { jumpPressed = true; jumpJustPressed = true; } // pollGamepad already edge-triggers
                 if (gp.attack) this.tryStartAction('basic', target);
                 if (gp.special) this.tryStartAction('special', target);
                 if (gp.dodge) this.tryDodge(moveX, moveY);
             }
-            if (touchTurn.p2) this.turnBy(touchTurn.p2 * TURN_SPEED * dt);
-            if (touchLook.p2) this.lookBy(touchLook.p2 * LOOK_SPEED * dt);
         }
+        // Anything else - the remote fighter in an online match - takes no local
+        // input at all. Its position and actions arrive over the network (see
+        // the netcode section); until a peer is connected it simply stands still.
 
         // Rooted (e.g. Thorne's Bramble Lash): can't move, but can still
         // turn and attack — a lockdown, not a full stun.
@@ -7637,8 +7589,8 @@ function sideReady(side) {
 
 function showDetail(side, name, confirmed) {
     const c = CHAR_MAP[name];
-    const confirmKey = keyLabel(BINDINGS[side].attack); // attack = confirm, special = back — read live so rebinds show correctly
-    const backKey = keyLabel(BINDINGS[side].special);
+    const confirmKey = keyLabel(BINDINGS.attack); // attack = confirm, special = back — read live so rebinds show correctly
+    const backKey = keyLabel(BINDINGS.special);
     const detail = document.getElementById(`${side}-detail`);
     detail.style.setProperty('--accent', c.color);
     detail.innerHTML = buildDetailHTML(side, c, confirmKey, backKey);
@@ -7656,7 +7608,7 @@ function showDetail(side, name, confirmed) {
 }
 
 function headingHTML(num, stage) {
-    const side = num === 1 ? 'p1' : 'p2', b = BINDINGS[side];
+    const side = num === 1 ? 'p1' : 'p2', b = BINDINGS;
     const isBotSide = num === 1 ? p1IsBot : p2IsBot;
     const botTag = isBotSide ? ' <span style="color:#f59e0b">[BOT]</span>' : '';
     const padTag = padSlots[side] != null ? ` <span class="pad-badge" title="Gamepad connected"><svg viewBox="0 0 24 16" width="1.1em" height="0.73em" fill="currentColor" aria-hidden="true" style="vertical-align:middle"><rect x="1" y="3" width="22" height="10" rx="5"/><circle cx="7" cy="8" r="1.5" fill="#0d0f18"/><circle cx="17" cy="8" r="1.5" fill="#0d0f18"/></svg></span>` : '';
@@ -7965,194 +7917,6 @@ function randomPick(side) {
     const pool = unlockedCharNames(side); // never roll something THIS side can't play
     previewPick(side, pool[Math.floor(Math.random() * pool.length)]);
 }
-// --- Mobile: touch controls, on request. A touch-primary device gets a
-// virtual joystick (turn/move, mirroring the keyboard's turn-then-walk FPS
-// controls) + a button cluster (jump/attack/special/dash) per human side,
-// laid on top of the same `keys`/`pressed` state the keyboard dispatcher
-// already drives — so update()'s `keys[b.up]`/`consumePress(b.attack)` etc.
-// need no changes at all; touch is just another writer of the same state,
-// keyed off the *live* BINDINGS (so a rebind — even though the touch pads
-// are fixed-function — still reads the right key string).
-// (TOUCH_UI itself is declared up near the renderer, before it's needed
-// there to trim render cost on phone GPUs — see the comment on PIXEL_RATIO.)
-if (TOUCH_UI) document.getElementById('touch-warning').style.display = 'block';
-
-// held=true mirrors a keydown (marks the down-transition in `pressed` too,
-// so consumePress-gated actions like attack/special/dodge fire once per
-// tap); held=false mirrors a keyup. Same shape as the real listeners at
-// the top of this file.
-function touchKeySet(key, held) {
-    if (!key) return;
-    if (held) { if (!keys[key]) pressed.add(key); keys[key] = true; }
-    else keys[key] = false;
-}
-
-// Turning is analog (proportional to how far the knob is dragged), not a
-// boolean snap-to-max-speed like the movement axes below — a physical key
-// is either pressed or not, so keys[]-driven turning has no "partial" speed
-// to worry about, but a touch joystick's whole point is fine analog control,
-// and gating turn on a deadzone the same boolean way keyboard movement is
-// gated meant ANY drag past the deadzone instantly snapped to full turn
-// rate, which read as wildly oversensitive compared to a deliberate key tap.
-// touchTurn[side] holds the live -1..1 axis value `update()` reads (see the
-// TURN_SPEED usage there), mirroring how gp.moveX already drives analog
-// gamepad-stick turning.
-const touchTurn = { p1: 0, p2: 0 };
-// Batch 20: vertical-look axis from the drag-to-look zone, same -1..1 analog
-// shape as touchTurn (and read the same way in update()).
-const touchLook = { p1: 0, p2: 0 };
-function setupTouchJoystick(zoneEl, side) {
-    const knob = zoneEl.querySelector('.touch-joystick-knob');
-    const MAX_R = 38, TURN_DEADZONE = 0.12, MOVE_DEADZONE = 0.35;
-    let pointerId = null;
-    let centerX = 0, centerY = 0; // cached at pointerdown — see the move() comment
-    function apply(dx, dy) {
-        const b = BINDINGS[side];
-        const nx = dx / MAX_R, ny = dy / MAX_R;
-        touchTurn[side] = Math.abs(nx) > TURN_DEADZONE ? nx : 0;
-        touchKeySet(b.up, ny < -MOVE_DEADZONE); // dragging the knob up = walk forward
-        touchKeySet(b.down, ny > MOVE_DEADZONE);
-    }
-    function reset() {
-        const b = BINDINGS[side];
-        touchTurn[side] = 0;
-        touchKeySet(b.up, false); touchKeySet(b.down, false);
-        knob.style.transform = 'translate(0px, 0px)';
-    }
-    // getBoundingClientRect() forces a synchronous layout — fine once per
-    // drag (pointerdown), but the joystick base never actually moves while
-    // held, so re-querying it on every pointermove (which can fire well
-    // over 60Hz on a touchscreen) was forcing a layout flush that often,
-    // stacking on top of the game's own per-frame physics/render work.
-    function move(e) {
-        let dx = e.clientX - centerX, dy = e.clientY - centerY;
-        const len = Math.hypot(dx, dy);
-        if (len > MAX_R) { dx = dx / len * MAX_R; dy = dy / len * MAX_R; }
-        knob.style.transform = `translate(${dx}px, ${dy}px)`;
-        apply(dx, dy);
-    }
-    zoneEl.addEventListener('pointerdown', e => {
-        e.preventDefault();
-        pointerId = e.pointerId;
-        zoneEl.setPointerCapture(pointerId);
-        const rect = zoneEl.getBoundingClientRect();
-        centerX = rect.left + rect.width / 2;
-        centerY = rect.top + rect.height / 2;
-        move(e);
-    });
-    zoneEl.addEventListener('pointermove', e => { if (e.pointerId === pointerId) move(e); });
-    function release(e) {
-        if (e.pointerId !== pointerId) return;
-        pointerId = null;
-        reset();
-    }
-    zoneEl.addEventListener('pointerup', release);
-    zoneEl.addEventListener('pointercancel', release);
-}
-
-function setupTouchButton(btnEl, getKey) {
-    let pointerId = null;
-    btnEl.addEventListener('pointerdown', e => {
-        e.preventDefault();
-        pointerId = e.pointerId;
-        btnEl.setPointerCapture(pointerId);
-        btnEl.classList.add('pressed');
-        touchKeySet(getKey(), true);
-    });
-    function release(e) {
-        if (e.pointerId !== pointerId) return;
-        pointerId = null;
-        btnEl.classList.remove('pressed');
-        touchKeySet(getKey(), false);
-    }
-    btnEl.addEventListener('pointerup', release);
-    btnEl.addEventListener('pointercancel', release);
-    btnEl.addEventListener('pointerleave', release); // sliding off a button releases it, like lifting a real one
-}
-
-// Batch 20: drag-to-look. Occupies the upper region of each side's pad area,
-// which had no interactive elements at all (the joystick and buttons sit along
-// the bottom), so it costs no existing control. Vertical drag only — turning
-// already has the joystick's X axis, and making this also turn would fight it.
-// Returns to level on release rather than holding the last angle: a sticky
-// pitch you can't see the cause of reads as a broken camera.
-function setupTouchLookZone(zoneEl, side) {
-    const MAX_DRAG = 90; // px of drag for full look rate
-    let pointerId = null, startY = 0;
-    function release(e) {
-        if (e && e.pointerId !== pointerId) return;
-        pointerId = null;
-        touchLook[side] = 0;
-    }
-    zoneEl.addEventListener('pointerdown', e => {
-        e.preventDefault();
-        pointerId = e.pointerId;
-        zoneEl.setPointerCapture(pointerId);
-        startY = e.clientY;
-        touchLook[side] = 0;
-    });
-    zoneEl.addEventListener('pointermove', e => {
-        if (e.pointerId !== pointerId) return;
-        // Drag UP (negative dy) looks up, matching how you'd push a physical
-        // view around rather than inverted-flightstick style.
-        const dy = startY - e.clientY;
-        touchLook[side] = Math.max(-1, Math.min(1, dy / MAX_DRAG));
-    });
-    zoneEl.addEventListener('pointerup', release);
-    zoneEl.addEventListener('pointercancel', release);
-}
-
-setupTouchJoystick(document.getElementById('joy-p1'), 'p1');
-setupTouchJoystick(document.getElementById('joy-p2'), 'p2');
-setupTouchLookZone(document.getElementById('look-p1'), 'p1');
-setupTouchLookZone(document.getElementById('look-p2'), 'p2');
-document.querySelectorAll('#touch-p1 .touch-btn').forEach(b => setupTouchButton(b, () => BINDINGS.p1[b.dataset.action]));
-document.querySelectorAll('#touch-p2 .touch-btn').forEach(b => setupTouchButton(b, () => BINDINGS.p2[b.dataset.action]));
-// No physical Escape key on touch, so the pad gets its own pause button —
-// same togglePause() the keyboard dispatcher's Escape branch calls, which
-// already no-ops outside FIGHT/DEATH/ROUND_END, so this can't mis-fire
-// during e.g. the INTRO drop.
-document.getElementById('touch-pause-btn').addEventListener('click', togglePause);
-
-// Shown only while a fight is actually live (FIGHT/INTRO/DEATH/ROUND_END,
-// not the menu or a paused/modal screen), only for sides that are human
-// (a bot side gets no pad), and split left/right — mirrored for P2 — the
-// same way the split-screen HUD already divides the view when both sides
-// are human. Called every frame from gameLoop() so it tracks gameState/bot
-// toggles/orientation changes without needing its own event wiring.
-// Cached elements + last-applied state so this can run every frame from
-// gameLoop() (needed — gameState/bot-toggle/orientation can all change
-// outside a click handler) without hitting the DOM when nothing actually
-// changed. On a phone CPU, style/class writes aren't "free" just because
-// the browser no-ops an unchanged value — the property read + comparison
-// still happens on the main thread 60x/sec, which adds up next to the
-// actual per-frame budget of computing physics and rendering two 3D views.
-const touchUIEls = TOUCH_UI ? {
-    controls: document.getElementById('touch-controls'),
-    p1: document.getElementById('touch-p1'),
-    p2: document.getElementById('touch-p2'),
-    orientation: document.getElementById('orientation-prompt'),
-} : null;
-let lastTouchUIState = '';
-function syncTouchUI() {
-    if (!TOUCH_UI) return;
-    const inFight = gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH' || gameState === 'ROUND_END';
-    const portrait = window.innerHeight > window.innerWidth;
-    const key = inFight + '|' + p1IsBot + '|' + p2IsBot + '|' + portrait;
-    if (key === lastTouchUIState) return;
-    lastTouchUIState = key;
-    touchUIEls.controls.style.display = inFight ? 'block' : 'none';
-    const bothHuman = !p1IsBot && !p2IsBot;
-    touchUIEls.p1.style.display = (inFight && !p1IsBot) ? 'flex' : 'none';
-    touchUIEls.p2.style.display = (inFight && !p2IsBot) ? 'flex' : 'none';
-    touchUIEls.p1.classList.toggle('half', bothHuman);
-    touchUIEls.p2.classList.toggle('half', bothHuman);
-    // The FPS view + HUD are laid out for a wide arena; in portrait the
-    // whole scene reads as a squeezed sliver, so block play with a prompt
-    // instead — the menu itself stays usable portrait or landscape.
-    touchUIEls.orientation.style.display = (inFight && portrait) ? 'flex' : 'none';
-}
-
 document.getElementById('btn-random-p1').addEventListener('click', () => randomPick('p1'));
 document.getElementById('btn-random-p2').addEventListener('click', () => randomPick('p2'));
 
@@ -8830,7 +8594,10 @@ function drawIntroOverlay() {
 function drawHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
     if (gameState === "INTRO") { drawIntroOverlay(); return; } // cinematic — no combat HUD/crosshairs
-    const twoHumans = player1 && player2 && !player1.isBot && !player2.isBot;
+    // Batch 31: one view, so one crosshair and the shared centred elements are
+    // drawn once at true centre. `twoHumans` is retained as a constant false so
+    // the layout branches below read explicitly rather than silently.
+    const twoHumans = false;
     drawCrosshairs(twoHumans);
 
     // Everything below is written in the fixed virtual space and scaled to
@@ -8841,8 +8608,13 @@ function drawHUD() {
     hudCtx.save();
     hudCtx.scale(hudCanvas.width / VIRTUAL_W, hudCanvas.height / VIRTUAL_H);
 
-    drawPlayerHUD(player1, 30, 'P1');
-    drawPlayerHUD(player2, VIRTUAL_W - 30 - 420, 'P2');
+    // Batch 31: YOUR bar is always on the left and your opponent's on the
+    // right, whichever side you happen to be. As the joiner you are p2, and
+    // having your own health jump to the right-hand slot would be a needless
+    // difference between the two clients.
+    const mine = localFighter(), theirs = remoteFighter();
+    drawPlayerHUD(mine, 30, LOCAL_SIDE === 'p1' ? 'P1' : 'P2');
+    drawPlayerHUD(theirs, VIRTUAL_W - 30 - 420, LOCAL_SIDE === 'p1' ? 'P2' : 'P1');
     // Batch 16: the co-op challenger gets a wide bar across the top centre —
     // the conventional boss-bar placement, and the one region the two
     // side panels leave free in both split and full-screen layouts.
@@ -9421,7 +9193,7 @@ function stepDeath(dt) {
     // Either side's attack key, or Space/Enter as a universal fallback
     // (read from the live bindings, not hardcoded 'f'/'k').
     const skipRequested = deathTimer >= DEATH_SKIP_AFTER &&
-        (consumePress(BINDINGS.p1.attack) || consumePress(BINDINGS.p2.attack) || consumePress(' ') || consumePress('enter'));
+        (consumePress(BINDINGS.attack) || consumePress(' ') || consumePress('enter'));
 
     // Batch 19: in the continuous modes a knockout is a setback, not the end of
     // the match — the KO animation still plays in full (it's good feel and the
@@ -9482,7 +9254,6 @@ function gameLoop() {
     const dt = computeDt();
     lastDt = dt;
     fpsSmoothed = fpsSmoothed * 0.9 + (dt > 0.001 ? (60 / dt) : 60) * 0.1;
-    syncTouchUI();
 
     if (gameState === "PAUSED") {
         renderViews(dt); // keep showing the frozen frame under the pause overlay
@@ -9561,7 +9332,7 @@ if (DEBUG) {
         get crushing() { return crushing; },
         get winner() { return winner; },
         get isDraw() { return isDraw; },
-        projectileVelocity, verticalHit, touchLook, touchTurn,
+        projectileVelocity, verticalHit,
         get OBSTACLES() { return OBSTACLES; },
         get PLATFORMS() { return PLATFORMS; },
         get TERRAIN() { return TERRAIN; },
@@ -9570,7 +9341,18 @@ if (DEBUG) {
         positionFpsCamera,
         get p1IsBot() { return p1IsBot; },
         get p2IsBot() { return p2IsBot; },
-        Fighter, keys, pressed, BINDINGS,
+        Fighter, keys, pressed, BINDINGS, DEFAULT_BINDINGS, ARROW_ALTS,
+        // Batch 31: one local player, mouse look, strafe.
+        get LOCAL_SIDE() { return LOCAL_SIDE; },
+        setLocalSide(side) { LOCAL_SIDE = side === 'p2' ? 'p2' : 'p1'; },
+        localFighter, remoteFighter, localCamera, hudViewports,
+        get pointerLocked() { return pointerLocked; },
+        get mouseSensitivity() { return mouseSensitivity; },
+        // Feeds the same accumulator the real mousemove handler writes to, so a
+        // test exercises the actual consumption path in Fighter.update rather
+        // than a stand-in. Needed because headless Chrome will not grant
+        // pointer lock, and the handler ignores movement without it.
+        injectMouseLook(dx, dy) { mouseDX += dx || 0; mouseDY += dy || 0; },
         // Batch 27 crush cinematic
         get crushTime() { return crushTime; },
         get crushRigs() { return crushRigs; },
