@@ -75,7 +75,20 @@ async function launch(opts = {}) {
     return puppeteer.launch({
         executablePath: CHROME,
         headless: 'new',
-        args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'],
+        args: [
+            '--no-sandbox', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist',
+            // Multi-page tests (netcheck runs a host and a joiner side by side)
+            // need BOTH pages to keep animating. Chrome throttles
+            // requestAnimationFrame in background tabs to near-zero, and only
+            // the last-created page is foreground - which showed up as the
+            // host silently never sending a single state packet while the
+            // joiner sent fine. Not a game bug: in real use each player has
+            // their own foreground window.
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-features=CalculateNativeWinOcclusion',
+        ],
         defaultViewport: { width: 1400, height: 1000 },
         ...opts,
     });

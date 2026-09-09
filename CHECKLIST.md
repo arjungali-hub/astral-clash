@@ -532,6 +532,59 @@ Arena Collapse used to end with both fighters squashed in place while still in f
 
 ---
 
+## Batches 31-32 - From local split-screen to online peer-to-peer
+
+The brief: remove local 2-player and mobile (archiving both), move to online play over PeerJS, and modernise the controls - WASD+arrows with A/D strafing, pointer-lock mouse look, left-click attack. Ordered ahead of the arena/character art work at the user's direction, on the reasoning that split-screen renders the scene twice per frame and is the performance ceiling that work would hit.
+
+### Archived first (Batch 31)
+
+`legacy/local-splitscreen.html` is a verbatim copy of the build immediately before the refactor, with its asset paths rewritten to `../` so it actually runs. Verified: served over HTTP it boots, loads `kaelen.glb` (1 model, 0 failures - which is what proves the path rewrite worked) and reaches a live FIGHT with no console errors. A working fallback, not a file that merely exists. What lives only there now: the two-viewport split-screen path, the two-panel HUD (including the trick of drawing shared centred elements twice with a +/- `VIRTUAL_W/4` translate so nothing lands on the seam), two 10-action binding sets on one keyboard, and the whole touch scheme.
+
+### Controls (Batch 31)
+
+- *A/D and Left/Right STRAFE now.* The right-hand vector is `(fy, -fx)`: with forward mapped to world `(fx, 0, fy)` and up +Y, `cross(up, forward)` is `(fy, 0, -fx)`, so that is genuinely screen-right.
+- *Mouse look on pointer lock*, requested by clicking the canvas during a fight. Applied as a raw radian delta and deliberately **not** scaled by `dt` - mouse movement is already an absolute displacement, so scaling it makes sensitivity depend on framerate.
+- *Mouse buttons are synthetic keys.* Left click and right click live in the same `keys`/`pressed` maps under the names `mouse0`/`mouse2`, so they flow through `consumePress` and the rebind UI unchanged instead of needing a parallel input path.
+- *One binding set.* The two-side layout existed only to fit two players on one keyboard, which forced compromises that no longer apply - P1's jump had been moved off Space specifically because an oversized thumb key made P1 jumping easier than P2's. Jump is Space again, dash is Shift. Stored under a **new** localStorage key on purpose: the old value is a `{p1,p2}` blob whose action names (`up`/`left`) no longer exist, so merging it over the new defaults would silently produce a binding set with dead entries.
+- *Keyboard pitch survives as a fallback* for when pointer lock is refused - mouse look is primary but must not be the only way to aim up at the high platforms Batch 20 made reachable.
+- **Touch removed entirely (~18 KB).** It is fundamentally incompatible with one-player mouse look, so leaving it half-wired would have been a broken intermediate state. `TOUCH_UI` went with it, so antialias, shadows and pixel ratio are now unconditional.
+
+### One view
+
+`renderViews` always draws a single full-screen view from the local fighter's camera. Beyond being what online needs, this halves the scene render cost and removes the reason post-processing was impractical: an `EffectComposer`'s full-screen quad passes do not honour an outer scissor rect, so bloom would have needed one composer per half. **Your own health bar stays on the LEFT whichever side you are** - as the joiner you are p2, and having your own bar jump to the right-hand slot would be a pointless difference between the two clients.
+
+### Netcode (Batch 32), and why it is not lockstep
+
+The obvious reading of "send input packets and apply them to the opponent" is deterministic lockstep. That cannot work here, and it is written into the code so nobody tries:
+
+- `dt` is **real elapsed time**, and every constant in the file is tuned in frame-units and multiplied by it. Two machines never produce the same `dt` sequence, so positions, cooldowns and turn angles diverge on the first frame.
+- `hitStopFrames` skips the simulation entirely for a few frames on hit, driven by local damage events.
+- Pausing is per-client and halts the whole simulation; `REDUCED_MOTION` changes the intro path.
+- Per-side progression feeds `upgradeMult()` into fighter construction, so two clients with different local saves build **genuinely different stats for the same character**.
+
+So: **peer state sync, each client authoritative for its own fighter.** Your fighter is driven by your input with zero latency; you broadcast its transform at 30Hz; the opponent is a puppet whose own physics is suppressed (running it would fight the incoming state - gravity pulling it down between packets, `resolveObstacles` shoving it out of geometry its owner stands in happily). The host owns match setup and the arena choice, and resolves "random" to a **concrete** map before broadcasting, or each side would roll its own.
+
+**Hits are attacker-authoritative.** Whoever throws the swing decides on their own machine whether it landed and sends a `HIT`; the victim applies it to itself and its `hp` flows back in the next `STATE`. Damage is never resolved locally for an attack thrown by the remote fighter, and environmental damage (crush, burn) is applied by each client to its own fighter only - otherwise both land twice. A victim's dodge i-frames still beat an incoming networked hit, which favours the victim and is the less frustrating call.
+
+Interpolation is a lerp toward the last received state, with a snap past 220 units. Not dead reckoning: this game teleports constantly (Kaelen's dash, Voss' blink, Nyx's pull, every dodge), and extrapolating through a teleport predicts confidently in the wrong direction, which looks far worse than arriving a frame late.
+
+### Real bugs found by writing the test
+
+- **`takeDamage(msg.dmg, null, true)` put the flag in the `dir` parameter.** So `fromNet` was undefined, the authority gate suppressed the very message it exists to let through, and **no networked hit would ever have landed.** The single most valuable thing the test caught.
+- **`netTick` sent nothing when there was no local fighter** - which is the entire time you are on the menu, in the lobby, or picking a character. The peer heard silence, the 6-second drop timeout fired, and **the connection died before the match could start.** Sitting in a lobby for more than six seconds is completely normal. Fixed with a keepalive `PING`.
+- **`togglePause` ignored `INTRO`**, so a disconnect during the drop-in cinematic left the match running against a puppet nobody was driving.
+- Stale from the Batch 31 control change: the pause screen and tutorial still printed two identical control lines labelled P1 and P2.
+
+### Test-environment findings worth recording
+
+Roughly half the debugging time went on the harness, again:
+
+- **Two tabs in one browser does not work for a two-client test.** Chrome does not run `requestAnimationFrame` in a background tab and only the last-created tab is foreground, so the host's game loop never ticked and it never sent a single packet. The `--disable-background-timer-throttling` family did not lift it in headless. Two separate browsers does work, and is what two real players have anyway.
+- **The loopback relay cannot sustain 30Hz.** Every message is a CDP round trip, so the test starves the link and the (correct) silence timeout fires - which failed every later assertion for that one reason. The timeout is now a mutable field the checker raises, and it gets its own deliberate section instead of being tripped over.
+- A wait that expires must be *reported*: four silent 40-second `waitInPage` timeouts turned one run into three minutes and made every downstream failure look like a netcode bug.
+
+---
+
 ## Where this arc landed
 
 All ten planned batches (11-21) are in and pushed, each as its own commit with its own checker script. The nine-suite regression set (`progressioncheck`, `cheatcheck`, `doublejumpcheck`, `reachabilitycheck`, `pitchcheck`, `touchlookcheck`, `modescheck`, `coopcheck`, `bosscheck`, `survivalcheck`, plus the desktop/touch/pause drivers) runs green end to end, and — unlike every batch before this arc — the verification exercises **real game state through the real game loop** rather than only checking that nothing threw, thanks to the `?debug=1`-gated `window.ACDebug` handle added in Batch 12.

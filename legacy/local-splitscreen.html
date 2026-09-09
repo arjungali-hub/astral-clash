@@ -971,6 +971,10 @@
                         <button id="btn-open-rebind">Rebind Keys</button>
                         <button id="btn-hud-scale">HUD Text: Normal</button>
                         <button id="btn-open-audio">Audio Settings</button>
+                        <!-- Added after archiving: the only edit to this file's
+                             behaviour, so switching builds is not a one-way
+                             trip. Gameplay is untouched. -->
+                        <button id="btn-back-to-online" style="background:transparent;color:#4ade80;border:1px solid #4ade80;box-shadow:none;font-size:0.78rem;">Back to Online Version</button>
                     </div>
                     <label class="settings-check">
                         <input type="checkbox" id="chk-unlock-all">
@@ -1855,6 +1859,7 @@ document.getElementById('btn-audio-close').addEventListener('click', () => close
 // (the modal manager keeps Settings underneath), so closing either returns
 // here — no separate "hide Settings first" listeners needed.
 document.getElementById('btn-open-settings').addEventListener('click', () => { syncDebugUnlockUI(); openModal('settings'); });
+document.getElementById('btn-back-to-online').addEventListener('click', () => { location.href = '../index.html'; });
 document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());
 // Batch 13: the visible half of the unlock-everything override (the other
 // entry point is the typed cheat code in the keyboard dispatcher).

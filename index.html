@@ -406,6 +406,53 @@
             box-shadow: none;
         }
         .btn-mode:hover { background: rgba(168, 85, 247, 0.14); box-shadow: 0 0 12px rgba(168, 85, 247, 0.35); }
+        /* Batch 33: the escape hatch back to the archived split-screen build.
+           Deliberately not styled like the other settings rows - it navigates
+           away from the current build rather than changing a value here. */
+        .settings-list .btn-legacy {
+            background: transparent; color: #a855f7; border: 1px solid #a855f7;
+            box-shadow: none; font-size: 0.78rem;
+        }
+        .settings-list .btn-legacy:hover { background: rgba(168, 85, 247, 0.14); box-shadow: none; }
+        #lobby-screen {
+            display: none;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
+            align-items: center; justify-content: center; z-index: 30; padding: 20px; box-sizing: border-box;
+        }
+        .lobby-panel { width: min(460px, 94vw); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
+        .lobby-panel h3 { color: #4ade80; margin: 0 0 4px; font-size: 1.3rem; }
+        .lobby-sub { color: #8aa0b8; font-size: 0.78rem; line-height: 1.5; margin: 0 0 12px; }
+        .lobby-status {
+            font-size: 0.8rem; font-weight: bold; color: #94a3b8; margin: 0 0 14px;
+            padding: 7px 10px; border-radius: 5px; background: #0f1420; border: 1px solid #2e3a59;
+        }
+        .lobby-status.waiting { color: #fbbf24; border-color: #f59e0b; }
+        .lobby-status.live    { color: #4ade80; border-color: #4ade80; }
+        .lobby-status.bad     { color: #f87171; border-color: #ef4444; }
+        .lobby-block { margin-bottom: 10px; }
+        .lobby-or { color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.14em; margin: 4px 0 10px; }
+        .lobby-code-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+        .lobby-code-label { font-size: 0.66rem; color: #8aa0b8; white-space: nowrap; }
+        .menu-section .lobby-code {
+            flex: 1; width: 100%; margin: 0; padding: 7px 9px; box-sizing: border-box;
+            background: #0b0f18; color: #e2e8f0; border: 1px solid #2e3a59; border-radius: 5px;
+            font-family: 'Courier New', monospace; font-size: 0.78rem; text-align: center;
+        }
+        .menu-section .lobby-copy {
+            width: auto; margin: 0; padding: 7px 12px; font-size: 0.7rem; font-weight: bold;
+            background: transparent; color: #4ade80; border: 1px solid #4ade80; border-radius: 5px;
+        }
+        .menu-section .lobby-copy:hover { background: rgba(74, 222, 128, 0.14); box-shadow: none; }
+        /* Batch 32: the online entry point sits with the branding, beside the
+           mode selector - which mode you play and who you play it against are
+           the same class of pre-match decision. */
+        .btn-online {
+            width: auto; background: transparent; color: #4ade80; border: 1px solid #4ade80;
+            padding: 7px 18px; font-size: 0.8rem; font-weight: bold; margin: 6px 4px 0;
+            box-shadow: none;
+        }
+        .btn-online:hover { background: rgba(74, 222, 128, 0.14); box-shadow: 0 0 12px rgba(74, 222, 128, 0.35); }
         #modeselect-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -732,6 +779,7 @@
                     <h1>Astral Clash</h1>
                     <div class="brand-divider"></div>
                     <p>Dimensional Arena Fighter</p>
+                    <button id="btn-open-lobby" class="btn-online">Play Online</button>
                     <button id="btn-open-modeselect" class="btn-mode">Mode: Classic Versus</button>
                     <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
                 </div>
@@ -849,7 +897,11 @@
                         <input type="checkbox" id="chk-unlock-all">
                         <span>Unlock everything (sandbox)</span>
                     </label>
-                    <p class="settings-note">Try every fighter and maxed-out upgrades without spending coins, and play against a bot. Each player's real progress is kept separately and comes back exactly as it was when you turn this off. Nothing you do in here earns coins &mdash; progression matches are two players, one keyboard.</p>
+                    <p class="settings-note">Try every fighter and maxed-out upgrades without spending coins, and play against a bot. Each player's real progress is kept separately and comes back exactly as it was when you turn this off. Nothing you do in here earns coins.</p>
+                    <div class="settings-list" style="margin-top:14px;">
+                        <button id="btn-legacy-build" class="btn-legacy">Switch to Local Split-Screen (old version)</button>
+                    </div>
+                    <p class="settings-note">The build from before online play: two players on one keyboard, split screen, and touch controls. Kept because it is the only way to play on the same machine. Your saved progress and unlocks are shared with it.</p>
                     <button id="btn-settings-close" class="btn-back">Close</button>
                 </div>
             </div>
@@ -926,6 +978,34 @@
             </div>
         </div>
 
+        <div id="lobby-screen">
+            <div class="menu-section lobby-panel">
+                <h3>Play Online</h3>
+                <p class="lobby-sub">One of you hosts and shares the room code; the other joins with it.
+                    The host plays as Player 1.</p>
+                <div id="lobby-status" class="lobby-status">Not connected</div>
+
+                <div class="lobby-block">
+                    <button id="btn-net-host">Host Game</button>
+                    <div id="lobby-code-row" class="lobby-code-row" style="display:none;">
+                        <span class="lobby-code-label">Room code</span>
+                        <input id="lobby-code" class="lobby-code" readonly>
+                        <button id="btn-copy-code" class="lobby-copy">Copy</button>
+                    </div>
+                </div>
+
+                <div class="lobby-or">or</div>
+
+                <div class="lobby-block">
+                    <input id="lobby-join-input" class="lobby-code" placeholder="Paste a room code" autocomplete="off" spellcheck="false">
+                    <button id="btn-net-join">Join Game</button>
+                </div>
+
+                <button id="btn-net-disconnect" class="btn-back" style="display:none;">Disconnect</button>
+                <button id="btn-lobby-close" class="btn-back">&larr; Back</button>
+            </div>
+        </div>
+
         <div id="modeselect-screen">
             <div class="menu-section modeselect-panel">
                 <h3>Game Mode</h3>
@@ -994,7 +1074,14 @@ function loadScriptsThen(srcs, done) {
 }
 function startGame() {
     if (typeof THREE === 'undefined') return;
-    loadScriptsThen(['vendor/GLTFLoader.js', 'vendor/SkeletonUtils.js'], function () { bootGame(); });
+    // PeerJS rides the same chain. Its onerror only warns, so if the CDN is
+    // blocked the game still boots - it just cannot go online, and the lobby
+    // says so rather than the whole page dying over a network dependency.
+    loadScriptsThen([
+        'vendor/GLTFLoader.js',
+        'vendor/SkeletonUtils.js',
+        'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js',
+    ], function () { bootGame(); });
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" onerror="loadThreeFallback()"></script>
@@ -1014,7 +1101,7 @@ let gameState = "MENU"; // MENU, INTRO, FIGHT, DEATH, ROUND_END, PAUSED, GAMEOVE
 //   during a fight). MODALS overlay everything and stack: opening one leaves
 //   whatever's underneath in place, so closing returns there. ---
 const SCREEN_EL = { select: 'select-screen', gameover: 'gameover-screen', pause: 'pause-screen' };
-const MODAL_EL = { tutorial: 'tutorial-screen', settings: 'settings-screen', rebind: 'rebind-screen', audio: 'audio-screen', mapselect: 'mapselect-screen', shop: 'shop-screen', modeselect: 'modeselect-screen' };
+const MODAL_EL = { tutorial: 'tutorial-screen', settings: 'settings-screen', rebind: 'rebind-screen', audio: 'audio-screen', mapselect: 'mapselect-screen', shop: 'shop-screen', modeselect: 'modeselect-screen', lobby: 'lobby-screen' };
 let currentScreen = 'select'; // matches the initial CSS (select shown)
 let modalStack = [];
 function showScreen(name) {
@@ -1798,9 +1885,8 @@ syncDebugUnlockUI(); // reflect a persisted override on load
 // too instead of drifting out of sync with a hardcoded control list.
 function buildTutorialControls() {
     document.getElementById('tutorial-controls').innerHTML =
-        `<div class="tutorial-controls-row"><b>P1:</b> ${controlsSummary('p1')}</div>` +
-        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>P2:</b> ${controlsSummary('p2')}</div>` +
-        `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> stick move/turn, A jump, B attack, X special, Y dash</div>`;
+        `<div class="tutorial-controls-row">${controlsSummary()}</div>` +
+        `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> left stick move/strafe, right stick look, A jump, B attack, X special, Y dash</div>`;
 }
 function openTutorial() {
     buildTutorialControls();
@@ -4803,6 +4889,13 @@ class Fighter {
             // Batch 31: the one fighter this client controls. Replaces the two
             // mirrored 30-line blocks that read BINDINGS.p1 and BINDINGS.p2.
             const b = BINDINGS;
+            // Batch 32: snapshot so a started action / spent dodge can be
+            // detected below and announced. Watching the resulting STATE
+            // transition is more reliable than trying to intercept every
+            // tryStartAction call site, and it cannot report an action that
+            // was actually refused for cooldown or hitstun.
+            const netPrevAtk = netActive() ? this.atkState : null;
+            const netPrevDodge = netActive() ? this.dodgeCooldown : 0;
             const held = (action) => keys[b[action]] || keys[ARROW_ALTS[action]];
 
             // MOUSE LOOK. Applied as a raw radian delta, deliberately NOT
@@ -4847,10 +4940,29 @@ class Fighter {
                 if (gp.special) this.tryStartAction('special', target);
                 if (gp.dodge) this.tryDodge(moveX, moveY);
             }
+
+            if (netActive()) {
+                if (netPrevAtk === 'idle' && this.atkState !== 'idle') {
+                    netSend({ t: 'EVENT', e: this.atkKind === 'special' ? 'special' : 'attack' });
+                }
+                if (netPrevDodge <= 0 && this.dodgeCooldown > 0) {
+                    netSend({ t: 'EVENT', e: 'dodge' });
+                }
+            }
         }
         // Anything else - the remote fighter in an online match - takes no local
         // input at all. Its position and actions arrive over the network (see
         // the netcode section); until a peer is connected it simply stands still.
+
+        // A network puppet's transform is authoritative on the OTHER machine.
+        // Running our own physics on it would fight the incoming state: gravity
+        // would pull it down between packets and then it would snap back, and
+        // resolveObstacles would shove it out of geometry its owner is standing
+        // in perfectly happily. So its velocities are zeroed and the
+        // integration and jump/gravity blocks below are skipped; netApplyRemote
+        // eases it toward the last state we received.
+        const puppet = this.isNetPuppet();
+        if (puppet) { this.vx = 0; this.vy = 0; this.vz = 0; }
 
         // Rooted (e.g. Thorne's Bramble Lash): can't move, but can still
         // turn and attack — a lockdown, not a full stun.
@@ -4888,13 +5000,15 @@ class Fighter {
             this.setFacing(this.botFaceX, this.botFaceY);
         }
 
-        const oldX = this.x, oldY = this.y;
-        this.x += this.vx * dt;
-        this.y += this.vy * dt;
-        this.resolveObstacles();
-        this.resolvePlatformWalls();
-        this.resolveTallTerrain(oldX, oldY);
-        this.clampToArena();
+        if (!puppet) {
+            const oldX = this.x, oldY = this.y;
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            this.resolveObstacles();
+            this.resolvePlatformWalls();
+            this.resolveTallTerrain(oldX, oldY);
+            this.clampToArena();
+        }
 
         if (jumpPressed && this.grounded && this.jumpCooldown <= 0) {
             this.vz = JUMP_VZ;
@@ -4919,8 +5033,9 @@ class Fighter {
 
         const footX = this.x + this.width / 2, footY = this.y + this.height / 2;
         const stepGround = groundLevelAt(footX, footY);
+        if (puppet) { this.grounded = true; }  // its owner decides; see netApplyState
         this.vz -= GRAVITY * dt;
-        const nextZ = this.z + this.vz * dt;
+        const nextZ = puppet ? this.z : this.z + this.vz * dt;
 
         // Steps/ramps give walkable ground, but only a rise up to
         // MAX_WALK_STEP_UP (30) can be climbed on foot in one go — see
@@ -5063,8 +5178,33 @@ class Fighter {
     // facing); a projectile passes its own normalized velocity, since the
     // shooter has usually turned since firing and its current facing would
     // knock you sideways. Dodge i-frames block only this path.
-    takeDamage(amount, attacker, dir) {
-        if (this.invulnFrames > 0) return;
+    // True when this fighter is owned by the peer, so everything about it
+    // arrives over the wire instead of being simulated here.
+    isNetPuppet() {
+        return netActive() && !this.isBot && !isLocalSide(sideOf(this));
+    }
+
+    takeDamage(amount, attacker, dir, fromNet) {
+        if (this.invulnFrames > 0) return;   // a dodge beats an incoming hit, including a networked one
+        // --- Batch 32: damage authority. ---------------------------------
+        // Hits are ATTACKER-authoritative: whoever threw the swing decides on
+        // their own machine whether it landed, and tells the victim. Without
+        // this gate both clients resolve the same swing independently and can
+        // disagree, which shows up as phantom damage or damage that never
+        // lands.
+        if (netActive() && !fromNet) {
+            const iAmLocal = isLocalSide(sideOf(this));
+            const attackerIsLocal = !!attacker && isLocalSide(sideOf(attacker));
+            // Their attack on us: theirs to resolve. It arrives as a HIT.
+            if (iAmLocal && attacker && !attackerIsLocal) return;
+            // Anything on the puppet that we did not throw - crush, burn,
+            // their own environment - belongs to its owner. Its hp comes back
+            // to us in the next STATE packet.
+            if (!iAmLocal && !attackerIsLocal) return;
+            // Our attack on them: resolve locally for immediate feedback AND
+            // tell them, so they can apply it to themselves authoritatively.
+            if (!iAmLocal && attackerIsLocal) netSend({ t: 'HIT', dmg: amount });
+        }
         this.applyDamage(amount, { attacker: attacker || null, dir: dir || null });
     }
 
@@ -7398,7 +7538,8 @@ function refreshBotUI(side) {
     // you go to practice or mess about solo, and it deliberately pays nothing
     // (see addCoins). Force the toggle off and disable it (rather than
     // silently ignoring clicks) so it's clear *why* it's unavailable.
-    const botAllowed = debugUnlockAll;
+    // Batch 32: and never online - the other side is a person.
+    const botAllowed = debugUnlockAll && !netActive();
     if (!botAllowed) { if (side === 'p1') p1IsBot = false; else p2IsBot = false; }
     const isBot = side === 'p1' ? p1IsBot : p2IsBot;
     const toggle = document.getElementById(side === 'p1' ? 'btn-toggle-bot-p1' : 'btn-toggle-bot');
@@ -7721,6 +7862,19 @@ function openMapSelect() {
 }
 function chooseMap(map) {
     closeAllModals();
+    // The host resolves "random" to a CONCRETE map before broadcasting, so both
+    // clients load the same arena - sending the intent would have each side
+    // roll its own.
+    if (netActive() && netIsHost()) {
+        const chosen = map || MAPS[Math.floor(Math.random() * MAPS.length)];
+        netSend({
+            t: 'START',
+            p1: p1Choice, p2: p2Choice,
+            map: chosen.name, mode: matchMode, difficulty: botDifficulty,
+        });
+        startMatch(chosen);
+        return;
+    }
     startMatch(map || undefined); // undefined = random; startRound() hides the overlay via hideOverlay()
 }
 document.getElementById('btn-map-random').addEventListener('click', () => chooseMap(null));
@@ -7894,6 +8048,403 @@ document.getElementById('btn-shop-close').addEventListener('click', () => closeM
 document.querySelectorAll('[data-shop-side]').forEach(b =>
     b.addEventListener('click', () => openShop(b.dataset.shopSide)));
 
+
+// ===========================================================================
+// Batch 32: online play over PeerJS.
+//
+// NETCODE MODEL, and why it is not lockstep.
+//
+// The obvious reading of "send input packets and apply them to the opponent" is
+// deterministic lockstep: both clients run the same simulation from the same
+// inputs. That cannot work here, and it is worth writing down so nobody tries:
+//
+//   * `dt` is real elapsed time (computeDt), and every constant in this file is
+//     tuned in frame-units and multiplied by it. Two machines never produce the
+//     same dt sequence, so positions, cooldowns and turn angles diverge on the
+//     first frame.
+//   * `hitStopFrames` skips the simulation entirely for a few frames on hit,
+//     and it is driven by local damage events.
+//   * Pausing is per-client and halts the whole simulation.
+//   * REDUCED_MOTION changes the intro path.
+//   * Per-side progression feeds upgradeMult() into fighter construction, so
+//     two clients with different local saves build genuinely different stats
+//     for the same character.
+//
+// So instead: PEER STATE SYNC, each client authoritative for its own fighter.
+//
+//   * Your fighter is driven by your input, locally, with zero latency.
+//   * You broadcast your fighter's state (position, facing, pitch, action, hp)
+//     at NET_SEND_HZ. The opponent applies it to their copy of you.
+//   * The opponent's fighter on your screen is a puppet: its position comes
+//     from the wire and its local movement simulation is suppressed.
+//   * HITS ARE ATTACKER-AUTHORITATIVE. When your attack connects locally you
+//     see it immediately and send a HIT; the victim applies it to themselves.
+//     Damage is never resolved for an attack thrown by the remote fighter,
+//     because its owner is the one who decides whether it landed. This is the
+//     standard trade (it favours the attacker) and it is the only way to avoid
+//     both clients resolving the same swing and disagreeing.
+//   * Environmental damage (crush, burn) is applied by each client to its OWN
+//     fighter only, for the same reason - otherwise it lands twice.
+//   * The HOST is authoritative for match setup and round/match transitions.
+// ===========================================================================
+const NET_SEND_HZ = 30;                  // state broadcasts per second
+const NET_SEND_MS = 1000 / NET_SEND_HZ;
+const NET_TIMEOUT_MS = 6000;             // silence after which we call it dropped
+
+const net = {
+    peer: null,
+    conn: null,
+    role: null,            // 'host' | 'joiner'
+    status: 'offline',     // offline | starting | waiting | connecting | connected | error | dropped
+    detail: '',
+    lastSendAt: 0,
+    lastRecvAt: 0,
+    timeoutMs: NET_TIMEOUT_MS,   // silence after which we call it dropped
+    remoteState: null,           // last STATE received; netApplyRemote eases toward it
+    remoteReady: false,    // joiner has acknowledged SETUP
+    pendingSetup: null,    // joiner: setup received before it could be applied
+};
+function netActive() { return !!(net.conn && net.conn.open); }
+function netIsHost() { return net.role === 'host'; }
+
+function netSetStatus(status, detail) {
+    net.status = status;
+    net.detail = detail || '';
+    refreshLobbyUI();
+}
+
+function netSend(msg) {
+    if (!netActive()) return false;
+    try { net.conn.send(msg); return true; }
+    catch (e) { console.warn('[net] send failed', e && e.message); return false; }
+}
+
+// --- Connection lifecycle -------------------------------------------------
+function netTeardown(reason) {
+    if (DEBUG && (net.conn || net.peer)) {
+        console.warn('[net] teardown:', reason || '(explicit)', 'role=' + net.role,
+                     'state=' + gameState, 'sinceRecv=' +
+                     (net.lastRecvAt ? Math.round(performance.now() - net.lastRecvAt) : 'n/a'));
+    }
+    if (net.conn) { try { net.conn.close(); } catch (e) {} }
+    if (net.peer) { try { net.peer.destroy(); } catch (e) {} }
+    net.peer = null; net.conn = null; net.role = null;
+    net.remoteReady = false; net.pendingSetup = null;
+    LOCAL_SIDE = 'p1';
+    netSetStatus(reason ? 'dropped' : 'offline', reason || '');
+}
+
+function netBindConnection(conn) {
+    net.conn = conn;
+    conn.on('open', () => {
+        net.lastRecvAt = performance.now();
+        netSetStatus('connected', netIsHost() ? 'You are Player 1' : 'You are Player 2');
+        // Both sides announce themselves so a mismatched build is obvious
+        // rather than manifesting as strange behaviour later.
+        netSend({ t: 'HELLO', build: 'batch32', side: LOCAL_SIDE });
+        refreshMenuUI();
+    });
+    conn.on('data', netOnMessage);
+    conn.on('close', () => {
+        if (net.status !== 'offline') netTeardown('Opponent disconnected');
+        onNetLost();
+    });
+    conn.on('error', err => {
+        netSetStatus('error', (err && err.type) || 'connection error');
+    });
+}
+
+function netHost() {
+    if (typeof Peer !== 'function') { netSetStatus('error', 'PeerJS failed to load'); return; }
+    netTeardown();
+    net.role = 'host';
+    LOCAL_SIDE = 'p1';               // host always drives Player 1
+    netSetStatus('starting', 'Creating room...');
+    net.peer = new Peer();
+    net.peer.on('open', id => {
+        netSetStatus('waiting', 'Share the code and wait for your opponent');
+        const box = document.getElementById('lobby-code');
+        if (box) box.value = id;
+        const row = document.getElementById('lobby-code-row');
+        if (row) row.style.display = 'flex';
+    });
+    net.peer.on('connection', conn => {
+        if (netActive()) { try { conn.close(); } catch (e) {} return; } // one opponent only
+        netBindConnection(conn);
+    });
+    net.peer.on('error', err => netSetStatus('error', (err && err.type) || 'peer error'));
+}
+
+function netJoin(hostId) {
+    if (typeof Peer !== 'function') { netSetStatus('error', 'PeerJS failed to load'); return; }
+    const id = (hostId || '').trim();
+    if (!id) { netSetStatus('error', 'Enter a room code first'); return; }
+    netTeardown();
+    net.role = 'joiner';
+    LOCAL_SIDE = 'p2';               // joiner always drives Player 2
+    netSetStatus('connecting', 'Connecting to ' + id.slice(0, 8) + '...');
+    net.peer = new Peer();
+    net.peer.on('open', () => netBindConnection(net.peer.connect(id, { reliable: true })));
+    net.peer.on('error', err => netSetStatus('error', (err && err.type) || 'peer error'));
+}
+
+// Losing the peer mid-match must not leave a half-driven puppet standing
+// there: pause and say so, rather than pretending the opponent is idle.
+function onNetLost() {
+    if (gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH') {
+        exitPointerLock();
+        if (gameState !== 'PAUSED') togglePause();
+    }
+    refreshMenuUI();
+}
+
+// --- Message handling -----------------------------------------------------
+function netOnMessage(msg) {
+    if (!msg || typeof msg !== 'object') return;
+    net.lastRecvAt = performance.now();
+    switch (msg.t) {
+        case 'HELLO':
+        case 'PING':
+            // Nothing to do: lastRecvAt was already refreshed above, which is
+            // the whole point of a keepalive.
+            break;
+        case 'SETUP':
+            // Host has chosen everything; mirror it exactly and confirm.
+            netApplySetup(msg);
+            netSend({ t: 'READY' });
+            break;
+        case 'READY':
+            net.remoteReady = true;
+            break;
+        case 'PICK':
+            netOnPick(msg);
+            break;
+        case 'START':
+            netApplySetup(msg);
+            startMatch(MAPS.find(m => m.name === msg.map) || undefined);
+            break;
+        case 'STATE':
+            netApplyState(msg);
+            break;
+        case 'HIT': {
+            // The opponent's attack connected on their machine. Apply it to
+            // OUR fighter, flagged so the local suppression does not drop it.
+            const me = localFighter();
+            if (me && msg.dmg > 0) me.takeDamage(msg.dmg, null, null, /* fromNet */ true);
+            break;
+        }
+        case 'EVENT':
+            netApplyEvent(msg);
+            break;
+        case 'ROUNDEND':
+        case 'MATCHEND':
+            // Host is authoritative for the lifecycle; the joiner follows.
+            if (!netIsHost()) netApplyLifecycle(msg);
+            break;
+        case 'BYE':
+            netTeardown('Opponent left');
+            onNetLost();
+            break;
+    }
+}
+
+function netApplySetup(msg) {
+    if (msg.p1) p1Choice = msg.p1;
+    if (msg.p2) p2Choice = msg.p2;
+    if (msg.mode && msg.mode !== matchMode) setMatchMode(msg.mode);
+    if (msg.difficulty) botDifficulty = msg.difficulty;
+    p1IsBot = false; p2IsBot = false;      // online is always two humans
+    p1Stage = 'confirmed'; p2Stage = 'confirmed';
+    p1Preview = p1Choice; p2Preview = p2Choice;
+}
+
+// The remote fighter is a puppet. Its transform is written straight from the
+// wire; interpolation is a deliberate non-goal for now, because at 30Hz over a
+// direct WebRTC link the visible stutter is small and a wrong interpolation
+// (predicting through a dash teleport, say) looks far worse than a small jump.
+// State is BUFFERED, not applied on arrival: packets land at 30Hz while the
+// game renders at whatever the monitor does, so writing the transform straight
+// in makes the opponent move in visible 30Hz steps. netApplyRemote eases toward
+// the buffer every frame instead.
+function netApplyState(msg) {
+    net.remoteState = msg;
+    const f = remoteFighter();
+    if (!f) return;
+    // hp and meter are owner-authoritative and snap: a health bar that eases is
+    // actively misleading about how close someone is to dying.
+    if (typeof msg.hp === 'number') {
+        f.hp = msg.hp;
+        if (f.hpGhost < f.hp) f.hpGhost = f.hp;
+    }
+    if (typeof msg.meter === 'number') f.specialMeter = msg.meter;
+    f.grounded = !!msg.g;
+}
+
+// Eases the puppet toward the last received state. Called every frame, after
+// the fighters have updated.
+//
+// A lerp rather than dead-reckoning on velocity: this game teleports a lot
+// (Kaelen's dash, Voss' blink, Nyx's pull, every dodge), and extrapolating
+// through a teleport predicts confidently in the wrong direction, which looks
+// far worse than arriving a frame or two late. Snapping outright when the gap
+// is large keeps a genuine teleport instant rather than sliding the fighter
+// across the arena.
+const NET_LERP = 0.35;      // per frame-unit
+const NET_SNAP_DIST = 220;  // beyond this, treat it as a teleport and snap
+function netApplyRemote(dt) {
+    const st = net.remoteState;
+    const f = remoteFighter();
+    if (!st || !f || !f.isNetPuppet()) return;
+    const k = Math.min(1, NET_LERP * dt);
+    if (Math.hypot(st.x - f.x, st.y - f.y) > NET_SNAP_DIST) {
+        f.x = st.x; f.y = st.y; f.z = st.z;
+    } else {
+        f.x += (st.x - f.x) * k;
+        f.y += (st.y - f.y) * k;
+        f.z += (st.z - f.z) * k;
+    }
+    // Facing is set outright: it is a direction, and easing it makes aim read
+    // as laggy in exactly the situation where you are judging where they point.
+    f.fx = st.fx; f.fy = st.fy;
+    f.pitch = st.pitch || 0;
+}
+
+// Discrete cues, so the puppet visibly acts rather than sliding around in an
+// idle pose: an attack swing, a dash, a jump.
+function netApplyEvent(msg) {
+    const f = remoteFighter();
+    if (!f) return;
+    if (msg.e === 'attack' || msg.e === 'special') {
+        // Runs the real action pipeline so the swing, sound and effects all
+        // play. Damage is suppressed for remote-sourced attacks (see
+        // takeDamage), so this is purely presentational on our side.
+        f.tryStartAction(msg.e === 'special' ? 'special' : 'basic', localFighter());
+    } else if (msg.e === 'dodge') {
+        f.invulnFrames = Math.max(f.invulnFrames, DODGE_IFRAMES);
+    }
+}
+
+function netApplyLifecycle(msg) {
+    if (msg.t === 'ROUNDEND') {
+        roundWins = msg.wins || roundWins;
+        currentRound = msg.round || currentRound;
+    }
+}
+
+// --- Per-frame send -------------------------------------------------------
+function netTick(now) {
+    if (!netActive()) return;
+    // Drop detection: PeerJS 'close' is not guaranteed on an abrupt network
+    // loss, so a silence timeout is the backstop.
+    if (net.lastRecvAt && now - net.lastRecvAt > net.timeoutMs) {
+        netTeardown('Connection timed out');
+        onNetLost();
+        return;
+    }
+    if (now - net.lastSendAt < NET_SEND_MS) return;
+    net.lastSendAt = now;
+    const f = localFighter();
+    // No fighter yet means we are on the menu / lobby / character select. Send
+    // a keepalive instead of nothing: the drop detector below is a silence
+    // timeout, so staying quiet while both players pick their characters read
+    // as a dead connection and tore the link down before the match started.
+    if (!f) { netSend({ t: 'PING' }); return; }
+    netSend({
+        t: 'STATE',
+        x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10, z: Math.round(f.z * 10) / 10,
+        fx: Math.round(f.fx * 1000) / 1000, fy: Math.round(f.fy * 1000) / 1000,
+        pitch: Math.round((f.pitch || 0) * 1000) / 1000,
+        hp: Math.round(f.hp), meter: Math.round(f.specialMeter),
+        g: !!f.grounded,
+    });
+}
+
+// --- Lobby UI -------------------------------------------------------------
+const LOBBY_STATUS_TEXT = {
+    offline: 'Not connected',
+    starting: 'Creating room...',
+    waiting: 'Waiting for an opponent...',
+    connecting: 'Connecting...',
+    connected: 'Connected',
+    error: 'Connection problem',
+    dropped: 'Disconnected',
+};
+const LOBBY_STATUS_CLASS = {
+    starting: 'waiting', waiting: 'waiting', connecting: 'waiting',
+    connected: 'live', error: 'bad', dropped: 'bad',
+};
+function refreshLobbyUI() {
+    const el = document.getElementById('lobby-status');
+    if (el) {
+        el.textContent = LOBBY_STATUS_TEXT[net.status] + (net.detail ? ' \u2014 ' + net.detail : '');
+        el.className = 'lobby-status ' + (LOBBY_STATUS_CLASS[net.status] || '');
+    }
+    const connected = netActive();
+    const busy = net.status === 'starting' || net.status === 'waiting' || net.status === 'connecting';
+    const set = (id, disabled, shown) => {
+        const b = document.getElementById(id);
+        if (!b) return;
+        b.disabled = !!disabled;
+        if (shown !== undefined) b.style.display = shown ? '' : 'none';
+    };
+    set('btn-net-host', connected || busy);
+    set('btn-net-join', connected || busy);
+    set('btn-net-disconnect', false, connected || busy || net.status === 'error');
+    const input = document.getElementById('lobby-join-input');
+    if (input) input.disabled = connected || busy;
+    const online = document.getElementById('btn-open-lobby');
+    if (online) online.textContent = connected
+        ? (netIsHost() ? 'Online: Host (P1)' : 'Online: Joined (P2)')
+        : 'Play Online';
+}
+
+// Batch 33: a way back to the pre-online build. It is a separate HTML file
+// (see legacy/local-splitscreen.html) rather than a mode switch inside this
+// one, because the two differ in their renderer, input model and HUD layout -
+// keeping both live in one file was exactly the half-wired state the refactor
+// set out to avoid. Progress is shared: both read the same localStorage keys.
+document.getElementById('btn-legacy-build').addEventListener('click', () => {
+    if (netActive()) { netSend({ t: 'BYE' }); netTeardown(); }   // don't abandon a live opponent silently
+    exitPointerLock();
+    location.href = 'legacy/local-splitscreen.html';
+});
+
+document.getElementById('btn-open-lobby').addEventListener('click', () => { refreshLobbyUI(); openModal('lobby'); });
+document.getElementById('btn-lobby-close').addEventListener('click', () => closeModal());
+document.getElementById('btn-net-host').addEventListener('click', () => netHost());
+document.getElementById('btn-net-join').addEventListener('click', () => {
+    netJoin(document.getElementById('lobby-join-input').value);
+});
+document.getElementById('btn-net-disconnect').addEventListener('click', () => {
+    netSend({ t: 'BYE' });
+    netTeardown();
+    refreshMenuUI();
+});
+document.getElementById('btn-copy-code').addEventListener('click', () => {
+    const box = document.getElementById('lobby-code');
+    if (!box) return;
+    box.select();
+    const done = () => { const b = document.getElementById('btn-copy-code'); if (b) { b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1400); } };
+    // navigator.clipboard needs a secure context; execCommand is the fallback
+    // for plain http://, which is exactly how this gets served locally.
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(box.value).then(done, () => { try { document.execCommand('copy'); done(); } catch (e) {} });
+    } else {
+        try { document.execCommand('copy'); done(); } catch (e) {}
+    }
+});
+refreshLobbyUI();
+
+function netOnPick(msg) {
+    if (!msg.side || !msg.name) return;
+    if (msg.side === 'p1') { p1Choice = msg.name; p1Preview = msg.name; p1Stage = 'confirmed'; }
+    else { p2Choice = msg.name; p2Preview = msg.name; p2Stage = 'confirmed'; }
+    refreshMenuUI();
+    // The host drives the transition once both sides are locked in, so there
+    // is exactly one decision-maker and no race over who opens map select.
+    if (netIsHost() && sideReady('p1') && sideReady('p2')) openMapSelect();
+}
+
 function beginMatch() {
     // Bot sides roll from THAT SIDE's unlocked roster only — rolling a locked
     // character would show a fighter that side can't actually pick. (Bots only
@@ -7901,6 +8452,13 @@ function beginMatch() {
     // effectively the full roster there — but the gate stays correct either way.)
     if (p1IsBot) { const pool = unlockedCharNames('p1'); p1Choice = pool[Math.floor(Math.random() * pool.length)]; }
     if (p2IsBot) { const pool = unlockedCharNames('p2'); p2Choice = pool[Math.floor(Math.random() * pool.length)]; }
+    // Batch 32: online, only the HOST chooses the arena and starts. The joiner
+    // waits for START. One decision-maker means the two clients cannot pick
+    // different maps or race each other into startMatch.
+    if (netActive() && !netIsHost()) {
+        netSetStatus('connected', 'Waiting for the host to choose an arena...');
+        return;
+    }
     openMapSelect(); // pick an arena, then the drop-in intro starts the match
 }
 document.getElementById('btn-start-match').addEventListener('click', () => {
@@ -7921,6 +8479,9 @@ document.getElementById('btn-random-p1').addEventListener('click', () => randomP
 document.getElementById('btn-random-p2').addEventListener('click', () => randomPick('p2'));
 
 function previewPick(side, name) {
+    // Batch 32: online, you pick for yourself only. The opponent's choice
+    // arrives as a PICK message.
+    if (netActive() && !isLocalSide(side)) return;
     if (side === 'p1' ? p1IsBot : p2IsBot) return; // bot sides don't get picked by hand
     if (!isCharUnlocked(side, name)) return; // not bought yet — the card's own click handler routes to the Shop
     const stage = side === 'p1' ? p1Stage : p2Stage;
@@ -7929,6 +8490,10 @@ function previewPick(side, name) {
     else { p2Preview = name; p2Stage = 'preview'; }
     showDetail(side, name, false);
     refreshMenuUI();
+}
+
+function netAnnouncePick(side, name) {
+    if (netActive() && isLocalSide(side)) netSend({ t: 'PICK', side, name });
 }
 
 function confirmPick(side) {
@@ -7942,6 +8507,7 @@ function confirmPick(side) {
         p2Choice = p2Preview; p2Stage = 'confirmed';
         showDetail('p2', p2Choice, true);
     }
+    netAnnouncePick(side, side === 'p1' ? p1Choice : p2Choice);
     refreshMenuUI();
     // A human confirming as the final action that makes both sides ready
     // auto-starts (the classic pick→pick→fight feel). Other cases start
@@ -7995,13 +8561,12 @@ function togglePause() {
         // forward by however long we were paused.
         roundStartedAt += performance.now() - pauseStartedAt;
         hideOverlay();
-    } else if (gameState === 'FIGHT' || gameState === 'DEATH' || gameState === 'ROUND_END') {
+    } else if (gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH' || gameState === 'ROUND_END') {
         pausedFromState = gameState;
         pauseStartedAt = performance.now();
         cameraShakeMag = 0; // don't leave a frozen shake running under the pause overlay
         gameState = 'PAUSED';
-        document.getElementById('pause-controls-reminder').innerHTML =
-            `P1: ${controlsSummary('p1')}<br>P2: ${controlsSummary('p2')}`;
+        document.getElementById('pause-controls-reminder').innerHTML = controlsSummary();
         showScreen('pause');
     }
 }
@@ -8781,8 +9346,16 @@ function endMatch() {
     } else {
         earnedP1 = COIN_AWARDS[lossKey]; earnedP2 = COIN_AWARDS[winKey];
     }
-    addCoins('p1', earnedP1);
-    addCoins('p2', earnedP2);
+    // Batch 32: online, each client owns exactly one purse. Crediting both
+    // would pay the local machine for the opponent's result too - the progression
+    // is per-side and stored locally, so the remote player's coins are theirs to
+    // record on their own machine.
+    if (netActive()) {
+        addCoins(LOCAL_SIDE, LOCAL_SIDE === 'p1' ? earnedP1 : earnedP2);
+    } else {
+        addCoins('p1', earnedP1);
+        addCoins('p2', earnedP2);
+    }
     const coinLine = debugUnlockAll
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} coins &nbsp;·&nbsp; P2 +${earnedP2} coins</div>`;
@@ -8851,8 +9424,8 @@ function endCoopMatch(won, detail) {
     let earned;
     if (matchMode === 'survival') earned = waveNumber * COIN_AWARDS.survivalPerWave;
     else earned = won ? COIN_AWARDS.bossWin : COIN_AWARDS.bossLoss;
-    addCoins('p1', earned);
-    addCoins('p2', earned);
+    if (netActive()) addCoins(LOCAL_SIDE, earned);
+    else { addCoins('p1', earned); addCoins('p2', earned); }
 
     const s1 = matchStats.p1, s2 = matchStats.p2;
     const coinLine = debugUnlockAll
@@ -9022,8 +9595,11 @@ function farthestSpawnFromPlayers() {
 function onBossDefeated() {
     if (matchMode === 'survival') {
         waveNumber++;
-        addCoins('p1', COIN_AWARDS.survivalPerWave);
-        addCoins('p2', COIN_AWARDS.survivalPerWave);
+        if (netActive()) addCoins(LOCAL_SIDE, COIN_AWARDS.survivalPerWave);
+        else {
+            addCoins('p1', COIN_AWARDS.survivalPerWave);
+            addCoins('p2', COIN_AWARDS.survivalPerWave);
+        }
         // Partial heal for surviving the wave (see WAVE_HEAL_PCT). hpGhost is
         // snapped up too: it normally LAGS hp to draw the "you just lost this
         // much" trail on damage, so left alone it would render the heal as a
@@ -9276,6 +9852,11 @@ function gameLoop() {
     const step = STATE_STEPS[gameState];
     if (step) step(dt);
 
+    if (netActive()) {
+        netApplyRemote(dt);            // ease the opponent toward their last report
+        netTick(performance.now());    // and broadcast our own state
+    }
+
     decayCameraShake(dt);
     syncViewmodels(dt);
     renderViews(dt);
@@ -9356,6 +9937,47 @@ if (DEBUG) {
         // Batch 27 crush cinematic
         get crushTime() { return crushTime; },
         get crushRigs() { return crushRigs; },
+        // Batch 32: networking
+        net, netActive, netIsHost, netHost, netJoin, netTeardown, netSend,
+        netOnMessage, netApplyRemote, netTick, refreshLobbyUI,
+        get netStatus() { return net.status; },
+        get fpsSmoothed() { return fpsSmoothed; },
+        get introPhase() { return introPhase; },
+        get introTimer() { return introTimer; },
+        get hitStopFrames() { return hitStopFrames; },
+        get lastDt() { return lastDt; },
+        NET_TIMEOUT_MS,
+        netSetTimeout(ms) { net.timeoutMs = ms; },
+        // A LOOPBACK transport for tests. Installs a fake DataConnection whose
+        // send() appends to an outbox the harness drains and hands to the other
+        // page's netOnMessage. That exercises the entire protocol and all the
+        // game-side logic - roles, pick sync, puppet physics, damage authority -
+        // without depending on the public PeerJS broker being reachable, which
+        // would make the suite fail for reasons that have nothing to do with
+        // this code. A separate check covers the real PeerJS handshake.
+        netFakeConnect(role) {
+            netTeardown();
+            net.role = role;
+            LOCAL_SIDE = role === 'host' ? 'p1' : 'p2';
+            window.__netOutbox = [];
+            net.conn = {
+                open: true,
+                send(msg) { window.__netOutbox.push(msg); },
+                close() { this.open = false; },
+                on() {},
+            };
+            net.lastRecvAt = performance.now();
+            netSetStatus('connected', role === 'host' ? 'You are Player 1' : 'You are Player 2');
+            refreshMenuUI();
+        },
+        netDrainOutbox() { const o = window.__netOutbox || []; window.__netOutbox = []; return o; },
+        netFeed(msg) { net.lastRecvAt = performance.now(); netOnMessage(msg); },
+        NET_SEND_HZ, NET_LERP, NET_SNAP_DIST,
+        chooseMap, previewPick, confirmPick, beginMatch,
+        get p1Choice() { return p1Choice; },
+        get p2Choice() { return p2Choice; },
+        get p1Preview() { return p1Preview; },
+        get p2Preview() { return p2Preview; },
         rendererInfo() { const i = renderer.info; return { programs: i.programs ? i.programs.length : 0, calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures }; },
         get muzzleFlashPool() { return muzzleFlashes.length; },
         get vmP1() { return vmP1; },
