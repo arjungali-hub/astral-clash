@@ -585,6 +585,102 @@ Roughly half the debugging time went on the harness, again:
 
 ---
 
+## Batch 33 - Mobile gets an honest answer, and the harness stops eating the machine
+
+### The desktop build tells you to use a desktop
+
+Batch 31 removed the touch control scheme along with split-screen. That left a
+build that a phone can *load* and cannot *play*: aiming needs a mouse and moving
+needs a keyboard, so someone tapping through the menu would reach a match where
+nothing responds. A full-screen notice now says so on a touch device, above
+`#cdn-error`'s z-index because "you need a computer" is the more useful message
+than anything else that could be on screen.
+
+Detection is the same test the old `TOUCH_UI` used - a coarse primary pointer
+**or** no hover, **and** `navigator.maxTouchPoints > 0`. A touchscreen laptop
+reports a fine pointer and real hover, so it is not caught. **"I have a mouse
+and keyboard - continue" exists regardless**, because pointer media queries do
+misreport on hybrid devices and being wrong here would lock someone out of a
+game they can play perfectly well. Getting the detection wrong must not be
+unrecoverable.
+
+### The archived build is single-player on a phone
+
+The notice offers the archived split-screen build, which still has full touch
+controls - so it is a redirect, not an apology. But **split-screen on a phone is
+not playable**: each player gets a ~195pt-wide viewport with a joystick and four
+action buttons layered on top of it. Since a phone is exactly where someone
+arrives from that notice, the archived build now forces P2 to a bot on a touch
+device and **hides both bot toggles** - there is nothing to choose, and a
+permanently disabled button answering a question nobody asked was the Batch 24
+complaint.
+
+**The restriction must not become a farming shortcut.** Bot mode is sandbox-only
+precisely so coins cannot be farmed against an AI, so `MOBILE_SOLO` suppresses
+coin awards the same way the sandbox does. Otherwise "open it on a phone" would
+have been the cheapest way to buy the roster.
+
+`MOBILE_SOLO` is declared up with the earliest state, **not** next to `TOUCH_UI`
+where it thematically belongs, because `addCoins` and `refreshBotUI` both read
+it during initial load and a `const` further down the file is still in its
+temporal dead zone there. Fifth instance of this exact trap.
+
+Two smaller things, both noticed while testing rather than designed: every
+navigation between the two builds now carries `location.search`, so `?debug=1`
+survives the trip; and the touch hint copy was rewritten, since telling someone
+the screen splits left and right is now simply false.
+
+### The harness was making the whole computer unusable
+
+Reported as "commands are 10-20x slower and the machine is extremely laggy,
+starting when you began the multiplayer update". It was the test harness, and
+the timing was not a coincidence.
+
+**Mechanism.** puppeteer shuts a browser down only when the script reaches
+`browser.close()`. A run killed first - a timeout, Ctrl+C, an unhandled
+rejection - orphans a complete Chrome with its renderer and GPU children, and
+each orphan keeps rendering the game's 3D scene through **swiftshader, software
+GL on the CPU**, at 1400x1000, indefinitely. `netcheck` launches **two** browsers
+per run. 32 stray processes were observed at one point; a plain `grep` timed out
+at 120 seconds and new launches began failing with "timed out waiting for the WS
+endpoint", which reads exactly like a test bug and is not one.
+
+**And I made it permanent myself, in this update.** To fix netcheck's background-
+tab problem I added `--disable-background-timer-throttling`,
+`--disable-backgrounding-occluded-windows` and `--disable-renderer-backgrounding`
+to the *shared* `launch()`. Those flags exist to stop Chrome throttling hidden
+pages - so every orphan that would otherwise have idled kept software-rendering
+at full speed forever. That is the direct answer to "why did it start then".
+
+Three fixes, in order of how much they matter:
+
+- **The flags are opt-in now** (`launch({ keepAnimating: true })`), taken only by
+  `netcheck`, which is the one checker that genuinely drives two clients at once.
+  A blanket default made every leaked browser maximally expensive.
+- **`browser.close()` on every exit path.** The harness tracks every browser it
+  launches and closes them from `process.on('exit')` plus `SIGINT`/`SIGTERM`/
+  `SIGHUP`/`SIGBREAK`, `uncaughtException` and `unhandledRejection`. Those
+  handlers kill the process rather than awaiting a graceful protocol shutdown,
+  because there is no time for one during exit.
+- **`node tests/cleanup.js`** mops up strays that predate this, or a SIGKILL that
+  runs no handlers at all. It matches on the **command line** (`swiftshader`,
+  `--headless`), never on the process name: a blanket `taskkill /F /IM chrome.exe`
+  closed real browser windows once, and every process this kills must be provably
+  ours.
+
+`smoke` and the new `tests/mobilecheck.js` (14 assertions) both pass under the
+changed harness and leave zero strays behind - which is the actual regression
+test for this fix.
+
+### Also: settings can leave
+
+Requested separately - Settings gains a link to the archived local split-screen
+build, and that build has one back, so switching modes is not a one-way trip
+through the URL bar. Both send a `BYE` and tear the peer connection down first
+rather than leaving a half-open link behind.
+
+---
+
 ## Where this arc landed
 
 All ten planned batches (11-21) are in and pushed, each as its own commit with its own checker script. The nine-suite regression set (`progressioncheck`, `cheatcheck`, `doublejumpcheck`, `reachabilitycheck`, `pitchcheck`, `touchlookcheck`, `modescheck`, `coopcheck`, `bosscheck`, `survivalcheck`, plus the desktop/touch/pause drivers) runs green end to end, and — unlike every batch before this arc — the verification exercises **real game state through the real game loop** rather than only checking that nothing threw, thanks to the `?debug=1`-gated `window.ACDebug` handle added in Batch 12.
@@ -625,7 +721,17 @@ Replacing Three.js, splitting into modules, more characters beyond the current r
 model loading, and new art direction - both landed in Batches 25-29. Online
 multiplayer is requested and still pending (see below).
 
-**Pending, requested, not started:** removing the local split-screen and touch
-builds and refactoring to online peer-to-peer play over PeerJS, with WASD+arrows
-movement, A/D and Left/Right as strafe, pointer-lock mouse look and left-click
-attack. Archive the split-screen and touch code before stripping it.
+**Delivered in Batches 31-33** (was pending): the local split-screen and touch
+builds are archived to `legacy/local-splitscreen.html` and out of the main game,
+which is now online peer-to-peer over PeerJS with WASD+arrows movement, A/D and
+Left/Right as strafe, pointer-lock mouse look and left-click attack.
+
+**Pending, requested, deferred by the user's own sequencing** (see
+`docs/arena-art-plan.md`, which holds the full research): the arena art overhaul
+with a geometry redesign, and the five scriptable characters (Karrigos, Draven,
+Hollowkin, Grint, Slagling). Two reported bugs are recorded there and not yet
+fixed: specials and dashes sometimes snap to the new position with no animation,
+and the first-person arm is visibly detached from the body (the bracer cylinder
+is open-ended, so you can see through it). The remaining 13 characters are
+blocked on a model-generation API key - the Rodin free trial is out of funds and
+Sketchfab was ruled out.

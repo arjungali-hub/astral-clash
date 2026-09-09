@@ -23,8 +23,14 @@ process.on('unhandledRejection', e => {
     // --disable-background-timer-throttling family of flags did not lift it in
     // headless. Two browsers gives each client a foreground page, which is also
     // what two real players have.
-    const hostBrowser = await H.launch();
-    const joinBrowser = await H.launch();
+    // keepAnimating: this is the ONE checker that needs the background-throttle
+    // flags. Chrome will not run requestAnimationFrame in a background tab and
+    // only one window is foreground, so without this the host's loop never
+    // ticks and it never sends a packet. It is opt-in rather than a harness
+    // default because those flags also stop an ORPHANED test browser from ever
+    // idling - see the comment on NO_THROTTLE_ARGS in harness.js.
+    const hostBrowser = await H.launch({ keepAnimating: true });
+    const joinBrowser = await H.launch({ keepAnimating: true });
     const host = await H.newPage(hostBrowser);
     const join = await H.newPage(joinBrowser);
     const { check, section, finish } = H.makeChecker();

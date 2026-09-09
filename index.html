@@ -733,6 +733,32 @@
         #match-summary { font-size: 0.72rem; color: #94a3b8; text-align: left; margin: 8px 0; line-height: 1.5; }
         #match-summary b { color: #e2e8f0; }
         #pause-controls-reminder { font-size: 0.72rem; line-height: 1.6; text-align: left; }
+        #desktop-only {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10,13,20,0.975);
+            /* Above every screen AND above #cdn-error's 999: if you are on a
+               phone, "you need a computer" is the more useful message than any
+               other thing that could be on screen. */
+            z-index: 1000;
+            align-items: center; justify-content: center; text-align: center;
+            padding: 20px; box-sizing: border-box;
+            overflow-y: auto;
+        }
+        #desktop-only .menu-section { max-width: 400px; }
+        #desktop-only h3 { color: #00f3ff; margin: 0 0 10px; font-size: 1.25rem; }
+        #desktop-only p { color: #cbd5e1; font-size: 0.86rem; line-height: 1.6; margin: 0 0 12px; }
+        #desktop-only .desktop-only-alt {
+            color: #94a3b8; font-size: 0.8rem;
+            border-top: 1px solid #2e3a59; padding-top: 12px; margin-top: 14px;
+        }
+        #desktop-only #btn-mobile-legacy {
+            background: transparent; color: #4ade80; border: 1px solid #4ade80;
+            box-shadow: none; font-size: 0.84rem;
+        }
+        #desktop-only #btn-mobile-legacy:hover { background: rgba(74,222,128,0.14); box-shadow: none; }
+        #desktop-only #btn-mobile-anyway { font-size: 0.74rem; margin-top: 8px; }
         #cdn-error {
             display: none;
             position: fixed;
@@ -1026,6 +1052,24 @@
         </div>
 
         <div id="debug-toast"></div>
+    </div>
+
+    <!-- Batch 33: Batch 31 removed the touch control scheme, so on a phone or
+         tablet this build is not merely awkward - it is unplayable, because
+         aiming needs a mouse and moving needs a keyboard. Saying so plainly
+         beats letting someone tap a menu and then find nothing responds.
+         The archived split-screen build DOES still have touch controls, so it
+         is offered rather than just apologised for. -->
+    <div id="desktop-only">
+        <div class="menu-section">
+            <h3>This version needs a computer</h3>
+            <p>Astral Clash is played with a <b>mouse to aim</b> and a <b>keyboard to move</b>,
+               so it needs a desktop or laptop. Open it there and you are set.</p>
+            <p class="desktop-only-alt">On a phone or tablet? The older <b>local split-screen</b> build
+               still has full touch controls &mdash; two players on one device, no internet needed.</p>
+            <button id="btn-mobile-legacy">Play the touch version</button>
+            <button id="btn-mobile-anyway" class="btn-back">I have a mouse and keyboard &mdash; continue</button>
+        </div>
     </div>
 
     <div id="cdn-error">
@@ -2102,6 +2146,32 @@ let mapRng = Math.random; // reseeded per map in loadMap()
 // ratio 1) and to hide the rebind UI, since the touch pads were
 // fixed-function. The game requires a mouse to aim and a keyboard to move, so
 // it is desktop-only now and all of those settings are unconditional.
+//
+// Batch 33: which makes it worth SAYING SO on a touch device rather than
+// serving a menu whose game cannot be played. Same detection the old TOUCH_UI
+// used: a coarse primary pointer or no hover, AND actual touch points - a
+// touchscreen laptop reports a fine pointer and real hover, so it is not
+// caught. `continue anyway` exists regardless, because pointer media queries
+// do misreport on hybrid devices and being wrong here would lock someone out
+// of a game they can play perfectly well.
+const IS_TOUCH_DEVICE = !!(window.matchMedia
+    && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches)
+    && navigator.maxTouchPoints > 0);
+
+function showDesktopOnlyNotice() {
+    const el = document.getElementById('desktop-only');
+    if (el) el.style.display = 'flex';
+}
+function dismissDesktopOnlyNotice() {
+    const el = document.getElementById('desktop-only');
+    if (el) el.style.display = 'none';
+}
+document.getElementById('btn-mobile-legacy').addEventListener('click', () => {
+    location.href = 'legacy/local-splitscreen.html' + location.search;
+});
+document.getElementById('btn-mobile-anyway').addEventListener('click', dismissDesktopOnlyNotice);
+if (IS_TOUCH_DEVICE) showDesktopOnlyNotice();
+
 
 // Batch 8: the canvas was being sized straight from getBoundingClientRect()
 // CSS pixels, so on any HiDPI display (2x, 3x) the game rendered at half or
@@ -8406,7 +8476,8 @@ function refreshLobbyUI() {
 document.getElementById('btn-legacy-build').addEventListener('click', () => {
     if (netActive()) { netSend({ t: 'BYE' }); netTeardown(); }   // don't abandon a live opponent silently
     exitPointerLock();
-    location.href = 'legacy/local-splitscreen.html';
+    // Carry the query string across, so ?debug=1 survives the switch.
+    location.href = 'legacy/local-splitscreen.html' + location.search;
 });
 
 document.getElementById('btn-open-lobby').addEventListener('click', () => { refreshLobbyUI(); openModal('lobby'); });
@@ -9942,6 +10013,7 @@ if (DEBUG) {
         netOnMessage, netApplyRemote, netTick, refreshLobbyUI,
         get netStatus() { return net.status; },
         get fpsSmoothed() { return fpsSmoothed; },
+        IS_TOUCH_DEVICE, showDesktopOnlyNotice, dismissDesktopOnlyNotice,
         get introPhase() { return introPhase; },
         get introTimer() { return introTimer; },
         get hitStopFrames() { return hitStopFrames; },

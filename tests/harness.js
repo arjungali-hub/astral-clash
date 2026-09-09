@@ -71,27 +71,95 @@ function stopServer() {
 }
 function gameUrl() { return baseUrl + '/index.html?debug=1'; }
 
+// EVERY browser this harness launches, so it can be closed no matter how the
+// script ends.
+//
+// This exists because of a real and painful incident: a run killed by a
+// timeout never reaches browser.close(), which orphans a full headless Chrome
+// - renderer, GPU and utility children included - and each one keeps
+// software-rendering the game's 3D scene through swiftshader at full tilt,
+// forever. Eight of those on an 8-core machine made the whole desktop
+// unusable and started failing browser launches outright.
+const launched = new Set();
+let cleanupArmed = false;
+
+function closeAllBrowsers() {
+    for (const b of launched) {
+        // Kill the process rather than await close(): these paths run during
+        // exit, where there is no time for a graceful protocol shutdown.
+        try { const proc = b.process && b.process(); if (proc) proc.kill('SIGKILL'); } catch (e) {}
+    }
+    launched.clear();
+}
+function armCleanup() {
+    if (cleanupArmed) return;
+    cleanupArmed = true;
+    process.on('exit', closeAllBrowsers);
+    for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) {
+        try { process.on(sig, () => { closeAllBrowsers(); process.exit(130); }); } catch (e) {}
+    }
+    process.on('uncaughtException', err => {
+        console.error('UNCAUGHT:', err && err.message);
+        closeAllBrowsers();
+        process.exit(1);
+    });
+    process.on('unhandledRejection', err => {
+        console.error('UNHANDLED REJECTION:', (err && err.message) || err);
+        closeAllBrowsers();
+        process.exit(1);
+    });
+}
+
+// Chrome will not run requestAnimationFrame in a background tab, and only the
+// last-created page is foreground - which is why netcheck's host silently never
+// sent a state packet. These flags lift that.
+//
+// They are OPT-IN (`keepAnimating: true`) and NOT the default, deliberately. As
+// a blanket default they turn every orphaned test browser into one that renders
+// a 3D scene at full speed instead of idling, which is exactly how this harness
+// brought a desktop to its knees. Only netcheck genuinely needs them, and only
+// because it drives two clients at once.
+const NO_THROTTLE_ARGS = [
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-features=CalculateNativeWinOcclusion',
+];
+
 async function launch(opts = {}) {
-    return puppeteer.launch({
+    armCleanup();
+    const { keepAnimating = false, ...rest } = opts;
+    const browser = await puppeteer.launch({
         executablePath: CHROME,
         headless: 'new',
         args: [
             '--no-sandbox', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist',
-            // Multi-page tests (netcheck runs a host and a joiner side by side)
-            // need BOTH pages to keep animating. Chrome throttles
-            // requestAnimationFrame in background tabs to near-zero, and only
-            // the last-created page is foreground - which showed up as the
-            // host silently never sending a single state packet while the
-            // joiner sent fine. Not a game bug: in real use each player has
-            // their own foreground window.
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-renderer-backgrounding',
-            '--disable-features=CalculateNativeWinOcclusion',
+            ...(keepAnimating ? NO_THROTTLE_ARGS : []),
         ],
         defaultViewport: { width: 1400, height: 1000 },
-        ...opts,
+        ...rest,
     });
+    launched.add(browser);
+    browser.on('disconnected', () => launched.delete(browser));
+    return browser;
+}
+
+// Kills any headless Chrome left over from an earlier interrupted run, matched
+// on its command line so a real browser is never touched. Called by cleanup.js.
+function killStrays() {
+    const { execSync } = require('child_process');
+    const ps = [
+        "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" -ErrorAction SilentlyContinue",
+        "| Where-Object { $_.CommandLine -like '*swiftshader*' }",
+        "| ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop; 'killed ' + $_.ProcessId } catch {} }",
+    ].join(' ');
+    try {
+        const out = execSync('powershell -NoProfile -Command "' + ps.replace(/"/g, '\\"') + '"',
+            { encoding: 'utf8', timeout: 60000 });
+        return out.trim();
+    } catch (e) {
+        return 'stray sweep failed: ' + (e.message || '').slice(0, 80);
+    }
 }
 
 // Creates a page that records console errors and page exceptions.
@@ -151,7 +219,8 @@ function makeChecker() {
         console.log('\nConsole/page errors: ' + JSON.stringify(errs));
         if (errs.length) fails.push('console errors');
         console.log(fails.length ? `\nFAILED (${fails.length}): ${fails.join(', ')}` : '\nALL CHECKS PASSED');
-        if (browser) await browser.close();
+        if (browser) { try { await browser.close(); } catch (e) {} }
+        closeAllBrowsers();   // and any sibling browser the checker opened
         process.exit(fails.length ? 1 : 0);
     };
     return { check, section, finish, fails };
@@ -160,5 +229,6 @@ function makeChecker() {
 module.exports = {
     launch, newPage, boot, sleep, waitInPage, makeChecker, SLOW_MS, path,
     startServer, stopServer, gameUrl,
+    closeAllBrowsers, killStrays,
     get GAME_URL() { return gameUrl(); },
 };

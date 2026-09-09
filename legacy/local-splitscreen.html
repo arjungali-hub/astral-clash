@@ -1622,6 +1622,15 @@ function unlockedCharNames(side) { return CHARACTERS.filter(c => isCharUnlocked(
 // Convenience for the Fighter class, which knows isPlayerOne rather than a side key.
 function sideOf(fighter) { return fighter.isPlayerOne ? 'p1' : 'p2'; }
 
+// Declared HERE, not next to TOUCH_UI further down, because addCoins and
+// refreshBotUI both read it and run during initial load - a `const` further
+// down the file is still in its temporal dead zone at that point and throws.
+// Same trap that has bitten this file five times (shopSide, MATCH_MODES,
+// camera, the geometry caches).
+const MOBILE_SOLO = !!(window.matchMedia
+    && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches)
+    && navigator.maxTouchPoints > 0);
+
 function addCoins(side, n) {
     if (!n) return;
     // Never bank coins while the sandbox override is on: everything is already
@@ -1629,6 +1638,10 @@ function addCoins(side, n) {
     // real save, letting it *pay into* that save would turn the sandbox into a
     // farming shortcut for the progression it exists to bypass.
     if (debugUnlockAll) return;
+    // Mobile is forced single-player-vs-bot (see refreshBotUI), and bot matches
+    // are not a coin source anywhere else either - otherwise "play on a phone"
+    // would be the cheapest way to farm the progression.
+    if (MOBILE_SOLO) return;
     prog(side).coins = Math.max(0, prog(side).coins + n);
     saveProgression();
     refreshCoinDisplays();
@@ -1859,7 +1872,7 @@ document.getElementById('btn-audio-close').addEventListener('click', () => close
 // (the modal manager keeps Settings underneath), so closing either returns
 // here — no separate "hide Settings first" listeners needed.
 document.getElementById('btn-open-settings').addEventListener('click', () => { syncDebugUnlockUI(); openModal('settings'); });
-document.getElementById('btn-back-to-online').addEventListener('click', () => { location.href = '../index.html'; });
+document.getElementById('btn-back-to-online').addEventListener('click', () => { location.href = '../index.html' + location.search; });
 document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());
 // Batch 13: the visible half of the unlock-everything override (the other
 // entry point is the typed cheat code in the keyboard dispatcher).
@@ -7478,7 +7491,22 @@ function refreshBotUI(side) {
     // you go to practice or mess about solo, and it deliberately pays nothing
     // (see addCoins). Force the toggle off and disable it (rather than
     // silently ignoring clicks) so it's clear *why* it's unavailable.
-    const botAllowed = debugUnlockAll;
+    // Added after archiving: on a TOUCH device this build is single-player
+    // against a bot, always. Split-screen on a phone gives each player a
+    // ~195pt-wide viewport with a joystick and four action buttons layered over
+    // it, which is not playable - and a phone is exactly where someone arrives
+    // from the desktop build's "this version needs a computer" notice.
+    //
+    // So P2 is forced to a bot and the toggle is hidden: there is nothing to
+    // choose. Bot mode is normally sandbox-only to stop coins being farmed
+    // against an AI, so MOBILE_SOLO suppresses coin awards the same way the
+    // sandbox does (see addCoins) - the restriction must not become a farming
+    // shortcut just because the device is small.
+    if (MOBILE_SOLO) {
+        if (side === 'p2') p2IsBot = true;
+        else p1IsBot = false;              // P1 is always the human here
+    }
+    const botAllowed = debugUnlockAll || MOBILE_SOLO;
     if (!botAllowed) { if (side === 'p1') p1IsBot = false; else p2IsBot = false; }
     const isBot = side === 'p1' ? p1IsBot : p2IsBot;
     const toggle = document.getElementById(side === 'p1' ? 'btn-toggle-bot-p1' : 'btn-toggle-bot');
@@ -7488,7 +7516,9 @@ function refreshBotUI(side) {
     // answers a question nobody asked, and the tooltip explaining why only helps
     // someone who already knows bot mode exists. The Shop button beside it takes
     // the freed space. The forced-off assignment above is still load-bearing.
-    toggle.style.display = botAllowed ? '' : 'none';
+    // MOBILE_SOLO makes botAllowed true so the bot can exist, but there is
+    // nothing to choose on a phone - so the toggle stays hidden there too.
+    toggle.style.display = (botAllowed && !MOBILE_SOLO) ? '' : 'none';
     document.getElementById(side === 'p1' ? 'btn-random-p1' : 'btn-random-p2').disabled = isBot;
     document.getElementById(`${side}-bot-mode`).classList.toggle('show', isBot);
     if (isBot) {
@@ -8007,7 +8037,15 @@ function randomPick(side) {
 // are fixed-function — still reads the right key string).
 // (TOUCH_UI itself is declared up near the renderer, before it's needed
 // there to trim render cost on phone GPUs — see the comment on PIXEL_RATIO.)
-if (TOUCH_UI) document.getElementById('touch-warning').style.display = 'block';
+if (TOUCH_UI) {
+    const warn = document.getElementById('touch-warning');
+    warn.style.display = 'block';
+    // Replaces the old two-player hint: on a phone this build is solo now, so
+    // telling someone the screen splits left/right would be wrong.
+    warn.textContent = 'On a phone or tablet this is single-player against a bot \u2014 '
+        + 'split-screen needs a bigger display. Left stick moves, right buttons fight. '
+        + 'Best in landscape.';
+}
 
 // held=true mirrors a keydown (marks the down-transition in `pressed` too,
 // so consumePress-gated actions like attack/special/dodge fire once per
@@ -9603,6 +9641,7 @@ if (DEBUG) {
         get p1IsBot() { return p1IsBot; },
         get p2IsBot() { return p2IsBot; },
         Fighter, keys, pressed, BINDINGS,
+        MOBILE_SOLO, TOUCH_UI, hudViewports,
         // Batch 27 crush cinematic
         get crushTime() { return crushTime; },
         get crushRigs() { return crushRigs; },
