@@ -29,25 +29,50 @@ const { execSync } = require('child_process');
 // kill safe.
 const MARKERS = ['*swiftshader*', '*--headless*'];
 
+// And the checker processes themselves. Found the hard way: two `node
+// tests/netcheck.js` processes were still alive 5.4 and 4.3 HOURS after their
+// runs were abandoned, each parked forever waiting on a browser that had
+// already been cleaned up. A hung checker is worse than a leaked browser,
+// because the next run of the same checker contends with it for the HTTP port
+// and the CDP relay, which is why netcheck appeared to hang rather than fail.
+// Matched on the script path, so nothing but this repo's own tests can match.
+const NODE_MARKERS = ['*astral-clash*tests*', '*tests/netcheck.js*', '*tests\netcheck.js*'];
+
 const ps = `
 # Suppresses the CLIXML progress stream PowerShell writes to stderr on a
 # cold start, which otherwise buries the one line of real output.
 $ProgressPreference = 'SilentlyContinue'
 $pats = @(${MARKERS.map(m => `'${m}'`).join(',')})
-$procs = Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction SilentlyContinue |
-    Where-Object {
-        $cl = $_.CommandLine
-        if (-not $cl) { return $false }
-        $hit = $false
-        foreach ($p in $pats) { if ($cl -like $p) { $hit = $true } }
-        $hit
-    }
-if (-not $procs) { 'nothing to clean: no headless test browsers running'; exit 0 }
-$n = 0
-foreach ($p in $procs) {
-    try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $n++ } catch {}
+$nodePats = @(${NODE_MARKERS.map(m => `'${m}'`).join(',')})
+$me = $PID
+
+function Select-Matching($name, $patterns) {
+    Get-CimInstance Win32_Process -Filter "Name='$name'" -ErrorAction SilentlyContinue |
+        Where-Object {
+            $cl = $_.CommandLine
+            if (-not $cl) { return $false }
+            if ($_.ProcessId -eq $me) { return $false }
+            $hit = $false
+            foreach ($p in $patterns) { if ($cl -like $p) { $hit = $true } }
+            $hit
+        }
 }
-"killed $n stray headless chrome process(es)"
+
+$browsers = Select-Matching 'chrome.exe' $pats
+$checkers = Select-Matching 'node.exe' $nodePats
+
+$nb = 0
+foreach ($p in $browsers) { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $nb++ } catch {} }
+$nc = 0
+foreach ($p in $checkers) {
+    # Report the age: a checker alive for hours is the signature of the hang
+    # this tool exists to clear, and worth seeing rather than silently killing.
+    $mins = [math]::Round(((Get-Date) - $p.CreationDate).TotalMinutes, 1)
+    try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $nc++; "  killed checker pid $($p.ProcessId) (alive $mins min)" } catch {}
+}
+
+if ($nb -eq 0 -and $nc -eq 0) { 'nothing to clean: no headless test browsers or stray checkers running'; exit 0 }
+"killed $nb stray headless chrome process(es) and $nc stray checker process(es)"
 $left = (Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction SilentlyContinue | Measure-Object).Count
 "chrome.exe processes still running (your real browser): $left"
 `;

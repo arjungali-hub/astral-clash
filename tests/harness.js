@@ -94,20 +94,21 @@ function closeAllBrowsers() {
 function armCleanup() {
     if (cleanupArmed) return;
     cleanupArmed = true;
+    // 'exit' is the whole job. Node emits it when the process ends for an
+    // uncaught exception or an unhandled rejection too (verified, not assumed),
+    // so this one handler covers every crash path.
     process.on('exit', closeAllBrowsers);
+    // Signals do NOT emit 'exit' on their own, so they need their own handler.
     for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) {
         try { process.on(sig, () => { closeAllBrowsers(); process.exit(130); }); } catch (e) {}
     }
-    process.on('uncaughtException', err => {
-        console.error('UNCAUGHT:', err && err.message);
-        closeAllBrowsers();
-        process.exit(1);
-    });
-    process.on('unhandledRejection', err => {
-        console.error('UNHANDLED REJECTION:', (err && err.message) || err);
-        closeAllBrowsers();
-        process.exit(1);
-    });
+    // Deliberately NO uncaughtException/unhandledRejection handlers here.
+    // They would be redundant given 'exit', and actively harmful: netcheck
+    // installs its own unhandledRejection handler to IGNORE the late
+    // "Target closed" rejection that a deliberately-closed page produces after
+    // the summary is printed. Node runs every listener, so a handler here
+    // calling process.exit(1) overrode that policy and failed an otherwise
+    // green run. A shared harness must not decide a checker's exit code.
 }
 
 // Chrome will not run requestAnimationFrame in a background tab, and only the

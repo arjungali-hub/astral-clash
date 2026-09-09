@@ -116,18 +116,23 @@ process.on('unhandledRejection', e => {
         && roles.host.status === 'connected' && roles.join.status === 'connected',
         JSON.stringify(roles));
 
-    section('Bots are impossible online:');
+    // Batch 32 asserted that the bot toggle stayed hidden online even with the
+    // sandbox on. Batch 34 removed bots from this build outright - the sandbox
+    // that was their only door is gone too - so the assertion becomes their
+    // absence. The flags remain because the Fighter constructor, the AI branch
+    // of update() and beginMatch all read them.
+    section('Bots do not exist in this build:');
     const bots = await host.evaluate(() => {
         const D = window.ACDebug;
-        D.setDebugUnlockAll(true);           // normally the only thing that allows a bot
-        D.refreshBotUI('p2');
-        const btn = document.getElementById('btn-toggle-bot');
-        const hidden = getComputedStyle(btn).display === 'none';
-        D.setDebugUnlockAll(false);
-        return { hidden, p1IsBot: D.p1IsBot, p2IsBot: D.p2IsBot };
+        return {
+            toggles: document.querySelectorAll('.bot-toggle, #btn-toggle-bot, #btn-toggle-bot-p1').length,
+            sandbox: !!document.getElementById('chk-unlock-all'),
+            p1IsBot: D.p1IsBot, p2IsBot: D.p2IsBot,
+        };
     });
-    check('the bot toggle stays unavailable even in the sandbox',
-        bots.hidden === true && !bots.p1IsBot && !bots.p2IsBot, JSON.stringify(bots));
+    check('no bot toggle and no sandbox switch exist, and both slots are human',
+        bots.toggles === 0 && !bots.sandbox && !bots.p1IsBot && !bots.p2IsBot,
+        JSON.stringify(bots));
 
     section('You can only pick your own fighter:');
     const gate = await join.evaluate(() => {
@@ -162,9 +167,13 @@ process.on('unhandledRejection', e => {
     section('The host picks the arena and both load it:');
     await host.evaluate(() => {
         const D = window.ACDebug;
-        // Random on purpose: the host must resolve it to a CONCRETE map before
-        // broadcasting, or each side rolls its own and they load different arenas.
-        D.chooseMap ? D.chooseMap(null) : document.getElementById('btn-map-random').click();
+        // Batch 34: chooseMap() only RECORDS the arena now - it used to start
+        // the match on first click, which is why the guest could never see
+        // what was chosen. Leave it on Random deliberately: startOnline() must
+        // resolve Random to a CONCRETE map before broadcasting, or each side
+        // rolls its own and they load different arenas.
+        D.chooseMap(null);
+        D.startOnline();
     });
     await pump(4);
     await waitPumping(host, "window.ACDebug.gameState === 'FIGHT' || window.ACDebug.gameState === 'INTRO'", 'host leaves the menu');

@@ -151,8 +151,6 @@
         }
         .btn-tertiary:hover { background: #232d47; color: #e2e8f0; box-shadow: none; }
         /* Cycler (Difficulty): reads as a stepper via the ‹ › guillemets. */
-        .btn-cycler { width: auto; background: #1a2235; color: #cbd5e1; border: 1px solid #2e3a59; font-weight: 600; letter-spacing: 0.02em; padding: 6px 14px; font-size: 0.78rem; }
-        .btn-cycler:hover { background: #232d47; color: #fff; box-shadow: none; }
         button:focus-visible, .fighter-btn:focus-visible {
             outline: 3px solid #facc15;
             outline-offset: 2px;
@@ -163,28 +161,125 @@
             cursor: not-allowed;
             box-shadow: none;
         }
-        #select-screen .select-row {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: flex-start;
-            justify-content: center;
-            gap: 20px;
-            /* #ui-overlay itself scrolls now (see above) — a second nested
-               scroll region here would just fight it for the mouse wheel. */
+        /* Batch 34: `.select-row` / `.vs-column` / `.side-panel` are gone with
+           the two-roster layout - see the room rules below. `.key-hint` is
+           kept because the detail panel still prints confirm/back key labels. */
+        .picker-panel .key-hint { color: #64748b; font-weight: normal; font-size: 0.75rem; }
+        /* ---- Batch 34: home + room ------------------------------------
+           The room is one column of stacked bands (connection, who is here,
+           then pick + setup) instead of the old three-column
+           P1 / VS / P2 arrangement, because the two sides are no longer
+           symmetrical: one of them is you. */
+        #home-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; }
+        .home-card { width: min(430px, 92vw); text-align: center; }
+        .home-card .btn-online { width: 100%; font-size: 1rem; padding: 13px 18px; }
+        .home-note { color: #94a3b8; font-size: 0.8rem; line-height: 1.55; margin: 12px 0 14px; }
+        .home-purse {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 9px 12px; margin-bottom: 12px;
+            background: rgba(0,0,0,0.28); border: 1px solid #2e3a59; border-radius: 8px;
         }
-        /* Natural row width is ~885px; below that, flex-wrap would drop VS/P2
-           into a meaningless order. Stack P1 / VS / P2 vertically instead (B8). */
-        @media (max-width: 900px) {
-            #select-screen .select-row { flex-direction: column; flex-wrap: nowrap; align-items: center; }
-            .vs-column { min-height: auto; padding-top: 8px; width: min(340px, 90vw); }
+        .home-roster { color: #64748b; font-size: 0.74rem; margin-left: 4px; }
+        .home-row { display: flex; gap: 8px; }
+        .home-row button { flex: 1; margin: 0; padding: 8px 6px; font-size: 0.76rem; }
+
+        .room-bar {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            width: min(880px, 94vw); margin: 0 auto 12px; padding: 8px 10px;
+            background: rgba(0,0,0,0.3); border: 1px solid #2e3a59; border-radius: 10px;
+            box-sizing: border-box; flex-wrap: wrap;
         }
-        /* min-height ~= the 5-row fighter grid's natural height, so swapping
-           in the shorter detail panel (showDetail) doesn't resize the whole
-           row on every preview / back-out (B7). */
-        .side-panel { width: min(340px, 90vw); padding: 14px; margin: 4px; transition: box-shadow 0.2s; min-height: 360px; }
-        .side-panel h3 { margin: 0 0 10px; font-size: 1rem; }
-        .side-panel .key-hint { color: #64748b; font-weight: normal; font-size: 0.75rem; }
-        .pad-badge { font-size: 0.85rem; vertical-align: middle; }
+        .room-bar-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .room-bar .btn-back { margin: 0; padding: 6px 12px; font-size: 0.74rem; }
+        .status-pill {
+            padding: 5px 11px; border-radius: 999px; font-size: 0.74rem; font-weight: bold;
+            letter-spacing: 0.04em; text-transform: uppercase;
+            border: 1px solid #475569; color: #94a3b8; background: rgba(0,0,0,0.35);
+        }
+        .status-pill.waiting { color: #fbbf24; border-color: #f59e0b; }
+        .status-pill.live    { color: #4ade80; border-color: #4ade80; }
+        .status-pill.error   { color: #f87171; border-color: #ef4444; }
+        .room-code-chip { display: flex; align-items: center; gap: 6px; }
+        .room-code-chip-label { color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; }
+        .room-code-text {
+            background: #0d1017; border: 1px solid #2e3a59; border-radius: 6px; color: #00f3ff;
+            font-family: 'Courier New', monospace; font-size: 0.8rem; padding: 4px 7px;
+            width: 168px; text-align: center;
+        }
+
+        /* Two slots and a VS badge. Deliberately NOT a grid of identical
+           panels: yours carries the accent, theirs is observed. */
+        .room-slots {
+            display: flex; align-items: stretch; justify-content: center; gap: 10px;
+            width: min(880px, 94vw); margin: 0 auto 14px;
+        }
+        .pslot {
+            flex: 1; min-width: 0; padding: 12px;
+            background: rgba(18,22,34,0.9); border: 1px solid #2e3a59; border-radius: 10px;
+            text-align: center;
+        }
+        #slot-you { border-color: #00f3ff; box-shadow: 0 0 14px rgba(0,243,255,0.14); }
+        #slot-foe.empty { opacity: 0.6; border-style: dashed; }
+        #slot-foe.locked { border-color: #4ade80; }
+        #slot-you.locked { box-shadow: 0 0 18px rgba(74,222,128,0.2); border-color: #4ade80; }
+        .pslot-role { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-bottom: 8px; }
+        .pslot-portrait {
+            width: 52px; height: 52px; margin: 0 auto 8px; border-radius: 50%;
+            background: #0d1017; border: 2px solid #2e3a59;
+        }
+        .pslot-name { font-weight: bold; font-size: 0.95rem; color: #e2e8f0; }
+        .pslot-state { font-size: 0.72rem; color: #94a3b8; margin-top: 3px; min-height: 1.1em; }
+        .pslot-vs { display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; width: 74px; flex: none; }
+
+        .room-main {
+            display: flex; align-items: flex-start; justify-content: center; gap: 10px;
+            width: min(880px, 94vw); margin: 0 auto;
+        }
+        .picker-panel { flex: 1 1 auto; min-width: 0; margin: 0; }
+        /* Roster and detail side by side: the detail panel appears the moment
+           you preview a fighter, and pushing it under a two-column grid made
+           the page taller than the viewport at the exact moment you need to
+           read it and press Confirm. */
+        .picker-side { display: flex; align-items: flex-start; gap: 10px; }
+        .picker-side .fighter-grid { flex: 1 1 auto; min-width: 0; }
+        .picker-side .fighter-detail { width: 286px; flex: none; margin-top: 0; }
+        /* `.detail-scroll`'s 200px cap was sized for the old 340px-wide side
+           panel, where the detail replaced nothing and had the full column
+           width. Beside the grid the column is narrower, so the same text wraps
+           taller and 200px cut the Special block off mid-sentence with the
+           Confirm button sitting on top of it - the panel looked broken rather
+           than scrollable, because a headless/trackpad viewport draws no
+           scrollbar to hint otherwise. 300px matches the roster grid's natural
+           height, so the two columns line up and it rarely needs to scroll. */
+        /* The `vh` half of the original min() is kept deliberately: on a short
+           viewport a fixed 300px would push Confirm below the fold, which is
+           worse than scrolling the description. */
+        .picker-side .detail-scroll { max-height: min(300px, 42vh); }
+        @media (max-width: 700px) {
+            .picker-side { flex-direction: column; }
+            .picker-side .fighter-detail { width: auto; align-self: stretch; }
+        }
+        .picker-panel h3 { margin: 0 0 10px; font-size: 1rem; }
+        .setup-panel { width: 236px; flex: none; margin: 0; }
+        .setup-panel h3 { margin: 0 0 10px; font-size: 1rem; }
+        .setup-panel .btn-mode { width: 100%; margin: 0 0 8px; font-size: 0.76rem; padding: 8px 10px; text-align: left; }
+        .setup-note { color: #94a3b8; font-size: 0.75rem; line-height: 1.5; margin: 10px 0; }
+        .setup-note.ready { color: #4ade80; }
+        .guest-setup { margin-bottom: 6px; }
+        .guest-row {
+            display: flex; justify-content: space-between; gap: 8px; padding: 7px 9px; margin-bottom: 6px;
+            background: rgba(0,0,0,0.26); border: 1px solid #2e3a59; border-radius: 7px;
+            font-size: 0.78rem; color: #e2e8f0;
+        }
+        .guest-label { color: #64748b; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.06em; }
+
+        @media (max-width: 780px) {
+            .room-main { flex-direction: column; align-items: stretch; }
+            .setup-panel { width: auto; }
+            .room-slots { flex-wrap: wrap; }
+            .pslot-vs { width: 100%; height: 34px; }
+        }
+
         .side-actions { display: flex; gap: 8px; margin-bottom: 8px; }
         .side-actions button { flex: 1; margin: 0; padding: 6px 10px; font-size: 0.74rem; }
         .side-actions .btn-secondary { padding-left: 10px; } /* random pick: plain secondary, no toggle knob */
@@ -192,20 +287,6 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 7px;
-        }
-        .vs-column {
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 14px;
-            padding-top: 40px;
-            width: 165px;
-            /* Reserve room for the Start Match + Difficulty buttons (both
-               toggled on/off) so the VS badge doesn't slide as selections
-               change (B6). */
-            min-height: 200px;
         }
         /* Soft radial halo behind the VS badge, so the center of the
            screen reads as the focal point of the matchup. */
@@ -225,21 +306,6 @@
             letter-spacing: 0.06em;
             color: #e2e8f0;
             text-shadow: 0 0 18px rgba(0, 243, 255, 0.45);
-        }
-        .vs-status {
-            font-size: 0.8rem;
-            color: #94a3b8;
-            text-align: center;
-            width: 155px;
-            min-height: 2.4em;
-            transition: color 0.2s, font-size 0.2s;
-        }
-        .vs-status.ready {
-            color: #00f3ff;
-            font-weight: bold;
-            font-size: 1.05rem;
-            text-shadow: 0 0 12px rgba(0, 243, 255, 0.7);
-            animation: vsReadyPulse 1.1s ease-in-out infinite;
         }
         #btn-start-match {
             width: auto;
@@ -262,32 +328,6 @@
         @media (prefers-reduced-motion: reduce) {
             .vs-status.ready, #btn-start-match { animation: none; }
         }
-        .menu-footer {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 8px;
-            margin: 14px auto 0;
-            padding-top: 12px;
-            border-top: 1px solid #2e3a59;
-            width: min(700px, 92vw);
-        }
-        .menu-footer button {
-            width: auto;
-            flex: 0 1 auto;
-            background: #1a2235;
-            color: #94a3b8;
-            border: 1px solid #2e3a59;
-            font-size: 0.78rem;
-            font-weight: normal;
-            padding: 8px 16px;
-            margin: 0;
-        }
-        .menu-footer button:hover {
-            background: #232d47;
-            color: #e2e8f0;
-            box-shadow: none;
-        }
         /* Bot toggle: state reads from the label text ("Bot: OFF"/"Bot: ON")
            plus the amber .active fill — used to also draw a track+knob
            switch graphic before the label, but `.side-actions button`
@@ -297,33 +337,9 @@
            absolutely-positioned track/knob ended up drawn on top of the
            label text instead of beside it. Removed rather than fixed the
            padding fight — the label already fully conveys the state. */
-        .bot-toggle {
-            width: auto;
-            margin: 0 0 6px;
-            font-size: 0.74rem;
-            background: #334155;
-            color: #cbd5e1;
-            text-align: left;
-        }
-        .bot-toggle.active { background: #f59e0b; color: #0d0f18; }
         /* Shown in place of the fighter grid when a side is set to Bot —
            the bot's fighter is picked randomly at match start, so there's
            nothing for a human to choose here. */
-        .fighter-bot-mode {
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            padding: 28px 12px;
-            border: 1px dashed #3b4a6b;
-            border-radius: 6px;
-            background: rgba(245, 158, 11, 0.05);
-        }
-        .fighter-bot-mode.show { display: flex; }
-        .bot-mode-icon { font-size: 2.1rem; line-height: 1; filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.5)); }
-        .bot-mode-title { font-size: 1.02rem; font-weight: bold; color: #f59e0b; }
-        .bot-mode-sub { font-size: 0.74rem; color: #94a3b8; text-align: center; }
         .fighter-btn {
             display: flex;
             flex-direction: column;
@@ -380,11 +396,6 @@
         .coin-balance::before { content: "\25CF"; margin-right: 5px; color: #fbbf24; }
         /* Batch 21: each side panel owns its purse + a shortcut into that
            player's Shop tab, so whose coins are whose is never ambiguous. */
-        .side-purse {
-            display: flex; align-items: center; justify-content: space-between; gap: 8px;
-            margin: 0 0 8px; padding: 5px 9px; border-radius: 5px;
-            background: #0f1420; border: 1px solid #2e3a59;
-        }
         .purse-label { font-size: 0.66rem; color: #8aa0b8; text-transform: uppercase; letter-spacing: 0.08em; }
         .menu-section .btn-side-shop {
             width: auto; margin: 0; padding: 3px 10px; font-size: 0.66rem; font-weight: bold;
@@ -583,7 +594,9 @@
         /* Short screens centre themselves in the scroll container (B2). */
         #gameover-screen { display: none; margin: auto 0; }
         #pause-screen { display: none; margin: auto 0; }
-        #select-screen { margin-top: 0; }
+        /* Batch 34: the page opens on HOME, so the room starts hidden. Getting
+           this wrong shows both at once on first paint, before any JS runs. */
+        #select-screen { display: none; margin-top: 0; }
         #rebind-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -798,66 +811,111 @@
         <canvas id="hudCanvas" width="1170" height="650"></canvas>
 
         <div id="ui-overlay">
-            <div id="select-screen">
-                <!-- Branding lives inside the select screen so it doesn't show
-                     on Pause / Game Over / Settings (which reuse #ui-overlay). -->
+            <!-- Batch 34: the front page. This build plays exactly one way -
+                 online, one fighter each - so the home screen offers that and
+                 nothing else. The old front page was a two-player local
+                 select screen with online bolted on as a button, which put the
+                 least-used path first and the only supported path third.
+                 Branding lives inside a screen (not in #ui-overlay) so it does
+                 not show on Pause / Game Over / Settings, which share the
+                 overlay. -->
+            <div id="home-screen">
                 <div class="brand">
                     <h1>Astral Clash</h1>
                     <div class="brand-divider"></div>
                     <p>Dimensional Arena Fighter</p>
-                    <button id="btn-open-lobby" class="btn-online">Play Online</button>
-                    <button id="btn-open-modeselect" class="btn-mode">Mode: Classic Versus</button>
-                    <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
                 </div>
-                <div class="select-row">
-                    <div class="menu-section side-panel">
-                        <h3 id="p1-heading">Player 1 <span class="key-hint">(keys on cards)</span></h3>
-                        <div class="side-purse">
-                            <span class="purse-label">Coins</span>
-                            <span class="coin-balance" id="p1-coins">0</span>
-                        </div>
-                        <div class="side-actions">
-                            <button id="btn-shop-p1" class="btn-side-shop" data-shop-side="p1">Shop</button>
-                            <button id="btn-toggle-bot-p1" class="bot-toggle">Bot: OFF</button>
-                            <button id="btn-random-p1" class="btn-secondary">Random (R)</button>
-                        </div>
-                        <div class="fighter-grid" id="p1-grid"></div>
-                        <div class="fighter-detail" id="p1-detail"></div>
-                        <div class="fighter-bot-mode" id="p1-bot-mode">
-                            <div class="bot-mode-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="#f59e0b"/><circle cx="8" cy="8" r="1.7" fill="#0d0f18"/><circle cx="12" cy="12" r="1.7" fill="#0d0f18"/><circle cx="16" cy="16" r="1.7" fill="#0d0f18"/></svg></div>
-                            <div class="bot-mode-title">Bot Fighter</div>
-                            <div class="bot-mode-sub">Randomly chosen when the match starts</div>
-                        </div>
+                <div class="menu-section home-card">
+                    <button id="btn-home-play" class="btn-online">Play Online</button>
+                    <p class="home-note">One of you hosts and shares a room code; the other joins with it.
+                       Two players, one fighter each, on separate machines.</p>
+                    <div class="home-purse">
+                        <span class="purse-label">Coins</span>
+                        <span class="coin-balance" id="home-coins">0</span>
+                        <span class="home-roster" id="home-roster"></span>
                     </div>
-                    <div class="vs-column">
+                    <div class="home-row">
+                        <button id="btn-home-armory" class="btn-secondary">Armory</button>
+                        <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
+                        <button id="btn-open-settings" class="btn-secondary">Settings</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- The room: everything between "connected" and "fighting". -->
+            <div id="select-screen">
+                <div class="room-bar">
+                    <div class="room-bar-left">
+                        <span id="room-status-pill" class="status-pill">Not connected</span>
+                        <span id="room-code-chip" class="room-code-chip" style="display:none;">
+                            <span class="room-code-chip-label">Room code</span>
+                            <input id="room-code-text" class="room-code-text" readonly>
+                            <button id="btn-room-copy" class="lobby-copy">Copy</button>
+                        </span>
+                    </div>
+                    <button id="btn-room-leave" class="btn-back">Leave Room</button>
+                </div>
+
+                <!-- Who is in the room, and what they have committed to. This is
+                     the thing the old screen could not express: the opponent is
+                     a person on another machine whose state you observe, not a
+                     second roster you operate. -->
+                <div class="room-slots">
+                    <div class="pslot" id="slot-you">
+                        <div class="pslot-role" id="slot-you-role">You</div>
+                        <div class="pslot-portrait" id="slot-you-portrait"></div>
+                        <div class="pslot-name" id="slot-you-name">Choosing...</div>
+                        <div class="pslot-state" id="slot-you-state">Pick a fighter below</div>
+                    </div>
+                    <div class="pslot-vs">
                         <div class="vs-glow"></div>
                         <div class="vs-label">VS</div>
-                        <div class="vs-status" id="vs-status">Choose your fighters</div>
-                        <button id="btn-start-match" style="display:none;">Start Match</button>
-                        <button id="btn-difficulty" class="btn-cycler">Difficulty: &lsaquo; Normal &rsaquo;</button>
                     </div>
-                    <div class="menu-section side-panel">
-                        <h3 id="p2-heading">Player 2 <span class="key-hint">(keys on cards)</span></h3>
-                        <div class="side-purse">
-                            <span class="purse-label">Coins</span>
-                            <span class="coin-balance" id="p2-coins">0</span>
-                        </div>
-                        <div class="side-actions">
-                            <button id="btn-shop-p2" class="btn-side-shop" data-shop-side="p2">Shop</button>
-                            <button id="btn-toggle-bot" class="bot-toggle">Bot: OFF</button>
-                            <button id="btn-random-p2" class="btn-secondary">Random (/)</button>
-                        </div>
-                        <div class="fighter-grid" id="p2-grid"></div>
-                        <div class="fighter-detail" id="p2-detail"></div>
-                        <div class="fighter-bot-mode" id="p2-bot-mode">
-                            <div class="bot-mode-icon"><svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" fill="#f59e0b"/><circle cx="8" cy="8" r="1.7" fill="#0d0f18"/><circle cx="12" cy="12" r="1.7" fill="#0d0f18"/><circle cx="16" cy="16" r="1.7" fill="#0d0f18"/></svg></div>
-                            <div class="bot-mode-title">Bot Fighter</div>
-                            <div class="bot-mode-sub">Randomly chosen when the match starts</div>
-                        </div>
+                    <div class="pslot" id="slot-foe">
+                        <div class="pslot-role" id="slot-foe-role">Opponent</div>
+                        <div class="pslot-portrait" id="slot-foe-portrait"></div>
+                        <div class="pslot-name" id="slot-foe-name">Waiting...</div>
+                        <div class="pslot-state" id="slot-foe-state">Not connected</div>
                     </div>
                 </div>
-                <div class="menu-footer">
-                    <button id="btn-open-settings">Settings</button>
+                <div class="room-main">
+                    <div class="menu-section picker-panel">
+                        <h3 id="picker-heading">Choose your fighter</h3>
+                        <div class="side-actions">
+                            <button id="btn-my-shop" class="btn-side-shop">Armory</button>
+                            <button id="btn-my-random" class="btn-secondary">Random (R)</button>
+                        </div>
+                        <!-- Both sides exist so buildGrid() and the keyboard
+                             dispatcher keep addressing stable ids; only the
+                             local side's wrapper is ever shown. See
+                             showLocalPickerOnly(). -->
+                        <div class="picker-side" id="picker-p1">
+                            <div class="fighter-grid" id="p1-grid"></div>
+                            <div class="fighter-detail" id="p1-detail"></div>
+                        </div>
+                        <div class="picker-side" id="picker-p2">
+                            <div class="fighter-grid" id="p2-grid"></div>
+                            <div class="fighter-detail" id="p2-detail"></div>
+                        </div>
+                    </div>
+
+                    <div class="menu-section setup-panel">
+                        <h3>Match Setup</h3>
+                        <!-- Host-only. The host owns the mode and the arena for
+                             the same reason it owns the START message: one
+                             decision-maker means the two clients cannot load
+                             different arenas or race each other into a match. -->
+                        <div id="host-controls">
+                            <button id="btn-open-modeselect" class="btn-mode">Mode: Classic Versus</button>
+                            <button id="btn-open-mapselect" class="btn-mode">Arena: Random</button>
+                        </div>
+                        <div id="guest-setup" class="guest-setup" style="display:none;">
+                            <div class="guest-row"><span class="guest-label">Mode</span><span id="guest-mode">Classic Versus</span></div>
+                            <div class="guest-row"><span class="guest-label">Arena</span><span id="guest-arena">Host's choice</span></div>
+                        </div>
+                        <div id="setup-note" class="setup-note">Waiting for both fighters.</div>
+                        <button id="btn-start-match" style="display:none;">Start Match</button>
+                    </div>
                 </div>
             </div>
 
@@ -865,9 +923,18 @@
                 <div class="menu-section">
                     <h3 id="winner-title">Player Wins!</h3>
                     <div id="match-summary"></div>
-                    <button id="btn-play-again">Play Again</button>
-                    <button id="btn-rematch">Rematch (Same Map)</button>
-                    <button id="btn-reroll-map">Rematch (New Map)</button>
+                    <!-- Batch 34: the two Rematch buttons are HOST-ONLY. They
+                         call startMatch() directly, which restarts this client
+                         alone - online that desynced the two instantly, with
+                         the guest still sitting on its game-over screen. They
+                         now go through the same START broadcast as the first
+                         match. -->
+                    <div id="gameover-actions">
+                        <button id="btn-rematch">Rematch (Same Arena)</button>
+                        <button id="btn-reroll-map">Rematch (New Arena)</button>
+                    </div>
+                    <div id="gameover-wait" class="setup-note" style="display:none;">Waiting for the host to choose a rematch&hellip;</div>
+                    <button id="btn-play-again" class="btn-back">Back to the Room</button>
                 </div>
             </div>
 
@@ -919,11 +986,14 @@
                         <button id="btn-hud-scale">HUD Text: Normal</button>
                         <button id="btn-open-audio">Audio Settings</button>
                     </div>
-                    <label class="settings-check">
-                        <input type="checkbox" id="chk-unlock-all">
-                        <span>Unlock everything (sandbox)</span>
-                    </label>
-                    <p class="settings-note">Try every fighter and maxed-out upgrades without spending coins, and play against a bot. Each player's real progress is kept separately and comes back exactly as it was when you turn this off. Nothing you do in here earns coins.</p>
+                <!-- Batch 34: the "unlock everything" sandbox switch is gone.
+                     It was the only way to enable a bot, and bots cannot exist
+                     online. More importantly it was not a private setting:
+                     per-side progression feeds upgradeMult() into fighter
+                     construction, so one player flipping it would bring a
+                     measurably stronger fighter into a real match against
+                     someone who had not. It remains available under ?debug=1
+                     for development. -->
                     <div class="settings-list" style="margin-top:14px;">
                         <button id="btn-legacy-build" class="btn-legacy">Switch to Local Split-Screen (old version)</button>
                     </div>
@@ -941,8 +1011,13 @@
                             <p>Best of 3 rounds. Win a round by knocking your opponent's HP to 0 — there's no clock to just run out, so see Arena Collapse below for how a round is guaranteed to end.</p>
                         </div>
                         <div class="tutorial-card">
+                            <h4>Online Play</h4>
+                            <p>Every match is <b>two people on two machines</b>. One of you presses <b>Play Online &rarr; Host Game</b> and reads out the room code; the other pastes it into <b>Join</b>. You both land in the <b>room</b>, where you each pick your own fighter &mdash; you can only pick yours, and you'll see theirs appear as they choose.</p>
+                            <p>The <b>host is Player 1</b> and owns the match settings: they choose the mode and the arena, and they press <b>Start Match</b> once you're both locked in. If your opponent drops mid-fight the match pauses and tells you.</p>
+                        </div>
+                        <div class="tutorial-card">
                             <h4>First-Person View</h4>
-                            <p>You fight through your character's own eyes, weapon in hand. Turn keys rotate your view like looking around, not an instant sidestep — walk forward/back in whatever direction you're currently facing to actually move that way. Separate <b>look up/down</b> keys aim vertically, and ranged attacks fire along that aim — so you can shoot up at someone on a high perch, or down at the floor from one. On a gamepad the right stick looks; on touch, drag anywhere in the upper half of your side. Two human players share the screen split left/right; against a bot you get the whole screen.</p>
+                            <p>You fight through your character's own eyes, weapon in hand. <b>Move the mouse to look</b> &mdash; click the arena once to capture the pointer, Esc releases it. Separate <b>look up/down</b> keys also aim vertically, and ranged attacks fire along that aim, so you can shoot up at someone on a high perch or down from one. You get the <b>whole screen</b>: your opponent is on their own machine.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Arena Collapse</h4>
@@ -950,7 +1025,7 @@
                         </div>
                         <div class="tutorial-card">
                             <h4>Movement &amp; Jumping</h4>
-                            <p>Turn to look around, then walk forward or back in that direction — there's no strafing sideways. Jumping reaches platforms and cover, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges and walls aren't. Use columns and interior walls for cover. Buy <b>Double Jump</b> in the Shop and you can press jump again in mid-air, once per airborne stretch, to reach the tallest perches.</p>
+                            <p><b>W/S</b> (or Up/Down) walk forward and back in whatever direction you're looking; <b>A/D</b> (or Left/Right) <b>strafe</b> sideways without turning. Aiming is the mouse's job, so the keys never rotate you. Jumping reaches platforms and cover but has a cooldown &mdash; you can't spam it. Small rises are walkable; tall ledges and walls aren't. Use columns and interior walls for cover. Buy <b>Double Jump</b> in the Armory to press jump again in mid-air, once per airborne stretch, for the tallest perches.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Basic vs. Special</h4>
@@ -969,17 +1044,16 @@
                             <p>There's no way to get HP back — no health pickups, no regen. Every hit you take counts. Play patient, punish mistakes, and use your dash i-frames and shields to avoid damage rather than trying to out-heal it.</p>
                         </div>
                         <div class="tutorial-card">
-                            <h4>Co-op: Boss &amp; Survival</h4>
-                            <p>Two co-op modes put you and Player 2 on the <b>same team</b>. <b>Boss Fight</b> pits you against <b>Karrigos, the Hollow Titan</b> — enormous, slow, and enormously strong. Every one of its attacks has a long, obvious wind-up: a shockwave Ground Slam, a Charge at whoever's closest, and an Ember Nova spread. Watch the tell, get clear, then punish the recovery.</p>
-                            <p><b>Survival Waves</b> sends <b>squads</b> of lesser creatures at you — darting <b>Grint</b>, fire-spitting <b>Slagling</b>, and heavy <b>Hollowkin</b> — with more of them each wave. Clear a wave to bank coins and recover <b>30% of your health</b>. Every <b>5th wave</b> is a Karrigos boss wave instead. In both modes the run ends the moment <b>either</b> of you falls, so keep each other alive; the Bot difficulty setting scales everything.</p>
+                            <h4>Looking for co-op?</h4>
+                            <p>The two co-op modes &mdash; <b>Boss Fight</b> against Karrigos the Hollow Titan, and <b>Survival Waves</b> against squads of lesser creatures &mdash; need AI-controlled enemies, and the AI isn't networked: each machine would simulate its own boss and the two would drift apart within seconds. Rather than ship a mode that can't work, they stay in the <b>local split-screen build</b>, which you can reach from <b>Settings</b>. Two players, one keyboard, same saved progress.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Game Modes</h4>
-                            <p>Pick a mode from the button under the title. <b>Classic Versus</b> is best of 3 rounds. <b>Zone Control</b> puts a glowing ring at the arena's centre — stand in it <em>alone</em> to bank control time, and knock your opponent out of it; first to 45 seconds wins. <b>Time Attack</b> is one continuous fight with instant respawns, first to 3 knockouts. In the two continuous modes a knockout costs you tempo, not the match. The last two modes are co-op — see the card beside this one.</p>
+                            <p>The <b>host</b> picks the mode in the room, and you'll see their choice. <b>Classic Versus</b> is best of 3 rounds. <b>Zone Control</b> puts a glowing ring at the arena's centre — stand in it <em>alone</em> to bank control time, and knock your opponent out of it; first to 45 seconds wins. <b>Time Attack</b> is one continuous fight with instant respawns, first to 3 knockouts. In those last two a knockout costs you tempo, not the match.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Coins &amp; Unlocks</h4>
-                            <p><b>Each player has their own coins, unlocks and upgrades.</b> You both start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate, and Speed, plus Double Jump. Open the Shop from your own panel (or the footer) and use the Player 1 / Player 2 tabs. Progression matches are <b>two players</b>; if you want to fight a bot or try the whole roster, turn on the "Unlock everything" sandbox in Settings — it leaves both players' real progress untouched and earns no coins.</p>
+                            <p><b>Your coins, unlocks and upgrades are yours</b>, saved on your own machine and the same whether you host or join. You start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate and Speed, plus Double Jump. Open the <b>Armory</b> from the home screen or from the room while you're picking.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Controls</h4>
@@ -997,10 +1071,12 @@
         <div id="mapselect-screen">
             <div class="menu-section mapselect-panel">
                 <h3>Choose Your Arena</h3>
-                <p class="mapselect-sub">Pick a battleground, or drop into a random one.</p>
+                <!-- Batch 34: picking here RECORDS the choice and returns to the
+                     room; it no longer starts the match on first click. -->
+                <p class="mapselect-sub">Your opponent sees your choice in the room. Nothing starts until you press <b>Start Match</b>.</p>
                 <button id="btn-map-random" class="map-random-btn">Random Arena</button>
                 <div class="mapselect-grid" id="mapselect-grid"></div>
-                <button id="btn-mapselect-back" class="btn-back">← Back to Fighters</button>
+                <button id="btn-mapselect-back" class="btn-back">← Back to the room</button>
             </div>
         </div>
 
@@ -1008,7 +1084,8 @@
             <div class="menu-section lobby-panel">
                 <h3>Play Online</h3>
                 <p class="lobby-sub">One of you hosts and shares the room code; the other joins with it.
-                    The host plays as Player 1.</p>
+                    The host plays as Player 1 and chooses the mode and arena. You will both land in
+                    the room as soon as the link is up.</p>
                 <div id="lobby-status" class="lobby-status">Not connected</div>
 
                 <div class="lobby-block">
@@ -1035,7 +1112,7 @@
         <div id="modeselect-screen">
             <div class="menu-section modeselect-panel">
                 <h3>Game Mode</h3>
-                <p class="shop-sub">What are you playing for? You can change this any time before the match starts.</p>
+                <p class="shop-sub">You are the host, so this is your call. Change it any time before you start the match &mdash; your opponent sees it update.</p>
                 <div id="modeselect-list"></div>
                 <button id="btn-modeselect-close" class="btn-back">← Back</button>
             </div>
@@ -1144,9 +1221,14 @@ let gameState = "MENU"; // MENU, INTRO, FIGHT, DEATH, ROUND_END, PAUSED, GAMEOVE
 //   SCREENS live inside #ui-overlay (only one shown at a time; overlay hidden
 //   during a fight). MODALS overlay everything and stack: opening one leaves
 //   whatever's underneath in place, so closing returns there. ---
-const SCREEN_EL = { select: 'select-screen', gameover: 'gameover-screen', pause: 'pause-screen' };
+// Batch 34: `home` is the front page and `select` is the ROOM (connection,
+// both players' slots, your roster, host-only match setup). They are separate
+// screens rather than one scrolling page because they answer different
+// questions - "what do you want to do" vs "who is here and what are we
+// playing" - and the room is meaningless without a connection.
+const SCREEN_EL = { home: 'home-screen', select: 'select-screen', gameover: 'gameover-screen', pause: 'pause-screen' };
 const MODAL_EL = { tutorial: 'tutorial-screen', settings: 'settings-screen', rebind: 'rebind-screen', audio: 'audio-screen', mapselect: 'mapselect-screen', shop: 'shop-screen', modeselect: 'modeselect-screen', lobby: 'lobby-screen' };
-let currentScreen = 'select'; // matches the initial CSS (select shown)
+let currentScreen = 'home'; // matches the initial CSS (home shown)
 let modalStack = [];
 function showScreen(name) {
     currentScreen = name;
@@ -1276,6 +1358,34 @@ function computeDt() {
 // state because the menu build and renderViews both read it during load.
 let LOCAL_SIDE = 'p1';
 const isLocalSide = side => side === LOCAL_SIDE;
+
+// Batch 34: the connection state lives HERE, not down in the netcode module,
+// for the same reason LOCAL_SIDE does. The menu now asks "are we online, and am
+// I the host?" while it paints itself - refreshModeUI() and refreshBotUI() both
+// run during initial load - and a `const` declared later in the file is still
+// in its temporal dead zone at that point, which fails the whole page with
+// "Cannot access 'net' before initialization" and a blank screen. Sixth
+// instance of this trap in this file; the rule is: anything the load-time menu
+// build touches is declared above it.
+// NET_TIMEOUT_MS is inlined rather than referenced because it is declared with
+// the netcode module below - `net.timeoutMs` is reassignable and netcheck
+// raises it (a CDP relay cannot sustain 30Hz), so the literal must stay in
+// sync with the constant there.
+const net = {
+    peer: null,
+    conn: null,
+    role: null,            // 'host' | 'joiner'
+    status: 'offline',     // offline | starting | waiting | connecting | connected | error | dropped
+    detail: '',
+    lastSendAt: 0,
+    lastRecvAt: 0,
+    timeoutMs: 6000,       // = NET_TIMEOUT_MS; silence after which we call it dropped
+    remoteState: null,     // last STATE received; netApplyRemote eases toward it
+    remoteReady: false,    // joiner has acknowledged SETUP
+    pendingSetup: null,    // joiner: setup received before it could be applied
+};
+function netActive() { return !!(net.conn && net.conn.open); }
+function netIsHost() { return net.role === 'host'; }
 const otherSide = side => (side === 'p1' ? 'p2' : 'p1');
 
 const keys = {};
@@ -1552,7 +1662,19 @@ let progression = (() => {
     }
 })();
 function saveProgression() { safeLSSet(PROGRESSION_KEY, JSON.stringify(progression)); }
-function prog(side) { return progression[side] || progression.p1; }
+// Batch 34: online there is exactly one player at this keyboard, so there is
+// exactly one account. `progression` is still keyed p1/p2 (the save format
+// predates online play and is shared with the archived split-screen build), so
+// the LOCAL side - whichever fighter slot the lobby handed us - always resolves
+// to the same account slot. Without this, hosting spent p1's coins and joining
+// spent p2's: your roster and upgrades changed depending on whether you clicked
+// Host or Join, which is nonsense for one person.
+const ACCOUNT = 'p1';
+function accountOf(side) { return isLocalSide(side) ? ACCOUNT : side; }
+function prog(side) { return progression[accountOf(side)] || progression.p1; }
+// The local player's account, for the many callers that mean "me" rather than
+// "some side".
+function myProg() { return prog(LOCAL_SIDE); }
 // --- Batch 19: game modes. `matchMode` is deliberately ORTHOGONAL to
 // `gameState`: gameState says where we are in the round lifecycle
 // (INTRO/FIGHT/DEATH/...), matchMode says what winning means. Everything
@@ -1579,6 +1701,13 @@ const MATCH_MODES = [
     { id: 'survival', name: 'Survival Waves (Co-op)', blurb: 'Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.', coop: true },
 ];
 let matchMode = 'classic';
+// Batch 34: the host picks the arena in the room, up front, instead of the map
+// picker appearing at the instant both players locked in and starting the match
+// the moment it was touched. Two reasons: the guest could see neither what the
+// arena was nor that a choice was being made, and a modal that starts a match
+// on first click has no safe way to browse. null = Random, resolved to a
+// concrete map when the host starts (never sent as an intent - see startOnline).
+let selectedMap = null;
 function modeInfo(id) { return MATCH_MODES.find(m => m.id === (id || matchMode)) || MATCH_MODES[0]; }
 // True for the modes that run as one continuous match with respawns instead of
 // discrete best-of-3 rounds. Used in enough places that naming it beats
@@ -1686,9 +1815,13 @@ function addCoins(side, n) {
     refreshCoinDisplays();
 }
 function refreshCoinDisplays() {
-    for (const side of SIDES) {
-        const el = document.getElementById(`${side}-coins`);
-        if (el) el.textContent = String(prog(side).coins);
+    // Batch 34: one purse, because there is one account (see prog/ACCOUNT).
+    const el = document.getElementById('home-coins');
+    if (el) el.textContent = String(myProg().coins);
+    const roster = document.getElementById('home-roster');
+    if (roster) {
+        const owned = myProg().unlockedChars.length;
+        roster.textContent = `\u00b7 ${owned} of ${CHARACTERS.length} fighters`;
     }
     const shopEl = document.getElementById('shop-coin-balance');
     if (shopEl) shopEl.textContent = String(prog(shopSide).coins);
@@ -1757,7 +1890,7 @@ function setDebugUnlockAll(on) {
 }
 function toggleDebugUnlockAll() { setDebugUnlockAll(!debugUnlockAll); }
 function syncDebugUnlockUI() {
-    const chk = document.getElementById('chk-unlock-all');
+    const chk = document.getElementById('chk-unlock-all');   // absent since Batch 34
     if (chk) chk.checked = debugUnlockAll;
 }
 
@@ -1921,7 +2054,8 @@ document.getElementById('btn-open-settings').addEventListener('click', () => { s
 document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());
 // Batch 13: the visible half of the unlock-everything override (the other
 // entry point is the typed cheat code in the keyboard dispatcher).
-document.getElementById('chk-unlock-all').addEventListener('change', e => setDebugUnlockAll(e.target.checked));
+// The sandbox checkbox no longer exists in the UI (see Settings); the
+// setDebugUnlockAll path is still reachable from ACDebug under ?debug=1.
 syncDebugUnlockUI(); // reflect a persisted override on load
 
 // Tutorial overlay. The controls card is generated from controlsSummary()
@@ -2736,10 +2870,64 @@ keyLight.layers.enableAll();
 scene.add(keyLight);
 // A cool sky-bounce fill from the opposite side to keep shadows from going
 // muddy — subtle, just lifts the shadowed faces toward the sky color.
-const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.4);
-fillLight.position.set(900, 500, -700);
+const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.85);
+// Batch 34: raised and steepened. It sat low at (900, 500, -700), which lit
+// two of the four perimeter walls and left the other two dark; a higher,
+// more central position rakes all four inward faces.
+fillLight.position.set(700, 1400, -600);
 fillLight.layers.enableAll();
 scene.add(fillLight);
+
+// Batch 34: re-fit the sun's shadow frustum to wherever the sun actually is.
+//
+// The frustum was authored once, as a fixed +/-1000 x +/-650 orthographic box,
+// for the default sun at (-1400, 2600, 1600). applyLighting() then moved the
+// sun per map - as far as (-2000, 1700, 1100) for Skyreach Spire - and never
+// touched the frustum, so on maps with a low or distant sun part of the arena
+// fell outside the shadow camera and simply stopped casting or receiving
+// shadows. Fitting it means every map is correct by construction instead of
+// tuned per map.
+//
+// The arena is a 1755 x 975 virtual rectangle centred on the origin (see
+// worldX/worldZ), enclosed by WALL_HEIGHT walls, and the tallest scenery
+// (skylines, pylons, crystals) reaches roughly twice that. The box below is
+// the world-space AABB those occupy; the fit projects its 8 corners into the
+// light's own view space, which is exactly the space the ortho frustum is
+// expressed in.
+const SHADOW_FIT_HX = (VIRTUAL_W / 2) + 120;   // half-width  + wall thickness
+const SHADOW_FIT_HZ = (VIRTUAL_H / 2) + 120;   // half-depth  + wall thickness
+const SHADOW_FIT_HY = WALL_HEIGHT * 2.2;       // tallest scenery above the floor
+const SHADOW_FIT_PAD = 80;
+const _shadowFitV = new THREE.Vector3();
+const _shadowFitInv = new THREE.Matrix4();
+function fitKeyShadow() {
+    const cam = keyLight.shadow.camera;
+    // Replicate what DirectionalLightShadow.updateMatrices is about to do, so
+    // the extents are measured in the same basis the shadow map will use.
+    cam.position.copy(keyLight.position);
+    cam.lookAt(keyLight.target.position);
+    cam.updateMatrixWorld();
+    _shadowFitInv.copy(cam.matrixWorld).invert();
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const sx of [-1, 1]) for (const sy of [0, 1]) for (const sz of [-1, 1]) {
+        _shadowFitV.set(sx * SHADOW_FIT_HX, sy * SHADOW_FIT_HY, sz * SHADOW_FIT_HZ)
+            .applyMatrix4(_shadowFitInv);
+        if (_shadowFitV.x < minX) minX = _shadowFitV.x;
+        if (_shadowFitV.x > maxX) maxX = _shadowFitV.x;
+        if (_shadowFitV.y < minY) minY = _shadowFitV.y;
+        if (_shadowFitV.y > maxY) maxY = _shadowFitV.y;
+        if (_shadowFitV.z < minZ) minZ = _shadowFitV.z;
+        if (_shadowFitV.z > maxZ) maxZ = _shadowFitV.z;
+    }
+    cam.left = minX - SHADOW_FIT_PAD; cam.right = maxX + SHADOW_FIT_PAD;
+    cam.bottom = minY - SHADOW_FIT_PAD; cam.top = maxY + SHADOW_FIT_PAD;
+    // A camera looks down its own -Z, so the near/far DISTANCES are the
+    // negated z extents, nearest first. Getting this backwards silently
+    // clips every shadow in the scene.
+    cam.near = Math.max(1, -maxZ - SHADOW_FIT_PAD);
+    cam.far = -minZ + SHADOW_FIT_PAD;
+    cam.updateProjectionMatrix();
+}
 
 // Recolor/re-aim the daylight for a map's theme (all daytime, just different
 // times/moods). keyLight is placed at the sun's sky position so shadows fall
@@ -2750,6 +2938,18 @@ function applyLighting(theme) {
     keyLight.color.set(theme.sun.color); keyLight.intensity = theme.sun.int;
     keyLight.position.set(theme.sun.pos[0], theme.sun.pos[1], theme.sun.pos[2]);
     fillLight.color.set(theme.hemi.sky);
+    // Batch 34: the fill was authored at 0.4 and no theme ever overrode it, so
+    // an overcast castle and a golden-hour desert got identical sky bounce.
+    // `fill` is optional - default to the original constant so a theme without
+    // one is unchanged.
+    // Batch 34: the default rose from 0.4 to 0.85 with the photographic
+    // surfaces. The procedural canvases were painted bright, so 0.4 was enough
+    // to read the walls' inward faces; a real albedo (metal_plate, rock_face)
+    // is considerably darker and the same fill left them nearly black while
+    // the sunlit floor looked correct. Lighting, not albedo, decides how this
+    // scene reads - that lesson is in CHECKLIST.md twice already.
+    fillLight.intensity = (theme.fill != null) ? theme.fill : 0.85;
+    fitKeyShadow();   // the sun moved; the shadow frustum must follow it
 }
 
 // --- Per-map visual THEMES. Each map has a distinct palette, wall shape +
@@ -2937,6 +3137,13 @@ function disposeObject3D(obj) {
                         if (m[slot]) m[slot].dispose();
                     }
                 }
+                // Batch 34: mark it, so an in-flight photographic-texture load
+                // (attachPhotoSurface resolves asynchronously, possibly after
+                // the arena it belongs to has been unloaded) does not write
+                // maps onto a material that is already gone. Assigning to a
+                // disposed material is not an error in three.js, it is just a
+                // silent leak of the tiled texture reference.
+                m.userData.photoStale = true;
                 m.dispose();
             });
         }
@@ -3065,6 +3272,9 @@ function _roughCanvas(canvas, lo, hi) {
 // can carry its own `repeat` - a wall, a platform and the floor all tile the
 // same source at different densities.
 const derivedCanvasCache = {};
+// The THREE textures wrapping those canvases, keyed by canvas AND tiling - see
+// the note on `mk` inside attachSurfaceMaps.
+const derivedTextureCache = {};
 function attachSurfaceMaps(mat, key, opts) {
     opts = opts || {};
     if (!mat.map || !mat.map.image) return mat;
@@ -3075,19 +3285,30 @@ function attachSurfaceMaps(mat, key, opts) {
             r: _roughCanvas(mat.map.image, opts.lo || 0.35, opts.hi || 0.98),
         };
     }
-    const mk = (cv, srgb) => {
+    // Batch 34: cached by (key, slot, repeat, offset) rather than built fresh.
+    // These land on keepMap materials, so a new one per material per loadMap()
+    // was never freed - a permanent two-textures-per-mesh leak that grew every
+    // time you changed arena. The clone exists only because `repeat` lives on
+    // the texture, not the material, so one per distinct tiling is the correct
+    // granularity.
+    const mk = (cv, slot) => {
+        const r = mat.map.repeat, o = mat.map.offset;
+        const ck = `${key}:${slot}:${r.x.toFixed(3)}x${r.y.toFixed(3)}:${o.x.toFixed(3)},${o.y.toFixed(3)}`;
+        const hit = derivedTextureCache[ck];
+        if (hit) return hit;
         const t = new THREE.CanvasTexture(cv);
         t.wrapS = t.wrapT = THREE.RepeatWrapping;
         t.anisotropy = 8;
         // A normal/roughness map is DATA, not colour: tagging it sRGB would
         // gamma-decode the vectors and flatten the lighting.
         t.encoding = THREE.LinearEncoding;
-        t.repeat.copy(mat.map.repeat);
-        t.offset.copy(mat.map.offset);
+        t.repeat.copy(r);
+        t.offset.copy(o);
+        derivedTextureCache[ck] = t;
         return t;
     };
-    mat.normalMap = mk(entry.n);
-    mat.roughnessMap = mk(entry.r);
+    mat.normalMap = mk(entry.n, 'n');
+    mat.roughnessMap = mk(entry.r, 'r');
     mat.normalScale = new THREE.Vector2(opts.scale || 1, opts.scale || 1);
     mat.needsUpdate = true;
     return mat;
@@ -3116,7 +3337,323 @@ function _speckle(css) { return (g, bx, by, bw, bh) => { g.save(); g.globalAlpha
 function _marbleVeins(g, bx, by, bw, bh) { g.strokeStyle = 'rgba(140,140,155,0.28)'; g.lineWidth = 1; g.beginPath(); g.moveTo(bx + Math.random() * bw, by); g.bezierCurveTo(bx + bw * 0.3, by + bh * 0.4, bx + bw * 0.7, by + bh * 0.6, bx + Math.random() * bw, by + bh); g.stroke(); }
 function _redStrata(g, bx, by, bw, bh) { g.fillStyle = 'rgba(80,40,25,0.16)'; for (let yy = by + 4; yy < by + bh; yy += 6) g.fillRect(bx, yy, bw, 2); }
 
+
+// ===========================================================================
+// Batch 34: PHOTOGRAPHIC ARENA SURFACES
+//
+// The arenas were dressed entirely in 256x256 canvases painted at runtime,
+// with normal and roughness maps derived from their luminance
+// (attachSurfaceMaps, above). That is a good trick and it is what made ten
+// visually distinct maps affordable - but hand-painted 256px albedo is the
+// single biggest reason the arenas read as toy-like rather than real, which is
+// the complaint this work exists to answer.
+//
+// So: real 1k PBR sets from PolyHaven (CC0), three files each -
+//   Diffuse  base colour, sRGB
+//   nor_gl   normal, OPENGL convention. Not nor_dx - three.js is GL, and the
+//            DirectX variant has Y inverted, which lights everything backwards.
+//   arm      AO + Roughness + Metalness packed in R/G/B, which is exactly the
+//            glTF ORM convention three.js reads natively: one file, three slots.
+//
+// Three things make this safe to bolt onto the existing pipeline:
+//
+// 1. IT IS AN UPGRADE, NOT A REPLACEMENT. The procedural material is built
+//    first and rendered immediately; the photo set is fetched asynchronously
+//    and swapped onto the SAME material when it arrives. A slow or failed
+//    fetch leaves a fully playable, fully textured arena - the game never
+//    waits on the network and never shows an untextured one.
+// 2. THE MAP'S IDENTITY IS PRESERVED. `theme.wallColor`/`floorColor` still
+//    multiply the albedo, and the procedural canvas is kept as an EMISSIVE
+//    overlay (see accentEmissiveTexture) so each arena keeps its glow
+//    signature - the tech grid, the lava cracks, the ivy. Dropping those would
+//    have flattened ten distinctive arenas into two rock textures.
+// 3. TEXTURES ARE SHARED AND CACHED BY TILING, never cloned per mesh - the
+//    same discipline getTiledWallTexture needed for exactly the same reason.
+// ===========================================================================
+
+// Which PolyHaven set dresses each theme surface. Several themes share a set
+// and separate themselves by tint - a set is ~2-4 MB, so one per surface per
+// theme would be a 40 MB download for a game that renders one arena at a time.
+//
+// `tile` MULTIPLIES the procedural texture's existing repeat, and getting it
+// wrong is the single most visible mistake available here. The procedural
+// canvases were 256px hand-painted patterns authored to tile every ~190 world
+// units on the floor and ~80 on the walls; at that density a real 1k
+// photograph reads as one enormous slab - the first pass put diamond plate on
+// the floor at 190 units per tile and it looked like giant scoops rather than
+// metal. A fighter is 40 units wide, so the target is roughly 45-55 units per
+// tile: small enough that the surface has grain at standing height, large
+// enough that the tiling pattern does not become obvious.
+const PHOTO_SETS = {
+    // walls, keyed by theme.wallTex. Base repeat is ~80 units/tile, so ~1.8x
+    // lands near 45.
+    wall: {
+        // Third choice, and worth recording why. factory_wall is green
+        // corrugated industrial steel and no tint can take green out of an
+        // albedo. metal_plate is neutral but it is dark brown diamond PLATE -
+        // a floor material, and at wall tiling its tread pattern reads as
+        // woven fabric. concrete_wall_003 is a clean, bright, flat man-made
+        // wall, which takes Voltaic Nexus' blue cast cleanly and lets the
+        // glowing accent rails be the thing your eye goes to. Both other sets
+        // stay in assets/tex - metal_plate is still the techgrid FLOOR, where
+        // being diamond plate is exactly right.
+        metal:       { set: 'concrete_wall_003',  tile: 1.7 },
+        ashlar:      { set: 'medieval_blocks_03', tile: 1.5 },   // block courses read best large-ish
+        sandstone:   { set: 'medieval_blocks_03', tile: 1.4 },
+        mossstone:   { set: 'medieval_blocks_03', tile: 1.5 },
+        marble:      { set: 'marble_01',          tile: 1.6 },
+        cloudmarble: { set: 'marble_01',          tile: 1.5 },
+        redrock:     { set: 'rock_face_03',       tile: 1.9 },
+        basalt:      { set: 'rock_face_03',       tile: 2.1 },
+        coralstone:  { set: 'rock_face_03',       tile: 1.8 },
+        ice:         { set: 'snow_02',            tile: 1.7 },
+    },
+    // floors, keyed by theme.floorTex. Base repeat is ~190 units/tile, so
+    // ~3.8x lands near 50.
+    floor: {
+        techgrid:  { set: 'metal_plate',          tile: 4.2 },   // plate tread is small in reality
+        flagstone: { set: 'cobblestone_floor_04', tile: 3.6 },
+        sand:      { set: 'sand_01',              tile: 4.6 },   // fine grain, tiles invisibly
+        redsand:   { set: 'sand_01',              tile: 4.6 },
+        coralsand: { set: 'sand_01',              tile: 4.4 },
+        grass:     { set: 'aerial_grass_rock',    tile: 3.4 },
+        jungle:    { set: 'forest_ground_04',     tile: 3.4 },
+        lava:      { set: 'rock_face_03',         tile: 3.8 },
+        ice:       { set: 'snow_02',              tile: 4.0 },
+        cloud:     { set: 'marble_01',            tile: 3.0 },
+    },
+};
+
+const PHOTO_BASE = 'assets/tex/';
+let _photoLoader = null;
+const _photoSetPromises = {};    // setId -> Promise<{map, nor, orm} | null>
+const _photoTiled = {};          // "setId:slot:rx x ry" -> THREE.Texture
+
+// Loads one set's three files. Resolves to null rather than rejecting when a
+// file is missing, so a partial or absent assets/tex/ directory degrades to the
+// procedural look instead of throwing inside a .then() nobody is watching.
+function loadPhotoSet(setId) {
+    if (_photoSetPromises[setId]) return _photoSetPromises[setId];
+    if (typeof THREE === 'undefined' || !THREE.TextureLoader) return Promise.resolve(null);
+    const L = _photoLoader || (_photoLoader = new THREE.TextureLoader());
+    const one = (file, srgb) => new Promise(resolve => {
+        L.load(PHOTO_BASE + setId + '/' + file,
+            t => {
+                t.wrapS = t.wrapT = THREE.RepeatWrapping;
+                t.anisotropy = 8;
+                // Colour is colour; normals and packed ORM are DATA. Tagging
+                // data as sRGB gamma-decodes the vectors and flattens the
+                // lighting - the single easiest way to make PBR look wrong.
+                t.encoding = srgb ? THREE.sRGBEncoding : THREE.LinearEncoding;
+                resolve(t);
+            },
+            undefined,
+            () => resolve(null));
+    });
+    _photoSetPromises[setId] = Promise.all([
+        one('Diffuse.jpg', true), one('nor_gl.jpg', false), one('arm.jpg', false),
+    ]).then(([map, nor, orm]) => (map ? { map, nor, orm } : null))
+      .catch(() => null);
+    return _photoSetPromises[setId];
+}
+
+// One texture per (set, slot, tiling) - NOT per mesh. Cloning per mesh is what
+// leaked a GPU texture per platform per round before Batch 34; the clone is
+// needed only because `repeat` lives on the texture rather than the material.
+function tiledPhotoTexture(base, setId, slot, rx, ry) {
+    if (!base) return null;
+    const key = setId + ':' + slot + ':' + rx.toFixed(2) + 'x' + ry.toFixed(2);
+    let t = _photoTiled[key];
+    if (t) return t;
+    t = base.clone();
+    t.needsUpdate = true;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    t.encoding = base.encoding;
+    t.repeat.set(rx, ry);
+    _photoTiled[key] = t;
+    return t;
+}
+
+// r128's aoMap samples vUv2, NOT vUv (verified in three.min.js:
+// `texture2D( aoMap, vUv2 )`). Without a uv2 attribute the AO channel samples
+// garbage and the surface goes blotchy - so any geometry receiving the packed
+// ORM's AO needs uv2, and for our meshes it is simply a copy of uv.
+function ensureUV2(geo) {
+    if (!geo || !geo.attributes || !geo.attributes.uv) return;
+    if (geo.attributes.uv2) return;
+    geo.setAttribute('uv2', geo.attributes.uv);
+}
+
+// Swap a photographic set onto a material that is ALREADY rendering with its
+// procedural texture. Async by design: see note 1 at the top of this section.
+//
+// `kind` is 'wall' or 'floor'; `texId` is theme.wallTex / theme.floorTex.
+function attachPhotoSurface(mat, kind, texId, rx, ry, opts) {
+    opts = opts || {};
+    const entry = (PHOTO_SETS[kind] || {})[texId];
+    if (!entry) return mat;
+    const setId = entry.set;
+    const sx = rx * entry.tile, sy = ry * entry.tile;
+    loadPhotoSet(setId).then(set => {
+        if (!set || !set.map) return;             // keep the procedural look
+        // The material may belong to an arena that has since been unloaded.
+        // disposeObject3D stamps nothing on a disposed material, so check the
+        // cheap proxy: a disposed material has had its program dropped and is
+        // no longer attached to anything we can reach. Guard on an explicit
+        // flag we set ourselves in disposeObject3D instead.
+        if (mat.userData.photoStale) return;
+        mat.map = tiledPhotoTexture(set.map, setId, 'map', sx, sy);
+        if (set.nor) {
+            mat.normalMap = tiledPhotoTexture(set.nor, setId, 'nor', sx, sy);
+            const ns = opts.normalScale != null ? opts.normalScale : 1;
+            mat.normalScale = new THREE.Vector2(ns, ns);
+        }
+        if (set.orm) {
+            // One texture, three slots - three.js reads .r/.g/.b for
+            // AO/roughness/metalness respectively.
+            const orm = tiledPhotoTexture(set.orm, setId, 'orm', sx, sy);
+            mat.aoMap = orm;
+            mat.roughnessMap = orm;
+            mat.metalnessMap = orm;
+            // The maps MULTIPLY these scalars, so leaving roughness at 0.9 and
+            // metalness at 0.03 would crush the map's whole range. Hand both
+            // back to the texture and let the tint do the art direction.
+            mat.roughness = opts.roughness != null ? opts.roughness : 1.0;
+            // metalness is a MULTIPLIER on the map's blue channel, and 1.0 -
+            // the physically correct value - renders these walls almost black.
+            // A fully metallic surface has NO diffuse term: every bit of its
+            // brightness is reflected environment, and this scene's
+            // environment is a PMREM of the sky gradient, which is dim and
+            // mostly sky-blue. Floors face up into the bright part and look
+            // right; walls face sideways into the dark part and go black.
+            // docs/arena-art-plan.md recorded this trap from Batch 25 and it
+            // caught us again here.
+            //
+            // Capping at 0.45 keeps the map's per-texel variation (rivets read
+            // as metal, grime does not) while leaving enough diffuse for the
+            // key light to actually light the surface. Less physical, far more
+            // legible - and legibility is the point in a fighting game.
+            mat.metalness = opts.metalness != null ? opts.metalness : 0.45;
+            mat.aoMapIntensity = opts.ao != null ? opts.ao : 0.85;
+            // Lift the environment contribution to compensate for the sky
+            // PMREM being much dimmer than a real HDRI.
+            mat.envMapIntensity = opts.envMapIntensity != null ? opts.envMapIntensity : 1.8;
+        }
+        // Soften the theme tint. `color` multiplies the albedo, and the
+        // procedural canvases were near-grey by design so a strong tint WAS
+        // the map's colour. A real photograph already carries its own colour,
+        // so multiplying it by, say, Voltaic Nexus' blue-grey turned green
+        // industrial steel into mud. Pulling the tint most of the way toward
+        // white keeps each arena's cast - which is what makes them
+        // recognisable - without fighting the albedo for control of the hue.
+        if (!mat.userData.photoTinted) {
+            // 0.72 rather than 0.55: the theme wall colours are genuinely dark
+            // (Voltaic Nexus is 0x3a557e), and multiplying an already mid-dark
+            // steel albedo by a dark blue produced near-black walls - the
+            // opposite of the problem the tint fade was added to solve. A
+            // photographic albedo needs the tint as a CAST, not as the colour.
+            mat.color.lerp(new THREE.Color(0xffffff), opts.tintFade != null ? opts.tintFade : 0.72);
+            mat.userData.photoTinted = true;   // idempotent: never lerp twice
+        }
+        mat.userData.keepMap = true;   // shared across rounds; never freed here
+        mat.needsUpdate = true;
+    });
+    return mat;
+}
+
+// The procedural canvas, reduced to just its accent-coloured pixels, as an
+// emissive overlay. This is what keeps each arena recognisable once a shared
+// photographic base is doing the heavy lifting: Voltaic Nexus' glowing seams,
+// Molten Foundry's lava cracks and the Colosseum's ivy are all painted in the
+// theme accent, and they are the map's signature. Everything that is not close
+// to the accent hue becomes black, and black is simply "not emitting".
+const _accentCanvasCache = {};
+const _accentTiled = {};      // "key:emi:RxR" -> THREE.Texture
+function accentEmissiveTexture(sourceCanvas, accentHex, key) {
+    const cached = _accentCanvasCache[key];
+    if (cached !== undefined) return cached;
+    let out = null;
+    try {
+        const w = sourceCanvas.width, h = sourceCanvas.height;
+        const src = sourceCanvas.getContext('2d').getImageData(0, 0, w, h);
+        const ar = (accentHex >> 16) & 255, ag = (accentHex >> 8) & 255, ab = accentHex & 255;
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const ctx = cv.getContext('2d');
+        const img = ctx.createImageData(w, h);
+        let lit = 0;
+        for (let i = 0; i < w * h; i++) {
+            const r = src.data[i * 4], g = src.data[i * 4 + 1], b = src.data[i * 4 + 2];
+            // Distance in RGB is crude but sufficient here: the accents are
+            // saturated and the base palettes are greys and browns, so the
+            // two are far apart in any colour space.
+            const d = Math.hypot(r - ar, g - ag, b - ab);
+            const k = Math.max(0, 1 - d / 92);          // 1 at the accent, 0 well away
+            const v = k * k;                            // bias toward the strongest matches
+            if (v > 0.02) lit++;
+            img.data[i * 4]     = ar * v;
+            img.data[i * 4 + 1] = ag * v;
+            img.data[i * 4 + 2] = ab * v;
+            img.data[i * 4 + 3] = 255;
+        }
+        // A texture that lights up almost everything is not a signature, it is
+        // a mistake - bail rather than make a wall uniformly glow.
+        if (lit > w * h * 0.34 || lit < 12) return (_accentCanvasCache[key] = null);
+        ctx.putImageData(img, 0, 0);
+        out = new THREE.CanvasTexture(cv);
+        out.wrapS = out.wrapT = THREE.RepeatWrapping;
+        out.encoding = THREE.sRGBEncoding;   // it IS colour, unlike normal/ORM
+        out.anisotropy = 4;
+    } catch (e) {
+        out = null;                          // tainted canvas or no 2d context
+    }
+    _accentCanvasCache[key] = out;
+    return out;
+}
+
+// Applies the accent overlay to a material whose `map` is (or was) the
+// procedural canvas for this theme surface.
+function attachAccentGlow(mat, sourceTexture, theme, key, rx, ry, intensity) {
+    if (!sourceTexture || !sourceTexture.image) return mat;
+    const tex = accentEmissiveTexture(sourceTexture.image, theme.accent, key);
+    if (!tex) return mat;
+    // Cached by tiling for the same reason as everything else here: this lands
+    // on a keepMap material, so a clone per material would never be freed.
+    const ck = `${key}:emi:${rx.toFixed(3)}x${ry.toFixed(3)}`;
+    let t = _accentTiled[ck];
+    if (!t) {
+        t = tex.clone();
+        t.needsUpdate = true;
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.encoding = THREE.sRGBEncoding;
+        t.repeat.set(rx, ry);
+        _accentTiled[ck] = t;
+    }
+    mat.emissiveMap = t;
+    mat.emissive = new THREE.Color(0xffffff);   // the MAP carries the colour
+    mat.emissiveIntensity = intensity != null ? intensity : 0.85;
+    mat.userData.keepMap = true;
+    mat.needsUpdate = true;
+    return mat;
+}
+
 const wallTextureCache = {};
+// Batch 34: see the note in buildPlatformMesh. A clone is needed per distinct
+// `repeat`, not per mesh, so cache them by it.
+const tiledWallTextureCache = {};
+function getTiledWallTexture(theme, rx, ry) {
+    const key = theme.id + ':' + rx + 'x' + ry;
+    let t = tiledWallTextureCache[key];
+    if (t) return t;
+    t = getWallTexture(theme).clone();
+    t.needsUpdate = true;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(rx, ry);
+    tiledWallTextureCache[key] = t;
+    return t;
+}
+
 function getWallTexture(theme) {
     if (wallTextureCache[theme.id]) return wallTextureCache[theme.id];
     const g = _canvas();
@@ -3267,13 +3804,34 @@ function addCornerGlow(x, z, accent) {
 // A full-height obstacle "column" whose form varies by theme.column: carved
 // stone pillar, sleek energy pylon, fluted marble column, natural red-rock
 // spire, or an ice-crystal cluster. Solid cover you fight around.
+// Batch 34: columns were the last untextured thing in the arena - flat
+// MeshStandardMaterial colours with no map of any kind - so once the walls and
+// floors became photographic they were what still read as clay. They take the
+// theme's WALL set, which is also correct art direction: a stone arena's
+// pillars are cut from the same stone as its walls.
+//
+// The base repeat follows the wall convention of ~80 units per tile (the
+// PHOTO_SETS `tile` multiplier then lands it near 45), computed from the
+// column's actual circumference and height so a fat pillar and a thin one get
+// the same texel density instead of the same tile count.
+function photoColumn(mat, theme, radius, height, opts) {
+    const rx = Math.max(0.6, (2 * Math.PI * radius) / 80);
+    const ry = Math.max(0.6, height / 80);
+    const o = opts || { normalScale: 0.9, ao: 0.8 };
+    if (o.tintFade == null) o.tintFade = 0.66;   // same reasoning as the walls
+    return attachPhotoSurface(mat, 'wall', theme.wallTex, rx, ry, o);
+}
+
 function buildPillarMesh(ob, theme) {
     const group = new THREE.Group();
     const colH = ob.h || 165;
     const style = theme.column;
     if (style === 'pylon') {
-        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(ob.r * 0.8, ob.r * 0.9, colH, 12),
-            new THREE.MeshStandardMaterial({ color: 0x2b3a52, roughness: 0.35, metalness: 0.7 }));
+        const shaftGeo = new THREE.CylinderGeometry(ob.r * 0.8, ob.r * 0.9, colH, 12);
+        ensureUV2(shaftGeo);
+        const shaftMat = new THREE.MeshStandardMaterial({ color: 0x2b3a52, roughness: 0.35, metalness: 0.7 });
+        photoColumn(shaftMat, theme, ob.r * 0.85, colH, { normalScale: 0.8, ao: 0.7, tintFade: 0.4 });
+        const shaft = new THREE.Mesh(shaftGeo, shaftMat);
         shaft.position.y = colH / 2; shaft.castShadow = shaft.receiveShadow = true; group.add(shaft);
         const ringMat = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 1.0 });
         for (let i = 1; i <= 4; i++) { const ring = new THREE.Mesh(new THREE.TorusGeometry(ob.r * 0.95, 2.4, 6, 16), ringMat); ring.rotation.x = Math.PI / 2; ring.position.y = colH * (i / 5); group.add(ring); }
@@ -3282,8 +3840,9 @@ function buildPillarMesh(ob, theme) {
     } else if (style === 'redspire') {
         // stacked tapering rough rock chunks (hoodoo)
         const rockMat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: 0.95, metalness: 0.0 });
+        photoColumn(rockMat, theme, ob.r * 1.15, colH / 5, { normalScale: 1.1, ao: 0.85 });
         let y = 0, r = ob.r * 1.15;
-        for (let i = 0; i < 5; i++) { const h = colH / 5, rt = r * 0.82; const seg = new THREE.Mesh(new THREE.CylinderGeometry(rt, r, h, 7), rockMat); seg.position.set((Math.random() - 0.5) * 6, y + h / 2, (Math.random() - 0.5) * 6); seg.rotation.y = Math.random(); seg.castShadow = seg.receiveShadow = true; group.add(seg); y += h; r = rt; }
+        for (let i = 0; i < 5; i++) { const h = colH / 5, rt = r * 0.82; const segGeo = new THREE.CylinderGeometry(rt, r, h, 7); ensureUV2(segGeo); const seg = new THREE.Mesh(segGeo, rockMat); seg.position.set((Math.random() - 0.5) * 6, y + h / 2, (Math.random() - 0.5) * 6); seg.rotation.y = Math.random(); seg.castShadow = seg.receiveShadow = true; group.add(seg); y += h; r = rt; }
     } else if (style === 'icecrystal') {
         const iceMat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.92 });
         const coreMat = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.7, transparent: true, opacity: 0.85 });
@@ -3292,12 +3851,20 @@ function buildPillarMesh(ob, theme) {
         const l = new THREE.PointLight(theme.accent, 0.4, 220); l.position.y = colH * 0.6; l.layers.enableAll(); group.add(l);
     } else { // stone / marble — fluted shaft, plinth + capital
         const isMarble = style === 'marble';
-        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(ob.r, ob.r * 1.06, colH, isMarble ? 20 : 16),
-            new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: isMarble ? 0.5 : 0.85, metalness: 0.02 }));
+        const shaftGeo = new THREE.CylinderGeometry(ob.r, ob.r * 1.06, colH, isMarble ? 20 : 16);
+        ensureUV2(shaftGeo);
+        const shaftMat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: isMarble ? 0.5 : 0.85, metalness: 0.02 });
+        photoColumn(shaftMat, theme, ob.r, colH, { normalScale: isMarble ? 0.6 : 1.0, ao: 0.85 });
+        const shaft = new THREE.Mesh(shaftGeo, shaftMat);
         shaft.position.y = colH / 2; shaft.castShadow = shaft.receiveShadow = true; group.add(shaft);
         const baseMat = new THREE.MeshStandardMaterial({ color: theme.capColor, roughness: 0.85, metalness: 0.02 });
-        const plinth = new THREE.Mesh(new THREE.BoxGeometry(ob.r * 2.7, 18, ob.r * 2.7), baseMat); plinth.position.y = 9; plinth.castShadow = plinth.receiveShadow = true; group.add(plinth);
-        const capital = new THREE.Mesh(new THREE.BoxGeometry(ob.r * 2.7, 16, ob.r * 2.7), baseMat); capital.position.y = colH - 8; capital.castShadow = true; group.add(capital);
+        // The plinth and capital are short and wide, so they need their own
+        // density - reusing the shaft's would stretch the texture across them.
+        photoColumn(baseMat, theme, ob.r * 2.7, 18, { normalScale: 0.8, ao: 0.8 });
+        const plinthGeo = new THREE.BoxGeometry(ob.r * 2.7, 18, ob.r * 2.7); ensureUV2(plinthGeo);
+        const plinth = new THREE.Mesh(plinthGeo, baseMat); plinth.position.y = 9; plinth.castShadow = plinth.receiveShadow = true; group.add(plinth);
+        const capitalGeo = new THREE.BoxGeometry(ob.r * 2.7, 16, ob.r * 2.7); ensureUV2(capitalGeo);
+        const capital = new THREE.Mesh(capitalGeo, baseMat); capital.position.y = colH - 8; capital.castShadow = true; group.add(capital);
         if (!isMarble) { // glowing accent orb crowns non-marble stone columns
             const orb = new THREE.Mesh(new THREE.SphereGeometry(ob.r * 0.55, 12, 12), new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.9 }));
             orb.position.y = colH + ob.r * 0.5; group.add(orb);
@@ -3314,15 +3881,28 @@ function buildPillarMesh(ob, theme) {
 // so interior cover matches the perimeter, with a glowing accent-trimmed top.
 function buildPlatformMesh(p, theme) {
     const group = new THREE.Group();
-    const tex = getWallTexture(theme).clone();
-    tex.needsUpdate = true;
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(Math.max(1, Math.round(p.hw / 40)), Math.max(1, Math.round(p.height / 60)));
+    // Batch 34: was `getWallTexture(theme).clone()` per platform. The clone
+    // lands on a `keepMap` material, which suppresses texture disposal, so
+    // every platform on every loadMap() leaked one GPU texture for the rest of
+    // the session. Cached by the repeat it needs instead.
+    const tex = getTiledWallTexture(theme,
+        Math.max(1, Math.round(p.hw / 40)),
+        Math.max(1, Math.round(p.height / 60)));
     const metalish = theme.wallTex === 'metal';
     const slabMat = new THREE.MeshStandardMaterial({ map: tex, color: theme.wallColor, roughness: metalish ? 0.5 : 0.85, metalness: metalish ? 0.5 : 0.04 });
     attachSurfaceMaps(slabMat, 'wall:' + theme.id, { strength: 2.6, scale: 1.1 });
     slabMat.userData.keepMap = true;
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2), slabMat);
+    // Batch 34: keep the theme's accent glow (painted into the procedural
+    // canvas) BEFORE the photographic albedo replaces `map`, then upgrade the
+    // base surface asynchronously. Order matters: the accent overlay is
+    // derived from the procedural image, so it has to be taken while `map`
+    // still is that image.
+    attachAccentGlow(slabMat, tex, theme, 'wall:' + theme.id, tex.repeat.x, tex.repeat.y, 0.7);
+    attachPhotoSurface(slabMat, 'wall', theme.wallTex, tex.repeat.x, tex.repeat.y,
+        { normalScale: 1.0, ao: 0.8, tintFade: 0.62 });
+    const slabGeo = new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2);
+    ensureUV2(slabGeo);   // the packed ORM's AO channel samples vUv2 in r128
+    const slab = new THREE.Mesh(slabGeo, slabMat);
     slab.position.y = p.height / 2;
     slab.castShadow = true; slab.receiveShadow = true;
     group.add(slab);
@@ -3438,16 +4018,24 @@ let outerWalls = []; // {mesh, side, baseLen} — the 4 enclosing walls; syncAre
 function buildOuterWall(side, theme) {
     const runX = (side === 'top' || side === 'bottom');
     const along = runX ? (ARENA_RIGHT - ARENA_LEFT) : (ARENA_BOTTOM - ARENA_TOP);
-    const wtex = getWallTexture(theme).clone(); wtex.needsUpdate = true; wtex.wrapS = wtex.wrapT = THREE.RepeatWrapping;
-    wtex.repeat.set(Math.max(3, Math.round(along / 80)), Math.max(2, Math.round(WALL_HEIGHT / 80)));
+    const wtex = getTiledWallTexture(theme,           // Batch 34: see buildPlatformMesh
+        Math.max(3, Math.round(along / 80)),
+        Math.max(2, Math.round(WALL_HEIGHT / 80)));
     const thick = 18;
     const group = new THREE.Group();
     const metalish = theme.wallTex === 'metal';
     const bodyMat = new THREE.MeshStandardMaterial({ map: wtex, color: theme.wallColor, roughness: metalish ? 0.5 : 0.9, metalness: metalish ? 0.5 : 0.03 });
     attachSurfaceMaps(bodyMat, 'wall:' + theme.id, { strength: 2.6, scale: 1.15 });
     bodyMat.userData.keepMap = true; // maps wrap canvases shared across rounds
+    // Batch 34: accent glow first (derived from the procedural canvas), then
+    // the photographic base swaps in when it loads. See attachPhotoSurface.
+    attachAccentGlow(bodyMat, wtex, theme, 'wall:' + theme.id, wtex.repeat.x, wtex.repeat.y, 0.8);
+    attachPhotoSurface(bodyMat, 'wall', theme.wallTex, wtex.repeat.x, wtex.repeat.y,
+        { normalScale: 1.15, ao: 0.85, tintFade: 0.62 });
     const capMat = new THREE.MeshStandardMaterial({ color: theme.capColor, roughness: 0.85, metalness: metalish ? 0.4 : 0.03 });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(along, WALL_HEIGHT, thick), bodyMat);
+    const bodyGeo = new THREE.BoxGeometry(along, WALL_HEIGHT, thick);
+    ensureUV2(bodyGeo);
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.position.y = WALL_HEIGHT / 2; body.receiveShadow = true; body.castShadow = true;
     group.add(body);
     const cap = new THREE.Mesh(new THREE.BoxGeometry(along, 12, thick + 8), capMat);
@@ -3521,7 +4109,16 @@ function loadMap(map) {
         shinyFloor ? { strength: 1.2, scale: 0.55, lo: 0.2, hi: 0.7 }
                    : { strength: 2.4, scale: 1.0 });
     floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it
-    floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d), floorMat);
+    // Batch 34: the floor carries the most obvious per-map signature - the
+    // tech grid, the lava cracks - so its accent overlay is the strongest of
+    // the three, and it is captured before the photographic albedo lands.
+    attachAccentGlow(floorMat, floorTex, theme, 'floor:' + theme.id,
+        floorTex.repeat.x, floorTex.repeat.y, theme.floorTex === 'lava' ? 1.5 : 0.95);
+    attachPhotoSurface(floorMat, 'floor', theme.floorTex, floorTex.repeat.x, floorTex.repeat.y,
+        shinyFloor ? { normalScale: 0.55, ao: 0.6 } : { normalScale: 1.0, ao: 0.9 });
+    const floorGeo = new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d);
+    ensureUV2(floorGeo);
+    floorMesh = new THREE.Mesh(floorGeo, floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.position.set(worldX(ARENA_CX), 0, worldZ(ARENA_CY));
     floorMesh.receiveShadow = true;
@@ -4356,6 +4953,24 @@ const METER_DEALT_RATE = 1.2, METER_TAKEN_RATE = 0.6, METER_PASSIVE_RATE = 0.025
 
 function hexNum(hex) { return parseInt(hex.replace('#', ''), 16); }
 
+// "r,g,b" - the form the effect system's `color` field takes (it interpolates
+// straight into `rgb(...)`), and `f.color` is a '#rrggbb' string.
+function hexToRgbTriplet(hex) {
+    const n = (typeof hex === 'number') ? hex : hexNum(hex);
+    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+}
+
+// --- Batch 34: teleport visual smoothing. See Fighter.visOffX / teleportTo. --
+// Below this distance a move is a nudge, not a teleport, and gets no smear -
+// otherwise ordinary knockback would feel mushy.
+const TELEPORT_VIS_MIN = 26;
+// The furthest the drawn body may lag behind the simulation. Uncapped, a
+// long chain of teleports could draw a fighter through a wall.
+const TELEPORT_VIS_MAX = 150;
+// Per-frame retention of the offset. 0.62^6 is about 0.06, so roughly six
+// frames (~100ms at 60fps) to catch up, front-loaded.
+const TELEPORT_VIS_DECAY = 0.62;
+
 function hexToCss(hexNumber, alpha) {
     const r = (hexNumber >> 16) & 255, g = (hexNumber >> 8) & 255, b = hexNumber & 255;
     return `rgba(${r},${g},${b},${alpha})`;
@@ -4590,6 +5205,25 @@ class Fighter {
         this.muzzleFlash = 0; // frames left on the viewmodel muzzle flash after firing
         this.projectiles = [];
         this.effects = [];
+        // Batch 34: a VISUAL-ONLY position offset, in arena units, that decays
+        // to zero over a few frames.
+        //
+        // Reported as "when you use your special it is laggy sometimes and
+        // there is no animation, just a snap to a new location for people like
+        // Kaelen, same thing for dash". It is not lag: teleportTo() moves the
+        // fighter instantly and render3D copies the simulation position onto
+        // the mesh every frame, so every teleport was a one-frame jump BY
+        // CONSTRUCTION - Kaelen's Blade Dash, Voss' blink, Nyx's pull,
+        // Karrigos' charge, knockback and every dodge. animateWeapon does have
+        // dash and special cases, so the ARM animated while the BODY
+        // teleported, which is why it read as broken rather than merely fast.
+        //
+        // The fix is deliberately visual only: the simulation still moves in
+        // one frame, so i-frame windows, hitboxes and the AI's range checks
+        // are all bit-identical. The mesh is simply drawn behind the truth for
+        // ~6 frames and catches up, which is what sells the travel.
+        this.visOffX = 0;
+        this.visOffY = 0;
         this.queue = [];
         this.deathParticles = [];
         this.lowHpParticles = [];
@@ -4776,6 +5410,7 @@ class Fighter {
     // through solid geometry and getting violently resolved back out on
     // the next frame. Used by every dash/blink/step-style special.
     teleportTo(dx, dy) {
+        const fromX = this.x, fromY = this.y;
         const dist = Math.hypot(dx, dy);
         const steps = Math.max(1, Math.ceil(dist / 8));
         const stepX = dx / steps, stepY = dy / steps;
@@ -4785,6 +5420,34 @@ class Fighter {
             this.x = nx; this.y = ny;
         }
         this.clampToArena();
+
+        // Batch 34: sell the travel. The simulation has already arrived; these
+        // two lines are purely what the eye is shown on the way.
+        const movedX = this.x - fromX, movedY = this.y - fromY;
+        const moved = Math.hypot(movedX, movedY);
+        // Short shoves (a small knockback nudge) are not teleports and must not
+        // acquire a smear - it would make ordinary hits feel mushy.
+        if (moved < TELEPORT_VIS_MIN) return;
+        // Draw the body where it came from, then let render3D decay the offset.
+        // ADD rather than assign: two teleports in the same frame (a dodge
+        // cancelled into a special) should compose, not overwrite.
+        this.visOffX += fromX - this.x;
+        this.visOffY += fromY - this.y;
+        if (Math.hypot(this.visOffX, this.visOffY) > TELEPORT_VIS_MAX) {
+            // Never lag so far behind that the model is drawn somewhere it
+            // could not plausibly be - through a wall, or outside the arena.
+            const k = TELEPORT_VIS_MAX / Math.hypot(this.visOffX, this.visOffY);
+            this.visOffX *= k; this.visOffY *= k;
+        }
+        // A motion streak along the path, reusing the existing pooled effect
+        // type rather than inventing one - no new material or shader, so this
+        // cannot reintroduce the Batch 30 compile stall.
+        const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
+        this.effects.push({
+            type: 'streak', life: 7, maxLife: 7,
+            x1: fromX + this.width / 2, y1: fromY + this.height / 2, x2: cx, y2: cy,
+            color: hexToRgbTriplet(this.color),
+        });
     }
 
     // Reactive AI for a bot-controlled fighter: keep to a preferred range
@@ -5619,6 +6282,16 @@ class Fighter {
         // same userData contract, so nothing downstream needs to know which.
         const group = buildRiggedCharacter(this.name) || PROC_MESH_BUILDERS[this.name](this.color);
         this.isRigged = !!group.userData.rigged;
+        // Batch 34: remember the builder's own scale. The procedural builders
+        // apply a per-character size multiplier to this group - Karrigos 1.5,
+        // Grint 0.72, Slagling 0.86, Hollowkin 1.08 - and two animations then
+        // ASSIGNED to group.scale absolutely rather than multiplying, so
+        // Karrigos visibly snapped from 1.5x to 1.0x the instant he started
+        // dying (and again in the crush cinematic). It only ever self-healed
+        // because initMesh() builds a fresh group each round. Nothing in the
+        // simulation reads mesh scale - collision is a hardcoded 40x40 circle -
+        // so this is purely visual, which is exactly why it went unnoticed.
+        this.meshBaseScale = group.scale.x || 1;
         addRimOutline(group, this.color, this.isBossEntity ? { color: '#140f0c', scale: 1.04 } : undefined);
         group.userData.specialAnim = SPECIAL_ANIMS[this.cfg.special] || null; // distinct, more elaborate motion for the special (vs the basic weaponAnim)
 
@@ -5849,7 +6522,9 @@ class Fighter {
 
         const scale = Math.max(0.001, 1 - progress);
         const alpha = Math.max(0, 1 - progress * 1.3);
-        this.mesh.scale.setScalar(scale);
+        // MULTIPLY by the builder's scale, never assign over it - see
+        // meshBaseScale in initMesh().
+        this.mesh.scale.setScalar(this.meshBaseScale * scale);
         for (const m of this.mesh.userData.bodyMats) m.opacity = alpha;
     }
 
@@ -5862,7 +6537,30 @@ class Fighter {
         // NOTE: render3D only READS fighter state and updates meshes. The
         // hp-ghost decay, low-HP smoke and heartbeat that used to live here are
         // simulation and now run in update()/updateFeedbackFx (see Change 2a).
-        this.mesh.position.set(worldX(this.x + this.width / 2), this.z, worldZ(this.y + this.height / 2));
+        // Batch 34: the visual-lag offset (see visOffX in the constructor and
+        // teleportTo). It decays geometrically so the catch-up is fast and
+        // front-loaded - most of the distance is covered in the first two
+        // frames, which reads as a dash rather than a drift. Under
+        // REDUCED_MOTION it is skipped entirely: a smear is exactly the kind of
+        // large unrequested movement that setting exists to suppress.
+        if (this.visOffX || this.visOffY) {
+            if (REDUCED_MOTION) {
+                this.visOffX = this.visOffY = 0;
+            } else {
+                const keep = Math.pow(TELEPORT_VIS_DECAY, dt || 1);
+                this.visOffX *= keep;
+                this.visOffY *= keep;
+                // Snap the last sliver to zero so the mesh cannot sit
+                // permanently a fraction of a unit behind the simulation.
+                if (Math.abs(this.visOffX) < 0.35 && Math.abs(this.visOffY) < 0.35) {
+                    this.visOffX = this.visOffY = 0;
+                }
+            }
+        }
+        this.mesh.position.set(
+            worldX(this.x + this.width / 2 + this.visOffX),
+            this.z,
+            worldZ(this.y + this.height / 2 + this.visOffY));
         // Local +X is "forward" for every character mesh; this is the one
         // place that maps the 2D facing vector to a world-space yaw.
         this.mesh.rotation.y = Math.atan2(-this.fy, this.fx);
@@ -5916,9 +6614,14 @@ class Fighter {
             // a vertical needle - non-uniform scaling that hard reads as rubber,
             // not force. The walls stopping AT body width, the brace pose and
             // the shake carry the violence instead.
-            this.mesh.scale.x = 1 - 0.30 * t + tremor;
-            this.mesh.scale.z = 1 - 0.06 * t;
-            this.mesh.scale.y = 1 + 0.14 * t;
+            // Batch 34: relative to the builder's own scale (meshBaseScale),
+            // not absolute. Assigning 1-ish values here shrank Karrigos from
+            // 1.5x to roughly 1x the moment the crush started - a bigger visual
+            // jump than the squash it was trying to render.
+            const bs = this.meshBaseScale;
+            this.mesh.scale.x = bs * (1 - 0.30 * t + tremor);
+            this.mesh.scale.z = bs * (1 - 0.06 * t);
+            this.mesh.scale.y = bs * (1 + 0.14 * t);
             // Struggle: shove both arms out against the slabs and tip the head
             // back. Reads as a fighter braced against the walls instead of a
             // mannequin being flattened. Works on either rig - a procedural arm
@@ -6631,32 +7334,50 @@ function buildViewmodelArm(f) {
     const trim = darkMetalMat('#242a34');
 
     // Forearm, tapering from elbow (back, +Z) toward the wrist.
+    //
+    // Batch 34: LONGER than it needs to be on purpose. The holder sits at
+    // z = -12 scaled 0.30, so the elbow end lands around z = -9 in camera
+    // space - in front of the near plane and pointed straight at the viewer.
+    // At the old length the limb simply STOPPED there, in mid-air, which is
+    // what made it read as detached: a real first-person arm continues past
+    // the edge of the frame. Running it back to z = 16 pushes the far end out
+    // of view so the arm reads as attached to a body you cannot see.
     const fore = new THREE.Mesh(
-        getCachedGeometry('vmFore', () => new THREE.CylinderGeometry(1.5, 2.0, 11, 12)),
+        getCachedGeometry('vmFore2', () => new THREE.CylinderGeometry(1.5, 2.2, 16, 14)),
         skin);
     fore.rotation.x = Math.PI / 2;
-    fore.position.set(-0.6, -1.4, 4.6);
+    fore.position.set(-0.6, -1.4, 6.4);
     g.add(fore);
     mats.push(skin);
 
     // Bracer over the forearm, with a rim at the elbow end.
+    //
+    // Batch 34: the trailing `true` here was `openEnded`, and it was the actual
+    // reported defect - "the arm of the character is detached from the body in
+    // first person, you can see the back of the block". An open-ended cylinder
+    // has no end caps, so with default FrontSide culling the far interior wall
+    // is discarded and you look straight through the tube to the background.
+    // The elbow end being the nearest part of the model to the camera made it
+    // the first thing you saw. Closed now, and it overlaps the forearm along
+    // its whole length so the two read as one limb rather than two abutting
+    // solids.
     const bracer = new THREE.Mesh(
-        getCachedGeometry('vmBracer', () => new THREE.CylinderGeometry(2.1, 2.35, 6.2, 12, 1, true)),
+        getCachedGeometry('vmBracer2', () => new THREE.CylinderGeometry(2.1, 2.45, 8.4, 14)),
         plate);
     bracer.rotation.x = Math.PI / 2;
-    bracer.position.set(-0.6, -1.4, 6.2);
+    bracer.position.set(-0.6, -1.4, 7.4);
     g.add(bracer);
     const rim = new THREE.Mesh(
-        getCachedGeometry('vmRim', () => new THREE.TorusGeometry(2.3, 0.34, 6, 14)),
+        getCachedGeometry('vmRim', () => new THREE.TorusGeometry(2.4, 0.34, 6, 14)),
         trim);
-    rim.position.set(-0.6, -1.4, 9.1);
+    rim.position.set(-0.6, -1.4, 11.2);
     g.add(rim);
 
     // Glove: palm block plus knuckle plates, angled as a closed grip.
     const palm = new THREE.Mesh(
         getCachedGeometry('vmPalm', () => new THREE.BoxGeometry(3.3, 3.0, 3.4)),
         plate);
-    palm.position.set(-0.3, -1.2, 0.6);
+    palm.position.set(-0.3, -1.2, 0.2);   // overlaps the forearm's wrist end (B34)
     palm.rotation.y = 0.18;
     g.add(palm);
     const knuckleGeo = getCachedGeometry('vmKnuckle', () => new THREE.SphereGeometry(0.62, 8, 6));
@@ -7133,6 +7854,30 @@ const CHAR_MODEL_URLS = {
 // rig stands about this tall (hipY 15 + torsoH 20 + head ~13) and EYE_HEIGHT is
 // 46, so matching it keeps cameras, muzzle heights and hitboxes valid.
 const RIG_TARGET_HEIGHT = 50;
+// Batch 34: per-character size, so a rigged Karrigos is not the same height as
+// a rigged Grint.
+//
+// buildRiggedCharacter scales every model to exactly RIG_TARGET_HEIGHT, which
+// is right for the roster (they are all roughly human) and wrong for the
+// creatures: the PROCEDURAL builders apply their size multiplier to the OUTER
+// group instead, so the two paths disagreed and a rigged Karrigos would have
+// come out the same height as a rigged Grint. These are the multipliers the
+// procedural builders already use, in one table both paths can read.
+//
+// Mesh scale is PURELY VISUAL - nothing in the simulation reads it. `width`
+// and `height` are hardcoded 40/40 for every fighter, EYE_HEIGHT (46) and
+// MUZZLE_HEIGHT (34) are single globals, and attack reach is `cfg.range` data.
+// So Karrigos is a 75-unit-tall model on a 40-unit collision circle with his
+// eyes at the same height as Grint's. That is a pre-existing design property,
+// not something this table changes; it is written down here because it is
+// surprising and someone will eventually try to "fix" it.
+const RIG_HEIGHT_MULT = {
+    Karrigos: 1.5,
+    Grint: 0.72,
+    Slagling: 0.86,
+    Hollowkin: 1.08,
+};
+function rigHeightFor(name) { return RIG_TARGET_HEIGHT * (RIG_HEIGHT_MULT[name] || 1); }
 const charModels = {};        // name -> { scene, animations, height }
 let charModelsLoaded = 0, charModelsFailed = 0;
 let modelsReady = null;       // Promise, resolved once every load has settled
@@ -7216,7 +7961,8 @@ function buildRiggedCharacter(name) {
     // rotate the model into that convention here rather than special-casing
     // rigged characters everywhere downstream.
     inner.rotation.y = Math.PI / 2;
-    inner.scale.setScalar(RIG_TARGET_HEIGHT / m.height);
+    const rigTarget = rigHeightFor(name);   // per-character; see RIG_HEIGHT_MULT
+    inner.scale.setScalar(rigTarget / m.height);
     g.add(inner);
 
     const arm = (side) => {
@@ -7235,7 +7981,7 @@ function buildRiggedCharacter(name) {
     g.userData.head = findBone(inner, 'Head');
     g.userData.torso = findBone(inner, 'Chest');
     g.userData.rigged = true;
-    g.userData.rigScale = RIG_TARGET_HEIGHT / m.height;
+    g.userData.rigScale = rigTarget / m.height;
 
     // Rather than re-declare each character's weapon and swing timings beside
     // the rig (a second copy free to drift from the real one), build the
@@ -7243,7 +7989,7 @@ function buildRiggedCharacter(name) {
     // config onto the skeleton. Same weapon, same tuned numbers, one source.
     const proto = PROC_MESH_BUILDERS[name] ? PROC_MESH_BUILDERS[name](((CHAR_MAP[name] || BOSS_MAP[name] || {}).color) || '#ffffff') : null;
     if (proto) {
-        const invScale = m.height / RIG_TARGET_HEIGHT;   // props are authored in world units
+        const invScale = m.height / rigTarget;   // props are authored in world units
         const remap = new Map();
         for (const key of ['armPos', 'armNeg']) {
             const pa = proto.userData[key], ra = g.userData[key];
@@ -7601,58 +8347,39 @@ let botDifficulty = 'normal';
 // highlight, swaps that side's fighter grid for the "Bot Fighter (random
 // at match start)" card, disables the now-irrelevant Random button, and
 // shows the difficulty selector only while at least one side is a bot.
+// Batch 34: this build has no bots. They existed only inside the
+// unlock-everything sandbox (Batch 21b), which is gone - online the opponent is
+// a person, and the co-op modes that needed an AI combatant are not offered
+// here (see MATCH_MODES / buildModeSelect). p1IsBot/p2IsBot remain because the
+// Fighter constructor, the AI branch of update() and beginMatch all read them,
+// and the archived split-screen build still uses them; here they are pinned
+// false. What is left of this function is "show the local player's roster",
+// which is why it keeps the name its callers already use.
 function refreshBotUI(side) {
-    // Batch 21b: bot mode exists ONLY in the unlock-everything sandbox.
-    // Progression is strictly two humans: coins are earned by beating a real
-    // opponent, so unlocks can't be farmed against an AI. The sandbox is where
-    // you go to practice or mess about solo, and it deliberately pays nothing
-    // (see addCoins). Force the toggle off and disable it (rather than
-    // silently ignoring clicks) so it's clear *why* it's unavailable.
-    // Batch 32: and never online - the other side is a person.
-    const botAllowed = debugUnlockAll && !netActive();
-    if (!botAllowed) { if (side === 'p1') p1IsBot = false; else p2IsBot = false; }
-    const isBot = side === 'p1' ? p1IsBot : p2IsBot;
-    const toggle = document.getElementById(side === 'p1' ? 'btn-toggle-bot-p1' : 'btn-toggle-bot');
-    toggle.textContent = isBot ? 'Bot: ON' : 'Bot: OFF';
-    toggle.classList.toggle('active', isBot);
-    // Batch 24: HIDDEN, not merely disabled. A permanently greyed-out button
-    // answers a question nobody asked, and the tooltip explaining why only helps
-    // someone who already knows bot mode exists. The Shop button beside it takes
-    // the freed space. The forced-off assignment above is still load-bearing.
-    toggle.style.display = botAllowed ? '' : 'none';
-    document.getElementById(side === 'p1' ? 'btn-random-p1' : 'btn-random-p2').disabled = isBot;
-    document.getElementById(`${side}-bot-mode`).classList.toggle('show', isBot);
-    if (isBot) {
-        // A bot side doesn't pick — clear any in-progress human selection
-        // and hide the grid/detail so only the bot card shows.
-        if (side === 'p1') { p1Stage = 'pick'; p1Preview = null; p1Choice = null; }
-        else { p2Stage = 'pick'; p2Preview = null; p2Choice = null; }
-        document.getElementById(`${side}-grid`).style.display = 'none';
-        document.getElementById(`${side}-detail`).style.display = 'none';
-    } else {
-        showGrid(side);
-    }
-    document.getElementById('btn-difficulty').style.display = (p1IsBot || p2IsBot) ? '' : 'none';
-    refreshMenuUI();
+    p1IsBot = false; p2IsBot = false;
+    showGrid(side);
+    refreshRoomUI();
 }
 
-document.getElementById('btn-toggle-bot').addEventListener('click', () => {
-    if (!debugUnlockAll) return; // Batch 21b — bot mode is sandbox-only; see refreshBotUI
-    p2IsBot = !p2IsBot;
-    refreshBotUI('p2');
-});
-document.getElementById('btn-toggle-bot-p1').addEventListener('click', () => {
-    if (!debugUnlockAll) return;
-    p1IsBot = !p1IsBot;
-    refreshBotUI('p1');
-});
+// Only the local player picks, so only the local player's grid and detail
+// panel are ever visible. Both remain in the DOM: buildGrid() populates
+// `p1-grid` and `p2-grid` by id at load, the keyboard dispatcher addresses them
+// by id, and the detail panel is per-side - making those ids dynamic to save
+// two hidden divs would have touched far more code than it saved, and a host
+// and a joiner now run byte-identical logic.
+function showLocalPickerOnly() {
+    for (const side of SIDES) {
+        const wrap = document.getElementById(`picker-${side}`);
+        // The WRAPPER, not the grid and detail inside it: showDetail() writes
+        // display straight onto those two, so hiding them individually could be
+        // silently undone by any call that touched the remote side.
+        if (wrap) wrap.style.display = isLocalSide(side) ? 'flex' : 'none';
+    }
+}
 
-document.getElementById('btn-difficulty').addEventListener('click', () => {
-    const i = DIFFICULTY_ORDER.indexOf(botDifficulty);
-    botDifficulty = DIFFICULTY_ORDER[(i + 1) % DIFFICULTY_ORDER.length];
-    document.getElementById('btn-difficulty').textContent = `Difficulty: ‹ ${botDifficulty[0].toUpperCase()}${botDifficulty.slice(1)} ›`;
-});
-document.getElementById('btn-difficulty').style.display = 'none'; // hidden until a bot is enabled
+// Batch 34: the Difficulty cycler is gone with the bots. `botDifficulty` itself
+// stays - it is still sent in the START packet (harmless, and keeps the wire
+// format stable) and the archived split-screen build still uses it.
 // Batch 24: reflect bot state into the panels on FIRST paint too. This used to
 // run only from setDebugUnlockAll/returnToMenu, so a fresh load showed whatever
 // the static HTML said — survivable while the toggle was just greyed out there,
@@ -7818,51 +8545,134 @@ function showDetail(side, name, confirmed) {
     detail.style.display = 'block';
 }
 
-function headingHTML(num, stage) {
-    const side = num === 1 ? 'p1' : 'p2', b = BINDINGS;
-    const isBotSide = num === 1 ? p1IsBot : p2IsBot;
-    const botTag = isBotSide ? ' <span style="color:#f59e0b">[BOT]</span>' : '';
-    const padTag = padSlots[side] != null ? ` <span class="pad-badge" title="Gamepad connected"><svg viewBox="0 0 24 16" width="1.1em" height="0.73em" fill="currentColor" aria-hidden="true" style="vertical-align:middle"><rect x="1" y="3" width="22" height="10" rx="5"/><circle cx="7" cy="8" r="1.5" fill="#0d0f18"/><circle cx="17" cy="8" r="1.5" fill="#0d0f18"/></svg></span>` : '';
-    if (stage === 'pick') return `Player ${num}${botTag}${padTag} <span class="key-hint">(keys on cards)</span>`;
-    if (stage === 'preview') {
-        // Labels come from the live bindings, so a rebound confirm/back key
-        // shows the real key instead of a stale "F"/"G" literal.
-        const hint = `${keyLabel(b.attack)} confirm / ${keyLabel(b.special)} back`;
-        return `Player ${num}${botTag}${padTag} <span class="key-hint">(${hint})</span>`;
-    }
-    return `Player ${num}${botTag}${padTag} <span class="key-hint" style="color:#4ade80">READY</span>`;
+// The confirm/back key hints, read live from the bindings so a rebind shows the
+// real key rather than a stale literal. Batch 34: one player, so this no longer
+// takes a side.
+function pickKeyHint() {
+    const b = BINDINGS;
+    return `${keyLabel(b.attack)} confirm / ${keyLabel(b.special)} back`;
 }
 
-function refreshMenuUI() {
-    document.getElementById('p1-heading').innerHTML = headingHTML(1, p1Stage);
-    document.getElementById('p2-heading').innerHTML = headingHTML(2, p2Stage);
-    const status = document.getElementById('vs-status');
-    // Batch 16: in co-op the two players are TEAMMATES, so the versus framing
-    // ("VS", "Mirror match!") reads as nonsense — swap the badge for TEAM and
-    // suppress the mirror note, which only means anything in a matchup.
-    const coop = isCoopMode();
-    const vsLabel = document.querySelector('.vs-label');
-    if (vsLabel) vsLabel.textContent = coop ? 'TEAM' : 'VS';
-    // Batch 9: duplicate picks aren't blocked (mirror matches are a
-    // supported, intentional matchup — see Batch 8's mirror-readability
-    // work), just flagged so it's clearly a choice, not confusion.
-    const mirrorMatch = !coop && p1Preview && p2Preview && p1Preview === p2Preview &&
-        (p1Stage === 'preview' || p1Stage === 'confirmed') && (p2Stage === 'preview' || p2Stage === 'confirmed');
-    const p1Ready = sideReady('p1'), p2Ready = sideReady('p2');
-    const bothReady = p1Ready && p2Ready;
-    if (bothReady) status.textContent = coop ? 'Ready — good luck!' : 'Ready to fight!';
-    else if (p1Ready) status.textContent = 'Waiting for P2...';
-    else if (p2Ready) status.textContent = 'Waiting for P1...';
-    else status.textContent = coop ? 'Choose your team' : 'Choose your fighters';
-    if (mirrorMatch) status.textContent += ' (Mirror match!)';
-    status.classList.toggle('ready', bothReady); // pulsing cyan payoff the instant both sides lock in
-    // Explicit Start button appears once both sides are ready — it's the
-    // start trigger for cases where the last action wasn't a human confirm
-    // (bot-vs-bot, or toggling a side to bot after the other already
-    // confirmed). A human confirming as the final action still auto-starts.
-    document.getElementById('btn-start-match').style.display = bothReady ? '' : 'none';
+// A character's accent colour, as a portrait swatch. A real portrait would mean
+// rendering ten headshots; the accent colour is already the fighter's identity
+// everywhere else in the UI (card border, detail panel, HUD), so reusing it
+// keeps the slot readable without inventing new art.
+function paintSlotPortrait(el, name) {
+    if (!el) return;
+    const c = name && CHAR_MAP[name];
+    el.style.background = c ? c.color : '#0d1017';
+    el.style.borderColor = c ? c.color : '#2e3a59';
+    el.style.boxShadow = c ? `0 0 12px ${c.color}66` : 'none';
+}
+
+// Which numbered player the local client drives. Online this is decided by the
+// lobby (host = 1, joiner = 2) and is worth stating in the UI, because it
+// decides your spawn and which HUD bar is yours.
+function localPlayerNumber() { return LOCAL_SIDE === 'p1' ? 1 : 2; }
+
+function refreshRoomUI() {
+    const connected = netActive();
+    const host = netIsHost();
+    const mySide = LOCAL_SIDE, foeSide = otherSide(LOCAL_SIDE);
+    const myStage = mySide === 'p1' ? p1Stage : p2Stage;
+    const myPick = mySide === 'p1' ? (p1Choice || p1Preview) : (p2Choice || p2Preview);
+    const foePick = foeSide === 'p1' ? p1Choice : p2Choice;
+    const iAmReady = sideReady(mySide), foeReady = sideReady(foeSide);
+
+    // ---- your slot -------------------------------------------------------
+    const youRole = document.getElementById('slot-you-role');
+    if (youRole) youRole.textContent = `You \u00b7 Player ${localPlayerNumber()}${host ? ' \u00b7 Host' : ''}`;
+    const youName = document.getElementById('slot-you-name');
+    if (youName) youName.textContent = myPick || 'No fighter yet';
+    const youState = document.getElementById('slot-you-state');
+    if (youState) {
+        youState.textContent = iAmReady ? 'Locked in'
+            : myStage === 'preview' ? pickKeyHint()
+            : 'Pick a fighter below';
+        youState.style.color = iAmReady ? '#4ade80' : '#94a3b8';
+    }
+    paintSlotPortrait(document.getElementById('slot-you-portrait'), myPick);
+    const youSlot = document.getElementById('slot-you');
+    if (youSlot) youSlot.classList.toggle('locked', iAmReady);
+
+    // ---- their slot ------------------------------------------------------
+    // The opponent is observed, never operated: everything here comes from the
+    // connection state and their PICK message.
+    const foeName = document.getElementById('slot-foe-name');
+    const foeState = document.getElementById('slot-foe-state');
+    const foeSlot = document.getElementById('slot-foe');
+    const foeRole = document.getElementById('slot-foe-role');
+    if (foeRole) foeRole.textContent = `Opponent \u00b7 Player ${localPlayerNumber() === 1 ? 2 : 1}${host ? '' : ' \u00b7 Host'}`;
+    if (foeName) foeName.textContent = !connected ? '\u2014' : (foePick || 'Choosing...');
+    if (foeState) {
+        foeState.textContent = !connected ? 'Nobody has joined yet'
+            : foeReady ? 'Locked in'
+            : 'Choosing their fighter';
+        foeState.style.color = foeReady ? '#4ade80' : '#94a3b8';
+    }
+    paintSlotPortrait(document.getElementById('slot-foe-portrait'), connected ? foePick : null);
+    if (foeSlot) {
+        foeSlot.classList.toggle('empty', !connected);
+        foeSlot.classList.toggle('locked', connected && foeReady);
+    }
+
+    // ---- picker heading --------------------------------------------------
+    const picker = document.getElementById('picker-heading');
+    if (picker) {
+        picker.innerHTML = iAmReady
+            ? `Your fighter <span class="key-hint" style="color:#4ade80">LOCKED IN</span>`
+            : myStage === 'preview'
+                ? `Choose your fighter <span class="key-hint">(${pickKeyHint()})</span>`
+                : `Choose your fighter <span class="key-hint">(keys on cards)</span>`;
+    }
+
+    // ---- host-only match setup ------------------------------------------
+    const hostControls = document.getElementById('host-controls');
+    const guestSetup = document.getElementById('guest-setup');
+    if (hostControls) hostControls.style.display = host ? '' : 'none';
+    if (guestSetup) guestSetup.style.display = host ? 'none' : '';
+    const modeBtn = document.getElementById('btn-open-modeselect');
+    if (modeBtn) modeBtn.textContent = `Mode: ${modeInfo().name}`;
+    const mapBtn = document.getElementById('btn-open-mapselect');
+    if (mapBtn) mapBtn.textContent = `Arena: ${selectedMap ? selectedMap.name : 'Random'}`;
+    const gm = document.getElementById('guest-mode');
+    if (gm) gm.textContent = modeInfo().name;
+    const ga = document.getElementById('guest-arena');
+    if (ga) ga.textContent = selectedMap ? selectedMap.name : 'Host\u2019s choice';
+
+    // ---- the one line that says what is actually blocking the match ------
+    const note = document.getElementById('setup-note');
+    const startBtn = document.getElementById('btn-start-match');
+    let text, canStart = false;
+    if (!connected) {
+        text = 'Not connected. Leave the room and host or join a game.';
+    } else if (!iAmReady && !foeReady) {
+        text = 'Both of you still need to pick a fighter.';
+    } else if (!iAmReady) {
+        text = 'Your opponent is ready. Pick your fighter.';
+    } else if (!foeReady) {
+        text = 'Waiting for your opponent to lock in\u2026';
+    } else if (host) {
+        text = 'Both ready. Choose an arena and start the match.';
+        canStart = true;
+    } else {
+        text = 'Both ready. Waiting for the host to start\u2026';
+    }
+    if (note) {
+        note.textContent = text;
+        note.classList.toggle('ready', connected && iAmReady && foeReady);
+    }
+    // Only the host can start, for the same reason it owns the arena: one
+    // decision-maker, so the two clients cannot race into different matches.
+    if (startBtn) startBtn.style.display = canStart ? '' : 'none';
+
     refreshCoinDisplays(); // coins change on match end / purchases; cheap to keep in sync here
 }
+
+// Kept as an alias: plenty of call sites (purchases, rebinds, mode changes,
+// net events) already say "the menu changed, repaint it" and renaming them all
+// would be churn for no gain.
+function refreshMenuUI() { refreshRoomUI(); }
 refreshCoinDisplays(); // initial paint at load, before any menu interaction
 
 // Rolls random fighters for any bot side (their pick is hidden until now),
@@ -7932,20 +8742,15 @@ function openMapSelect() {
 }
 function chooseMap(map) {
     closeAllModals();
-    // The host resolves "random" to a CONCRETE map before broadcasting, so both
-    // clients load the same arena - sending the intent would have each side
-    // roll its own.
-    if (netActive() && netIsHost()) {
-        const chosen = map || MAPS[Math.floor(Math.random() * MAPS.length)];
-        netSend({
-            t: 'START',
-            p1: p1Choice, p2: p2Choice,
-            map: chosen.name, mode: matchMode, difficulty: botDifficulty,
-        });
-        startMatch(chosen);
+    // Batch 34: online, choosing an arena is a SETUP decision recorded in the
+    // room, not a start trigger. The host reviews it (and the guest sees it)
+    // before anyone commits. startOnline() does the committing.
+    if (netActive()) {
+        if (netIsHost()) selectedMap = map || null;   // null = Random
+        refreshRoomUI();
         return;
     }
-    startMatch(map || undefined); // undefined = random; startRound() hides the overlay via hideOverlay()
+    startMatch(map || undefined); // offline (debug only); startRound() hides the overlay
 }
 document.getElementById('btn-map-random').addEventListener('click', () => chooseMap(null));
 document.getElementById('btn-mapselect-back').addEventListener('click', () => closeModal());
@@ -8068,11 +8873,17 @@ function buildShop() {
 // 'classic' is already a valid choice, so nothing needs to be blocked until a
 // mode is explicitly chosen — same flag-don't-block stance as the existing
 // mirror-match handling. ---
+// Batch 34: the modes this build can actually run. The co-op modes are
+// excluded because their enemies are AI-driven and AI is NOT part of the
+// netcode - each client would simulate its own boss from its own frame timing
+// and the two would diverge on the first hit. They remain playable in the
+// archived split-screen build, which is where the Settings link points.
+function onlineModes() { return MATCH_MODES.filter(m => !m.coop); }
 function buildModeSelect() {
     const list = document.getElementById('modeselect-list');
     if (!list) return;
     list.innerHTML = '';
-    MATCH_MODES.forEach(m => {
+    onlineModes().forEach(m => {
         const btn = document.createElement('button');
         btn.className = 'mode-card' + (m.id === matchMode ? ' active' : '');
         btn.dataset.mode = m.id;
@@ -8092,7 +8903,11 @@ function refreshModeUI() {
     if (b) b.textContent = `Mode: ${modeInfo().name}`;
     refreshMenuUI();
 }
-document.getElementById('btn-open-modeselect').addEventListener('click', () => { buildModeSelect(); openModal('modeselect'); });
+document.getElementById('btn-open-modeselect').addEventListener('click', () => {
+    if (netActive() && !netIsHost()) return;   // the host owns the mode
+    buildModeSelect();
+    openModal('modeselect');
+});
 document.getElementById('btn-modeselect-close').addEventListener('click', () => closeModal());
 refreshModeUI();
 
@@ -8161,21 +8976,8 @@ const NET_SEND_HZ = 30;                  // state broadcasts per second
 const NET_SEND_MS = 1000 / NET_SEND_HZ;
 const NET_TIMEOUT_MS = 6000;             // silence after which we call it dropped
 
-const net = {
-    peer: null,
-    conn: null,
-    role: null,            // 'host' | 'joiner'
-    status: 'offline',     // offline | starting | waiting | connecting | connected | error | dropped
-    detail: '',
-    lastSendAt: 0,
-    lastRecvAt: 0,
-    timeoutMs: NET_TIMEOUT_MS,   // silence after which we call it dropped
-    remoteState: null,           // last STATE received; netApplyRemote eases toward it
-    remoteReady: false,    // joiner has acknowledged SETUP
-    pendingSetup: null,    // joiner: setup received before it could be applied
-};
-function netActive() { return !!(net.conn && net.conn.open); }
-function netIsHost() { return net.role === 'host'; }
+// `net`, netActive() and netIsHost() are declared up with LOCAL_SIDE - see the
+// note there. The rest of the netcode module follows.
 
 function netSetStatus(status, detail) {
     net.status = status;
@@ -8211,8 +9013,8 @@ function netBindConnection(conn) {
         netSetStatus('connected', netIsHost() ? 'You are Player 1' : 'You are Player 2');
         // Both sides announce themselves so a mismatched build is obvious
         // rather than manifesting as strange behaviour later.
-        netSend({ t: 'HELLO', build: 'batch32', side: LOCAL_SIDE });
-        refreshMenuUI();
+        netSend({ t: 'HELLO', build: 'batch34', side: LOCAL_SIDE });
+        enterRoom();
     });
     conn.on('data', netOnMessage);
     conn.on('close', () => {
@@ -8264,11 +9066,41 @@ function onNetLost() {
     if (gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH') {
         exitPointerLock();
         if (gameState !== 'PAUSED') togglePause();
+        refreshMenuUI();
+        return;
+    }
+    // Batch 34: on a menu there is nothing to preserve, and a room with no
+    // opponent is a dead end - the roster is there but nothing can start it.
+    // Go back to the front page and say why, with the lobby open so the
+    // obvious next action (host or join again) is one click away.
+    if (currentScreen === 'select') {
+        goHome();
+        netSetStatus('error', 'Your opponent disconnected.');
+        openModal('lobby');
+        return;
     }
     refreshMenuUI();
 }
 
 // --- Message handling -----------------------------------------------------
+// Called the moment the data channel opens, on BOTH sides. Entering the room is
+// the whole point: the previous build left you on the front page with a
+// "connected" line inside a modal, and the only way forward was to close it and
+// work out for yourself that the local two-player select screen underneath was
+// now supposed to be an online room.
+function enterRoom() {
+    closeAllModals();
+    p1Stage = 'pick'; p2Stage = 'pick';
+    p1Preview = null; p2Preview = null; p1Choice = null; p2Choice = null;
+    selectedMap = null;
+    p1IsBot = false; p2IsBot = false;
+    showScreen('select');
+    showLocalPickerOnly();
+    showGrid(LOCAL_SIDE);
+    refreshGridLocks();   // the roster shown is the local ACCOUNT's (see prog())
+    refreshRoomUI();
+}
+
 function netOnMessage(msg) {
     if (!msg || typeof msg !== 'object') return;
     net.lastRecvAt = performance.now();
@@ -8462,10 +9294,27 @@ function refreshLobbyUI() {
     set('btn-net-disconnect', false, connected || busy || net.status === 'error');
     const input = document.getElementById('lobby-join-input');
     if (input) input.disabled = connected || busy;
-    const online = document.getElementById('btn-open-lobby');
-    if (online) online.textContent = connected
-        ? (netIsHost() ? 'Online: Host (P1)' : 'Online: Joined (P2)')
-        : 'Play Online';
+    // ---- the room's status bar: same state, different surface -----------
+    const pill = document.getElementById('room-status-pill');
+    if (pill) {
+        pill.textContent = connected ? (netIsHost() ? 'Hosting' : 'Connected')
+            : net.status === 'waiting' ? 'Waiting for a player'
+            : net.status === 'connecting' ? 'Connecting'
+            : net.status === 'starting' ? 'Starting'
+            : net.status === 'error' ? 'Connection lost'
+            : 'Not connected';
+        pill.className = 'status-pill ' + (LOBBY_STATUS_CLASS[net.status] || '');
+    }
+    // The room code belongs to the HOST - it is the thing they read out loud. A
+    // joiner already typed it, so showing it back to them is noise.
+    const chip = document.getElementById('room-code-chip');
+    const codeBox = document.getElementById('room-code-text');
+    const myCode = (net.peer && net.peer.id) || '';
+    const showCode = !!myCode && netIsHost();
+    if (chip) chip.style.display = showCode ? '' : 'none';
+    if (codeBox && showCode && codeBox.value !== myCode) codeBox.value = myCode;
+
+    if (currentScreen === 'select') refreshRoomUI();
 }
 
 // Batch 33: a way back to the pre-online build. It is a separate HTML file
@@ -8480,7 +9329,55 @@ document.getElementById('btn-legacy-build').addEventListener('click', () => {
     location.href = 'legacy/local-splitscreen.html' + location.search;
 });
 
-document.getElementById('btn-open-lobby').addEventListener('click', () => { refreshLobbyUI(); openModal('lobby'); });
+document.getElementById('btn-home-play').addEventListener('click', () => { refreshLobbyUI(); openModal('lobby'); });
+document.getElementById('btn-home-armory').addEventListener('click', () => openShop(ACCOUNT));
+
+// ---- the room's own chrome ------------------------------------------------
+// Leaving the room is a real disconnect, not a screen change: the opponent is
+// a person waiting on a link, so tell them before dropping it.
+document.getElementById('btn-room-leave').addEventListener('click', () => {
+    if (netActive()) { netSend({ t: 'BYE' }); netTeardown(); }
+    exitPointerLock();
+    goHome();
+});
+document.getElementById('btn-room-copy').addEventListener('click', () => {
+    const box = document.getElementById('room-code-text');
+    if (!box || !box.value) return;
+    box.select();
+    const btn = document.getElementById('btn-room-copy');
+    const done = () => { if (btn) { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Copy'; }, 1400); } };
+    // navigator.clipboard is unavailable on an insecure origin, which is
+    // exactly how this gets served locally - hence the execCommand fallback.
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(box.value).then(done, () => { try { document.execCommand('copy'); done(); } catch (e) {} });
+    } else {
+        try { document.execCommand('copy'); done(); } catch (e) {}
+    }
+});
+document.getElementById('btn-open-mapselect').addEventListener('click', () => {
+    if (!netIsHost()) return;   // the host owns the arena
+    openMapSelect();
+});
+
+// Returning to the front page. This is a FULL teardown, not just a screen
+// change: leaving a room while a match was live otherwise left the simulation
+// running and the mode props (a co-op boss mesh, Zone Control's ring, a
+// half-finished crush with both cameras in third person) sitting in the scene
+// behind the home screen. Batches 18 and 27 fixed exactly this for the other
+// two exits; a third exit needs the same treatment.
+function goHome() {
+    pausedFromState = null;
+    p1Stage = 'pick'; p2Stage = 'pick';
+    p1Preview = null; p2Preview = null; p1Choice = null; p2Choice = null;
+    selectedMap = null;
+    disposeBoss(); disposeZoneMesh();
+    resetCrush();
+    closeAllModals();
+    showScreen('home');
+    gameState = 'MENU';
+    stopAmbientPad();
+    refreshCoinDisplays();
+}
 document.getElementById('btn-lobby-close').addEventListener('click', () => closeModal());
 document.getElementById('btn-net-host').addEventListener('click', () => netHost());
 document.getElementById('btn-net-join').addEventListener('click', () => {
@@ -8510,10 +9407,22 @@ function netOnPick(msg) {
     if (!msg.side || !msg.name) return;
     if (msg.side === 'p1') { p1Choice = msg.name; p1Preview = msg.name; p1Stage = 'confirmed'; }
     else { p2Choice = msg.name; p2Preview = msg.name; p2Stage = 'confirmed'; }
-    refreshMenuUI();
-    // The host drives the transition once both sides are locked in, so there
-    // is exactly one decision-maker and no race over who opens map select.
-    if (netIsHost() && sideReady('p1') && sideReady('p2')) openMapSelect();
+    refreshMenuUI();   // their slot now shows a fighter; the note updates itself
+}
+
+// The host's single start action: resolve Random to a CONCRETE map (sending
+// the intent would have each side roll its own), tell the guest, and go.
+function startOnline() {
+    if (!netIsHost()) return;
+    if (!(sideReady('p1') && sideReady('p2'))) return;
+    const chosen = selectedMap || MAPS[Math.floor(Math.random() * MAPS.length)];
+    netSend({
+        t: 'START',
+        p1: p1Choice, p2: p2Choice,
+        map: chosen.name, mode: matchMode, difficulty: botDifficulty,
+    });
+    closeAllModals();
+    startMatch(chosen);
 }
 
 function beginMatch() {
@@ -8526,14 +9435,19 @@ function beginMatch() {
     // Batch 32: online, only the HOST chooses the arena and starts. The joiner
     // waits for START. One decision-maker means the two clients cannot pick
     // different maps or race each other into startMatch.
-    if (netActive() && !netIsHost()) {
-        netSetStatus('connected', 'Waiting for the host to choose an arena...');
+    if (netActive()) {
+        // Batch 34: nothing happens automatically when both sides lock in any
+        // more. The host chooses the arena in the room and presses Start; the
+        // guest waits. refreshRoomUI() says which of those is true.
+        refreshRoomUI();
         return;
     }
-    openMapSelect(); // pick an arena, then the drop-in intro starts the match
+    openMapSelect(); // offline (debug only): pick an arena, then the intro starts
 }
 document.getElementById('btn-start-match').addEventListener('click', () => {
-    if (sideReady('p1') && sideReady('p2')) beginMatch();
+    if (!(sideReady('p1') && sideReady('p2'))) return;
+    if (netActive()) startOnline();
+    else beginMatch();
 });
 
 // Batch 9: "random" option per side. Picking is otherwise deliberate
@@ -8546,8 +9460,11 @@ function randomPick(side) {
     const pool = unlockedCharNames(side); // never roll something THIS side can't play
     previewPick(side, pool[Math.floor(Math.random() * pool.length)]);
 }
-document.getElementById('btn-random-p1').addEventListener('click', () => randomPick('p1'));
-document.getElementById('btn-random-p2').addEventListener('click', () => randomPick('p2'));
+// Batch 34: one Random and one Armory, both acting on the local player. There
+// used to be a pair of each - one per side - which online meant half of them
+// operated a roster you do not control.
+document.getElementById('btn-my-random').addEventListener('click', () => randomPick(LOCAL_SIDE));
+document.getElementById('btn-my-shop').addEventListener('click', () => openShop(LOCAL_SIDE));
 
 function previewPick(side, name) {
     // Batch 32: online, you pick for yourself only. The opponent's choice
@@ -8580,10 +9497,12 @@ function confirmPick(side) {
     }
     netAnnouncePick(side, side === 'p1' ? p1Choice : p2Choice);
     refreshMenuUI();
-    // A human confirming as the final action that makes both sides ready
-    // auto-starts (the classic pick→pick→fight feel). Other cases start
-    // via the explicit Start Match button — see refreshMenuUI().
-    if (sideReady('p1') && sideReady('p2')) beginMatch();
+    // Batch 34: confirming no longer starts anything. It used to auto-start
+    // when your confirm was the action that made both sides ready - which
+    // online means the match begins from whichever client confirmed second,
+    // bypassing the host's arena choice entirely. The host's Start button is
+    // now the only way in.
+    if (!netActive() && sideReady('p1') && sideReady('p2')) beginMatch();
 }
 
 function backToPick(side) {
@@ -8599,7 +9518,8 @@ function backToPick(side) {
 document.getElementById('btn-play-again').addEventListener('click', () => {
     p1Stage = 'pick'; p2Stage = 'pick'; p1Preview = null; p2Preview = null;
     p1Choice = null; p2Choice = null;
-    refreshBotUI('p1'); refreshBotUI('p2'); // restores grid-vs-bot-card display + difficulty visibility for each side
+    selectedMap = null;
+    refreshBotUI(LOCAL_SIDE);   // repaints the local roster; bots no longer exist
     // Batch 18: drop mode props on the way out, same as Return to Menu already
     // did. Without this, a co-op boss's mesh (or Zone Control's ring) stayed in
     // the scene behind the select screen and was still there in the next match.
@@ -8607,18 +9527,51 @@ document.getElementById('btn-play-again').addEventListener('click', () => {
     resetCrush(); // Batch 27: same reasoning - a crush left running leaves two
                   // slabs in the scene and both cameras in third person.
     closeAllModals();
-    showScreen('select');
     gameState = "MENU";
     stopAmbientPad();
+    // Batch 34: back to the room if the link is still up - re-picking a fighter
+    // with your opponent still there is the common case. If they are gone, the
+    // room cannot start anything, so go home instead.
+    if (netActive()) {
+        showScreen('select');
+        showLocalPickerOnly();
+        showGrid(LOCAL_SIDE);
+        refreshRoomUI();
+    } else {
+        goHome();
+    }
 });
 
-document.getElementById('btn-rematch').addEventListener('click', () => {
-    startMatch(currentMap); // same fighters, same map — no surprise reroll (startMatch hides the overlay)
-});
+// A rematch keeps both fighters and re-broadcasts a START, exactly like the
+// first match. Restarting locally (which is what these did) left the guest on
+// its game-over screen while the host dropped into an arena alone.
+function hostRematch(map) {
+    if (netActive()) {
+        if (!netIsHost()) return;
+        const chosen = map || MAPS[Math.floor(Math.random() * MAPS.length)];
+        selectedMap = chosen;
+        netSend({
+            t: 'START',
+            p1: p1Choice, p2: p2Choice,
+            map: chosen.name, mode: matchMode, difficulty: botDifficulty,
+        });
+        closeAllModals();
+        startMatch(chosen);
+        return;
+    }
+    startMatch(map || undefined);
+}
+document.getElementById('btn-rematch').addEventListener('click', () => hostRematch(currentMap));
+document.getElementById('btn-reroll-map').addEventListener('click', () => hostRematch(null));
 
-document.getElementById('btn-reroll-map').addEventListener('click', () => {
-    startMatch(); // same fighters, explicit new random map
-});
+// Only the host is offered a rematch; the guest is told what it is waiting for.
+function refreshGameOverUI() {
+    const canRematch = !netActive() || netIsHost();
+    const actions = document.getElementById('gameover-actions');
+    const wait = document.getElementById('gameover-wait');
+    if (actions) actions.style.display = canRematch ? '' : 'none';
+    if (wait) wait.style.display = canRematch ? 'none' : '';
+}
 
 // --- Pause (Batch 5): Escape toggles a full stop of the update loop
 // (still renders the frozen frame) with Resume / Return to Menu options.
@@ -8661,12 +9614,22 @@ document.getElementById('btn-quit-to-menu').addEventListener('click', () => {
     closeAllModals();
     p1Stage = 'pick'; p2Stage = 'pick'; p1Preview = null; p2Preview = null;
     p1Choice = null; p2Choice = null;
-    refreshBotUI('p1'); refreshBotUI('p2');
     disposeBoss(); disposeZoneMesh(); // Batch 16/19: don't leave mode props in the scene
     resetCrush();                     // Batch 27: and don't leave the crush running
-    showScreen('select');
     gameState = 'MENU';
     stopAmbientPad();
+    exitPointerLock();
+    // Batch 34: back to the ROOM if the opponent is still connected (re-picking
+    // together is the common case), otherwise the front page - a room with no
+    // opponent shows a roster that nothing can start.
+    if (netActive()) {
+        showScreen('select');
+        showLocalPickerOnly();
+        showGrid(LOCAL_SIDE);
+        refreshRoomUI();
+    } else {
+        goHome();
+    }
 });
 
 let loser = null, winner = null, deathPhase = '', deathTimer = 0, isDraw = false, deathCandidates = [];
@@ -9437,6 +10400,7 @@ function endMatch() {
         coinLine;
 
     showScreen('gameover');
+    refreshGameOverUI();   // the guest gets no rematch buttons
 }
 
 // Change 2b: the per-state work is a table of step functions keyed by
@@ -9508,6 +10472,7 @@ function endCoopMatch(won, detail) {
         `<div><b>${player2.name} (P2)</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
         coinLine;
     showScreen('gameover');
+    refreshGameOverUI();   // the guest gets no rematch buttons
 }
 
 // --- Batch 16/23: spawning/retiring co-op enemies. ---
@@ -10040,16 +11005,34 @@ if (DEBUG) {
             };
             net.lastRecvAt = performance.now();
             netSetStatus('connected', role === 'host' ? 'You are Player 1' : 'You are Player 2');
-            refreshMenuUI();
+            enterRoom();   // same entry point a real connection uses
         },
         netDrainOutbox() { const o = window.__netOutbox || []; window.__netOutbox = []; return o; },
         netFeed(msg) { net.lastRecvAt = performance.now(); netOnMessage(msg); },
         NET_SEND_HZ, NET_LERP, NET_SNAP_DIST,
         chooseMap, previewPick, confirmPick, beginMatch,
+        // Batch 34 room UI, for tests and for poking at states by hand.
+        startOnline, hostRematch, enterRoom, goHome, refreshRoomUI, showLocalPickerOnly,
+        buildModeSelect, onNetLost, refreshGameOverUI, refreshLobbyUI,
+        onlineModes: () => onlineModes().map(m => m.id),
+        get currentScreen() { return currentScreen; },
+        get selectedMap() { return selectedMap && selectedMap.name; },
+        set selectedMap(v) { selectedMap = MAPS.find(m => m.name === v) || null; },
+        ACCOUNT, accountOf, myProg,
         get p1Choice() { return p1Choice; },
         get p2Choice() { return p2Choice; },
         get p1Preview() { return p1Preview; },
         get p2Preview() { return p2Preview; },
+        // Batch 34: the scene graph itself, for art verification - asserting
+        // that a photographic albedo actually replaced the procedural canvas
+        // needs to walk materials, and there is no other way in.
+        get scene() { return scene; },
+        get mapGroup() { return mapGroup; },
+        get currentMap() { return currentMap; },
+        PHOTO_SETS, loadPhotoSet,
+        MAP_THEMES, applyLighting, fitKeyShadow,
+        get keyLight() { return keyLight; },
+        get fillLight() { return fillLight; },
         rendererInfo() { const i = renderer.info; return { programs: i.programs ? i.programs.length : 0, calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures }; },
         get muzzleFlashPool() { return muzzleFlashes.length; },
         get vmP1() { return vmP1; },
@@ -10063,7 +11046,7 @@ if (DEBUG) {
         // ~3fps the headless software renderer manages.
         forceCrush(at) { shrinkTargetFrac = 1; shrinkFrac = 1; arenaBoundsFromFrac(1); crushing = true; if (at !== undefined) crushTime = at; },
         // Batch 25 art pipeline
-        CHAR_MODEL_URLS, RIG_TARGET_HEIGHT, charModels,
+        CHAR_MODEL_URLS, RIG_TARGET_HEIGHT, RIG_HEIGHT_MULT, rigHeightFor, charModels,
         buildRiggedCharacter, findBone, preloadCharModels,
         get modelsReady() { return modelsReady; },
         get charModelsLoaded() { return charModelsLoaded; },

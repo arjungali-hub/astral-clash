@@ -681,6 +681,226 @@ rather than leaving a half-open link behind.
 
 ---
 
+
+## Batch 34 - The online front page, the room, and photographic arenas
+
+Two things at once, because they were reported together: the UI still described a
+game that no longer existed, and the arenas still looked hand-made.
+
+### The UI was lying about what this game is
+
+Reported as *"the ui looks exactly the same as before so it is very confusing. It
+still has 2 players showing all of the time, and you have to select both players
+to start a match, but then it disconnects and you can't play."*
+
+That is exactly right, and it was not cosmetic. Batches 31-32 turned the game
+online but left the **local two-player select screen** in place with online
+bolted on as one button. So the front page led with the least-used path, the
+select screen showed two symmetrical rosters when you can only ever pick one
+fighter, `previewPick` silently refused every click on the other one, and
+"Waiting for P2..." read as *a local second player is missing* rather than *a
+person on another machine hasn't chosen yet*. The instruction was to pretend the
+old version doesn't exist, and that is what this is.
+
+**Home** is now a front page for the one thing this build does: Play Online, plus
+Armory, How to Play and Settings. No mode button (the host picks the mode), no
+difficulty, no sandbox.
+
+**The room** replaces the select screen and is modelled on how online games
+actually do this:
+- a **connection bar** with the status pill and, for the host only, the room code
+  and a Copy button - a joiner already typed it, so showing it back is noise;
+- **two player slots**, yours accented and theirs observed, each showing the
+  fighter, a portrait swatch in that fighter's accent colour, and whether they
+  are locked in;
+- **one roster - yours.** Both grids stay in the DOM (`buildGrid` and the
+  keyboard dispatcher address them by id) but only the local side's wrapper is
+  ever displayed, so a host and a joiner run byte-identical code;
+- a **host-only Match Setup** column with the mode and arena, which the guest
+  sees as a read-only summary.
+
+**Connecting now takes you into the room.** Previously it left you on the front
+page with a "connected" line inside a modal, and the only way forward was to
+close it and work out for yourself that the screen underneath had changed
+meaning.
+
+### Four real bugs the redesign exposed
+
+- **Your coins depended on whether you clicked Host or Join.** `progression` is
+  keyed `p1`/`p2` - a split-screen artifact - and `LOCAL_SIDE` is `p1` when
+  hosting and `p2` when joining, so hosting spent one save and joining spent
+  another. Online there is one person at one keyboard and therefore one account:
+  `prog()` now maps the local side to a single `ACCOUNT` slot, which fixes every
+  downstream accessor at once (unlocks, upgrades, coins, `upgradeMult`).
+- **Confirming your fighter started the match.** It auto-started whenever your
+  confirm was the action that made both sides ready - which online means the
+  match begins from whichever client confirmed *second*, bypassing the host's
+  arena choice. The host's Start button is the only way in now.
+- **The Rematch buttons restarted locally.** `startMatch()` with no broadcast,
+  so the host dropped into a fresh arena while the guest sat on its game-over
+  screen. Rematch now re-broadcasts a START like the first match, and is
+  host-only; the guest is told what it is waiting for.
+- **`goHome()` was not a teardown.** Leaving a room mid-match left the
+  simulation running and the mode props (a co-op boss mesh, Zone Control's ring,
+  a half-finished crush with both cameras in third person) in the scene behind
+  the home screen. Batches 18 and 27 fixed exactly this for the other two
+  exits; a third exit needed the same treatment.
+
+### What was deliberately removed
+
+- **The sandbox switch.** It was the only door to bot mode, and it was never a
+  private setting: per-side progression feeds `upgradeMult()` into fighter
+  construction, so one player flipping it brings a measurably stronger fighter
+  into a real match. Still reachable under `?debug=1`.
+- **Bots, and the difficulty cycler with them.** Online the opponent is a person.
+  `p1IsBot`/`p2IsBot` survive because the Fighter constructor, the AI branch of
+  `update()` and `beginMatch` all read them, and the archived build uses them.
+- **The two co-op modes, from the mode list.** Their enemies are AI-driven and
+  the AI is not networked - each client would simulate its own boss from its own
+  frame timing and they would diverge on the first hit. Shipping a mode that
+  cannot work is worse than not offering it; they stay in the archived
+  split-screen build, which Settings links to. The mode picker now offers the
+  three versus modes.
+- **17 dead CSS rules** for markup that no longer exists. Not tidying: a
+  leftover `.menu-section button { width: 100% }` has broken two different
+  features in this project, so dead selectors here are a live hazard.
+
+### The tutorial was actively wrong
+
+It taught turning instead of strafing, promised touch controls and a split
+screen, explained Shop tabs that no longer exist, told you to enable a bot in a
+sandbox that is gone, and documented two modes this build cannot run. Wrong
+documentation is worse than missing documentation - someone reads it and then
+cannot find the thing. Rewritten, with a new **Online Play** card.
+
+---
+
+## Batch 34, part two - photographic arena surfaces
+
+The arenas were dressed entirely in 256x256 canvases painted at runtime, with
+normal and roughness derived from their luminance. That is a good trick and it is
+what made ten distinct arenas affordable - but hand-painted 256px albedo is the
+single biggest reason they read as toy-like. Now: real 1k PBR sets from
+PolyHaven (CC0), 11 of them, three files each - `Diffuse` (sRGB), `nor_gl`
+(**GL** convention, not `nor_dx`, which has Y inverted and lights everything
+backwards) and `arm` (AO+Roughness+Metalness packed in R/G/B, exactly the glTF
+ORM convention three.js reads natively: one file, three slots).
+
+Three things make it safe:
+
+1. **It is an upgrade, not a replacement.** The procedural material renders
+   immediately; the photo set is fetched asynchronously and swapped onto the
+   *same* material when it arrives. A slow or failed fetch leaves a fully
+   playable, fully textured arena. The game never waits on the network.
+2. **Each map keeps its identity.** `theme.wallColor`/`floorColor` still tint the
+   albedo, and the procedural canvas is kept as an **emissive overlay** -
+   extracted by pulling out the accent-coloured pixels - so Voltaic Nexus keeps
+   its glowing seams, Molten Foundry its lava cracks, the Colosseum its ivy.
+   Dropping those would have flattened ten arenas into two rock textures.
+3. **Textures are cached by tiling, never cloned per mesh** - see the leaks below.
+
+**Columns were the last untextured thing** and, once walls and floors went
+photographic, the only thing still reading as clay. They take the theme's *wall*
+set, which is also correct art direction: a stone arena's pillars are cut from
+the same stone as its walls.
+
+### Three tuning mistakes worth recording, because each cost a render cycle
+
+- **Tiling density is the most visible thing here.** The procedural canvases
+  tiled every ~190 world units on the floor; a real 1k photograph at that
+  density reads as one enormous slab - diamond plate came out looking like giant
+  scoops. A fighter is 40 units wide, so the target is 45-55 units per tile.
+- **`metalness: 1.0` renders walls near-black.** A fully metallic surface has no
+  diffuse term; all its brightness is reflected environment, and this scene's
+  environment is a PMREM of the sky gradient - dim, and mostly sky-blue. Floors
+  face up into the bright part and look right; walls face sideways into the dark
+  part and go black. `docs/arena-art-plan.md` recorded this from Batch 25 and it
+  still caught us. Capped at 0.45.
+- **Albedo choice beats tint.** `factory_wall` is *green* corrugated steel and no
+  tint can take green out of an albedo; `metal_plate` is neutral but it is a
+  dark brown *floor* plate whose tread reads as woven fabric at wall scale. The
+  answer was a third set (`concrete_wall_003`, clean and bright) - and then
+  raising the **fill light** from 0.4 to 0.85, because a photographic albedo is
+  darker than a painted one and the fill is what lifts the walls' inward faces.
+  Lighting, not albedo, decides how this scene reads. Third time that lesson has
+  come up.
+
+### Bugs fixed alongside, all from docs/arena-art-plan.md
+
+- **The reported first-person arm defect.** `buildViewmodelArm` built the bracer
+  as `CylinderGeometry(..., true)` - the trailing argument is **`openEnded`** - so
+  it had no end caps and, with default `FrontSide` culling, you looked straight
+  through the tube to the background. The elbow end is the nearest part of the
+  model to the camera, so it was the first thing you saw, and it read as the arm
+  being severed. Closed, and the limb is now long enough to run out of frame:
+  a real first-person arm continues past the edge rather than stopping in
+  mid-air.
+- **The reported "special teleports with no animation".** Not lag.
+  `teleportTo()` moves the fighter instantly and `render3D` copies the simulation
+  position onto the mesh every frame, so every teleport was a one-frame jump *by
+  construction* - Kaelen's Blade Dash, Voss' blink, Nyx's pull, Karrigos' charge,
+  knockback and every dodge. `animateWeapon` *does* have dash and special cases,
+  so the **arm animated while the body teleported**, which is why it read as
+  broken rather than merely fast. Fixed with a visual-only lag offset that
+  decays over ~6 frames plus a motion streak along the path: the simulation
+  still moves in one frame, so i-frame windows, hitboxes and the AI's range
+  checks are bit-identical.
+- **The shadow frustum never followed the sun.** It was authored once as a fixed
+  +/-1000 x +/-650 box for the default sun position; `applyLighting` then moved
+  the sun per map, as far as (-2000, 1700, 1100), and never touched the frustum -
+  so on maps with a low sun part of the arena silently stopped casting shadows.
+  Now fitted by projecting the arena's world AABB into the light's own view
+  space, so every map is correct by construction rather than tuned.
+- **`fillLight.intensity` was never overridden** by any theme and sat at 0.4
+  forever, so an overcast castle and a golden-hour desert got identical bounce.
+- **Karrigos snapped from 1.5x to 1.0x the instant he started dying.**
+  `renderDeathAnim` and the crush cinematic both *assigned* to `mesh.scale`
+  rather than multiplying, discarding the per-character size multiplier the
+  builders apply (Karrigos 1.5, Grint 0.72, Slagling 0.86, Hollowkin 1.08). It
+  only ever self-healed because `initMesh()` builds a fresh group each round.
+  Both now multiply a stored `meshBaseScale`.
+- **Two texture leaks, one pre-existing since the art batches.**
+  `buildPlatformMesh` and `buildOuterWall` cloned the wall canvas *per mesh*, and
+  `attachSurfaceMaps` built two fresh `CanvasTexture`s *per material* - all
+  landing on `keepMap` materials, which suppress texture disposal. So every
+  `loadMap()` leaked a set per platform, per wall and per floor, for the life of
+  the session. All of them are cached by tiling now, which is the correct
+  granularity: the clone exists only because `repeat` lives on the texture
+  rather than the material. **`tests/artcheck.js` asserts this directly** - load
+  four arenas and require that revisiting one adds no textures - because a slow
+  leak is invisible to every other assertion and to any screenshot.
+
+### Testing
+
+`tests/onlineuxcheck.js` is new: 40 assertions about the *shape* of the UI - how
+many rosters are visible, who can start, who owns the arena, and what each
+screen says is blocking progress. Every one of those would pass a "nothing
+threw" test while still being the broken UI that was reported.
+
+`tests/artcheck.js` is new: 16 assertions covering the photographic swap
+actually happening, `uv2` present wherever the packed ORM's AO channel is used
+(it samples `vUv2` in r128), encodings correct (colour sRGB, data Linear),
+metalness capped, the accent overlay surviving, the texture leak, and the shadow
+frustum genuinely refitting between two differently-lit maps.
+
+Four existing checkers needed updating for the new UI, and it is worth being
+explicit that these were **not** regressions - they asserted a screen that was
+deliberately removed: `batch24check` (per-side shop buttons -> one Armory; the
+bot-toggle section now asserts bots' *absence*), `controlscheck` (started its
+match through the bot toggle; now hosts a room), `netcheck` (same bot section,
+and `chooseMap` no longer starts a match).
+
+`smoke`, `mapscheck`, `crushcheck`, `mobilecheck` pass unchanged - notably
+`mapscheck`, since rotational symmetry and reachability are the properties most
+at risk from arena work and this pass deliberately touched materials rather than
+geometry.
+
+**Still not playtested**, and worth saying plainly: the arena tiling densities,
+the fill-light increase and the teleport smear duration are all reasoned first
+passes. They look right in rendered frames; they have not been felt in a match.
+
+---
+
 ## Where this arc landed
 
 All ten planned batches (11-21) are in and pushed, each as its own commit with its own checker script. The nine-suite regression set (`progressioncheck`, `cheatcheck`, `doublejumpcheck`, `reachabilitycheck`, `pitchcheck`, `touchlookcheck`, `modescheck`, `coopcheck`, `bosscheck`, `survivalcheck`, plus the desktop/touch/pause drivers) runs green end to end, and — unlike every batch before this arc — the verification exercises **real game state through the real game loop** rather than only checking that nothing threw, thanks to the `?debug=1`-gated `window.ACDebug` handle added in Batch 12.

@@ -163,33 +163,46 @@ const H = require('./harness');
                 inActions: !!b.closest('.side-actions'),
             })),
             purseButtons: q('.side-purse button'),
+            homeArmory: q('#btn-home-armory'),
+            roomArmory: q('#btn-my-shop'),
         };
     });
     check('the single shared footer Shop button is gone', stores.footerShop === 0);
     check('the player toggle tabs are gone', stores.tabs === 0);
-    check('each side has exactly one Shop button, in its actions row',
-        stores.sideButtons.length === 2 && stores.sideButtons.every(b => b.inActions)
-        && stores.sideButtons.map(b => b.side).sort().join() === 'p1,p2',
-        JSON.stringify(stores.sideButtons));
-    check('the purse holds only the balance now', stores.purseButtons === 0);
+    // Batch 34 SUPERSEDES the per-side pair originally asserted here. Batch 24
+    // gave each of two local players their own Shop button in their own panel;
+    // online there is one player at this keyboard and one account (see
+    // prog/ACCOUNT), so there is one Armory - on the home screen, and again in
+    // the room while you are picking. The two-button assertion was not a
+    // regression when it failed, it described a screen that no longer exists.
+    check('the per-side shop buttons are gone with the two-player screen',
+        stores.sideButtons.length === 0, JSON.stringify(stores.sideButtons));
+    check('there is a single Armory on home and one in the room',
+        stores.homeArmory === 1 && stores.roomArmory === 1, JSON.stringify(stores));
 
-    for (const side of ['p1', 'p2']) {
-        const opened = await page.evaluate(s => {
-            document.querySelector(`[data-shop-side="${s}"]`).click();
+    for (const role of ['host', 'joiner']) {
+        const opened = await page.evaluate(r => {
+            const D = window.ACDebug;
+            D.goHome();
+            D.netFakeConnect(r);
+            document.getElementById('btn-my-shop').click();
             const screen = document.getElementById('shop-screen');
             return {
-                shopSide: window.ACDebug.shopSide,
+                localSide: D.LOCAL_SIDE,
+                shopSide: D.shopSide,
                 cls: screen.className,
                 title: document.getElementById('shop-title').textContent,
-                visible: getComputedStyle(screen).display !== 'none',
+                visible: screen.getClientRects().length > 0,
                 justify: getComputedStyle(screen).justifyContent,
             };
-        }, side);
-        check(`${side}: its button opens ${side}'s own account`, opened.shopSide === side, JSON.stringify(opened));
-        check(`${side}: the panel is anchored to that player's side`,
+        }, role);
+        const side = role === 'host' ? 'p1' : 'p2';
+        check(`${role}: the room's Armory opens the fighter slot you drive (${side})`,
+            opened.localSide === side && opened.shopSide === side, JSON.stringify(opened));
+        check(`${role}: the panel is anchored to that side of the screen`,
             opened.cls === `side-${side}` && opened.justify === (side === 'p1' ? 'flex-start' : 'flex-end'),
             JSON.stringify(opened));
-        check(`${side}: the panel says whose shop it is`,
+        check(`${role}: the panel says whose shop it is`,
             opened.title.includes(side === 'p1' ? 'Player 1' : 'Player 2'), opened.title);
         await page.evaluate(() => document.getElementById('btn-shop-close').click());
     }
@@ -198,7 +211,8 @@ const H = require('./harness');
     section('Reading a description before buying:');
     const details = await page.evaluate(() => {
         const D = window.ACDebug;
-        document.querySelector('[data-shop-side="p1"]').click();
+        // Batch 34: one account, opened as the local player.
+        window.ACDebug.openShop(window.ACDebug.LOCAL_SIDE);
         const cards = [...document.querySelectorAll('#shop-list .shop-card')];
         // Pick a card for a character this side has NOT bought — the whole point
         // is deciding before you spend.
@@ -249,30 +263,35 @@ const H = require('./harness');
     // a scaling that doesn't exist.
     section('Upgrade labels say what they actually buy:');
     const labels = await page.evaluate(() => {
-        document.querySelector('[data-shop-side="p1"]').click();
+        // Batch 34: one account, opened as the local player.
+        window.ACDebug.openShop(window.ACDebug.LOCAL_SIDE);
         return [...document.querySelectorAll('#shop-list .upg-label')].map(e => e.textContent);
     });
     check('renamed to Attack / Charge', labels.includes('Attack') && labels.includes('Charge')
         && !labels.includes('Damage'), [...new Set(labels)].join(','));
 
-    // -------------------------------------------------------- bot buttons
-    section('Bot toggle is sandbox-only and out of the way:');
+    // ---------------------------------------------------------------- bots
+    // Batch 24 made the bot toggle sandbox-only and hidden outside it. Batch 34
+    // removed bots from this build entirely - the sandbox that was their only
+    // door is gone, and online the opponent is always a person - so what is
+    // asserted here is now their ABSENCE. The flags survive because the Fighter
+    // constructor, the AI branch of update() and beginMatch all read them, and
+    // the archived split-screen build still uses them.
+    section('Bots are gone from the online build:');
     const bots = await page.evaluate(() => {
         const D = window.ACDebug;
         document.getElementById('btn-shop-close').click();
-        const vis = () => ['btn-toggle-bot-p1', 'btn-toggle-bot']
-            .map(id => getComputedStyle(document.getElementById(id)).display !== 'none');
-        D.setDebugUnlockAll(false);
-        const off = vis();
-        D.setDebugUnlockAll(true);
-        const on = vis();
-        D.setDebugUnlockAll(false);
-        return { off, on, botsForced: !D.p1IsBot && !D.p2IsBot };
+        return {
+            toggles: document.querySelectorAll('.bot-toggle, #btn-toggle-bot, #btn-toggle-bot-p1').length,
+            difficulty: !!document.getElementById('btn-difficulty'),
+            sandbox: !!document.getElementById('chk-unlock-all'),
+            botsOff: !D.p1IsBot && !D.p2IsBot,
+        };
     });
-    check('hidden in progression mode, where bot matches do not exist',
-        bots.off.every(v => v === false), JSON.stringify(bots.off));
-    check('present in the unlock-everything sandbox', bots.on.every(v => v === true), JSON.stringify(bots.on));
-    check('leaving the sandbox forces both sides back to human', bots.botsForced);
+    check('no bot toggles remain in the DOM', bots.toggles === 0, JSON.stringify(bots));
+    check('no difficulty cycler and no sandbox switch',
+        !bots.difficulty && !bots.sandbox, JSON.stringify(bots));
+    check('both fighter slots are human', bots.botsOff, JSON.stringify(bots));
 
     await page.evaluate(() => localStorage.clear());
     await finish(browser, page);

@@ -40,26 +40,36 @@ const H = require('./harness');
         JSON.stringify(b.arrows));
     check('this client starts as p1', b.localSide === 'p1', b.localSide);
 
-    // A bot opponent, so there is something to fight. Bot mode is sandbox-gated.
+    // Batch 34: start the match the way the game now does it - host a room,
+    // pick for yourself, let the peer's pick arrive, then Start. The old route
+    // (enable the sandbox, click the p2 bot toggle, pick both sides, click a
+    // map card) is gone: bots, the sandbox and the second roster no longer
+    // exist, and the map picker no longer starts anything.
     await page.evaluate(() => {
-        window.ACDebug.setDebugUnlockAll(true);
-        document.getElementById('btn-toggle-bot').click();   // p2 = bot
+        const D = window.ACDebug;
+        // The loopback connection receives nothing, so the real 6s silence
+        // timeout would drop the link and pause the match mid-measurement.
+        D.netSetTimeout(900000);
+        D.netFakeConnect('host');
+        D.previewPick('p1', 'Kaelen');
+        D.confirmPick('p1');
+        D.netFeed({ t: 'PICK', side: 'p2', name: 'Lyra' });
+        D.selectedMap = D.MAPS[0].name;
+        D.startOnline();
     });
-    await H.sleep(300);
-    await page.evaluate(() => {
-        document.querySelectorAll('#p1-grid .fighter-btn')[0].click();
-        document.querySelector('#p1-detail .btn-confirm').click();
-    });
-    await H.sleep(400);
-    await page.evaluate(() => document.querySelectorAll('#mapselect-grid .map-card')[0].click());
-    await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 40000);
+    await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 60000);
     await H.sleep(600);
-    // Stand the opponent down. It was enabled only so the match would start
-    // with two fighters; an ACTIVE bot lands hits mid-measurement, which puts
-    // the subject in hitstun and zeroes its movement - that is what made the
-    // forward-movement sample read dx=0.
-    await page.evaluate(() => { window.ACDebug.player2.isBot = false; });
-    await H.sleep(200);
+    // The opponent is a net puppet online, so its own physics is already
+    // suppressed and it throws nothing - no need to stand a bot down. Assert
+    // that, rather than assuming it: an ACTIVE opponent lands hits
+    // mid-measurement, and hitstun zeroes the subject's movement, which is
+    // exactly what once made the forward-movement sample read dx = 0.
+    const puppet = await page.evaluate(() => ({
+        p2IsBot: window.ACDebug.player2.isBot,
+        p2IsPuppet: window.ACDebug.player2.isNetPuppet(),
+    }));
+    check('the opponent is an inert net puppet, not an attacking bot',
+        puppet.p2IsBot === false && puppet.p2IsPuppet === true, JSON.stringify(puppet));
 
     section('One full-screen view, not two scissored halves:');
     const view = await page.evaluate(() => {
