@@ -1,3 +1,13 @@
 tests/node_modules/
 tests/package-lock.json
 tests/screenshots/
+
+# Raw Hyper3D Rodin output (art/raw/*.glb) - ~24 MB of INTERMEDIATES. The
+# rigged, game-ready results are committed under assets/chars/, which is the
+# artifact that matters. These are excluded rather than kept because they are
+# reproducible for free: art/generate_chars.py holds every prompt verbatim and
+# generation costs nothing (only DOWNLOAD spends credits), so `python
+# art/generate_chars.py` rebuilds them. The previews and the manifest ARE kept -
+# they are a few KB and they document what was generated and from which job.
+art/raw/*.glb
+art/raw/_build_log.txt

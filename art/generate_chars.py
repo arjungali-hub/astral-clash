@@ -58,7 +58,9 @@ PREAMBLE = ('full body game character, head to feet, standing T-pose with arms '
 CHARACTERS = {
     'Lyra':      'slender arcane sorceress in layered violet robes, crystalline glass shards floating at her shoulders, pale hair, glowing amethyst filigree',
     'Draven':    'heavy armoured knight warden in dark iron plate armour, closed visored helmet, broad pauldrons, steel greaves, weathered metal',
-    'Ignis':     'muscular brawler monk with wrapped forearms, bare chest, glowing orange ember cracks across his skin, short dark hair, scorched cloth trousers',
+    # 'bare chest' tripped Rodin's content filter (IMAGE_CONTENT_VIOLATION),
+    # so the same silhouette is described through clothing instead.
+    'Ignis':     'muscular brawler monk in a sleeveless scorched tunic and wrapped forearms, glowing orange ember cracks along his arms, short dark hair, heavy cloth trousers, leather belt',
     'Nyx':       'gaunt hooded reaper in tattered charcoal robes, deep hood shadowing a pale skull-like face, ragged cloth strips, bone accents',
     'Aurelia':   'regal storm herald in gold-trimmed white and blue armour, flowing cape, feathered shoulder crests, crackling blue energy at her gauntlets',
     'Seraphine': 'celestial guardian in ivory and pale gold ceremonial armour, halo ring behind her head, long flowing robes, ethereal blue glow',
@@ -71,6 +73,27 @@ CHARACTERS = {
     'Slagling':  'small squat molten cinder creature, cracked blackened crust over glowing magma, stubby limbs, ember-filled mouth, volcanic rock skin',
     'Hollowkin': 'tall gaunt husk creature, desiccated grey withered body, hollow black eye sockets, exposed ribs, tattered wrappings, long thin limbs',
 }
+
+
+def _retry(fn, what, tries=5):
+    """Retries transient network failures with a growing pause.
+
+    A whole-roster run is tens of minutes of network I/O, and a single
+    `getaddrinfo failed` killed the batch after 8 of 13 characters (the same
+    outage also failed a git push at that moment). Every call in here is
+    idempotent - submission is recorded in the manifest BEFORE polling starts -
+    so retrying is always safe.
+    """
+    delay = 5
+    for attempt in range(tries):
+        try:
+            return fn()
+        except Exception as e:
+            if attempt == tries - 1:
+                raise
+            print('    (%s failed: %s - retrying in %ds)' % (what, str(e)[:70], delay))
+            time.sleep(delay)
+            delay = min(delay * 2, 60)
 
 
 def post(path, payload=None, files=None):
@@ -91,9 +114,11 @@ def post(path, payload=None, files=None):
         req = urllib.request.Request(url, data=json.dumps(payload).encode(), method='POST',
                                      headers={'Authorization': 'Bearer ' + KEY,
                                               'Content-Type': 'application/json'})
-    try:
+    def once():
         with urllib.request.urlopen(req, timeout=180) as r:
             return r.status, json.loads(r.read().decode())
+    try:
+        return _retry(once, 'POST ' + path)
     except urllib.error.HTTPError as e:
         raw = e.read().decode('utf8', 'replace')
         try:
@@ -103,9 +128,12 @@ def post(path, payload=None, files=None):
 
 
 def fetch(url, dest):
-    with urllib.request.urlopen(url, timeout=300) as r, io.open(dest, 'wb') as f:
-        f.write(r.read())
-    return os.path.getsize(dest)
+    def once():
+        with urllib.request.urlopen(url, timeout=300) as r:
+            blob = r.read()
+        io.open(dest, 'wb').write(blob)   # write only after a COMPLETE read, so
+        return os.path.getsize(dest)      # a truncated fetch leaves no file
+    return _retry(once, 'download ' + os.path.basename(dest))
 
 
 def manifest_path():
@@ -199,7 +227,11 @@ def main():
         else:
             print('%-11s resuming %s' % (name, job['uuid'][:8]))
 
-        ok, states = poll(job)
+        try:
+            ok, states = poll(job)
+        except Exception as e:
+            print('%-11s polling failed: %s' % (name, str(e)[:90]))
+            continue
         if not ok:
             print('%-11s generation did not finish: %s' % (name, ' '.join(states)))
             continue

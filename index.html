@@ -1379,7 +1379,8 @@ const net = {
     detail: '',
     lastSendAt: 0,
     lastRecvAt: 0,
-    timeoutMs: 6000,       // = NET_TIMEOUT_MS; silence after which we call it dropped
+    timeoutMs: 15000,      // = NET_TIMEOUT_MS; silence after which we call it dropped
+    pingTimer: null,       // setInterval handle - liveness, independent of rAF
     remoteState: null,     // last STATE received; netApplyRemote eases toward it
     remoteReady: false,    // joiner has acknowledged SETUP
     pendingSetup: null,    // joiner: setup received before it could be applied
@@ -7848,7 +7849,24 @@ function buildHollowkinMesh(color) {
 // empty, buildRiggedCharacter() returns null, and initMesh() falls back to the
 // primitive builder. The game must never fail to start over art.
 const CHAR_MODEL_URLS = {
+    // Batch 35: the whole roster, generated with Hyper3D Rodin and rigged by
+    // art/pipeline.py (see art/generate_chars.py and art/build_headless.py).
+    // These are fetched ON DEMAND, not at boot - fourteen models is ~29 MB
+    // and a match needs two of them. See ensureCharModel.
     Kaelen: 'assets/chars/kaelen.glb',
+    Lyra: 'assets/chars/lyra.glb',
+    Gorgonok: 'assets/chars/gorgonok.glb',
+    Voss: 'assets/chars/voss.glb',
+    Draven: 'assets/chars/draven.glb',
+    Seraphine: 'assets/chars/seraphine.glb',
+    Nyx: 'assets/chars/nyx.glb',
+    Ignis: 'assets/chars/ignis.glb',
+    Aurelia: 'assets/chars/aurelia.glb',
+    Thorne: 'assets/chars/thorne.glb',
+    Grint: 'assets/chars/grint.glb',
+    Slagling: 'assets/chars/slagling.glb',
+    Hollowkin: 'assets/chars/hollowkin.glb',
+    Karrigos: 'assets/chars/karrigos.glb',
 };
 // Total height in world units that a loaded model is scaled to. The procedural
 // rig stands about this tall (hipY 15 + torsoH 20 + head ~13) and EYE_HEIGHT is
@@ -7894,12 +7912,31 @@ function findBone(root, base, side) {
     return null;
 }
 
-function preloadCharModels() {
-    const names = Object.keys(CHAR_MODEL_URLS);
-    if (!names.length || typeof THREE.GLTFLoader !== 'function') return Promise.resolve();
-    const loader = new THREE.GLTFLoader();
-    return Promise.all(names.map(name => new Promise(resolve => {
-        loader.load(CHAR_MODEL_URLS[name], gltf => {
+// Batch 35: models load ON DEMAND, not all at once.
+//
+// This used to load every entry in CHAR_MODEL_URLS in parallel at boot. With
+// one character that was 2 MB; with the full roster of fourteen it is ~29 MB
+// before the menu is usable, which is not a defensible first load for a game
+// served over the web - and a match only ever needs two of them (plus a boss).
+//
+// So: nothing loads at boot, and a character's model is fetched the moment
+// anyone commits to it - you previewing a card, or the opponent's PICK message
+// arriving. That is seconds of lead time while the other player is still
+// choosing, which is almost always enough. If it is not, initMesh() falls back
+// to the procedural mesh for that round and the model is simply ready for the
+// next one; the game never blocks on a download.
+const _charModelPromises = {};   // name -> Promise, so N callers cause 1 fetch
+let _charLoader = null;
+
+function ensureCharModel(name) {
+    if (!name) return Promise.resolve(null);
+    if (charModels[name]) return Promise.resolve(charModels[name]);
+    if (_charModelPromises[name]) return _charModelPromises[name];
+    const url = CHAR_MODEL_URLS[name];
+    if (!url || typeof THREE.GLTFLoader !== 'function') return Promise.resolve(null);
+    const loader = _charLoader || (_charLoader = new THREE.GLTFLoader());
+    _charModelPromises[name] = new Promise(resolve => {
+        loader.load(url, gltf => {
             const box = new THREE.Box3().setFromObject(gltf.scene);
             charModels[name] = {
                 scene: gltf.scene,
@@ -7907,14 +7944,29 @@ function preloadCharModels() {
                 height: Math.max(0.001, box.max.y - box.min.y),
             };
             charModelsLoaded++;
-            resolve();
+            resolve(charModels[name]);
         }, undefined, err => {
             // Not fatal - this character just keeps its procedural mesh.
             console.warn('[astral] could not load model for', name, err && err.message);
             charModelsFailed++;
-            resolve();
+            resolve(null);
         });
-    })));
+    });
+    return _charModelPromises[name];
+}
+
+// Kept for the checkers, which await `modelsReady` before asserting anything
+// about the rigged art. It now means "everything requested so far has
+// settled", which is the useful question once loading is lazy.
+function preloadCharModels() {
+    return Promise.all(Object.values(_charModelPromises));
+}
+
+// The co-op enemies are not picked by anyone, so nothing warms them the way a
+// PICK warms a fighter. The mode decides them, so warm them from the mode.
+function warmModelsForMode(mode) {
+    if (mode === 'boss') ensureCharModel('Karrigos');
+    else if (mode === 'survival') ['Grint', 'Slagling', 'Hollowkin', 'Karrigos'].forEach(ensureCharModel);
 }
 
 // Builds a fighter group from a loaded GLB, satisfying exactly the same
@@ -7989,7 +8041,14 @@ function buildRiggedCharacter(name) {
     // config onto the skeleton. Same weapon, same tuned numbers, one source.
     const proto = PROC_MESH_BUILDERS[name] ? PROC_MESH_BUILDERS[name](((CHAR_MAP[name] || BOSS_MAP[name] || {}).color) || '#ffffff') : null;
     if (proto) {
-        const invScale = m.height / rigTarget;   // props are authored in world units
+        // RIG_TARGET_HEIGHT, not rigTarget. The prop hangs off a hand bone, so
+        // it inherits `inner`'s scale (rigTarget / m.height); counter-scaling by
+        // m.height / rigTarget would cancel that exactly and give every
+        // character an identically-sized weapon - Karrigos would swing the same
+        // hammer as Grint. Counter-scaling by the CONSTANT instead leaves the
+        // character's own size multiplier applied to the prop, so a 1.5x titan
+        // carries a 1.5x weapon.
+        const invScale = m.height / RIG_TARGET_HEIGHT;   // props are authored in world units
         const remap = new Map();
         for (const key of ['armPos', 'armNeg']) {
             const pa = proto.userData[key], ra = g.userData[key];
@@ -8895,6 +8954,7 @@ function buildModeSelect() {
 }
 function setMatchMode(id) {
     matchMode = id;
+    warmModelsForMode(id);
     refreshModeUI();
     buildModeSelect();
 }
@@ -8974,7 +9034,27 @@ document.querySelectorAll('[data-shop-side]').forEach(b =>
 // ===========================================================================
 const NET_SEND_HZ = 30;                  // state broadcasts per second
 const NET_SEND_MS = 1000 / NET_SEND_HZ;
-const NET_TIMEOUT_MS = 6000;             // silence after which we call it dropped
+
+// Batch 36: liveness does NOT ride the render loop, and the timeout tolerates a
+// throttled timer.
+//
+// Reported as "less than 10 seconds after you join a room it says disconnected
+// - connection timed out". The keepalive was sent from netTick, which is called
+// from gameLoop, which is driven by requestAnimationFrame - and **Chrome stops
+// rAF in a background tab**. So the moment the host switched away to paste the
+// room code into a chat, its keepalive stopped, and the joiner - doing nothing
+// wrong - hit the silence timeout about six seconds later. Sitting in a lobby
+// with the tab not focused is completely normal behaviour.
+//
+// Timers are throttled in a background tab but NOT stopped: a hidden tab gets
+// roughly one timer callback per second. So the keepalive runs on its own
+// interval at NET_PING_HZ, and the timeout is generous enough that a 1 Hz
+// throttled ping still comfortably holds the link open. The 30 Hz STATE
+// broadcast stays on the render loop, which is correct - it only matters during
+// a match, when the tab is by definition focused.
+const NET_PING_HZ = 4;
+const NET_PING_MS = 1000 / NET_PING_HZ;
+const NET_TIMEOUT_MS = 15000;            // silence after which we call it dropped
 
 // `net`, netActive() and netIsHost() are declared up with LOCAL_SIDE - see the
 // note there. The rest of the netcode module follows.
@@ -8993,6 +9073,9 @@ function netSend(msg) {
 
 // --- Connection lifecycle -------------------------------------------------
 function netTeardown(reason) {
+    // Stop the heartbeat first. A surviving interval would keep pinging a dead
+    // connection, and a later reconnect would end up with two of them.
+    if (net.pingTimer) { clearInterval(net.pingTimer); net.pingTimer = null; }
     if (DEBUG && (net.conn || net.peer)) {
         console.warn('[net] teardown:', reason || '(explicit)', 'role=' + net.role,
                      'state=' + gameState, 'sinceRecv=' +
@@ -9013,7 +9096,11 @@ function netBindConnection(conn) {
         netSetStatus('connected', netIsHost() ? 'You are Player 1' : 'You are Player 2');
         // Both sides announce themselves so a mismatched build is obvious
         // rather than manifesting as strange behaviour later.
-        netSend({ t: 'HELLO', build: 'batch34', side: LOCAL_SIDE });
+        netSend({ t: 'HELLO', build: 'batch36', side: LOCAL_SIDE });
+        // Start the heartbeat here, not in netHost/netJoin: before the channel
+        // is open there is nothing to send it down.
+        if (net.pingTimer) clearInterval(net.pingTimer);
+        net.pingTimer = setInterval(netHeartbeat, NET_PING_MS);
         enterRoom();
     });
     conn.on('data', netOnMessage);
@@ -9234,23 +9321,36 @@ function netApplyLifecycle(msg) {
 }
 
 // --- Per-frame send -------------------------------------------------------
-function netTick(now) {
+// Liveness, on its own interval so it survives a backgrounded tab. See the
+// note on NET_PING_HZ. Started by netBindConnection, cleared by netTeardown.
+function netHeartbeat() {
     if (!netActive()) return;
+    const now = performance.now();
     // Drop detection: PeerJS 'close' is not guaranteed on an abrupt network
-    // loss, so a silence timeout is the backstop.
+    // loss, so a silence timeout is the backstop. It lives HERE rather than in
+    // netTick because a stalled render loop must not be able to disable the
+    // very check that notices a stalled peer - or, worse, notice its own
+    // stall and blame the peer for it.
     if (net.lastRecvAt && now - net.lastRecvAt > net.timeoutMs) {
         netTeardown('Connection timed out');
         onNetLost();
         return;
     }
-    if (now - net.lastSendAt < NET_SEND_MS) return;
+    // A PING costs almost nothing and is only skipped when a STATE packet went
+    // out recently enough to serve the same purpose.
+    if (now - net.lastSendAt < NET_PING_MS) return;
     net.lastSendAt = now;
+    netSend({ t: 'PING' });
+}
+
+function netTick(now) {
+    if (!netActive()) return;
+    if (now - net.lastSendAt < NET_SEND_MS) return;
     const f = localFighter();
-    // No fighter yet means we are on the menu / lobby / character select. Send
-    // a keepalive instead of nothing: the drop detector below is a silence
-    // timeout, so staying quiet while both players pick their characters read
-    // as a dead connection and tore the link down before the match started.
-    if (!f) { netSend({ t: 'PING' }); return; }
+    // No fighter means we are on a menu, and the heartbeat interval is already
+    // keeping the link alive - there is no state worth broadcasting.
+    if (!f) return;
+    net.lastSendAt = now;
     netSend({
         t: 'STATE',
         x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10, z: Math.round(f.z * 10) / 10,
@@ -9405,6 +9505,7 @@ refreshLobbyUI();
 
 function netOnPick(msg) {
     if (!msg.side || !msg.name) return;
+    ensureCharModel(msg.name);      // their fighter renders on OUR machine too
     if (msg.side === 'p1') { p1Choice = msg.name; p1Preview = msg.name; p1Stage = 'confirmed'; }
     else { p2Choice = msg.name; p2Preview = msg.name; p2Stage = 'confirmed'; }
     refreshMenuUI();   // their slot now shows a fighter; the note updates itself
@@ -9476,6 +9577,10 @@ function previewPick(side, name) {
     if (stage === 'confirmed') return; // locked in — must Back out first
     if (side === 'p1') { p1Preview = name; p1Stage = 'preview'; }
     else { p2Preview = name; p2Stage = 'preview'; }
+    // Start fetching this character's model now: previewing is the earliest
+    // moment anyone has expressed interest, and it buys the whole
+    // read-the-panel-and-confirm beat as lead time. See ensureCharModel.
+    ensureCharModel(name);
     showDetail(side, name, false);
     refreshMenuUI();
 }
@@ -10975,7 +11080,8 @@ if (DEBUG) {
         get crushRigs() { return crushRigs; },
         // Batch 32: networking
         net, netActive, netIsHost, netHost, netJoin, netTeardown, netSend,
-        netOnMessage, netApplyRemote, netTick, refreshLobbyUI,
+        netOnMessage, netApplyRemote, netTick, netHeartbeat, refreshLobbyUI,
+        NET_PING_MS, NET_TIMEOUT_MS,
         get netStatus() { return net.status; },
         get fpsSmoothed() { return fpsSmoothed; },
         IS_TOUCH_DEVICE, showDesktopOnlyNotice, dismissDesktopOnlyNotice,
@@ -11004,6 +11110,8 @@ if (DEBUG) {
                 on() {},
             };
             net.lastRecvAt = performance.now();
+            if (net.pingTimer) clearInterval(net.pingTimer);
+            net.pingTimer = setInterval(netHeartbeat, NET_PING_MS);
             netSetStatus('connected', role === 'host' ? 'You are Player 1' : 'You are Player 2');
             enterRoom();   // same entry point a real connection uses
         },
@@ -11030,6 +11138,21 @@ if (DEBUG) {
         get mapGroup() { return mapGroup; },
         get currentMap() { return currentMap; },
         PHOTO_SETS, loadPhotoSet,
+        // Batch 35: render one frame from an arbitrary camera, so a checker can
+        // photograph a character model instead of guessing from the first-person
+        // view (where your own body is hidden by design and the opponent is
+        // wherever the simulation put them).
+        get renderer() { return renderer; },   // for isolated model renders
+        renderOnce(cam) { renderer.setScissorTest(false); renderer.setViewport(0, 0, renderer.domElement.width, renderer.domElement.height); renderer.render(scene, cam); },
+        // Render AND read back in one JS task. A screenshot taken afterwards
+        // captures whatever the game's own requestAnimationFrame drew next, so
+        // every model render came out as an identical first-person frame. The
+        // drawing buffer survives until the next frame within the same task,
+        // which is what makes toDataURL work without preserveDrawingBuffer.
+        snapshot(cam) {
+            this.renderOnce(cam);
+            return renderer.domElement.toDataURL('image/png');
+        },
         MAP_THEMES, applyLighting, fitKeyShadow,
         get keyLight() { return keyLight; },
         get fillLight() { return fillLight; },
@@ -11047,6 +11170,9 @@ if (DEBUG) {
         forceCrush(at) { shrinkTargetFrac = 1; shrinkFrac = 1; arenaBoundsFromFrac(1); crushing = true; if (at !== undefined) crushTime = at; },
         // Batch 25 art pipeline
         CHAR_MODEL_URLS, RIG_TARGET_HEIGHT, RIG_HEIGHT_MULT, rigHeightFor, charModels,
+        ensureCharModel, warmModelsForMode,
+        get charModelsLoaded() { return charModelsLoaded; },
+        get charModelsFailed() { return charModelsFailed; },
         buildRiggedCharacter, findBone, preloadCharModels,
         get modelsReady() { return modelsReady; },
         get charModelsLoaded() { return charModelsLoaded; },
@@ -11066,6 +11192,10 @@ if (DEBUG) {
 // awaited - the game is fully playable while this is in flight, and any
 // character whose model hasn't landed yet simply uses its procedural mesh for
 // that round.
+// Batch 35: nothing is fetched at boot (see ensureCharModel). `modelsReady`
+// resolves once whatever has been requested so far has settled - which for a
+// freshly-loaded page is immediately, and that is correct: no model is needed
+// until somebody picks a fighter.
 modelsReady = preloadCharModels();
 
 requestAnimationFrame(gameLoop);

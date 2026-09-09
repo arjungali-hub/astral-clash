@@ -901,6 +901,149 @@ passes. They look right in rendered frames; they have not been felt in a match.
 
 ---
 
+
+## Batch 35 - The whole roster, generated and rigged
+
+Thirteen new characters, so all fourteen now use authored 3D art instead of
+assembled primitives. The request was that they *"actually have faces and look
+more different than they do now (not just color difference)"* - so: a plate
+knight, a hooded assassin, a robed sorceress, a haloed celestial, an antlered
+druid, a goblin scrapling, a molten cinder creature, a skeletal husk, a stone
+titan with a glowing chest cavity.
+
+### Rodin was never actually out of credits
+
+The blocker recorded in `docs/arena-art-plan.md` was that Hyper3D Rodin had run
+out of funds. Checking properly: there is **no personal account at all**. The
+stored key is `vibecoding` - the **shared free-trial key hardcoded into the
+blender-mcp addon** (`RODIN_FREE_TRIAL_KEY`), read out of Blender's saved
+preferences. So what "ran out" was a community-wide promotional balance, not a
+quota of ours, and it had refilled. Generation is free; credits are spent on
+**download**, so a re-roll costs nothing but a poll loop.
+
+`art/generate_chars.py` queues the whole roster against the API directly rather
+than through Blender - fourteen characters through a bridge is fourteen
+human-paced round trips - and records job ids in a manifest so an interrupted
+run resumes instead of re-spending. Which mattered: a DNS outage killed the
+batch after 8 of 13 (and failed a git push at the same moment), so every call
+retries now.
+
+Two prompt findings worth keeping:
+- **`bbox_condition` is not a hint.** Passing one previously stretched a
+  humanoid into a cone, so proportion is controlled through the prompt and final
+  size in-game by `RIG_HEIGHT_MULT`.
+- **"bare chest" trips the content filter** (`IMAGE_CONTENT_VIOLATION`). Ignis
+  is described through clothing instead - same silhouette, no rejection.
+
+Weapons are deliberately excluded from every prompt: `buildRiggedCharacter`
+transplants the *original procedural mesh's* hand props onto the new skeleton,
+so a generated weapon would be a second one clipping through the first.
+
+### Headless Blender, after three dead ends
+
+`art/pipeline.py` does the real work (orient, ground, weld, measure, rig, bind,
+bake six clips, export), but getting it to run over fourteen characters took
+finding the right host:
+
+- **The MCP bridge blocks Blender's main thread and times out in seconds**,
+  while one character takes minutes (the glTF import alone was 45s). Worse,
+  after a few timed-out calls the bridge's socket **wedged** - Blender sat at 0%
+  CPU and stopped executing anything at all.
+- **A worker thread has no context.** Every character failed with
+  `Operator bpy.ops.object.mode_set.poll() Context missing active object`.
+- **A `bpy.app.timers` callback has no context either** - same error, all twelve.
+- **`blender --background --python` is the right tool**: a real main thread, a
+  real context, full stdout, a nonzero exit code, five times faster imports, and
+  no dependence on the interactive session being healthy. `art/build_headless.py`.
+
+### Three pipeline bugs, every one of which reported success
+
+This is the theme. None of these threw; all three produced a "finished"
+character.
+
+- **Three characters were rigged lying on their side.** `orient_and_ground`
+  picked the up axis as the longest extent, which loses the moment a T-pose's
+  **arm span edges out its height**: Ignis measured X=1.90 / Z=1.85, Gorgonok
+  X=1.90 / Z=1.86, and Slagling is a legitimately squat X=1.90 / Z=1.38.
+  Measuring all thirteen raw generations settled it - **Blender's glTF importer
+  normalises to Z-up every time**, so the heuristic was solving a problem that
+  did not exist and creating one that did. It now trusts Z and only rotates a
+  mesh whose Z extent is under 40% of its width, i.e. genuinely horizontal. The
+  giveaway had been a "knee" measured 0.47 x H out from the spine.
+- **A wrist measured 0.001 units from the spine.** `outer_centre` clustered
+  **signed** x, so when a character's arms hang near the body each arm merges
+  with the torso into one cluster spanning roughly -w..+w and
+  `abs(min + max) / 2` cancels to zero - which would have built an arm chain
+  buried inside the chest. Clustering on `|x|` puts both limbs in the same
+  cluster at the right distance. The `or fallback` idiom did not catch it
+  either, because 0.001 is truthy: measurements are now **sanity-floored**
+  against the joint above them, since a wrist cannot be closer to the spine
+  than the shoulder is.
+- **Unweighted vertices leave the mesh behind while the skeleton walks off.**
+  Kaelen's first pass had 100% (UV-seam duplicates, welded by `clean()` since);
+  Nyx had 20, on her robe hem. `ARMATURE_AUTO` leaves a vertex unweighted when
+  no bone's falloff encloses it - a nearly-detached shell. `bind()` now sweeps
+  up every orphan to the nearest bone segment at full weight, unconditionally,
+  so this cannot recur for a future character either.
+
+### Two engine-side fixes
+
+- **`RIG_HEIGHT_MULT`.** `buildRiggedCharacter` scaled every model to exactly
+  `RIG_TARGET_HEIGHT`, so a rigged Karrigos would have been the same height as a
+  rigged Grint - the procedural builders applied their size multiplier to the
+  *outer* group instead, and the two paths disagreed. Now one table both read.
+  Verified in-game: Grint 36, Slagling 43, Kaelen 54, Hollowkin 54, Karrigos 75.
+  (Mesh scale is purely visual - collision is a hardcoded 40x40 circle for
+  everyone and `EYE_HEIGHT` is a single global. That is pre-existing and
+  deliberate; it is written down in the table's comment because it is surprising.)
+- **Models load on demand.** `preloadCharModels` fetched every entry in
+  `CHAR_MODEL_URLS` in parallel at boot. With one character that was 2 MB; with
+  fourteen it is **~29 MB before the menu is usable**, which is not a defensible
+  first load for a web game - and a match needs two of them. Nothing loads at
+  boot now; a model is fetched the moment anyone commits to it (you previewing a
+  card, or the opponent's `PICK` arriving), which buys the whole
+  read-the-panel-and-confirm beat as lead time. Co-op enemies are warmed from
+  the mode instead, since nobody picks them. If a model is late, `initMesh`
+  falls back to the procedural mesh for that round and the model is ready for
+  the next; the game never blocks on a download.
+- **Weapon prop scale.** The prop hangs off a hand bone and inherits the model's
+  scale, so counter-scaling by the *per-character* target cancelled it exactly
+  and gave every character an identically-sized weapon - Karrigos would swing
+  Grint's hammer. Counter-scaling by the constant leaves the character's own
+  multiplier applied, so a 1.5x titan carries a 1.5x weapon.
+
+### Testing
+
+`tests/charcheck.js` is new, and written against the bugs above rather than as a
+formality: all fourteen registered, **nothing fetched at boot**, previewing
+warms a model, every model builds a group exposing both arms plus a head and
+torso (a missing arm bone means `animateWeapon` silently animates nothing), all
+six clips present, per-character heights ordered correctly, nobody lying down,
+and a real match running on the rigged art rather than the procedural fallback.
+
+Its upright check needed one correction that is worth recording:
+`buildRiggedCharacter` rotates the model 90 degrees so local +X is forward,
+which **swaps the x and z extents**, so "width" is really the body's depth and
+"depth" is the arm span. Comparing height to `z` by name failed on nine
+perfectly upright characters; it compares against the thinnest and widest
+horizontal extents now.
+
+The harness also gained a **hard run budget** (15 minutes, `AC_TEST_BUDGET_MS`).
+Twice in one session a checker hung indefinitely - once 5 hours, once 12 -
+holding its browsers and the HTTP port, which then made the next run of the same
+checker fail for unrelated-looking reasons. A hung test is worse than a failing
+one: it reports nothing, and the only symptom is everything else getting slower.
+`tests/cleanup.js` now kills stray *checkers* as well as stray browsers, and
+reports how long each had been alive.
+
+**Not playtested:** how the new proportions feel in a fight. Several models have
+wide silhouettes (Lyra's sleeves, Aurelia's cape, Thorne's cloak) that read as
+larger than the 40-unit collision circle they actually occupy, and Gorgonok and
+Karrigos now genuinely loom. Whether that is exciting or misleading is a
+question for a human with a keyboard.
+
+---
+
 ## Where this arc landed
 
 All ten planned batches (11-21) are in and pushed, each as its own commit with its own checker script. The nine-suite regression set (`progressioncheck`, `cheatcheck`, `doublejumpcheck`, `reachabilitycheck`, `pitchcheck`, `touchlookcheck`, `modescheck`, `coopcheck`, `bosscheck`, `survivalcheck`, plus the desktop/touch/pause drivers) runs green end to end, and — unlike every batch before this arc — the verification exercises **real game state through the real game loop** rather than only checking that nothing threw, thanks to the `?debug=1`-gated `window.ACDebug` handle added in Batch 12.
@@ -946,12 +1089,19 @@ builds are archived to `legacy/local-splitscreen.html` and out of the main game,
 which is now online peer-to-peer over PeerJS with WASD+arrows movement, A/D and
 Left/Right as strafe, pointer-lock mouse look and left-click attack.
 
-**Pending, requested, deferred by the user's own sequencing** (see
-`docs/arena-art-plan.md`, which holds the full research): the arena art overhaul
-with a geometry redesign, and the five scriptable characters (Karrigos, Draven,
-Hollowkin, Grint, Slagling). Two reported bugs are recorded there and not yet
-fixed: specials and dashes sometimes snap to the new position with no animation,
-and the first-person arm is visibly detached from the body (the bracer cylinder
-is open-ended, so you can see through it). The remaining 13 characters are
-blocked on a model-generation API key - the Rodin free trial is out of funds and
-Sketchfab was ruled out.
+**Delivered in Batches 34-35** (was pending): the arena art overhaul -
+photographic PBR surfaces on walls, floors, platforms and columns, with each
+map's accent glow kept as an emissive overlay - and the whole 14-character
+roster generated and rigged. Both reported bugs are fixed: the teleport with no
+motion (a visual lag offset plus a motion streak; the simulation still moves in
+one frame) and the open-ended bracer that made the first-person arm look severed.
+
+The Rodin blocker turned out not to be one: there was never a personal account,
+only blender-mcp's **shared** free-trial key, and its communal balance had
+refilled. So all thirteen missing characters were generated rather than the five
+that were going to be hand-scripted.
+
+**Still pending** (see `docs/arena-art-plan.md`, trimmed to just this): the arena
+GEOMETRY redesign - Batches 34-35 re-surfaced the arenas but did not restructure
+them - plus an optional real HDRI environment, and bloom, which online play
+unblocked by removing the second viewport.

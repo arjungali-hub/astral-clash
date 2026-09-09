@@ -43,9 +43,21 @@ def _activate(ob, mode='OBJECT'):
 
 
 def orient_and_ground(ob):
-    """Rodin's output axis is inconsistent between generations: sometimes the
-    height runs along Y (glTF Y-up, unconverted), sometimes Z. Detect the long
-    axis, rotate it to Z, then drop feet to Z=0 and centre on X/Y.
+    """Ground the mesh: feet to Z=0, centred on X/Y. Z is already up.
+
+    This USED to pick the up axis as the longest extent, on the theory that
+    Rodin's output axis is inconsistent. Measuring all thirteen generations
+    showed otherwise: Blender's glTF importer normalises to Z-up every time, so
+    Z was always already correct - and "longest extent" then actively broke the
+    models whose arm span merely EDGED OUT their height. Ignis measured
+    X=1.90 / Z=1.85 and Gorgonok X=1.90 / Z=1.86 (both wide T-poses), and
+    Slagling is a squat creature at X=1.90 / Z=1.38. All three were rotated
+    onto their side and rigged lying down, and the pipeline reported success:
+    the giveaway was a "knee" measured 0.47 x H out from the spine.
+
+    So: trust Z. The only rotation left is for a mesh whose Z extent is
+    implausibly small - genuinely lying down rather than merely broad - where
+    doing nothing would be worse than guessing.
 
     Transforms are baked into MESH DATA rather than applied via
     bpy.ops.object.transform_apply, which proved unreliable over the bridge."""
@@ -57,11 +69,14 @@ def orient_and_ground(ob):
         return max(vals) - min(vals)
 
     ext = [extent(0), extent(1), extent(2)]
-    long_axis = ext.index(max(ext))
-    if long_axis == 1:
-        me.transform(mathutils.Matrix.Rotation(math.radians(90), 4, 'X'))
-    elif long_axis == 0:
-        me.transform(mathutils.Matrix.Rotation(math.radians(-90), 4, 'Y'))
+    # A standing figure is never less than ~40% as tall as it is wide. Below
+    # that it really is on its side, and the longest axis is the safest guess.
+    if ext[2] < 0.4 * max(ext[0], ext[1]):
+        long_axis = ext.index(max(ext))
+        if long_axis == 1:
+            me.transform(mathutils.Matrix.Rotation(math.radians(90), 4, 'X'))
+        elif long_axis == 0:
+            me.transform(mathutils.Matrix.Rotation(math.radians(-90), 4, 'Y'))
     me.update()
 
     xs = [v.co.x for v in me.vertices]
@@ -132,16 +147,27 @@ def measure(ob):
         return [v.co for v in me.vertices if lo <= v.co.z <= hi]
 
     def outer_centre(z, band=0.035):
-        """Centre |x| of the outermost cluster at this height - a limb."""
+        """Centre |x| of the outermost cluster at this height - a limb.
+
+        Clusters on ABSOLUTE x, not signed x. Clustering signed x looks right
+        and fails silently on the common case: when a character's arms hang
+        near the body (an A-pose rather than a T-pose), each arm merges with
+        the torso into ONE cluster spanning roughly -w..+w, and
+        `abs(min + max) / 2` then cancels to about zero. Aurelia measured a
+        wrist 0.001 units from her own spine, which would have built a
+        degenerate arm chain buried inside the chest - and it reported success.
+        On |x| the two limbs land in the SAME cluster at the right distance,
+        which is what we actually want to measure.
+        """
         vs = slab(z, band)
         if len(vs) < 8:
             return None
-        cs = _clusters([v.x for v in vs], 0.045 * H)
+        cs = _clusters([abs(v.x) for v in vs], 0.045 * H)
         cs = [c for c in cs if c[2] >= 4]
         if not cs:
             return None
-        far = max(cs, key=lambda c: max(abs(c[0]), abs(c[1])))
-        return abs(far[0] + far[1]) / 2.0
+        far = max(cs, key=lambda c: c[1])      # the cluster reaching furthest out
+        return (far[0] + far[1]) / 2.0
 
     def half_width(z, band=0.035):
         vs = slab(z, band)
@@ -154,12 +180,18 @@ def measure(ob):
           "knee": 0.27, "ankle": 0.05}
     z = {k: v * H for k, v in fr.items()}
 
-    wrist_x = outer_centre(z["wrist"]) or 0.18 * H
-    elbow_x = outer_centre(z["elbow"]) or 0.16 * H
-    knee_x = outer_centre(z["knee"]) or 0.09 * H
-    ankle_x = outer_centre(z["ankle"]) or 0.11 * H
     shoulder_x = max(0.055 * H, half_width(z["shoulder"]) * 0.55)
     hip_x = max(0.04 * H, half_width(z["hips"]) * 0.42)
+
+    # Measured, then sanity-floored. The `or` fallbacks only fire when the
+    # cluster search returns None; they do NOT catch a measurement that
+    # succeeded and is nonsense, which is how a 0.001 wrist got through. A limb
+    # joint cannot be closer to the spine than the joint above it, so anything
+    # that says otherwise is a failed measurement wearing a plausible type.
+    wrist_x = max(outer_centre(z["wrist"]) or 0.18 * H, 0.75 * shoulder_x)
+    elbow_x = max(outer_centre(z["elbow"]) or 0.16 * H, 0.85 * shoulder_x)
+    knee_x = max(outer_centre(z["knee"]) or 0.09 * H, 0.55 * hip_x)
+    ankle_x = max(outer_centre(z["ankle"]) or 0.11 * H, 0.5 * hip_x)
 
     # Toes point along the mesh's front.
     foot_y = (-1 if front_is_neg_y else 1) * 0.075 * H
@@ -253,12 +285,57 @@ def bind(mesh, rig):
     bpy.context.view_layer.objects.active = rig   # parent target must be active
     bpy.ops.object.parent_set(type='ARMATURE_AUTO')
 
+    # Sweep up whatever heat diffusion missed.
+    #
+    # ARMATURE_AUTO leaves a vertex unweighted when it is not enclosed by any
+    # bone's falloff - typically a detached or nearly-detached shell like a
+    # ragged robe hem or a floating shoulder ornament. Those vertices then
+    # stay put in world space while the rest of the body animates, which reads
+    # as the mesh tearing. Kaelen's first pass had 100% of them (UV-seam
+    # duplicates, now welded by clean()); Nyx had 20 on her robe hem.
+    #
+    # The fix is unconditional rather than per-character: assign any orphan to
+    # the bone whose segment it is closest to, at full weight. A rigid patch of
+    # hem following the nearest bone is correct-looking; a patch following
+    # nothing is not.
+    bones = [b for b in rig.data.bones]
+    if bones:
+        # Bone segments in MESH-local space (the mesh is now parented to the
+        # rig, and both share the world origin after orient_and_ground).
+        segs = []
+        for b in bones:
+            grp = mesh.vertex_groups.get(b.name)
+            if grp is None:
+                grp = mesh.vertex_groups.new(name=b.name)
+            segs.append((b.head_local.copy(), b.tail_local.copy(), grp))
+
+        def nearest_group(co):
+            best, bestd = None, None
+            for head, tail, grp in segs:
+                ab = tail - head
+                denom = ab.dot(ab)
+                t = 0.0 if denom <= 1e-12 else max(0.0, min(1.0, (co - head).dot(ab) / denom))
+                d = (co - (head + ab * t)).length
+                if bestd is None or d < bestd:
+                    best, bestd = grp, d
+            return best
+
+        rescued = 0
+        for v in mesh.data.vertices:
+            if sum(g.weight for g in v.groups) <= 1e-6:
+                grp = nearest_group(v.co)
+                if grp is not None:
+                    grp.add([v.index], 1.0, 'REPLACE')
+                    rescued += 1
+    else:
+        rescued = 0
+
     unweighted = 0
     for v in mesh.data.vertices:
         if sum(g.weight for g in v.groups) <= 1e-6:
             unweighted += 1
     return {"groups": len(mesh.vertex_groups), "unweighted": unweighted,
-            "verts": len(mesh.data.vertices)}
+            "rescued": rescued, "verts": len(mesh.data.vertices)}
 
 
 # ------------------------------------------------------------------- clips

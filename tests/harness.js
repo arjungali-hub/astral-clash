@@ -91,9 +91,32 @@ function closeAllBrowsers() {
     }
     launched.clear();
 }
+// A hard deadline for the whole run.
+//
+// Twice in one session a checker hung indefinitely - once for 5 hours, once for
+// 12 - holding its browsers and the HTTP port, which then made the NEXT run of
+// the same checker fail for reasons that had nothing to do with the code. A
+// hung test is worse than a failing one: it reports nothing at all, and the
+// only symptom is everything else getting slower. So every run now has a
+// ceiling, and blowing it is a loud failure with a distinct exit code.
+const RUN_BUDGET_MS = Number(process.env.AC_TEST_BUDGET_MS || 15 * 60 * 1000);
+function armWatchdog() {
+    const t = setTimeout(() => {
+        console.error('WATCHDOG: run exceeded ' + Math.round(RUN_BUDGET_MS / 1000)
+            + 's and was killed. Nothing hung silently.');
+        closeAllBrowsers();
+        stopServer();
+        process.exit(3);
+    }, RUN_BUDGET_MS);
+    // Do NOT unref: the point is to fire even when the process would otherwise
+    // sit idle waiting on something that never arrives.
+    t;
+}
+
 function armCleanup() {
     if (cleanupArmed) return;
     cleanupArmed = true;
+    armWatchdog();
     // 'exit' is the whole job. Node emits it when the process ends for an
     // uncaught exception or an unhandled rejection too (verified, not assumed),
     // so this one handler covers every crash path.
