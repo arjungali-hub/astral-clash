@@ -6,11 +6,51 @@
     <title>Astral Clash</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%94%EF%B8%8F%3C/text%3E%3C/svg%3E">
     <style>
+        /* ---- Batch 36: the game's own typeface --------------------------
+           font/astral-type.css folded in here, because the game is one HTML
+           file - one fewer request, and it cannot drift from the markup it
+           styles. Both faces are VENDORED under assets/fonts/ rather than
+           hotlinked from Google, per font/README.md: a peer-to-peer match must
+           not depend on a third party being reachable, and no third party
+           needs to learn who is playing.
+
+           Both are SIL OFL 1.1, licences shipped beside them.
+             AstralDisplay = Recursive Sans (variable weight, CASL 0)
+             AstralHUD     = JetBrains Mono (variable weight), chosen for the
+                             HUD because it ships tabular figures and a slashed
+                             zero as DEFAULTS. That is not a nicety: ctx.font
+                             accepts no font-feature-settings, so a font whose
+                             `tnum` is an opt-in feature cannot be made tabular
+                             on a canvas at all, and HP/timers would jitter as
+                             their digits changed. */
+        @font-face {
+            font-family: 'AstralDisplay';
+            src: url('assets/fonts/astral-display.woff2') format('woff2');
+            font-weight: 400 800;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'AstralHUD';
+            src: url('assets/fonts/astral-hud.woff2') format('woff2');
+            font-weight: 400 700;
+            /* `block`, not `swap`: a fallback swapping in mid-match would
+               resize every number in the HUD on some random frame. The file is
+               31 KB, so the block window is imperceptible. */
+            font-display: block;
+        }
+        :root {
+            --font-ui: 'AstralDisplay', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            --font-hud: 'AstralHUD', 'Courier New', monospace;
+        }
         body {
             margin: 0;
             background: #0d0f18;
             color: #ffffff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: var(--font-ui);
+            /* Tabular figures in the DOM too - coin counts and shop prices sit
+               in columns and must not change width as they change value. */
+            font-feature-settings: 'tnum' 1;
+            font-variation-settings: 'CASL' 0, 'MONO' 0;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -76,6 +116,11 @@
             z-index: 10;
         }
         .brand { text-align: center; margin-bottom: 8px; }
+        /* The display cut's heavy end for the wordmark and headings; buttons a
+           notch lighter so they read as controls rather than as titles. */
+        .brand h1 { font-variation-settings: 'CASL' 0, 'MONO' 0, 'wght' 800; letter-spacing: 0.1em; }
+        h1, h2, h3 { font-variation-settings: 'CASL' 0, 'wght' 700; letter-spacing: 0.02em; }
+        button { font-variation-settings: 'CASL' 0, 'wght' 600; letter-spacing: 0.03em; }
         h1 {
             color: #00f3ff;
             text-shadow: 0 0 16px rgba(0, 243, 255, 0.55);
@@ -180,6 +225,18 @@
             background: rgba(0,0,0,0.28); border: 1px solid #2e3a59; border-radius: 8px;
         }
         .home-roster { color: #64748b; font-size: 0.74rem; margin-left: 4px; }
+        .home-name-row { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+        .home-name-row label {
+            color: #64748b; font-size: 0.7rem; text-transform: uppercase;
+            letter-spacing: 0.07em; white-space: nowrap;
+        }
+        .home-name-row input {
+            flex: 1; min-width: 0;
+            background: #0d1017; border: 1px solid #2e3a59; border-radius: 7px;
+            color: #e2e8f0; font-family: inherit; font-size: 0.9rem; padding: 8px 10px;
+        }
+        .home-name-row input:focus { outline: none; border-color: #00f3ff; }
+        .home-name-row input::placeholder { color: #475569; font-style: italic; }
         .home-row { display: flex; gap: 8px; }
         .home-row button { flex: 1; margin: 0; padding: 8px 6px; font-size: 0.76rem; }
 
@@ -203,7 +260,7 @@
         .room-code-chip-label { color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; }
         .room-code-text {
             background: #0d1017; border: 1px solid #2e3a59; border-radius: 6px; color: #00f3ff;
-            font-family: 'Courier New', monospace; font-size: 0.8rem; padding: 4px 7px;
+            font-family: var(--font-hud); font-size: 0.8rem; padding: 4px 7px;
             width: 168px; text-align: center;
         }
 
@@ -251,10 +308,16 @@
            than scrollable, because a headless/trackpad viewport draws no
            scrollbar to hint otherwise. 300px matches the roster grid's natural
            height, so the two columns line up and it rarely needs to scroll. */
-        /* The `vh` half of the original min() is kept deliberately: on a short
-           viewport a fixed 300px would push Confirm below the fold, which is
-           worse than scrolling the description. */
-        .picker-side .detail-scroll { max-height: min(300px, 42vh); }
+        /* Batch 36: NO inner scrollbar. Requested directly - "never have to
+           scroll down part of the page" - and the screenshot showed the
+           offender: a scrollbar inside the fighter detail panel, which means
+           the description is cut off mid-sentence with the page itself showing
+           no sign that there is more. A region that scrolls independently of
+           the page is a second, invisible viewport.
+           The whole room fits without it now (see .room-main below); if a very
+           short window still cannot fit, #ui-overlay - the ONE scroll
+           container - takes over, which is the behaviour actually wanted. */
+        .picker-side .detail-scroll { max-height: none; overflow-y: visible; }
         @media (max-width: 700px) {
             .picker-side { flex-direction: column; }
             .picker-side .fighter-detail { width: auto; align-self: stretch; }
@@ -448,7 +511,7 @@
         .menu-section .lobby-code {
             flex: 1; width: 100%; margin: 0; padding: 7px 9px; box-sizing: border-box;
             background: #0b0f18; color: #e2e8f0; border: 1px solid #2e3a59; border-radius: 5px;
-            font-family: 'Courier New', monospace; font-size: 0.78rem; text-align: center;
+            font-family: var(--font-hud); font-size: 0.78rem; text-align: center;
         }
         .menu-section .lobby-copy {
             width: auto; margin: 0; padding: 7px 12px; font-size: 0.7rem; font-weight: bold;
@@ -489,19 +552,18 @@
             background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
             align-items: center; justify-content: center; z-index: 30; padding: 20px;
         }
-        /* Batch 24: there is no longer ONE shop with a player tab — each side
-           opens its own, on its own half of the screen, so whose coins you are
-           spending is answered by where the panel is rather than by reading a
-           highlighted tab. The panel is narrowed to match: a 760px panel anchored
-           left still reaches across the half it is meant to leave alone. */
-        #shop-screen.side-p1 { justify-content: flex-start; }
-        #shop-screen.side-p2 { justify-content: flex-end; }
-        .shop-panel { width: min(560px, 46vw); max-height: 90vh; overflow-y: auto; text-align: left; }
-        @media (max-width: 900px) {
-            /* Too narrow to sit beside anything — fall back to centred and wide. */
-            #shop-screen.side-p1, #shop-screen.side-p2 { justify-content: center; }
-            .shop-panel { width: min(560px, 94vw); }
-        }
+        /* Batch 36: CENTRED and full-width again.
+           Batch 24 anchored the shop to one half of the screen and narrowed it
+           to 46vw, because there were two local players with two separate
+           accounts and "whose coins am I spending" had to be answered by WHERE
+           the panel sat. Online there is one player and one account, so the
+           anchoring answers a question nobody is asking and the narrow panel is
+           just a shop occupying half the screen for no reason - reported as
+           "the armory only covers half of the screen, like what it used to be
+           when there were 2 players".
+           The `side-p1`/`side-p2` class is still set by openShop() and still
+           drives the panel TITLE, which is where that information belongs. */
+        .shop-panel { width: min(880px, 94vw); max-height: 92vh; overflow-y: auto; text-align: left; }
         /* The pre-purchase description: an inline expansion rather than a third
            stacked modal. The shop is already a modal, and opening a layer to read
            a paragraph then dismissing it to reach the button underneath is worse
@@ -591,6 +653,35 @@
            base button is width:auto and non-colored by default here. */
         .btn-back { width: auto; background: #1a2235; color: #cbd5e1; border: 1px solid #2e3a59; font-weight: normal; }
         .btn-back:hover { background: #232d47; color: #fff; box-shadow: none; }
+        /* Batch 36: the match result is the single most important line of text
+           the game ever shows, and it was the same 1.3rem as a panel heading.
+           Requested as "make the text bigger and make it animate to grow for
+           things that require more emphasis, like when it says who won or if it
+           was a draw".
+           The grow is a one-shot scale-and-fade rather than a loop: a result
+           that keeps pulsing turns an announcement into a nag. It is applied by
+           re-adding the class (see announceResult), because a CSS animation
+           only replays if the class actually changes. */
+        #winner-title {
+            font-size: clamp(1.6rem, 4.2vw, 2.8rem);
+            line-height: 1.15;
+            letter-spacing: 0.02em;
+            margin: 0 0 12px;
+            text-shadow: 0 0 22px rgba(0,243,255,0.45);
+        }
+        #winner-title.emphasise { animation: resultGrow 620ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+        #winner-title.draw { color: #fbbf24; text-shadow: 0 0 22px rgba(251,191,36,0.45); }
+        @keyframes resultGrow {
+            0%   { transform: scale(0.55); opacity: 0; letter-spacing: -0.04em; }
+            55%  { transform: scale(1.06); opacity: 1; letter-spacing: 0.035em; }
+            100% { transform: scale(1);    opacity: 1; letter-spacing: 0.02em; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            /* The setting exists to suppress exactly this kind of large
+               unrequested movement; the text stays big, it just arrives. */
+            #winner-title.emphasise { animation: none; }
+        }
+
         /* Short screens centre themselves in the scroll container (B2). */
         #gameover-screen { display: none; margin: auto 0; }
         #pause-screen { display: none; margin: auto 0; }
@@ -829,6 +920,11 @@
                     <button id="btn-home-play" class="btn-online">Play Online</button>
                     <p class="home-note">One of you hosts and shares a room code; the other joins with it.
                        Two players, one fighter each, on separate machines.</p>
+                    <div class="home-name-row">
+                        <label for="input-name">Your name</label>
+                        <input id="input-name" maxlength="14" autocomplete="off" spellcheck="false"
+                               placeholder="unnamed">
+                    </div>
                     <div class="home-purse">
                         <span class="purse-label">Coins</span>
                         <span class="coin-balance" id="home-coins">0</span>
@@ -1303,7 +1399,7 @@ function drawHitFeedback() {
     const fontPx = Math.round(hudCanvas.width * 0.018 * HUD_TEXT_SCALE);
     hudCtx.save();
     hudCtx.textAlign = 'center';
-    hudCtx.font = `bold ${fontPx}px sans-serif`;
+    hudCtx.font = announceFont(fontPx, 700);   // floating damage numbers
     for (const vp of vps) {
         const project = (e) => {
             _fbVec.set(worldX(e.x), e.z != null ? e.z : 30, worldZ(e.y)).project(vp.cam);
@@ -1359,6 +1455,76 @@ function computeDt() {
 let LOCAL_SIDE = 'p1';
 const isLocalSide = side => side === LOCAL_SIDE;
 
+// ---- Batch 36: player names ----------------------------------------------
+// You name yourself, and that is what everyone sees. "Player 1" / "Player 2"
+// survive only as a fallback for someone who has NOT named themselves, per the
+// request: if neither player has a name the host is Player 1; if exactly one
+// has, the anonymous one is Player 1 (there is no ambiguity, because only one
+// side is wearing a number).
+//
+// Note this deliberately decouples the DISPLAY label from the fighter slot.
+// LOCAL_SIDE stays the mechanical p1/p2 - it decides spawns, HUD sides and
+// which fighter you drive - while the label is a separate presentation
+// concern. Conflating them is what made the old UI talk about "Player 2" when
+// it meant "the person on the other machine".
+const NAME_KEY = 'astralClashPlayerName';
+const NAME_MAX = 14;      // fits the room slot and the in-match HUD without clipping
+
+function sanitizeName(raw) {
+    // Names are rendered into innerHTML in places and drawn to a canvas in
+    // others, so strip anything that is not plainly a name rather than trying
+    // to escape it everywhere downstream.
+    return String(raw || '')
+        .replace(/[<>&"'`\\]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, NAME_MAX);
+}
+
+let myPlayerName = '';
+try { myPlayerName = sanitizeName(localStorage.getItem(NAME_KEY) || ''); } catch (e) {}
+
+function setMyName(raw) {
+    const next = sanitizeName(raw);
+    if (next === myPlayerName) return myPlayerName;
+    myPlayerName = next;
+    try { localStorage.setItem(NAME_KEY, myPlayerName); } catch (e) {}
+    // Tell the opponent immediately: they are rendering our name on their
+    // screen, so a rename has to cross the wire like a pick does.
+    if (netActive()) netSend({ t: 'NAME', name: myPlayerName });
+    refreshMenuUI();
+    return myPlayerName;
+}
+
+// The remote player's name lives on `net` so netTeardown clears it with
+// everything else - a stale opponent name outliving the connection would be
+// worse than no name.
+function nameForSide(side) {
+    if (isLocalSide(side)) return myPlayerName;
+    return (net && net.remoteName) || '';
+}
+
+// What to actually print for a side.
+function playerLabel(side) {
+    const own = nameForSide(side);
+    if (own) return own;
+    // Unnamed. If the OTHER side has a name, this is the only numbered player,
+    // so it is Player 1 regardless of which slot it holds. If neither is named,
+    // fall back to slot order - and the host always holds p1.
+    const theirs = nameForSide(otherSide(side));
+    if (theirs) return 'Player 1';
+    return side === 'p1' ? 'Player 1' : 'Player 2';
+}
+
+// Short form for the in-match HUD, which has ~420px and a big font.
+function playerLabelShort(side) {
+    const own = nameForSide(side);
+    if (own) return own;
+    const theirs = nameForSide(otherSide(side));
+    if (theirs) return 'P1';
+    return side === 'p1' ? 'P1' : 'P2';
+}
+
 // Batch 34: the connection state lives HERE, not down in the netcode module,
 // for the same reason LOCAL_SIDE does. The menu now asks "are we online, and am
 // I the host?" while it paints itself - refreshModeUI() and refreshBotUI() both
@@ -1382,6 +1548,7 @@ const net = {
     timeoutMs: 15000,      // = NET_TIMEOUT_MS; silence after which we call it dropped
     pingTimer: null,       // setInterval handle - liveness, independent of rAF
     remoteState: null,     // last STATE received; netApplyRemote eases toward it
+    remoteName: '',        // the opponent's chosen name, cleared on teardown
     remoteReady: false,    // joiner has acknowledged SETUP
     pendingSetup: null,    // joiner: setup received before it could be applied
 };
@@ -1517,11 +1684,12 @@ const DEFAULT_BINDINGS = {
     dodge: 'shift',
     attack: 'mouse0',
     special: 'mouse2',
-    // Keyboard pitch is kept as a fallback for when pointer lock is
-    // unavailable or refused - mouse look is primary but must not be the only
-    // way to aim up at the high platforms Batch 20 made reachable.
-    lookUp: 'r',
-    lookDown: 'v',
+    // Batch 36: no keyboard pitch. Batch 31 kept R/V as a fallback for when
+    // pointer lock is refused, but in practice the mouse aims vertically
+    // whether or not the pointer is locked (mousemove still arrives), so they
+    // were only ever a slower way to do the same thing - and they cost two
+    // bindings and two rows of the rebind screen. Reported as "because looking
+    // around is now with cursor, r and v are unnecessary".
 };
 // Held alongside the bound keys, not instead of them.
 const ARROW_ALTS = { forward: 'arrowup', back: 'arrowdown', strafeLeft: 'arrowleft', strafeRight: 'arrowright' };
@@ -1901,7 +2069,41 @@ function syncDebugUnlockUI() {
 // state readouts (per-player HP/meter panel, round timer) rather
 // than every decorative label, persisted like the other settings here.
 let HUD_TEXT_SCALE = parseFloat(safeLSGet('astralClashHudScale')) || 1;
-function hudFont(px, bold) { return `${bold ? 'bold ' : ''}${Math.round(px * HUD_TEXT_SCALE)}px sans-serif`; }
+// Plain strings, because ctx.font is a string - no CSS variables reach a canvas.
+// The fallbacks are load-bearing: if the woff2 fails, ctx.font falls back
+// SILENTLY and per-call, and Courier New is at least also monospaced with
+// tabular advances, so metrics shift once rather than jittering every frame.
+const HUD_FAMILY = "'AstralHUD', 'Courier New', monospace";
+const DISPLAY_FAMILY = "'AstralDisplay', 'Segoe UI', Tahoma, sans-serif";
+
+// FIGHT!, KO and the result use the DISPLAY cut - they are display type, not
+// telemetry, and they are the one place the typeface should be the loudest
+// thing on screen.
+function announceFont(px, weight) { return `${weight || 800} ${Math.round(px)}px ${DISPLAY_FAMILY}`; }
+
+// Ask for both faces up front. The HUD starts drawing on the first frame, and
+// ctx.font offers no callback and no error - so without this the opening
+// seconds of the first match render in Courier New and then silently reflow
+// when the real face arrives. Deliberately NOT awaited: the game must never
+// block on a font.
+let hudFontReady = false;
+if (document.fonts && document.fonts.load) {
+    Promise.all([
+        document.fonts.load("500 13px AstralHUD"),
+        document.fonts.load("700 13px AstralHUD"),
+        document.fonts.load("800 32px AstralDisplay"),
+    ]).then(() => { hudFontReady = !!document.fonts.check("13px AstralHUD"); })
+      .catch(() => { hudFontReady = false; });
+}
+// Batch 36: the HUD cut, at a whole pixel size.
+//
+// The rounding is not cosmetic. The HUD is drawn to a 1755x975 virtual canvas
+// that is then scaled to the window, so an unrounded size lands on fractional
+// pixels with no hinting to rescue it and 9px text turns to mush. `bold` maps
+// to 700 on the variable weight axis.
+function hudFont(px, bold) {
+    return `${bold ? 700 : 500} ${Math.max(9, Math.round(px * HUD_TEXT_SCALE))}px ${HUD_FAMILY}`;
+}
 function cycleHudScale() {
     HUD_TEXT_SCALE = HUD_TEXT_SCALE >= 1.3 ? 1 : 1.3;
     safeLSSet('astralClashHudScale', HUD_TEXT_SCALE);
@@ -1933,7 +2135,6 @@ function controlsSummary() {
 const REBIND_ACTION_LABELS = {
     forward: 'Forward', back: 'Back', strafeLeft: 'Strafe L', strafeRight: 'Strafe R',
     jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash',
-    lookUp: 'Look Up', lookDown: 'Look Dn',
 };
 let rebindCapture = null; // { side, action, buttonEl } while waiting on the next keydown
 function buildRebindList() {
@@ -5642,18 +5843,37 @@ class Fighter {
                 mouseDX = 0; mouseDY = 0;
             }
             // Keyboard pitch stays available for when pointer lock is refused.
-            if (keys[b.lookUp]) this.lookBy(LOOK_SPEED * dt);
-            if (keys[b.lookDown]) this.lookBy(-LOOK_SPEED * dt);
+            // Batch 36: the dedicated look-up / look-down keys (R and V) are
+            // gone. They existed because Batch 20 added vertical aim before
+            // Batch 31 added mouse look; with the mouse doing it, a pair of
+            // keys that turn the view slowly is strictly worse and just
+            // occupies two bindings and two rows of the rebind screen.
+            // LOOK_SPEED stays - the gamepad right stick still uses it below,
+            // and so does the archived split-screen build.
 
-            // MOVEMENT. Forward/back along the facing; A/D and Left/Right now
-            // STRAFE rather than turn, which is the whole point of pairing them
-            // with mouse look. The right-hand vector is (fy, -fx): with forward
-            // mapped to world (fx, 0, fy) and up +Y, cross(up, forward) is
-            // (fy, 0, -fx), so that is genuinely screen-right.
+            // MOVEMENT. Forward/back along the facing; A/D and Left/Right
+            // STRAFE, which is the whole point of pairing them with mouse look.
+            //
+            // Batch 36: THE SIGN WAS INVERTED - reported as "strafe left and
+            // right is reversed", and it was. Batch 31 derived screen-right as
+            // cross(up, forward), but for a camera looking along `forward` the
+            // right vector is forward x up, which is the NEGATION of that.
+            //
+            // Derivation, since getting it wrong once cost a release: three.js
+            // cameras look down local -Z, and the local basis is right-handed
+            // (X x Y = Z), so X = Y x Z = up x (-forward) = -(up x forward)
+            // = forward x up. With up (0,1,0) and forward (fx, 0, fy) that is
+            // (-fy, 0, fx) - i.e. (-fy, fx) in the game's 2D (x -> X, y -> Z)
+            // plane.
+            //
+            // controlscheck asserted the strafe displacement was PERPENDICULAR
+            // to the facing, which is true of both signs - which is exactly why
+            // a test suite of 20 control assertions missed it. It checks the
+            // direction now.
             if (held('forward')) { moveX += this.fx; moveY += this.fy; }
             if (held('back'))    { moveX -= this.fx; moveY -= this.fy; }
-            if (held('strafeRight')) { moveX += this.fy; moveY -= this.fx; }
-            if (held('strafeLeft'))  { moveX -= this.fy; moveY += this.fx; }
+            if (held('strafeRight')) { moveX -= this.fy; moveY += this.fx; }
+            if (held('strafeLeft'))  { moveX += this.fy; moveY -= this.fx; }
 
             if (keys[b.jump]) jumpPressed = true;
             if (consumePress(b.jump)) jumpJustPressed = true;
@@ -6751,7 +6971,7 @@ function makeNameSprite(text, color) {
     const c = document.createElement('canvas');
     c.width = 128; c.height = 32;
     const ctx = c.getContext('2d');
-    ctx.font = 'bold 20px sans-serif';
+    ctx.font = announceFont(20, 700);   // the name sprite above a fighter
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -7327,6 +7547,303 @@ function propForAtkType(f) {
 // correctly from the one angle a viewmodel is ever seen from. The palette is
 // taken from the fighter, and the plates use the same metal materials as the
 // rebuilt weapons so the hand and the thing it is holding belong together.
+
+// ===========================================================================
+// Batch 36: the first-person arm is CUT FROM THE CHARACTER'S OWN MESH.
+//
+// Requested as "make the arms for each character in first person view look
+// exactly like they do in third-person view, with the same hands and
+// everything else". The viewmodel arm was a hand-built assembly of primitives
+// - a tapered cylinder, a bracer, a box palm, four sphere knuckles - wearing
+// the character's accent colour. That is the best you can do with no model;
+// with a real rigged model in memory it is strictly worse than the truth, and
+// it means Draven's steel gauntlet and Lyra's sleeve look like the same arm
+// painted differently.
+//
+// So: take the loaded SkinnedMesh, keep only the triangles whose vertices are
+// weighted to the weapon-side arm chain, and bake them into a static mesh.
+// Static is correct here rather than a compromise: syncViewmodels animates the
+// viewmodel by moving and rotating the whole HOLDER, never by posing bones, so
+// a skinned arm would cost a skeleton per frame and buy nothing.
+//
+// The result carries the model's own materials, so the hand, the glove, the
+// sleeve and the skin tone are the same objects the opponent sees.
+const ARM_CHAIN = ['Shoulder', 'UpperArm', 'LowerArm', 'Hand'];
+
+// How long the extracted arm should be in camera space, and where its centre
+// should sit. Tuned as a pair: the arm reads at roughly a third of the frame
+// height, entering from the lower right the way a held weapon does.
+// Sized against the frame, not against the old procedural stub. At 11.5 the
+// arm rendered about 8% of the frame height - technically present, visually a
+// speck. A first-person arm wants to occupy roughly a third of the frame and
+// reach in from the lower right, which at this camera's field of view means an
+// arm about 30 units long with its centre 16 units out.
+const VM_ARM_LENGTH = 30;
+const VM_ARM_ANCHOR = new THREE.Vector3(6.5, -7.0, -16.0);
+
+// Which bones count as "the arm". Bone names arrive sanitised by three.js
+// (PropertyBinding.sanitizeNodeName strips '.'), so 'UpperArm.L' may be
+// 'UpperArmL' - match on prefix rather than on an exact name.
+function _armBoneIndices(skeleton, side) {
+    const wanted = new Set();
+    skeleton.bones.forEach((b, i) => {
+        const n = b.name || '';
+        for (const part of ARM_CHAIN) {
+            if (n.indexOf(part) !== 0) continue;
+            const tail = n.slice(part.length).replace(/[._]/g, '');
+            if (tail === side) { wanted.add(i); break; }
+        }
+    });
+    return wanted;
+}
+
+// Bakes the arm's triangles into a plain BufferGeometry in the mesh's own
+// space. Returns null when the model does not look like what we expect, so the
+// caller can fall back to the procedural arm rather than render nothing.
+function _extractArmGeometry(skinned, side) {
+    const geo = skinned.geometry;
+    const pos = geo.attributes.position;
+    const skinIndex = geo.attributes.skinIndex;
+    const skinWeight = geo.attributes.skinWeight;
+    if (!pos || !skinIndex || !skinWeight || !skinned.skeleton) return null;
+    const armBones = _armBoneIndices(skinned.skeleton, side);
+    if (!armBones.size) return null;
+
+    // A vertex belongs to the arm when MOST of its weight does. Using "any
+    // weight at all" drags in half the chest, because auto-weighting bleeds a
+    // little shoulder influence a long way down the torso.
+    // getX/getY/getZ/getW, NOT getComponent(v, k): getComponent does not exist
+    // on BufferAttribute in three r128 (it was added later), and calling it
+    // throws rather than returning undefined.
+    const GET = ['getX', 'getY', 'getZ', 'getW'];
+    const isArm = new Uint8Array(pos.count);
+    for (let v = 0; v < pos.count; v++) {
+        let armW = 0, total = 0;
+        for (let k = 0; k < 4; k++) {
+            const w = skinWeight[GET[k]](v);
+            if (!(w > 0)) continue;
+            total += w;
+            if (armBones.has(skinIndex[GET[k]](v))) armW += w;
+        }
+        // 0.8, not 0.6. Automatic weighting is a smooth field, so the
+        // shoulder bone bleeds influence a long way down the torso - at 0.6 a
+        // patch of Draven's hip cleared the bar and came along as a floating
+        // shard. True arm vertices are weighted almost entirely to arm bones,
+        // so the threshold can be strict without losing anything real; the
+        // bone-proximity pass below is the backstop for what it still misses.
+        if (total > 0 && armW / total >= 0.8) isArm[v] = 1;
+    }
+
+    const index = geo.index;
+    const triCount = index ? index.count / 3 : pos.count / 3;
+    const keep = [];
+    for (let t = 0; t < triCount; t++) {
+        const a = index ? index.getX(t * 3) : t * 3;
+        const b = index ? index.getX(t * 3 + 1) : t * 3 + 1;
+        const c = index ? index.getX(t * 3 + 2) : t * 3 + 2;
+        // All three, not any: a triangle straddling the shoulder seam would
+        // otherwise stretch from the hand into the chest.
+        if (isArm[a] && isArm[b] && isArm[c]) keep.push(a, b, c);
+    }
+    if (keep.length < 60) return null;    // nothing recognisable was found
+
+    // Reject islands that are NOT ON THE ARM, by distance from the arm's own
+    // bone chain.
+    //
+    // The first attempt kept the largest connected component, on the theory
+    // that an arm is one piece. It is not: armour plates, a sleeve and a hand
+    // are separate shells, so "largest component" kept a single pauldron and
+    // threw the rest away - 5,150 triangles became 558. Measuring against the
+    // BONES instead keeps every shell that sits on the arm and rejects the
+    // stray patch of hip that the weight threshold let through.
+    const chain = [];
+    for (const part of ARM_CHAIN) {
+        for (const b of skinned.skeleton.bones) {
+            const n = b.name || '';
+            if (n.indexOf(part) !== 0) continue;
+            if (n.slice(part.length).replace(/[._]/g, '') !== side) continue;
+            b.updateWorldMatrix(true, false);
+            chain.push(new THREE.Vector3().setFromMatrixPosition(b.matrixWorld));
+            break;
+        }
+    }
+    if (chain.length >= 2) {
+        // Bone positions are in WORLD space; vertices are in the mesh's local
+        // space. Bring the chain into the mesh's space rather than the other
+        // way round - there are three bones and thousands of vertices.
+        skinned.updateWorldMatrix(true, false);
+        const toLocal = new THREE.Matrix4().copy(skinned.matrixWorld).invert();
+        const local = chain.map(v => v.clone().applyMatrix4(toLocal));
+        let chainLen = 0;
+        for (let i = 1; i < local.length; i++) chainLen += local[i].distanceTo(local[i - 1]);
+        // Generous: an arm's shells stand off the bone by a real amount (a
+        // pauldron especially), and a false reject is a hole in the model.
+        const maxDist = Math.max(1e-4, chainLen * 0.55);
+        const _c = new THREE.Vector3(), _ab = new THREE.Vector3(), _ap = new THREE.Vector3();
+        const nearChain = (x, y, z) => {
+            _c.set(x, y, z);
+            let best = Infinity;
+            for (let i = 1; i < local.length; i++) {
+                const a = local[i - 1], b2 = local[i];
+                _ab.subVectors(b2, a);
+                const denom = _ab.dot(_ab);
+                const t = denom <= 1e-12 ? 0 : Math.max(0, Math.min(1, _ap.subVectors(_c, a).dot(_ab) / denom));
+                const d = _c.distanceTo(_ap.copy(a).addScaledVector(_ab, t));
+                if (d < best) best = d;
+            }
+            return best <= maxDist;
+        };
+        const filtered = [];
+        for (let i = 0; i < keep.length; i += 3) {
+            const a = keep[i], b2 = keep[i + 1], c = keep[i + 2];
+            const cx = (pos.getX(a) + pos.getX(b2) + pos.getX(c)) / 3;
+            const cy = (pos.getY(a) + pos.getY(b2) + pos.getY(c)) / 3;
+            const cz = (pos.getZ(a) + pos.getZ(b2) + pos.getZ(c)) / 3;
+            if (nearChain(cx, cy, cz)) filtered.push(a, b2, c);
+        }
+        if (filtered.length >= 60) { keep.length = 0; keep.push(...filtered); }
+
+    }
+
+    // REMAP to only the vertices actually used. Copying the full attribute
+    // arrays and subsetting just the index leaves every original vertex in the
+    // buffer, which makes computeBoundingBox() report the whole BODY - the
+    // first version measured Kaelen's "arm" as 50 units tall - and that box is
+    // what the shoulder pivot below is derived from.
+    const remap = new Map();
+    const order = [];
+    const idx = [];
+    for (const v of keep) {
+        let n = remap.get(v);
+        if (n === undefined) { n = order.length; remap.set(v, n); order.push(v); }
+        idx.push(n);
+    }
+
+    const out = new THREE.BufferGeometry();
+    // Copy every attribute the material might sample, but drop the skinning
+    // ones - this is a static mesh now.
+    for (const name of ['position', 'normal', 'uv', 'uv2', 'color', 'tangent']) {
+        const attr = geo.attributes[name];
+        if (!attr) continue;
+        const it = attr.itemSize;
+        const dst = new Float32Array(order.length * it);
+        for (let i = 0; i < order.length; i++) {
+            const src = order[i] * it;
+            for (let c = 0; c < it; c++) dst[i * it + c] = attr.array[src + c];
+        }
+        out.setAttribute(name, new THREE.BufferAttribute(dst, it, attr.normalized));
+    }
+    out.setIndex(idx);
+    out.computeBoundingBox();
+    out.computeBoundingSphere();
+    return out;
+}
+
+// Builds a viewmodel arm from the character's loaded model, or returns null.
+function buildViewmodelArmFromModel(f) {
+    const m = charModels[f.name];
+    if (!m || !THREE.SkeletonUtils) return null;
+    let group;
+    try { group = buildRiggedCharacter(f.name); } catch (e) { return null; }
+    if (!group) return null;
+
+    // Which arm holds the weapon. The procedural rigs name them armPos/armNeg;
+    // on a real skeleton armPos is the '.L' chain (see buildRiggedCharacter).
+    const side = 'L';
+    let skinned = null;
+    group.traverse(o => { if (!skinned && o.isSkinnedMesh) skinned = o; });
+    if (!skinned) return null;
+
+    const armGeo = _extractArmGeometry(skinned, side);
+    if (!armGeo) return null;
+
+    const out = new THREE.Group();
+    const arm = new THREE.Mesh(armGeo, skinned.material);
+    // The extracted triangles are in the SkinnedMesh's local space, and the
+    // model sits inside a scaled+rotated wrapper (see buildRiggedCharacter), so
+    // reproduce that world transform rather than guessing.
+    skinned.updateWorldMatrix(true, false);
+    arm.applyMatrix4(skinned.matrixWorld);
+    out.add(arm);
+
+    // In the bind pose the arm points straight out to the side (a T-pose), and
+    // a first-person arm has to point into the screen. Rotate the whole arm
+    // about the shoulder so its long axis lands along -Z, then let the holder's
+    // own animation take over from there.
+    armGeo.computeBoundingBox();
+    const bb = armGeo.boundingBox.clone().applyMatrix4(skinned.matrixWorld);
+    const shoulder = new THREE.Vector3(
+        side === 'L' ? bb.min.x : bb.max.x,
+        bb.max.y,
+        (bb.min.z + bb.max.z) / 2);
+    const pivot = new THREE.Group();
+    pivot.position.copy(shoulder);
+    arm.position.sub(shoulder);
+    pivot.add(arm);
+    // Aim the arm INTO frame, not straight down the view axis.
+    //
+    // The bind pose has the arm out to the side (+X), so it has to swing round
+    // to point into the screen (-Z). Rotating exactly 90 degrees does that and
+    // looks wrong: the arm then points directly away from the camera and you
+    // see it end-on, almost entirely foreshortened - the first render showed
+    // little but a gauntlet at the bottom edge. Stopping ~28 degrees short
+    // sweeps it in from the lower right, which is how a first-person arm
+    // actually reads, and the slight upward tilt lifts the hand off the floor
+    // line.
+    const IN = 0.48;                  // radians short of square-on
+    pivot.rotation.y = side === 'L' ? -(Math.PI / 2) + IN : (Math.PI / 2) - IN;
+    pivot.rotation.x = -0.16;         // hand slightly above the shoulder line
+    const holder = new THREE.Group();
+    holder.add(pivot);
+    // Bring the shoulder back to the origin so the holder's placement numbers
+    // in buildViewmodel keep meaning what they meant for the procedural arm.
+    pivot.position.set(0, 0, 0);
+
+    holder.userData.mats = Array.isArray(skinned.material) ? skinned.material.slice() : [skinned.material];
+    holder.userData.fromModel = true;
+
+    // FRAME IT DELIBERATELY, rather than inheriting placement numbers that were
+    // tuned for a different object.
+    //
+    // The procedural arm this replaces was a ~16-unit stub whose origin sat at
+    // the wrist; the extracted arm is a real limb, roughly 23 units from
+    // shoulder to fingertip, with its origin at the shoulder. Reusing the old
+    // offsets put it off the bottom of the screen twice - first pointing
+    // straight away from the camera, then out of frame entirely.
+    //
+    // So: normalise the arm's LENGTH, then position it by where its centre
+    // should appear rather than by an offset from the shoulder. Both numbers
+    // below are in camera space, which is what the eye actually judges.
+    const box = new THREE.Box3().setFromObject(holder);
+    const size = box.getSize(new THREE.Vector3());
+    const longest = Math.max(size.x, size.y, size.z);
+    if (longest > 0.001) holder.scale.setScalar(VM_ARM_LENGTH / longest);
+    // Re-measure AFTER scaling - the centre moves with it.
+    const centre = new THREE.Box3().setFromObject(holder).getCenter(new THREE.Vector3());
+    holder.position.sub(centre);      // arm's centre now sits at the group origin
+
+    // Where the HAND ended up, in this group's own space. The weapon prop is
+    // added separately by buildViewmodel at a fixed offset that was tuned for
+    // the procedural arm's wrist; with a real arm in place that offset points
+    // at empty air, and the result is a weapon floating beside a hand instead
+    // of held in it. Handing the caller the actual hand position is the only
+    // way it can put them together.
+    holder.updateMatrixWorld(true);
+    const handBone = findBone(skinned, 'Hand', side) ||
+                     (skinned.skeleton.bones.filter(b => (b.name || '').indexOf('Hand') === 0)[0]);
+    if (handBone) {
+        handBone.updateWorldMatrix(true, false);
+        const hp = new THREE.Vector3().setFromMatrixPosition(handBone.matrixWorld);
+        holder.worldToLocal(hp);
+        holder.userData.handPoint = hp;
+    } else {
+        // Fall back to the far end of the arm along its own axis.
+        const b2 = new THREE.Box3().setFromObject(holder);
+        holder.userData.handPoint = new THREE.Vector3(0, b2.min.y, b2.min.z);
+    }
+    return holder;
+}
+
 function buildViewmodelArm(f) {
     const g = new THREE.Group();
     const mats = [];
@@ -7404,7 +7921,14 @@ function buildViewmodelArm(f) {
 
 function buildViewmodel(f, layer) {
     const holder = new THREE.Group();
-    holder.add(buildViewmodelArm(f));
+    // Batch 36: the real arm when there is a model to cut it from, the
+    // primitive assembly otherwise. The fallback is not dead code - a model
+    // that has not finished downloading yet lands here (see ensureCharModel),
+    // and so does any character without one.
+    const armGroup = buildViewmodelArmFromModel(f) || buildViewmodelArm(f);
+    holder.userData.armFromModel = !!armGroup.userData.fromModel;
+    holder.userData.handPoint = armGroup.userData.handPoint || null;
+    holder.add(armGroup);
     const prop = propForAtkType(f);
     prop.rotation.y = Math.PI / 2; // weapon local +X (its "forward") now points into the screen (-Z)
     // Batch 28: angle it up and inboard the way a held melee weapon actually
@@ -7412,7 +7936,14 @@ function buildViewmodel(f, layer) {
     // guard filling the lower third of the frame.
     prop.rotation.z = 0.30;
     prop.rotation.x = -0.10;
-    prop.position.set(-0.6, -0.8, 1.2);
+    if (holder.userData.handPoint) {
+        // Put it IN the hand. The literal below is the procedural arm's wrist;
+        // a real arm's hand is somewhere else entirely, and measured.
+        prop.position.copy(holder.userData.handPoint);
+        prop.rotation.z = 0.30; prop.rotation.x = -0.10;
+    } else {
+        prop.position.set(-0.6, -0.8, 1.2);
+    }
     holder.add(prop);
     // Muzzle flash at the weapon tip (in front), hidden until this fighter
     // fires — so ranged shots visibly erupt from the weapon in first person.
@@ -7435,7 +7966,12 @@ function buildViewmodel(f, layer) {
     holder.userData.special = f.cfg.special;
     // Place & scale the whole thing in camera space: right of center, below
     // the crosshair line, a short distance in front of the near plane.
-    holder.position.set(6.0, -6.0, -12);
+    // The model arm is positioned by where its CENTRE should appear (see
+    // buildViewmodelArmFromModel, which parks that centre on its own origin),
+    // so this is a straight camera-space target: right of centre, below the
+    // crosshair, comfortably in front of the near plane.
+    if (holder.userData.armFromModel) holder.position.copy(VM_ARM_ANCHOR);
+    else holder.position.set(6.0, -6.0, -12);
     holder.scale.setScalar(0.30);
     holder.userData.baseX = holder.position.x;
     holder.userData.baseY = holder.position.y;
@@ -8640,12 +9176,21 @@ function refreshRoomUI() {
 
     // ---- your slot -------------------------------------------------------
     const youRole = document.getElementById('slot-you-role');
-    if (youRole) youRole.textContent = `You \u00b7 Player ${localPlayerNumber()}${host ? ' \u00b7 Host' : ''}`;
+    // Batch 36: your NAME leads, with a slot number only as the fallback for
+    // someone who has not named themselves. The host badge stays either way -
+    // it says who owns the arena and the Start button, which is not a naming
+    // question.
+    if (youRole) {
+        youRole.textContent = (myPlayerName ? myPlayerName : playerLabel(mySide) + ' \u00b7 you')
+            + (host ? ' \u00b7 Host' : '');
+    }
     const youName = document.getElementById('slot-you-name');
     if (youName) youName.textContent = myPick || 'No fighter yet';
     const youState = document.getElementById('slot-you-state');
     if (youState) {
-        youState.textContent = iAmReady ? 'Locked in'
+        // Batch 36: "Ready", not "Locked in". You can back out with right
+        // click, so "locked" claims a finality the UI does not have.
+        youState.textContent = iAmReady ? 'Ready'
             : myStage === 'preview' ? pickKeyHint()
             : 'Pick a fighter below';
         youState.style.color = iAmReady ? '#4ade80' : '#94a3b8';
@@ -8661,15 +9206,30 @@ function refreshRoomUI() {
     const foeState = document.getElementById('slot-foe-state');
     const foeSlot = document.getElementById('slot-foe');
     const foeRole = document.getElementById('slot-foe-role');
-    if (foeRole) foeRole.textContent = `Opponent \u00b7 Player ${localPlayerNumber() === 1 ? 2 : 1}${host ? '' : ' \u00b7 Host'}`;
-    if (foeName) foeName.textContent = !connected ? '\u2014' : (foePick || 'Choosing...');
+    if (foeRole) {
+        const theirName = nameForSide(foeSide);
+        foeRole.textContent = (theirName ? theirName : playerLabel(foeSide) + ' \u00b7 opponent')
+            + (host ? '' : ' \u00b7 Host');
+    }
+    // Their PREVIEW, not just their confirmed pick - so you watch them browse.
+    if (foeName) {
+        const shown = foePick || (foeSide === 'p1' ? p1Preview : p2Preview);
+        foeName.textContent = !connected ? '\u2014' : (shown || 'Choosing...');
+    }
     if (foeState) {
+        // Batch 36: show what they are actually doing, including which fighter
+        // they are looking at. Seeing "Choosing..." for thirty seconds and then
+        // a name appear from nowhere gave no sense of a person on the other end.
+        const foePreview = foeSide === 'p1' ? p1Preview : p2Preview;
+        const foeStage = foeSide === 'p1' ? p1Stage : p2Stage;
         foeState.textContent = !connected ? 'Nobody has joined yet'
-            : foeReady ? 'Locked in'
+            : foeReady ? 'Ready'
+            : foeStage === 'preview' ? 'Looking at ' + foePreview
             : 'Choosing their fighter';
         foeState.style.color = foeReady ? '#4ade80' : '#94a3b8';
     }
-    paintSlotPortrait(document.getElementById('slot-foe-portrait'), connected ? foePick : null);
+    paintSlotPortrait(document.getElementById('slot-foe-portrait'),
+        connected ? (foePick || (foeSide === 'p1' ? p1Preview : p2Preview)) : null);
     if (foeSlot) {
         foeSlot.classList.toggle('empty', !connected);
         foeSlot.classList.toggle('locked', connected && foeReady);
@@ -8679,7 +9239,7 @@ function refreshRoomUI() {
     const picker = document.getElementById('picker-heading');
     if (picker) {
         picker.innerHTML = iAmReady
-            ? `Your fighter <span class="key-hint" style="color:#4ade80">LOCKED IN</span>`
+            ? `Your fighter <span class="key-hint" style="color:#4ade80">READY</span>`
             : myStage === 'preview'
                 ? `Choose your fighter <span class="key-hint">(${pickKeyHint()})</span>`
                 : `Choose your fighter <span class="key-hint">(keys on cards)</span>`;
@@ -9076,6 +9636,7 @@ function netTeardown(reason) {
     // Stop the heartbeat first. A surviving interval would keep pinging a dead
     // connection, and a later reconnect would end up with two of them.
     if (net.pingTimer) { clearInterval(net.pingTimer); net.pingTimer = null; }
+    net.remoteName = '';   // never let an opponent's name outlive their connection
     if (DEBUG && (net.conn || net.peer)) {
         console.warn('[net] teardown:', reason || '(explicit)', 'role=' + net.role,
                      'state=' + gameState, 'sinceRecv=' +
@@ -9096,7 +9657,7 @@ function netBindConnection(conn) {
         netSetStatus('connected', netIsHost() ? 'You are Player 1' : 'You are Player 2');
         // Both sides announce themselves so a mismatched build is obvious
         // rather than manifesting as strange behaviour later.
-        netSend({ t: 'HELLO', build: 'batch36', side: LOCAL_SIDE });
+        netSend({ t: 'HELLO', build: 'batch36', side: LOCAL_SIDE, name: myPlayerName });
         // Start the heartbeat here, not in netHost/netJoin: before the channel
         // is open there is nothing to send it down.
         if (net.pingTimer) clearInterval(net.pingTimer);
@@ -9192,7 +9753,16 @@ function netOnMessage(msg) {
     if (!msg || typeof msg !== 'object') return;
     net.lastRecvAt = performance.now();
     switch (msg.t) {
+        case 'NAME':
+            net.remoteName = sanitizeName(msg.name);
+            refreshMenuUI();
+            break;
         case 'HELLO':
+            // HELLO doubles as the first NAME: it is the earliest point the
+            // opponent can tell us anything.
+            if (msg.name !== undefined) net.remoteName = sanitizeName(msg.name);
+            refreshMenuUI();
+            break;
         case 'PING':
             // Nothing to do: lastRecvAt was already refreshed above, which is
             // the whole point of a keepalive.
@@ -9432,6 +10002,22 @@ document.getElementById('btn-legacy-build').addEventListener('click', () => {
 document.getElementById('btn-home-play').addEventListener('click', () => { refreshLobbyUI(); openModal('lobby'); });
 document.getElementById('btn-home-armory').addEventListener('click', () => openShop(ACCOUNT));
 
+// The name field. Committed on every keystroke rather than on blur: there is no
+// Save button, and a name typed and then abandoned by clicking Play Online
+// should still be the name you play under.
+{
+    const box = document.getElementById('input-name');
+    if (box) {
+        box.value = myPlayerName;
+        box.addEventListener('input', () => {
+            const applied = setMyName(box.value);
+            // Only rewrite the field if sanitising actually changed something,
+            // so the caret does not jump on every normal keystroke.
+            if (box.value !== applied && sanitizeName(box.value) === applied) box.value = applied;
+        });
+    }
+}
+
 // ---- the room's own chrome ------------------------------------------------
 // Leaving the room is a real disconnect, not a screen change: the opponent is
 // a person waiting on a link, so tell them before dropping it.
@@ -9504,10 +10090,24 @@ document.getElementById('btn-copy-code').addEventListener('click', () => {
 refreshLobbyUI();
 
 function netOnPick(msg) {
-    if (!msg.side || !msg.name) return;
-    ensureCharModel(msg.name);      // their fighter renders on OUR machine too
-    if (msg.side === 'p1') { p1Choice = msg.name; p1Preview = msg.name; p1Stage = 'confirmed'; }
-    else { p2Choice = msg.name; p2Preview = msg.name; p2Stage = 'confirmed'; }
+    if (!msg.side) return;
+    // Never let the peer drive OUR side: a malformed or hostile message must
+    // not be able to change what we are playing.
+    if (isLocalSide(msg.side)) return;
+    const stage = msg.stage || 'confirmed';   // older builds only ever sent a confirm
+    const name = msg.name || null;
+    if (name) ensureCharModel(name);          // their fighter renders on OUR machine too
+    const confirmed = stage === 'confirmed' && !!name;
+    const previewing = stage === 'preview' && !!name;
+    if (msg.side === 'p1') {
+        p1Preview = name;
+        p1Choice = confirmed ? name : null;
+        p1Stage = confirmed ? 'confirmed' : (previewing ? 'preview' : 'pick');
+    } else {
+        p2Preview = name;
+        p2Choice = confirmed ? name : null;
+        p2Stage = confirmed ? 'confirmed' : (previewing ? 'preview' : 'pick');
+    }
     refreshMenuUI();   // their slot now shows a fighter; the note updates itself
 }
 
@@ -9581,12 +10181,17 @@ function previewPick(side, name) {
     // moment anyone has expressed interest, and it buys the whole
     // read-the-panel-and-confirm beat as lead time. See ensureCharModel.
     ensureCharModel(name);
+    netAnnouncePick(side, name, 'preview');   // let them watch you browse
     showDetail(side, name, false);
     refreshMenuUI();
 }
 
-function netAnnouncePick(side, name) {
-    if (netActive() && isLocalSide(side)) netSend({ t: 'PICK', side, name });
+// `stage` is 'pick' (browsing, nothing chosen), 'preview' (hovering a fighter)
+// or 'confirmed' (ready). Sending all three is what lets the other player watch
+// you choose instead of seeing nothing until you commit - and it is what makes
+// backing out actually clear on their screen.
+function netAnnouncePick(side, name, stage) {
+    if (netActive() && isLocalSide(side)) netSend({ t: 'PICK', side, name: name || null, stage: stage || 'pick' });
 }
 
 function confirmPick(side) {
@@ -9600,7 +10205,7 @@ function confirmPick(side) {
         p2Choice = p2Preview; p2Stage = 'confirmed';
         showDetail('p2', p2Choice, true);
     }
-    netAnnouncePick(side, side === 'p1' ? p1Choice : p2Choice);
+    netAnnouncePick(side, side === 'p1' ? p1Choice : p2Choice, 'confirmed');
     refreshMenuUI();
     // Batch 34: confirming no longer starts anything. It used to auto-start
     // when your confirm was the action that made both sides ready - which
@@ -9613,6 +10218,11 @@ function confirmPick(side) {
 function backToPick(side) {
     if (side === 'p1') { p1Stage = 'pick'; p1Preview = null; p1Choice = null; }
     else { p2Stage = 'pick'; p2Preview = null; p2Choice = null; }
+    // Batch 36: TELL THEM. Backing out used to be silent, so the opponent's
+    // screen kept showing you as ready with your old fighter until you happened
+    // to pick a different one - reported as "when you lock in and then go back,
+    // it still says you have chosen that character until you pick a new one".
+    netAnnouncePick(side, null, 'pick');
     showGrid(side);
     refreshMenuUI();
 }
@@ -9670,6 +10280,19 @@ document.getElementById('btn-rematch').addEventListener('click', () => hostRemat
 document.getElementById('btn-reroll-map').addEventListener('click', () => hostRematch(null));
 
 // Only the host is offered a rematch; the guest is told what it is waiting for.
+// Sets the result line and replays its grow animation. Re-adding the class is
+// required: a CSS animation does not restart when the same class is already
+// present, so a rematch would have shown the second result with no animation.
+function announceResult(text, isDrawResult) {
+    const el = document.getElementById('winner-title');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('draw', !!isDrawResult);
+    el.classList.remove('emphasise');
+    void el.offsetWidth;            // force a reflow so the removal takes effect
+    el.classList.add('emphasise');
+}
+
 function refreshGameOverUI() {
     const canRematch = !netActive() || netIsHost();
     const actions = document.getElementById('gameover-actions');
@@ -10258,16 +10881,16 @@ function drawIntroOverlay() {
     hudCtx.globalAlpha = nameA;
     hudCtx.shadowColor = accent; hudCtx.shadowBlur = W * 0.02;
     hudCtx.fillStyle = '#ffffff';
-    hudCtx.font = `bold ${Math.round(W * 0.045)}px sans-serif`;
+    hudCtx.font = announceFont(W * 0.045, 800);
     hudCtx.fillText((currentMap && currentMap.name) || '', W / 2, H * 0.235);
     hudCtx.shadowBlur = 0;
     if (player1 && player2) {
-        hudCtx.font = `${Math.round(W * 0.02)}px sans-serif`;
+        hudCtx.font = announceFont(W * 0.02, 500);
         hudCtx.fillStyle = '#cbd5e1';
         hudCtx.fillText(`${player1.name}`, W * 0.5 - W * 0.10, H * 0.235 + W * 0.045);
-        hudCtx.fillStyle = accent; hudCtx.font = `bold ${Math.round(W * 0.02)}px sans-serif`;
+        hudCtx.fillStyle = accent; hudCtx.font = announceFont(W * 0.02, 800);
         hudCtx.fillText('VS', W / 2, H * 0.235 + W * 0.045);
-        hudCtx.fillStyle = '#cbd5e1'; hudCtx.font = `${Math.round(W * 0.02)}px sans-serif`;
+        hudCtx.fillStyle = '#cbd5e1'; hudCtx.font = announceFont(W * 0.02, 500);
         hudCtx.fillText(`${player2.name}`, W * 0.5 + W * 0.10, H * 0.235 + W * 0.045);
     }
     hudCtx.globalAlpha = 1;
@@ -10280,7 +10903,7 @@ function drawIntroOverlay() {
         hudCtx.globalAlpha = Math.min(1, t * 1.6);
         hudCtx.shadowColor = accent; hudCtx.shadowBlur = W * 0.035;
         hudCtx.fillStyle = '#ffffff';
-        hudCtx.font = `bold ${Math.round(W * 0.085)}px sans-serif`;
+        hudCtx.font = announceFont(W * 0.085, 800);
         hudCtx.fillText('FIGHT!', 0, 0);
         hudCtx.strokeStyle = accent; hudCtx.lineWidth = Math.max(2, W * 0.002);
         hudCtx.strokeText('FIGHT!', 0, 0);
@@ -10288,7 +10911,7 @@ function drawIntroOverlay() {
     } else {
         hudCtx.globalAlpha = 0.55 + 0.35 * Math.sin(arenaTime * 0.18);
         hudCtx.fillStyle = accent;
-        hudCtx.font = `bold ${Math.round(W * 0.028)}px sans-serif`;
+        hudCtx.font = announceFont(W * 0.028, 800);
         hudCtx.fillText('GET READY', W / 2, H * 0.57);
         hudCtx.globalAlpha = 1;
     }
@@ -10335,7 +10958,21 @@ function drawHUD() {
         if (gameState === "ROUND_END") {
             hudCtx.textAlign = "center";
             hudCtx.font = hudFont(34, true); hudCtx.fillStyle = "#00f3ff";
-            hudCtx.fillText(isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`, VIRTUAL_W / 2, 300);
+            // Batch 36: bigger, and it grows in over the first ~10 frames.
+            // This is the between-rounds beat, so it wants the same emphasis
+            // the final result gets - it was previously the same size as the
+            // "Round 3 starting..." line underneath it.
+            // roundEndTimer counts UP from 0 to 90 (startRound fires at 90),
+            // so progress is t/12 - not 1 - t/60, which would have started the
+            // grow at full size and shrunk it.
+            const rt = Math.min(1, roundEndTimer / 12);
+            const grow = REDUCED_MOTION ? 1 : (0.6 + 0.4 * (1 - Math.pow(1 - rt, 3)));
+            hudCtx.save();
+            hudCtx.translate(VIRTUAL_W / 2, 300);
+            hudCtx.scale(grow, grow);
+            hudCtx.font = hudFont(34, true);
+            hudCtx.fillText(isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`, 0, 0);
+            hudCtx.restore();
             hudCtx.font = hudFont(18); hudCtx.fillStyle = "#94a3b8";
             hudCtx.fillText(`Round ${currentRound} starting...`, VIRTUAL_W / 2, 336);
             hudCtx.textAlign = "left";
@@ -10463,7 +11100,7 @@ function endMatch() {
         else score = `${roundWins.p1}-${roundWins.p2}`;
         winnerText = `${winner.name} (${winnerLabel}) Wins ${modeInfo().name}! (${score})`;
     }
-    document.getElementById('winner-title').innerText = winnerText;
+    announceResult(winnerText, isDraw);
 
     const s1 = matchStats.p1, s2 = matchStats.p2;
     const roundTimesStr = roundDurations.map((d, i) => `R${i + 1} ${d.toFixed(1)}s`).join(', ');
@@ -10557,7 +11194,7 @@ function endCoopMatch(won, detail) {
     disposeZoneMesh();
     isDraw = false; winner = null; loser = null;
     coopResultText = detail || '';
-    document.getElementById('winner-title').innerText = won ? 'Victory!' : 'Defeat';
+    announceResult(won ? 'Victory!' : 'Defeat', false);
 
     // Coins are a TEAM payout here — both players did the same fight, so both
     // get the same amount. (No-op while the sandbox override is on.)
@@ -11121,6 +11758,10 @@ if (DEBUG) {
         chooseMap, previewPick, confirmPick, beginMatch,
         // Batch 34 room UI, for tests and for poking at states by hand.
         startOnline, hostRematch, enterRoom, goHome, refreshRoomUI, showLocalPickerOnly,
+        // Batch 36 names
+        setMyName, sanitizeName, playerLabel, playerLabelShort, nameForSide, NAME_MAX,
+        sideReady,
+        get myPlayerName() { return myPlayerName; },
         buildModeSelect, onNetLost, refreshGameOverUI, refreshLobbyUI,
         onlineModes: () => onlineModes().map(m => m.id),
         get currentScreen() { return currentScreen; },
@@ -11143,6 +11784,9 @@ if (DEBUG) {
         // view (where your own body is hidden by design and the opponent is
         // wherever the simulation put them).
         get renderer() { return renderer; },   // for isolated model renders
+        buildViewmodelArmFromModel, buildViewmodelArm,
+        get vmP1() { return vmP1; },
+        get vmP2() { return vmP2; },
         renderOnce(cam) { renderer.setScissorTest(false); renderer.setViewport(0, 0, renderer.domElement.width, renderer.domElement.height); renderer.render(scene, cam); },
         // Render AND read back in one JS task. A screenshot taken afterwards
         // captures whatever the game's own requestAnimationFrame drew next, so

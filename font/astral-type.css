@@ -1,0 +1,74 @@
+/* Astral Clash — direction 1c "Telemetry"
+   Recursive Sans (display) + JetBrains Mono (HUD / numerals / room codes) */
+
+@font-face {
+  font-family: 'AstralDisplay';
+  src: url('/fonts/astral-display.woff2') format('woff2-variations');
+  font-weight: 400 800;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+2013-2014, U+2018-201D, U+2022, U+00B7, U+2026,
+                 U+2190, U+2192, U+2039-203A, U+00D7, U+00F7, U+00B1, U+2264-2265,
+                 U+20AC, U+00A3, U+00B0;
+}
+
+/* HUD cut: weight is baked in, one file per weight, so canvas gets it right */
+@font-face {
+  font-family: 'AstralHUD';
+  src: url('/fonts/astral-hud.woff2') format('woff2');
+  font-weight: 400 600;
+  font-display: block;          /* block, not swap: no FOUT mid-match */
+  unicode-range: U+0000-00FF, U+2013-2014, U+2018-201D, U+2022, U+00B7, U+2026,
+                 U+2190, U+2192, U+2039-203A, U+00D7, U+00F7, U+00B1, U+2264-2265,
+                 U+20AC, U+00A3, U+00B0;
+}
+@font-face {
+  font-family: 'AstralHUD';
+  src: url('/fonts/astral-hud-bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: block;
+  unicode-range: U+0000-00FF;
+}
+
+:root {
+  --font-display: 'AstralDisplay', 'Segoe UI', Tahoma, sans-serif;
+  --font-ui:      'AstralDisplay', 'Segoe UI', Tahoma, sans-serif;
+  --font-hud:     'AstralHUD', 'Courier New', monospace;
+}
+
+/* ---- replaces the current 'Segoe UI', Tahoma, Geneva, Verdana stack ---- */
+body {
+  font-family: var(--font-ui);
+  font-variation-settings: 'CASL' 0, 'MONO' 0;
+  font-feature-settings: 'tnum' 1;   /* tabular everywhere; numbers never jitter */
+}
+
+.wordmark {                            /* ASTRAL CLASH, ~2.5rem */
+  font-family: var(--font-display);
+  font-variation-settings: 'CASL' 0, 'MONO' 0, 'wght' 800;
+  letter-spacing: 0.10em;
+  color: #00f3ff;
+  text-shadow: 0 0 18px rgba(0, 243, 255, 0.45);
+}
+
+h1, h2, h3, .panel-heading {
+  font-family: var(--font-display);
+  font-variation-settings: 'CASL' 0, 'wght' 700;
+  letter-spacing: 0.02em;
+}
+
+button, .btn {
+  font-family: var(--font-ui);
+  font-variation-settings: 'CASL' 0, 'wght' 600;
+  letter-spacing: 0.03em;
+}
+
+/* room codes — was 'Courier New', monospace */
+.room-code, code, kbd {
+  font-family: var(--font-hud);
+  font-weight: 600;
+  letter-spacing: 0.04em;    /* slashed 0, disambiguated 1lI / 5S / 2Z / 8B */
+}
+
+/* light-on-dark compensation: never let the UI go below 400 on #0d0f18 */
+.muted { color: #94a3b8; }
+.dim   { color: #64748b; }

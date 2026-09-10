@@ -199,9 +199,15 @@ const H = require('./harness');
         const side = role === 'host' ? 'p1' : 'p2';
         check(`${role}: the room's Armory opens the fighter slot you drive (${side})`,
             opened.localSide === side && opened.shopSide === side, JSON.stringify(opened));
-        check(`${role}: the panel is anchored to that side of the screen`,
-            opened.cls === `side-${side}` && opened.justify === (side === 'p1' ? 'flex-start' : 'flex-end'),
-            JSON.stringify(opened));
+        // Batch 36: no longer anchored to half the screen. Batch 24 put the
+        // shop on the opening player's side so "whose coins" was answered by
+        // position; with one online player and one account that answers nothing
+        // and wastes half the viewport. The side CLASS is still set - it drives
+        // the title - so that is what is asserted now.
+        check(`${role}: the panel still records which side opened it`,
+            opened.cls === `side-${side}`, JSON.stringify(opened));
+        check(`${role}: but it is centred and full-width, not squeezed into a half`,
+            opened.justify === 'center', opened.justify);
         check(`${role}: the panel says whose shop it is`,
             opened.title.includes(side === 'p1' ? 'Player 1' : 'Player 2'), opened.title);
         await page.evaluate(() => document.getElementById('btn-shop-close').click());

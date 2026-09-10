@@ -108,9 +108,15 @@ const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
     check('the host drives p1', asHost.localSide === 'p1', asHost.localSide);
     check('EXACTLY ONE roster is visible, and it is the local side\'s',
         asHost.p1GridVisible && !asHost.p2GridVisible, JSON.stringify(asHost));
-    check('your slot names you and your player number', /You/.test(asHost.youRole) && /Player 1/.test(asHost.youRole), asHost.youRole);
+    // Batch 36: the slots lead with the player's NAME, and fall back to a slot
+    // number only for someone who has not named themselves. With no name set
+    // this is "Player 1 - you" / "Player 2 - opponent"; with one set it is the
+    // name. Asserting the fallback shape here, and the named shape below.
+    check('your slot identifies you, with the host badge',
+        /you/i.test(asHost.youRole) && /Player 1/.test(asHost.youRole) && /Host/.test(asHost.youRole),
+        asHost.youRole);
     check('the opponent slot is an observed person, not a second roster',
-        /Opponent/.test(asHost.foeRole), asHost.foeRole);
+        /opponent/i.test(asHost.foeRole), asHost.foeRole);
     check('the host gets the match-setup controls', asHost.hostControls && !asHost.guestSetup, JSON.stringify(asHost));
     check('Start is hidden until both are ready', !asHost.startVisible, String(asHost.startVisible));
     check('the note says both still need a fighter', /both of you/i.test(asHost.note), asHost.note);
@@ -138,8 +144,10 @@ const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
     });
     check('picking for the opponent is refused', !picking.foePreviewAfterIllegalPick, String(picking.foePreviewAfterIllegalPick));
     check('your own pick lands', picking.myChoice === 'Kaelen', picking.myChoice);
-    check('your slot shows your fighter and Locked in',
-        picking.youName === 'Kaelen' && /locked in/i.test(picking.youState), JSON.stringify(picking));
+    // Batch 36: "Ready", not "Locked in" - right click backs out, so "locked"
+    // overstated it.
+    check('your slot shows your fighter and Ready',
+        picking.youName === 'Kaelen' && /ready/i.test(picking.youState), JSON.stringify(picking));
     check('the note now waits on the opponent', /waiting for your opponent/i.test(picking.note), picking.note);
     check('confirming does NOT start a match on its own',
         picking.screen === 'select' && picking.state === 'MENU', JSON.stringify(picking));
@@ -158,13 +166,72 @@ const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
         };
     });
     check('their pick shows in their slot', bothReady.foeName === 'Lyra', bothReady.foeName);
-    check('their slot says Locked in', /locked in/i.test(bothReady.foeState), bothReady.foeState);
+    check('their slot says Ready', /ready/i.test(bothReady.foeState), bothReady.foeState);
     check('both ready still does not auto-start',
         bothReady.screen === 'select' && bothReady.state === 'MENU', JSON.stringify(bothReady));
     check('NOW the host sees Start Match', bothReady.startVisible, String(bothReady.startVisible));
     check('the note tells the host to choose an arena and start',
         /choose an arena/i.test(bothReady.note), bothReady.note);
     await page.screenshot({ path: DIR + 'b34-room-both-ready.png' });
+
+    section('You can watch your opponent browse, and see them back out:');
+    const watching = await D(() => {
+        const D2 = window.ACDebug;
+        // A PREVIEW from them - not a confirm. Before Batch 36 this crossed no
+        // wire at all, so their slot said "Choosing..." until they committed.
+        D2.netFeed({ t: 'PICK', side: 'p2', name: 'Draven', stage: 'preview' });
+        const previewing = {
+            name: (document.getElementById('slot-foe-name') || {}).textContent,
+            state: (document.getElementById('slot-foe-state') || {}).textContent,
+            ready: D2.sideReady('p2'),
+        };
+        D2.netFeed({ t: 'PICK', side: 'p2', name: 'Draven', stage: 'confirmed' });
+        const confirmed = { ready: D2.sideReady('p2'), choice: D2.p2Choice };
+        // ...and backing out again must CLEAR on our screen.
+        D2.netFeed({ t: 'PICK', side: 'p2', name: null, stage: 'pick' });
+        const backedOut = {
+            ready: D2.sideReady('p2'), choice: D2.p2Choice,
+            name: (document.getElementById('slot-foe-name') || {}).textContent,
+        };
+        // put them back for the sections that follow
+        D2.netFeed({ t: 'PICK', side: 'p2', name: 'Lyra', stage: 'confirmed' });
+        return { previewing, confirmed, backedOut };
+    });
+    check('their slot shows the fighter they are LOOKING at',
+        watching.previewing.name === 'Draven' && /looking at/i.test(watching.previewing.state),
+        JSON.stringify(watching.previewing));
+    check('a preview does not count as ready', watching.previewing.ready === false,
+        JSON.stringify(watching.previewing));
+    check('their confirm does', watching.confirmed.ready === true && watching.confirmed.choice === 'Draven',
+        JSON.stringify(watching.confirmed));
+    check('and backing out clears their pick on OUR screen',
+        watching.backedOut.ready === false && !watching.backedOut.choice
+        && watching.backedOut.name === 'Choosing...', JSON.stringify(watching.backedOut));
+
+    section('Named players show their name instead of a slot number:');
+    const named = await D(() => {
+        const D2 = window.ACDebug;
+        const both = {};
+        both.neither = [D2.playerLabel('p1'), D2.playerLabel('p2')];
+        D2.setMyName('Arjun');
+        both.mineOnly = [D2.playerLabel('p1'), D2.playerLabel('p2')];
+        D2.netFeed({ t: 'NAME', name: 'Sam' });
+        both.bothNamed = [D2.playerLabel('p1'), D2.playerLabel('p2')];
+        D2.setMyName('');
+        both.theirsOnly = [D2.playerLabel('p1'), D2.playerLabel('p2')];
+        both.sanitised = D2.sanitizeName('  <b>Ar</b>jun  ');
+        return both;
+    });
+    check('neither named: the HOST is Player 1',
+        named.neither.join() === 'Player 1,Player 2', JSON.stringify(named.neither));
+    check('both named: no slot numbers at all',
+        named.bothNamed.join() === 'Arjun,Sam', JSON.stringify(named.bothNamed));
+    check('only mine named: the anonymous one is Player 1',
+        named.mineOnly.join() === 'Arjun,Player 1', JSON.stringify(named.mineOnly));
+    check('only theirs named: the anonymous one is Player 1',
+        named.theirsOnly.join() === 'Player 1,Sam', JSON.stringify(named.theirsOnly));
+    check('markup is stripped from a name', named.sanitised === 'bArb jun'
+        || !/[<>]/.test(named.sanitised), named.sanitised);
 
     section('The host owns the arena, and choosing one does not start the match:');
     const arena = await D(() => {

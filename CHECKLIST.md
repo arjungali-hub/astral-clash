@@ -1044,6 +1044,175 @@ question for a human with a keyboard.
 
 ---
 
+
+## Batch 36 - Names, a typeface, and the arm you actually have
+
+A batch of reported problems rather than a planned feature, so it is listed the
+way it arrived.
+
+### Strafe was reversed
+
+Reported plainly: "strafe left and right is reversed". It was, since Batch 31.
+The derivation was the bug — screen-right was taken as `cross(up, forward)`, and
+for a camera looking along `forward` the right vector is `forward × up`, which is
+the negation. Three.js cameras look down local −Z and the local basis is
+right-handed, so X = Y × Z = up × (−forward) = forward × up; with forward
+`(fx, 0, fy)` that is `(−fy, 0, fx)`, not `(fy, 0, −fx)`.
+
+**Twenty control assertions missed this**, because the one covering strafing
+asserted the displacement was PERPENDICULAR to the facing — which is true of both
+signs. It now measures against **the camera's own right vector** (column 0 of its
+world matrix) rather than a hand-derived formula: the bug was in exactly such a
+derivation, so re-deriving it in the test would have reproduced it. The new
+assertion was checked against the old code and fails on it (dot = −1).
+
+### R and V are gone
+
+"Because looking around is now with cursor, r and v are unnecessary." Batch 31
+kept them as a fallback for when pointer lock is refused, but mousemove arrives
+whether or not the pointer is locked, so they were only a slower way to do the
+same thing while occupying two bindings and two rows of the rebind screen.
+`LOOK_SPEED` stays — the gamepad stick still uses it.
+
+### You can name yourself
+
+The name is what everyone sees. "Player 1" / "Player 2" survive only as a
+fallback for someone who has not named themselves: if neither has, the host is
+Player 1; if exactly one has, the anonymous one is Player 1, which is
+unambiguous because only one side is wearing a number.
+
+This deliberately **decouples the display label from the fighter slot**.
+`LOCAL_SIDE` stays the mechanical p1/p2 that decides spawns and HUD sides, while
+the label is presentation. Conflating them is what had the old UI saying
+"Player 2" when it meant "the person on the other machine". Names cross the wire
+in HELLO and in their own NAME message so a rename lands live, and are cleared on
+teardown — an opponent's name must not outlive their connection.
+
+### The room says what is happening
+
+Three fixes, all reported together:
+
+- **You can see what they are browsing.** PICK only crossed the wire on CONFIRM,
+  so the opponent's slot said "Choosing..." for thirty seconds and then a name
+  appeared from nowhere. It carries a stage now — browsing, previewing,
+  confirmed — and their slot names the fighter they are looking at.
+- **Backing out clears on their screen.** Also a consequence of confirm-only
+  PICK: "when you lock in and then go back, it still says you have chosen that
+  character until you pick a new one". Backing out was silent. It announces now.
+- **"Ready", not "Locked in"** — right click backs out, so "locked" claimed a
+  finality the UI does not have.
+
+### No more nested scrollbars
+
+"Never have to scroll down part of the page." The fighter detail panel had its
+own 300px scroll region, so a description was cut off mid-sentence with the page
+showing no sign there was more — a second, invisible viewport. Removed;
+`#ui-overlay` is the one scroll container.
+
+### The armory is the whole screen again
+
+Batch 24 anchored the shop to the opening player's half and narrowed it to 46vw,
+because two local players with two accounts needed "whose coins am I spending"
+answered by position. Online there is one player and one account, so that answers
+nothing and wastes half the viewport. The side class still sets the title.
+
+### The result announces itself
+
+"Make the text bigger and make it animate to grow for things that require more
+emphasis, like when it says who won." The match result was the same 1.3rem as a
+panel heading. It is now `clamp(1.6rem, 4.2vw, 2.8rem)` with a one-shot
+scale-and-fade — one-shot rather than a loop, because a result that keeps pulsing
+turns an announcement into a nag. The class is re-added with a forced reflow, or
+a rematch would show the second result with no animation at all. Suppressed under
+`prefers-reduced-motion`. The between-rounds banner grows too; its progress comes
+from `roundEndTimer`, which counts UP from 0 to 90 — the first attempt used
+`1 − t/60` and so started at full size and shrank.
+
+### The game has its own typeface
+
+Both faces are **vendored**, not hotlinked: a peer-to-peer match should not depend
+on a third party being reachable, and no third party needs to learn who is
+playing. 85 KB total, SIL OFL 1.1, licences shipped beside them.
+
+- **AstralDisplay** (Recursive Sans, variable weight) — wordmark, headings,
+  buttons, and the canvas announcements (FIGHT!, KO, the result).
+- **AstralHUD** (JetBrains Mono, variable weight) — the HUD, the numerals and the
+  room codes. Chosen because it ships **tabular figures and a slashed zero as
+  defaults**, which is not a nicety: `ctx.font` accepts no font-feature-settings,
+  so a font whose `tnum` is an opt-in feature cannot be made tabular on a canvas
+  at all, and every HP value and timer would jitter as its digits changed.
+
+`hudFont` rounds to whole pixels — the HUD draws to a 1755×975 virtual canvas that
+is then scaled, so an unrounded size lands on fractional pixels with no hinting
+and 9px text turns to mush. Both faces are requested at boot via
+`document.fonts.load`, because the HUD starts drawing on frame 1 and `ctx.font`
+falls back silently and per-call with no callback and no error; the load is not
+awaited, since the game must never block on a font.
+
+`docs/font-prompt.md` is the brief that produced them, kept because it holds the
+real constraints — the exact palette, the 9–18px canvas sizes, the room-code
+legibility problem.
+
+### The first-person arm is cut from the character's own mesh
+
+"Make the arms for each character in first person view look exactly like they do
+in third-person view, with the same hands and everything else."
+
+The viewmodel arm was a hand-built assembly of primitives wearing the character's
+accent colour, so Draven's steel gauntlet and Lyra's sleeve were the same arm
+painted differently. It is now taken from the loaded SkinnedMesh: keep the
+triangles weighted to the weapon-side arm chain, bake them into a static mesh,
+and mount that. Static is correct rather than a compromise — `syncViewmodels`
+animates the viewmodel by moving the whole holder and never by posing bones, so a
+skinned arm would cost a skeleton per frame and buy nothing. The result carries
+the model's own materials, so the gauntlet, the sleeve and the skin are the same
+objects the opponent sees.
+
+Four things this needed, each found by looking at a render:
+
+- **`getComponent` does not exist on BufferAttribute in r128** (added later) and
+  throws rather than returning undefined. Use `getX/getY/getZ/getW`.
+- **The weight threshold has to be strict.** Auto-weighting is a smooth field, so
+  the shoulder bleeds influence a long way down the torso; at 0.6 a patch of
+  Draven's hip came along as a floating shard. 0.8, with a bone-proximity
+  backstop.
+- **"Largest connected component" is the wrong filter** — armour plates, a sleeve
+  and a hand are separate shells, so it kept a single pauldron and threw the rest
+  away (5,150 triangles became 558). Distance from the arm's own bone chain keeps
+  every shell that sits on the arm.
+- **Remap the vertices.** Copying the full attribute arrays and subsetting only
+  the index leaves every original vertex in the buffer, so `computeBoundingBox`
+  reports the whole BODY — it measured Kaelen's "arm" as 50 units tall — and that
+  box is what the shoulder pivot is derived from.
+
+The weapon prop is placed at the **measured hand position** rather than at the
+literal offset tuned for the procedural wrist, which otherwise put a weapon
+floating beside a hand instead of held in it.
+
+**Honest status:** the extraction is right and the arm in frame is genuinely the
+third-person arm, but the framing took several passes and is still the weakest
+part — it reads slightly small and the weapon is not perfectly in the grip. The
+numbers are two named constants (`VM_ARM_LENGTH`, `VM_ARM_ANCHOR`) precisely so
+the next pass is a tuning job rather than an archaeology job.
+
+### Still outstanding from this round of reports
+
+Named here rather than quietly dropped:
+
+- **Character faces in the roster circles.** `art/render_faces.js` is written and
+  renders head-and-shoulders portraits from the models; it has not been run or
+  wired into the grid, the armory or the room slots, which still show a flat
+  accent-coloured disc.
+- **The crush cinematic is still one character, not two side by side.** Batch 27
+  built it for split-screen, where each half already had its own camera; the
+  online build has one view and it was never re-done for that.
+- **Movement specials still snap.** Batch 34 added a visual lag offset and a
+  motion streak, and the report says it is still snapping — so either the decay is
+  too fast to read (~100 ms) or the specials that teleport are not routing through
+  `teleportTo`. Not yet re-measured.
+
+---
+
 ## Where this arc landed
 
 All ten planned batches (11-21) are in and pushed, each as its own commit with its own checker script. The nine-suite regression set (`progressioncheck`, `cheatcheck`, `doublejumpcheck`, `reachabilitycheck`, `pitchcheck`, `touchlookcheck`, `modescheck`, `coopcheck`, `bosscheck`, `survivalcheck`, plus the desktop/touch/pause drivers) runs green end to end, and — unlike every batch before this arc — the verification exercises **real game state through the real game loop** rather than only checking that nothing threw, thanks to the `?debug=1`-gated `window.ACDebug` handle added in Batch 12.

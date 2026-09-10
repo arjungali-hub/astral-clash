@@ -137,6 +137,55 @@ const H = require('./harness');
         strafeMoved.every(r => Math.abs(r.across) > 0.9 && Math.abs(r.along) < 0.3),
         JSON.stringify(strafeMoved));
 
+    // ...AND IN THE RIGHT DIRECTION. This is the assertion that was missing:
+    // perpendicular is true of both signs, so twenty control assertions passed
+    // while strafe left and right were swapped for two whole batches. Measured
+    // against the CAMERA's own right vector (column 0 of its world matrix)
+    // rather than a hand-derived formula - the bug was in exactly such a
+    // derivation, so re-deriving it in the test would have reproduced it.
+    const dirCheck = await page.evaluate(async () => {
+        const D = window.ACDebug;
+        const f = D.player1;
+        const cam = D.localCamera();
+        const step = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        // Sweep four facings for the reason documented above sweep(): a single
+        // heading can be blocked by map geometry, which reads as "movement is
+        // broken" when it is only "movement is obstructed".
+        const facings = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+        const out = [];
+        for (const action of ['strafeRight', 'strafeLeft']) {
+            for (const [fx, fy] of facings) {
+                f.x = 850; f.y = 480; f.vx = 0; f.vy = 0; f.z = 0; f.vz = 0;
+                f.fx = fx; f.fy = fy;
+                await step();
+                cam.updateMatrixWorld(true);
+                // Column 0 of a camera's world matrix IS its right vector.
+                // Taking it from the camera rather than re-deriving it matters:
+                // the bug being tested for WAS a bad hand derivation, so
+                // re-deriving here would have reproduced it and passed.
+                const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0).normalize();
+                const x0 = f.x, y0 = f.y;
+                D.keys[D.BINDINGS[action]] = true;
+                for (let i = 0; i < 12; i++) { f.hitstunTimer = 0; f.rootedFrames = 0; await step(); }
+                D.keys[D.BINDINGS[action]] = false;
+                // The 2D plane maps x -> world X and y -> world Z (worldX/worldZ).
+                const moved = new THREE.Vector3(f.x - x0, 0, f.y - y0);
+                const dist = moved.length();
+                out.push({
+                    action, facing: [fx, fy], dist: +dist.toFixed(2),
+                    dot: dist > 0.001 ? +moved.normalize().dot(right).toFixed(3) : 0,
+                });
+            }
+        }
+        return out;
+    });
+    const rights = dirCheck.filter(r => r.action === 'strafeRight' && r.dist > 2);
+    const lefts = dirCheck.filter(r => r.action === 'strafeLeft' && r.dist > 2);
+    check('strafe-right moves you toward SCREEN right, from every facing',
+        rights.length >= 2 && rights.every(r => r.dot > 0.9), JSON.stringify(rights));
+    check('strafe-left moves you toward SCREEN left, from every facing',
+        lefts.length >= 2 && lefts.every(r => r.dot < -0.9), JSON.stringify(lefts));
+
     section('Forward still moves along the facing:');
     const fwd = await sweep(page, 'forward');
     const fwdMoved = fwd.filter(r => r.dist > 2);
@@ -198,6 +247,19 @@ const H = require('./harness');
     check('left click starts an attack', click.before === 'idle' && click.after !== 'idle',
         `${click.before} -> ${click.after}`);
     check('mouseup releases it', click.released === false, String(click.released));
+
+    section('The redundant look keys are gone:');
+    const looks = await page.evaluate(() => {
+        const D = window.ACDebug;
+        return {
+            actions: Object.keys(D.BINDINGS),
+            rebindRows: document.querySelectorAll('#rebind-list .rebind-row').length,
+        };
+    });
+    check('lookUp / lookDown are no longer bound actions',
+        !looks.actions.includes('lookUp') && !looks.actions.includes('lookDown'),
+        looks.actions.join(','));
+    check('eight bound actions remain', looks.actions.length === 8, String(looks.actions.length));
 
     section('Touch/mobile support is gone:');
     const touch = await page.evaluate(() => ({
