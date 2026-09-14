@@ -1373,6 +1373,60 @@ caster costs a pass over the shadow map, and six bolts re-rendering it for a
 
 ---
 
+## Batch 39 - Portraits that face you, and the legacy build actually in sync
+
+### The two builds were drifting on rules, not just art
+
+Reported as "most of the changes seem to have not landed in the legacy version -
+like the step-up, for example". Correct, and the cause was my own scoping:
+`art/port_to_legacy.py` carried **art and fonts only**, while the request had
+been "art/font/balance updates". So the archived build still called a mode Time
+Attack, still let you ride a waist-high block, still gave the ranged fighters
+their old health, and still collapsed the arena on the 20s/6s clock.
+
+The script now carries balance too: `MAX_WALK_STEP_UP`, the retimed collapse,
+the mode rename, the no-collapse-in-Takedown-Race guard, the three ranged health
+values and the Zone Control ring clear.
+
+**Two things had to be fixed about the script itself**, and both are the kind of
+bug a porting tool is uniquely prone to:
+
+- **It was not idempotent**, which defeats its entire purpose - it exists to be
+  re-run after each batch. A second run aborted halfway on steps whose anchors
+  the first run had consumed, leaving a half-updated build.
+- **Worse, some steps APPEND to an anchor that survives**, so they re-applied
+  on the second run and produced duplicates - including a second
+  `const derivedTextureCache`, which is a fatal redeclaration. Skipping on a
+  missing anchor is not enough; those steps are guarded on **their own output**.
+
+A standing requirement is now written down: after every batch, re-run the port
+and check what it does not carry. Still outstanding: the teleport smear and its
+camera fix, the projectile sphere and material cache, the first-person arm
+extraction, the death-scale fix, the tutorial auto-open flag, and the faces.
+
+### The portraits face forward
+
+Reported as "these pictures should all have the head centered and facing
+forward, and nothing should be stretched" - and all three faults had one cause.
+`art/render_faces.js` framed the **top 22% of the bounding box** and shot from a
+three-quarter angle, which works only for a character whose head is where that
+heuristic assumes. Grint's ears push his box upward, so the crop landed on an
+ear; Gorgonok's shoulders are wider than his head, so he framed in profile.
+
+It aims at the **Head bone** now, which is exactly where the head is on every
+character whatever their proportions, and shoots **straight down the model's own
+forward axis** (local +X, the documented convention) rather than at a guessed
+angle. All fourteen now face the viewer with the head centred.
+
+### Smaller
+
+- **The Copy button is shorter again.** The previous pass cut its font and
+  padding but left it inheriting the base button's line-height, so it still
+  stood taller than the room-code field beside it. Both are pinned to 26px now,
+  so they line up.
+
+---
+
 ## Requested, not yet done
 
 Recorded here so none of it is quietly dropped.
@@ -1409,6 +1463,74 @@ visible text is rendering in a fallback family.
   the shoulders enough to sell a relaxed stance. The rest pose should bring the
   upper arms down against the torso; `art/pipeline.py`'s `_mk_poses` is where
   the idle is authored.
+
+### The side-by-side crush in the online build: attempted and reverted
+
+Batch 27 built the crush cinematic for split-screen, where each half has its own
+camera, so each half shows one fighter alone with a wall behind - exactly the
+drawing. Online there is one camera and `applyCrushCameraLayers` hides the
+opponent, so you see only yourself and their death is invisible.
+
+Staging both fighters onto fixed marks either side of the arena centre was tried
+and **reverted after three verification renders**, because it looked worse than
+what it replaced. The two reasons are worth keeping:
+
+- **The rigs moved but the bodies did not.** The mesh position is written in
+  `render3D` from the simulation position every frame, and overriding it there
+  was not sufficient - something later in the frame restores it - so the slab
+  boxes and the fighters ended up in different places.
+- **The staged diorama is not isolated from the level.** The stage floor is a
+  300-unit box, so any gap under ~340 merges the two stages into one pile of
+  slabs; 340 separates them but then needs roughly three times the camera
+  pull-back, and at that distance the arena's own collapsed walls and floor are
+  in shot behind the stages.
+
+Doing it properly likely means rendering the crush as its **own scene** (or on a
+layer with the arena hidden) rather than staging props inside the live arena.
+That is a larger change than the cinematic is currently worth, so the online
+build keeps the single-fighter shot for now - which does read correctly, it is
+just missing the opponent.
+
+### Weapon and limb attachment on the generated models
+
+Four reports, and they look like one root cause: the procedural meshes' weapon
+props and arm transforms are transplanted onto the generated skeletons
+(`buildRiggedCharacter`), and the offsets were authored against the procedural
+body's proportions. A generated character's shoulder, elbow and hand are all
+somewhere else, so anything positioned by a literal offset lands wrong.
+
+- **Voss appears to have four arms.** Almost certainly the procedural arms are
+  still in the group alongside the model's own - the transplant moves the hand
+  PROPS across and remaps `armPos`/`armNeg`, and if the donor limbs are not
+  removed you get both sets. This is the one to diagnose first, because it is
+  the only one that implies something is left in the scene rather than merely
+  mispositioned.
+- **Ignis's fists are not attached to his arms** - they sit at his waist.
+- **Gorgonok's fist swings behind him**, so the swing axis is inverted or the
+  pivot is being taken from the wrong bone for his rig.
+- **Draven's weapon overlaps his leg** at rest (see above).
+
+Fix these together with the rest-pose change: moving the arms down without
+moving the props will make the clipping worse, and all four need the props
+positioned from MEASURED bone positions the way the first-person hand now is
+(`handPoint` in `buildViewmodelArmFromModel`) rather than from literals.
+
+### Keeping the two builds in sync
+
+`art/port_to_legacy.py` now carries balance as well as art - it was art and
+fonts only, which is why the archived build still said "Time Attack", still let
+you ride a waist-high block and still gave the ranged fighters their old health.
+It is also idempotent now, so it can be re-run after every batch; that was not
+true at first and a second run both aborted halfway and, before that,
+duplicated a `const` declaration into the file (a fatal redeclaration).
+
+**Standing requirement: after every batch, re-run the port and check what it
+does NOT carry.** Anything gameplay-facing belongs in it. What is deliberately
+excluded is only the online-specific machinery - the room, names, netcode,
+away-pause - because none of it means anything in a split-screen build. Things
+known still to need porting: the teleport smear and its camera fix, the
+projectile sphere and material cache, the first-person arm extraction, the
+death-scale fix, the tutorial auto-open flag, and the roster faces.
 
 ### Weapons clip the body at rest
 

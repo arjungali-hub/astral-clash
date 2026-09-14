@@ -52,21 +52,55 @@ const SIZE = 192;   // 2x the largest place it is displayed, for retina
             rim.position.set(55, 25, -45); scene.add(rim);
             scene.add(g);
 
+            // FRAME THE HEAD BONE, not the top 22% of the bounding box.
+            //
+            // Reported as "these pictures should all have the head centered and
+            // facing forward, and nothing should be stretched". The box
+            // heuristic produced all three faults: Grint's ears push his box
+            // upward so the crop landed on an ear, Gorgonok's shoulders are
+            // wider than his head so he framed in profile, and a
+            // three-quarter camera on a head that is not where the crop
+            // assumed put several of them off-centre.
+            //
+            // The rig has a Head bone and it is exactly where the head is, on
+            // every character, whatever their proportions. Aim at that.
+            let head = null;
+            g.traverse(o => {
+                if (head || !o.isBone) return;
+                if (/^Head/.test(o.name || '')) head = o;
+            });
+            g.updateMatrixWorld(true);
             const box = new THREE.Box3().setFromObject(g);
             const size = box.getSize(new THREE.Vector3());
-            const top = box.max.y;
-            // Frame the head: the top ~22% of a humanoid is head and shoulders.
-            // Measured from the model rather than assumed, so Karrigos (1.5x)
-            // and Grint (0.72x) both frame correctly.
-            const headH = size.y * 0.22;
-            const centre = new THREE.Vector3(
-                (box.min.x + box.max.x) / 2, top - headH * 0.5, (box.min.z + box.max.z) / 2);
+            const centre = new THREE.Vector3();
+            let headH;
+            if (head) {
+                head.updateWorldMatrix(true, false);
+                centre.setFromMatrixPosition(head.matrixWorld);
+                // A head is roughly an eighth of a humanoid's height; frame a
+                // little more than that so the shoulders anchor it.
+                headH = size.y * 0.15;
+                // The bone sits at the base of the skull, so lift the aim to
+                // the middle of the face.
+                centre.y += headH * 0.45;
+            } else {
+                // No rig (a procedural fallback): the old heuristic, which is
+                // still better than nothing.
+                headH = size.y * 0.22;
+                centre.set((box.min.x + box.max.x) / 2, box.max.y - headH * 0.5,
+                           (box.min.z + box.max.z) / 2);
+            }
 
             const cam = new THREE.PerspectiveCamera(30, 1, 0.05, 4000);
-            const dist = (headH * 1.6) / (2 * Math.tan(Math.PI * 30 / 360));
-            // Three-quarter view, slightly above eye level - a straight-on
-            // shot of a low-poly face reads as a mugshot.
-            cam.position.set(centre.x + dist * 0.52, centre.y + headH * 0.12, centre.z + dist * 0.86);
+            const dist = (headH * 2.6) / (2 * Math.tan(Math.PI * 30 / 360));
+            // STRAIGHT ON, not three-quarter. The model faces local +X (see
+            // buildRiggedCharacter), so the camera goes out along +X - and
+            // because that is derived from the convention rather than guessed,
+            // every character faces the viewer instead of some of them turning
+            // away. A slight lift keeps it from being a passport photo.
+            const fwd = new THREE.Vector3(1, 0, 0).transformDirection(g.matrixWorld).normalize();
+            cam.position.copy(centre).addScaledVector(fwd, dist);
+            cam.position.y += headH * 0.18;
             cam.lookAt(centre);
 
             const r = D.renderer;

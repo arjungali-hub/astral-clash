@@ -527,12 +527,20 @@
         /* Batch 37: smaller. It sat at the same weight as the primary actions
            beside it, which made "Copy" compete with "Host Game" for attention
            when it is a convenience, not a step. */
+        /* Batch 39: shorter again. The previous pass cut the font and padding
+           but left it inheriting the base button's line-height, so it still
+           stood taller than the room-code field beside it. Pinned to the same
+           height as that input and centred on it. */
         .menu-section .lobby-copy {
-            width: auto; margin: 0; padding: 4px 9px; font-size: 0.62rem; font-weight: bold;
-            letter-spacing: 0.04em; line-height: 1.2;
+            width: auto; margin: 0; padding: 0 10px; font-size: 0.62rem; font-weight: bold;
+            letter-spacing: 0.04em; line-height: 1;
+            height: 26px; min-height: 0;
+            display: inline-flex; align-items: center; justify-content: center;
             background: transparent; color: #4ade80; border: 1px solid #4ade80; border-radius: 4px;
             flex: 0 0 auto; align-self: center;
         }
+        /* ...and the field it sits beside, so the two line up exactly. */
+        .room-code-text, #lobby-code { height: 26px; box-sizing: border-box; padding: 0 7px; }
         .menu-section .lobby-copy:hover { background: rgba(74, 222, 128, 0.14); box-shadow: none; }
         /* Batch 32: the online entry point sits with the branding, beside the
            mode selector - which mode you play and who you play it against are
@@ -2847,6 +2855,36 @@ onWindowResize(); // establish real pixel size now that a camera-ish setup exist
 // - each player framed in their own half of the screen. Requested, with a
 // drawing: two figures side by side, a wall closing on each from both sides.
 let crushTime = 0;           // frames since the crush began; drives the whole sequence
+// SIDE-BY-SIDE CRUSH IN THE ONLINE BUILD: ATTEMPTED, REVERTED, STILL TO DO.
+//
+// Batch 27 built this cinematic for split-screen, where each half already had
+// its own camera: applyCrushCameraLayers shows you your own body and hides your
+// opponent's, so each half is one fighter alone with a wall behind. That is
+// still exactly right for the archived build, and it is what the original
+// drawing asked for.
+//
+// Online there is ONE camera, so that same swap means you only ever see
+// yourself and your opponent's death is invisible. Batch 39 tried to stage both
+// fighters onto fixed marks either side of the arena centre and frame the pair.
+// It was reverted after three verification renders because it looked worse than
+// what it replaced, and the reasons are worth writing down rather than
+// rediscovering:
+//
+//   - The rigs moved but the BODIES did not, so the boxes and the fighters
+//     ended up in different places. The mesh position is written in render3D
+//     from the simulation position every frame, and overriding it there was not
+//     enough - something later in the frame puts it back.
+//   - The stage floor is a 300-unit box, so any gap under ~340 overlaps the two
+//     stages into one pile of slabs. 340 separates them but then needs roughly
+//     three times the camera pull-back, and at that distance the ARENA's own
+//     collapsed walls and floor are in the shot behind the stages - the staged
+//     diorama is not isolated from the level.
+//
+// Doing it properly probably means rendering the crush as its own scene (or on
+// a layer with the arena hidden) rather than staging props inside the live
+// arena. That is a bigger change than the cinematic is currently worth, and it
+// is recorded in CHECKLIST.md.
+
 let crushRigs = null;        // { p1, p2 } - each a Group of two slabs plus a stage floor
 const CRUSH_CAM_IN = 42;     // frames easing from the fighter's eye out to the wide shot
 const CRUSH_GAP_START = 230; // world units between one fighter's slabs when they appear
@@ -3053,6 +3091,8 @@ function positionCrushCamera(cam, f, dt) {
     const ease = 1 - Math.pow(1 - t, 3);
     // 120 units out frames the fighter plus both slabs; further back and the
     // slab faces dominate and the figure reads as a doll in a corridor.
+    // Wide enough for two stages plus their slabs when staged; the original
+    // 120 when it is one fighter.
     const dist = 34 + 86 * ease;
     cam.position.set(tx, f.z + EYE_HEIGHT + 10 * ease, tz + dist);
     // Rising shake, peaking as the slabs bite.
@@ -3073,10 +3113,16 @@ function applyCrushCameraLayers() {
         if (own === undefined) continue;
         const other = own === LAYER_P1_BODY ? LAYER_P2_BODY : LAYER_P1_BODY;
         if (crushing) {
-            // Show MY body and hide the opponent's, so each half of the screen
-            // is one fighter being crushed alone. Without the second half of
-            // that swap both fighters appear in both halves, one behind the
+            // Split-screen: show MY body and hide the opponent's, so each
+            // half is one fighter being crushed alone. Without the second half
+            // of that swap both fighters appear in both halves, one behind the
             // other, and it stops reading as "this is happening to me".
+            //
+            // ONLINE: show BOTH. There is only one view, so hiding the
+            // opponent meant the shot contained one character and the other
+            // player's death was invisible. They are staged side by side
+            // rather than one behind the other, which is
+            // what made the split-screen version legible in the first place.
             cam.layers.enable(own);
             cam.layers.disable(other);
         } else {
@@ -12447,6 +12493,7 @@ if (DEBUG) {
         GRACE_PERIOD, SHRINK_INTERVAL, SHRINK_FRAC_STEP, CRUSH_AT_FRAC,
         MAX_WALK_STEP_UP, ZONE_RADIUS, ARENA_CX, ARENA_CY,
         loadMap, syncArenaCollapse,
+        syncCrushRigs, positionCrushCamera, applyCrushCameraLayers,
         setShrinkTimer(v) { shrinkTimer = v; },
         get shrinkFrac() { return shrinkFrac; },
         get crushing() { return crushing; },

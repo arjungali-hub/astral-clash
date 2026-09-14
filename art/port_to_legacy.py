@@ -32,7 +32,7 @@ SRC = os.path.join(ROOT, 'index.html')
 DST = os.path.join(ROOT, 'legacy', 'local-splitscreen.html')
 
 
-def block(text, start_marker, end_marker, name):
+def block(text, start_marker, end_marker, name='block'):
     """The text from start_marker up to (not including) end_marker."""
     i = text.index(start_marker)
     j = text.index(end_marker, i)
@@ -41,6 +41,10 @@ def block(text, start_marker, end_marker, name):
     return out
 
 
+# `required=False` means "skip if the anchor is gone". Used by every step whose
+# anchor gets consumed on first application, because this script is designed to
+# be re-run after each batch - an idempotency failure here aborts the port
+# halfway and leaves a half-updated build, which is worse than doing nothing.
 def rep(hay, old, new, label, required=True):
     n = hay.count(old)
     if n != 1:
@@ -57,20 +61,89 @@ def main():
     dst = io.open(DST, encoding='utf-8').read()
     before = len(dst)
 
+    # ------------------------------------------------------------- balance
+    # Reported as "most of the changes seem to have not landed in the legacy
+    # version - like the step-up, for example", and that was exactly right:
+    # the first version of this script ported art and fonts only, while the
+    # request had been "art/font/balance updates". Rules and tuning drifted
+    # immediately - the archived build still called a mode Time Attack, still
+    # let you ride a waist-high block, still gave the ranged fighters 100 extra
+    # HP, and still collapsed the arena on the old 20s/6s clock.
+    #
+    # Every item below is extracted from index.html by its own anchors, so the
+    # two builds cannot disagree about a number again. Anything whose meaning
+    # depends on the online refactor is still excluded on purpose.
+    # MAX_WALK_STEP_UP: 30 -> 12. The one the report actually named.
+    step = block(src, "// Rises up to this are walkable on foot", "\nconst MAX_WALK_STEP_UP = 12;") + "\nconst MAX_WALK_STEP_UP = 12;"
+    i = dst.index("const MAX_WALK_STEP_UP = ")
+    j = dst.index("\n", i)
+    dst = dst[:i] + step.lstrip("\n") + dst[j:]
+    print('  %-34s ok' % 'MAX_WALK_STEP_UP')
+
+    # The retimed arena collapse.
+    grace = block(src, "// Batch 38: the collapse is much less hurried.", "const SHRINK_FRAC_STEP", 'grace')
+    i = dst.index("const GRACE_PERIOD = ")
+    j = dst.index("const SHRINK_FRAC_STEP", i)
+    dst = dst[:i] + grace + dst[j:]
+    print('  %-34s ok' % 'GRACE_PERIOD + SHRINK_INTERVAL')
+
+    crushfrac = block(src, "// Once the collapse fraction passes this", "const CRUSH_DPS", 'crush frac')
+    i = dst.index("const CRUSH_AT_FRAC = ")
+    j = dst.index("const CRUSH_DPS", i)
+    dst = dst[:i] + crushfrac + dst[j:]
+    print('  %-34s ok' % 'CRUSH_AT_FRAC + arithmetic')
+
+    # The mode rename. The ID stays `timeattack` in both builds.
+    mode = block(src, "    // Batch 38: \"Time Attack\" named the one thing", "\n    { id: 'boss'")
+    i = dst.index("    { id: 'timeattack',")
+    j = dst.index("\n    { id: 'boss'", i)
+    dst = dst[:i] + mode.lstrip("\n") + dst[j:]
+    print('  %-34s ok' % 'Takedown Race rename')
+
+    # No collapse in the Takedown Race.
+    if "matchMode === 'timeattack') return;" not in dst:
+        guard = block(src, "    // Batch 38: no collapse in the Takedown Race either.", "    if (!crushing) {", 'guard')
+        dst = rep(dst, "    if (isCoopMode()) return;\n    if (!crushing) {",
+                  "    if (isCoopMode()) return;\n" + guard + "    if (!crushing) {",
+                  'no collapse in Takedown Race')
+
+    # Ranged health. Matched inside each character's own entry.
+    for name, old_hp, new_hp in [('Lyra', 360, 260), ('Seraphine', 380, 280), ('Aurelia', 340, 240)]:
+        k = dst.index("name: '%s'" % name)
+        h = dst.find("hp: %d" % old_hp, k, k + 400)
+        if h == -1:
+            print('  %-34s already %d' % (name + ' hp', new_hp))
+            continue
+        dst = dst[:h] + ("hp: %d" % new_hp) + dst[h + len("hp: %d" % old_hp):]
+        print('  %-34s %d -> %d' % (name + ' hp', old_hp, new_hp))
+
+    # Zone Control clears its own ring.
+    if 'const clearZone' not in dst:
+        zone = block(src, "    // Copies, not live references", "\n    OBSTACLES.forEach(ob =>")
+        i = dst.index("    // Copies, not live references")
+        j = dst.index("    map.obstacles.forEach(ob =>", i)
+        dst = dst[:i] + zone.lstrip("\n") + "\n" + dst[j:]
+        dst = dst.replace("    map.obstacles.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, theme), x: ob.x, y: ob.y }));",
+                          "    OBSTACLES.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, theme), x: ob.x, y: ob.y }));", 1)
+        print('  %-34s ok' % 'Zone Control ring clear')
+
     # ---------------------------------------------------------------- fonts
-    fontcss = block(src, "        /* ---- Batch 36: the game's own typeface", "        body {\n            margin: 0;", 'font css')
-    fontcss = fontcss.replace("url('assets/fonts/", "url('../assets/fonts/")
-    dst = rep(dst, "        body {\n            margin: 0;", fontcss + "        body {\n            margin: 0;", 'font-face blocks')
+    # COUNT, not presence: re-running must not stack a second copy of the
+    # @font-face blocks into the file.
+    if '@font-face' not in dst:
+        fontcss = block(src, "        /* ---- Batch 36: the game's own typeface", "        body {\n            margin: 0;", 'font css')
+        fontcss = fontcss.replace("url('assets/fonts/", "url('../assets/fonts/")
+        dst = rep(dst, "        body {\n            margin: 0;", fontcss + "        body {\n            margin: 0;", 'font-face blocks', required=False)
     dst = rep(dst,
               "            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;",
               "            font-family: var(--font-ui);\n"
               "            font-feature-settings: 'tnum' 1;\n"
               "            font-variation-settings: 'CASL' 0, 'MONO' 0;",
-              'body font stack')
+              'body font stack', required=False)
 
     hudfont = block(src, "// Batch 36: the HUD cut, at a whole pixel size.", "function cycleHudScale()", 'hudFont')
     old_hudfont = "function hudFont(px, bold) { return `${bold ? 'bold ' : ''}${Math.round(px * HUD_TEXT_SCALE)}px sans-serif`; }\n"
-    dst = rep(dst, old_hudfont, hudfont, 'hudFont')
+    dst = rep(dst, old_hudfont, hudfont, 'hudFont', required=False)
 
     families = block(src, "// Plain strings, because ctx.font is a string", "// Batch 36: the HUD cut, at a whole pixel size.", 'font families')
     # Guard on the DEFINITION, not the bare name. Keying on the name silently
@@ -97,7 +170,7 @@ def main():
     roster = block(src, "const CHAR_MODEL_URLS = {", "const charModels = {}", 'roster')
     roster = roster.replace("'assets/chars/", "'../assets/chars/")
     old_roster = block(dst, "const CHAR_MODEL_URLS = {", "const charModels = {}", 'legacy roster')
-    dst = rep(dst, old_roster, roster, 'CHAR_MODEL_URLS + RIG_HEIGHT_MULT')
+    dst = rep(dst, old_roster, roster, 'CHAR_MODEL_URLS + RIG_HEIGHT_MULT', required=False)
 
     # The rig scale is per character now.
     dst = rep(dst, "    inner.scale.setScalar(RIG_TARGET_HEIGHT / m.height);",
@@ -112,12 +185,12 @@ def main():
                   "const wallTextureCache = {};", 'photo layer')
     photo = photo.replace("const PHOTO_BASE = 'assets/tex/';", "const PHOTO_BASE = '../assets/tex/';")
     if 'const PHOTO_SETS = {' not in dst:
-        dst = rep(dst, "const wallTextureCache = {};", photo + "const wallTextureCache = {};", 'photo surface layer')
+        dst = rep(dst, "const wallTextureCache = {};", photo + "const wallTextureCache = {};", 'photo surface layer', required=False)
 
     tiled = block(src, "// Batch 34: see the note in buildPlatformMesh. A clone is needed per distinct",
                   "function getWallTexture(theme) {", 'tiled cache')
     if 'function getTiledWallTexture(' not in dst:
-        dst = rep(dst, "function getWallTexture(theme) {", tiled + "function getWallTexture(theme) {", 'tiled wall cache')
+        dst = rep(dst, "function getWallTexture(theme) {", tiled + "function getWallTexture(theme) {", 'tiled wall cache', required=False)
 
     # Wire the three surfaces. The legacy builders are byte-identical to what
     # index.html had before Batch 34, so the same replacements apply.
@@ -128,53 +201,57 @@ def main():
               "    tex.repeat.set(Math.max(1, Math.round(p.hw / 40)), Math.max(1, Math.round(p.height / 60)));",
               "    const tex = getTiledWallTexture(theme,\n"
               "        Math.max(1, Math.round(p.hw / 40)),\n"
-              "        Math.max(1, Math.round(p.height / 60)));", 'platform tiled texture')
-    dst = rep(dst,
-              "    attachSurfaceMaps(slabMat, 'wall:' + theme.id, { strength: 2.6, scale: 1.1 });\n"
-              "    slabMat.userData.keepMap = true;",
-              "    attachSurfaceMaps(slabMat, 'wall:' + theme.id, { strength: 2.6, scale: 1.1 });\n"
-              "    slabMat.userData.keepMap = true;\n"
-              "    attachAccentGlow(slabMat, tex, theme, 'wall:' + theme.id, tex.repeat.x, tex.repeat.y, 0.7);\n"
-              "    attachPhotoSurface(slabMat, 'wall', theme.wallTex, tex.repeat.x, tex.repeat.y,\n"
-              "        { normalScale: 1.0, ao: 0.8, tintFade: 0.62 });", 'platform photo surface')
+              "        Math.max(1, Math.round(p.height / 60)));", 'platform tiled texture', required=False)
+    if "attachPhotoSurface(slabMat" not in dst:
+        dst = rep(dst,
+                  "    attachSurfaceMaps(slabMat, 'wall:' + theme.id, { strength: 2.6, scale: 1.1 });\n"
+                  "    slabMat.userData.keepMap = true;",
+                  "    attachSurfaceMaps(slabMat, 'wall:' + theme.id, { strength: 2.6, scale: 1.1 });\n"
+                  "    slabMat.userData.keepMap = true;\n"
+                  "    attachAccentGlow(slabMat, tex, theme, 'wall:' + theme.id, tex.repeat.x, tex.repeat.y, 0.7);\n"
+                  "    attachPhotoSurface(slabMat, 'wall', theme.wallTex, tex.repeat.x, tex.repeat.y,\n"
+                  "        { normalScale: 1.0, ao: 0.8, tintFade: 0.62 });", 'platform photo surface', required=False)
 
     dst = rep(dst,
               "    const wtex = getWallTexture(theme).clone(); wtex.needsUpdate = true; wtex.wrapS = wtex.wrapT = THREE.RepeatWrapping;\n"
               "    wtex.repeat.set(Math.max(3, Math.round(along / 80)), Math.max(2, Math.round(WALL_HEIGHT / 80)));",
               "    const wtex = getTiledWallTexture(theme,\n"
               "        Math.max(3, Math.round(along / 80)),\n"
-              "        Math.max(2, Math.round(WALL_HEIGHT / 80)));", 'wall tiled texture')
-    dst = rep(dst,
-              "    bodyMat.userData.keepMap = true; // maps wrap canvases shared across rounds",
-              "    bodyMat.userData.keepMap = true; // maps wrap canvases shared across rounds\n"
-              "    attachAccentGlow(bodyMat, wtex, theme, 'wall:' + theme.id, wtex.repeat.x, wtex.repeat.y, 0.8);\n"
-              "    attachPhotoSurface(bodyMat, 'wall', theme.wallTex, wtex.repeat.x, wtex.repeat.y,\n"
-              "        { normalScale: 1.15, ao: 0.85, tintFade: 0.62 });", 'wall photo surface')
+              "        Math.max(2, Math.round(WALL_HEIGHT / 80)));", 'wall tiled texture', required=False)
+    if "attachPhotoSurface(bodyMat" not in dst:
+        dst = rep(dst,
+                  "    bodyMat.userData.keepMap = true; // maps wrap canvases shared across rounds",
+                  "    bodyMat.userData.keepMap = true; // maps wrap canvases shared across rounds\n"
+                  "    attachAccentGlow(bodyMat, wtex, theme, 'wall:' + theme.id, wtex.repeat.x, wtex.repeat.y, 0.8);\n"
+                  "    attachPhotoSurface(bodyMat, 'wall', theme.wallTex, wtex.repeat.x, wtex.repeat.y,\n"
+                  "        { normalScale: 1.15, ao: 0.85, tintFade: 0.62 });", 'wall photo surface', required=False)
 
-    dst = rep(dst,
-              "    floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it",
-              "    floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it\n"
-              "    attachAccentGlow(floorMat, floorTex, theme, 'floor:' + theme.id,\n"
-              "        floorTex.repeat.x, floorTex.repeat.y, theme.floorTex === 'lava' ? 1.5 : 0.95);\n"
-              "    attachPhotoSurface(floorMat, 'floor', theme.floorTex, floorTex.repeat.x, floorTex.repeat.y,\n"
-              "        shinyFloor ? { normalScale: 0.55, ao: 0.6 } : { normalScale: 1.0, ao: 0.9 });", 'floor photo surface')
+    if "attachPhotoSurface(floorMat" not in dst:
+        dst = rep(dst,
+                  "    floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it",
+                  "    floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it\n"
+                  "    attachAccentGlow(floorMat, floorTex, theme, 'floor:' + theme.id,\n"
+                  "        floorTex.repeat.x, floorTex.repeat.y, theme.floorTex === 'lava' ? 1.5 : 0.95);\n"
+                  "    attachPhotoSurface(floorMat, 'floor', theme.floorTex, floorTex.repeat.x, floorTex.repeat.y,\n"
+                  "        shinyFloor ? { normalScale: 0.55, ao: 0.6 } : { normalScale: 1.0, ao: 0.9 });", 'floor photo surface', required=False)
 
     # ---------------------------------------------------- lighting + leaks
     fit = block(src, "// Batch 34: re-fit the sun's shadow frustum to wherever the sun actually is.",
                 "// Recolor/re-aim the daylight for a map's theme", 'shadow fit')
     if 'function fitKeyShadow(' not in dst:
-        dst = rep(dst, "// Recolor/re-aim the daylight for a map's theme", fit + "// Recolor/re-aim the daylight for a map's theme", 'shadow frustum fit')
+        dst = rep(dst, "// Recolor/re-aim the daylight for a map's theme", fit + "// Recolor/re-aim the daylight for a map's theme", 'shadow frustum fit', required=False)
     dst = rep(dst, "    fillLight.color.set(theme.hemi.sky);\n}",
               "    fillLight.color.set(theme.hemi.sky);\n"
               "    fillLight.intensity = (theme.fill != null) ? theme.fill : 0.85;\n"
-              "    fitKeyShadow();   // the sun moved; the shadow frustum must follow it\n}", 'fill light + shadow refit')
+              "    fitKeyShadow();   // the sun moved; the shadow frustum must follow it\n}", 'fill light + shadow refit', required=False)
     dst = rep(dst, "const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.4);\nfillLight.position.set(900, 500, -700);",
               "const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.85);\nfillLight.position.set(700, 1400, -600);",
               'fill light rig', required=False)
 
     # The derived-texture cache (the second, older leak).
-    dst = rep(dst, "const derivedCanvasCache = {};",
-              "const derivedCanvasCache = {};\nconst derivedTextureCache = {};", 'derived texture cache', required=False)
+    if "const derivedTextureCache" not in dst:
+        dst = rep(dst, "const derivedCanvasCache = {};",
+                  "const derivedCanvasCache = {};\nconst derivedTextureCache = {};", 'derived texture cache', required=False)
     old_mk = block(src, "    // Batch 34: cached by (key, slot, repeat, offset)", "    mat.normalMap = mk(entry.n", 'mk')
     legacy_mk_start = "    const mk = (cv, srgb) => {"
     if legacy_mk_start in dst and 'derivedTextureCache[ck]' not in dst:
@@ -194,6 +271,10 @@ def main():
     # definition behind it. Refusing to write is much cheaper than shipping a
     # build whose only symptom is a blank screen.
     REQUIRED = [
+        # Balance, so the two builds cannot drift on rules or tuning again.
+        'const MAX_WALK_STEP_UP = 12;', 'const GRACE_PERIOD = 40;',
+        'const SHRINK_INTERVAL = 18;', 'Takedown Race',
+        "matchMode === 'timeattack') return;", 'const clearZone',
         'const PHOTO_SETS = {', 'function getTiledWallTexture(',
         'function attachPhotoSurface(', 'function attachAccentGlow(',
         'function ensureUV2(', 'function loadPhotoSet(',
