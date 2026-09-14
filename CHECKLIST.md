@@ -1213,6 +1213,206 @@ Named here rather than quietly dropped:
 
 ---
 
+
+## Batch 37 - The arm was never posed, and the legacy build stops being frozen
+
+### The first-person arms: one mistake, two symptoms
+
+Reported as "the arms are backwards in first person view and sometimes look
+separated and weird". Both halves were the same bug, and it is worth writing
+down exactly how it hid.
+
+Batch 36's viewmodel arm posed the skeleton before baking, using
+`findBone(skinned, 'UpperArm', side)`. **That call returns `null`, always.**
+`findBone` traverses the object graph, and a SkinnedMesh's bones are not its
+children - they hang off the character group beside it. Every bone lookup
+failed, every `if (bone)` guard silently did nothing, and what shipped was the
+**bind pose - a T-pose, arm straight out to the side - rigidly rotated a quarter
+turn to face the camera**. That is precisely "backwards". The "separated" piece
+was the *hand shell*: a separate shell in the model, which looks detached when
+the arm behind it is in a completely different pose.
+
+**How it was eventually found, and how it should have been found.** I spent
+seven render cycles - about five minutes each, because the harness runs the game
+under software WebGL - filtering that fragment by skin-weight threshold, by
+distance from the bone chain, by bounding-box overlap with the chain, by
+connected component, and by relative component size. Every one of them was
+either a no-op or a false positive, and one of them cost Lyra two thirds of her
+sleeve. The answer came in a single run that printed the baked geometry's
+bounding box: **0.7 wide by 0.4 tall** is an arm pointing sideways, not forward.
+Measure the geometry, then look at the picture - not the other way round.
+
+Fixed properly:
+
+- **`_skelBone(skinned, base, side)`** resolves bones from
+  `skinned.skeleton.bones` by name, trying both `UpperArm.L` and `UpperArmL`
+  (three.js sanitises glTF node names) plus a prefix fallback. The pose step now
+  bails out entirely if it cannot find the chain, rather than pretending to work.
+- **The pose is an AIM, not euler angles.** `art/pipeline.py` documents these
+  rigs as "swing -> local X, negative = forward", and that is true of its own
+  rest pose - but these characters are bound in a T-pose, where the bone's local
+  X runs *along* the arm, so rotating about it swings the limb up and down. The
+  first working version therefore produced an arm hanging straight down.
+  `_aimBone(bone, child, targetWorldDir)` computes the quaternion that points a
+  bone-to-child segment in a given direction, so `VM_AIM` describes *where the
+  limb should point* in the character's own space and there is no axis
+  convention left to be wrong about. It would behave identically on an A-posed
+  rig.
+- **The weapon sits at the measured hand**, and the transform is now applied
+  exactly once. Two bugs here in sequence: first the hand position was measured
+  in the arm group's local space *and* re-multiplied by that same group's matrix
+  in the caller - inverses, so the weapon flew off to the character's world
+  origin. Then composing the hand bone's own orientation into the prop swung the
+  weapon away from the hand it had just been placed in, because a prop's
+  geometry extends from its grip along local +X. Position is measured; rotation
+  stays the tuned constant, which is the honest split - the hand bone carries
+  the bind-pose roll of a body rig, not the grip angle of a held weapon.
+
+Still not perfect: the arm reads slightly small and low, and the weapon is near
+the hand rather than in the grip. But it is now genuinely the third-person arm,
+correctly posed and oriented, which is what was asked for.
+
+### The archived build is no longer frozen at the art it shipped with
+
+Requested as "the legacy version should still receive art/font/balance updates -
+this makes the game easier to test". `legacy/local-splitscreen.html` is a fork
+by deliberate design (the two builds differ in renderer, input model and HUD
+layout, and keeping both live in one file was the half-wired state the online
+refactor set out to escape) - but a fork does not have to mean frozen. It is
+still the only way to play on one machine, and it is where a phone gets
+redirected.
+
+`art/port_to_legacy.py` ports the self-contained work: both fonts, the full
+14-character roster with `RIG_HEIGHT_MULT`, the photographic arena surfaces, the
+fitted shadow frustum, the fill-light change and both texture leak fixes. Every
+block is extracted from `index.html` by its own anchors, so it cannot drift from
+the live version, and `assets/` paths are rewritten to `../assets/`. Anything
+entangled with the online refactor - the room, names, netcode - deliberately
+does not come across, because none of it means anything in a split-screen build.
+
+**It shipped broken once, and the fix is the interesting part.** The guards that
+skip an already-applied step were keyed on bare identifier names, and two of
+them matched *prose*: `hudFont`'s body references `HUD_FAMILY`, and the photo
+block mentions `getTiledWallTexture` in a comment. Both guards therefore
+believed the definitions were present, skipped inserting them, and the legacy
+build died at load with `getTiledWallTexture is not defined` - a blank screen
+whose only clue was a page error. Guards are keyed on definitions now
+(`const HUD_FAMILY`, `function getTiledWallTexture(`), and the script
+**verifies its own output**: 14 definitions must exist and 10 called identifiers
+must resolve, or it refuses to write. A porting script that cannot check its
+work will eventually ship a blank page.
+
+Worth recording separately: that broken build is also what made `mobilecheck`
+appear to hang for 780 seconds. A checker waiting for `window.ACDebug` on a page
+that threw during load waits forever, and the symptom looks nothing like the
+cause.
+
+### Leaving the game tab pauses the match for both players
+
+Until now pause was strictly per-client, which was a deliberate netcode property
+and also a way to keep playing while your opponent could not - except it was not
+even an advantage you could choose, because a hidden tab gets no
+`requestAnimationFrame`, so the away player's fighter simply stopped responding
+and stood there being hit.
+
+The rule that matters: **the pause is not lifted by whoever caused it.** Both
+players have to be present *and* the host has to resume, so nobody can tab back
+and un-pause while the other player is still reading their email. That is why
+`awayPaused` is tracked separately from an ordinary Escape pause - Escape is
+yours to undo, this is not. `document.hidden` is the signal rather than window
+blur, because the request is about leaving the *tab* and blur also fires for a
+second monitor or a devtools panel.
+
+This only works because Batch 36 had already moved the keepalive off the render
+loop onto its own interval - a hidden tab stops rAF entirely, so an away-pause
+on the old code would have ended in a disconnect every time. Timers are
+throttled to roughly 1 Hz in a hidden tab but not stopped, and the 15 s timeout
+tolerates that comfortably.
+
+`tests/awaypausecheck.js` covers the rules rather than the absence of errors: 22
+assertions including the person who left being unable to resume, the guest being
+unable to resume with both players present, a `RESUME` reaching the other side,
+and an opponent's absence being cleared on teardown so the next match is not
+born paused with nobody able to start it.
+
+### Lyra's attack: a flat disc, and a material built per shot
+
+"Lyra's attack animation is still 2d. Make it a 3d sphere with shading. Also,
+Lyra's attack lags a lot." Two separate causes in the same object.
+
+The glow was a `RingGeometry` - a flat annulus - so from first person it read as
+a paper disc hanging in the air. It is a **sphere** now, shaded, with a second
+additive sphere for the glow (depth-write off, so it reads as light around the
+core rather than a second solid).
+
+The lag was three materials **constructed and later disposed for every single
+projectile**. Lyra fires on a 16-frame cooldown and her special is a five-shard
+volley, so that is constant GPU-object churn - the same shape of problem as the
+Batch 30 crush stutter. Materials are cached per colour now, so a projectile
+allocates one Group and three Meshes and no GPU resources at all. The shimmer
+scales the halo mesh instead of writing opacity, because a shared material
+cannot carry per-bolt opacity. Projectiles also no longer **cast shadows**: each
+caster costs a pass over the shadow map, and six bolts re-rendering it for a
+4-unit glowing sphere whose shadow is invisible against a lit floor is pure cost.
+
+### Smaller reported fixes
+
+- **The Copy button no longer leaves the room code highlighted.** Both copies
+  called `box.select()` unconditionally; the selection was only ever there to
+  make the `execCommand` fallback work on an insecure origin. The clipboard API
+  is tried first and the selection is cleared immediately in the fallback. Both
+  copies share one routine now, and the button is smaller - it was competing
+  with "Host Game" for attention when it is a convenience, not a step.
+- **"Don't show this automatically next time" is hidden when you open How to
+  Play on purpose.** Reported exactly: "it didn't show automatically, you made
+  it show on purpose". Offering to stop something that is not happening implies
+  the button you just pressed was an accident. `openTutorial(auto)` takes the
+  distinction, and the listener passes `false` explicitly - handing the handler
+  straight to `addEventListener` would pass the click *event* as `auto`, and an
+  event object is truthy.
+
+---
+
+## Requested, not yet done
+
+Recorded here so none of it is quietly dropped.
+
+### Mobile: one message, no escape hatches
+
+Reported after actually trying it: the desktop-only notice currently offers the
+archived split-screen build and a "I have a mouse and keyboard - continue"
+override, and **both are wrong on a phone**.
+
+- The touch build "was really bad and hard to play", so pointing someone at it
+  is not a kindness - it is sending them somewhere worse. **The archived build
+  must refuse to run on mobile too**, showing the same message rather than its
+  own touch UI.
+- "I have a mouse and keyboard" is self-contradictory on a phone: if they are on
+  a phone, they do not. Batch 33 added it as insurance against pointer media
+  queries misreporting on hybrid devices; the cost of being wrong the other way
+  (someone plays something unplayable) is higher.
+- So: **everything below the divider goes.** What is left is the single
+  statement that it needs a computer. `/local` shows the identical message.
+
+This reverses two Batch 33 decisions on the strength of someone having tried it,
+which is the right reason to reverse them.
+
+### Routing and labels
+- **The Settings button should read "Switch to Local Version"**, not "Switch to
+  Local Split-Screen (old version)". It is a different way to play, not an
+  archive - calling it old discourages the thing that makes the game easiest to
+  test.
+- **Its URL should be `/local`**, not `/legacy/local-splitscreen.html`. Needs a
+  Vercel rewrite (`vercel.json`) mapping `/local` to the archived file, plus the
+  in-game links updated. Note `location.search` must still be carried across, or
+  `?debug=1` stops surviving the switch.
+- **The main build should be `astral-clash.vercel.app`, not `/index.html`.**
+  Vercel already serves `index.html` at the root, so this is about the links the
+  game itself writes - the archived build's "back to online" button points at
+  `../index.html` explicitly.
+
+---
+
 ## Where this arc landed
 
 All ten planned batches (11-21) are in and pushed, each as its own commit with its own checker script. The nine-suite regression set (`progressioncheck`, `cheatcheck`, `doublejumpcheck`, `reachabilitycheck`, `pitchcheck`, `touchlookcheck`, `modescheck`, `coopcheck`, `bosscheck`, `survivalcheck`, plus the desktop/touch/pause drivers) runs green end to end, and — unlike every batch before this arc — the verification exercises **real game state through the real game loop** rather than only checking that nothing threw, thanks to the `?debug=1`-gated `window.ACDebug` handle added in Batch 12.

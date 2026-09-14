@@ -33,11 +33,49 @@
     <title>Astral Clash</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%94%EF%B8%8F%3C/text%3E%3C/svg%3E">
     <style>
+        /* ---- Batch 36: the game's own typeface --------------------------
+           font/astral-type.css folded in here, because the game is one HTML
+           file - one fewer request, and it cannot drift from the markup it
+           styles. Both faces are VENDORED under assets/fonts/ rather than
+           hotlinked from Google, per font/README.md: a peer-to-peer match must
+           not depend on a third party being reachable, and no third party
+           needs to learn who is playing.
+
+           Both are SIL OFL 1.1, licences shipped beside them.
+             AstralDisplay = Recursive Sans (variable weight, CASL 0)
+             AstralHUD     = JetBrains Mono (variable weight), chosen for the
+                             HUD because it ships tabular figures and a slashed
+                             zero as DEFAULTS. That is not a nicety: ctx.font
+                             accepts no font-feature-settings, so a font whose
+                             `tnum` is an opt-in feature cannot be made tabular
+                             on a canvas at all, and HP/timers would jitter as
+                             their digits changed. */
+        @font-face {
+            font-family: 'AstralDisplay';
+            src: url('../assets/fonts/astral-display.woff2') format('woff2');
+            font-weight: 400 800;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'AstralHUD';
+            src: url('../assets/fonts/astral-hud.woff2') format('woff2');
+            font-weight: 400 700;
+            /* `block`, not `swap`: a fallback swapping in mid-match would
+               resize every number in the HUD on some random frame. The file is
+               31 KB, so the block window is imperceptible. */
+            font-display: block;
+        }
+        :root {
+            --font-ui: 'AstralDisplay', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            --font-hud: 'AstralHUD', 'Courier New', monospace;
+        }
         body {
             margin: 0;
             background: #0d0f18;
             color: #ffffff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: var(--font-ui);
+            font-feature-settings: 'tnum' 1;
+            font-variation-settings: 'CASL' 0, 'MONO' 0;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -1256,7 +1294,7 @@ function drawHitFeedback() {
     const fontPx = Math.round(hudCanvas.width * 0.018 * HUD_TEXT_SCALE);
     hudCtx.save();
     hudCtx.textAlign = 'center';
-    hudCtx.font = `bold ${fontPx}px sans-serif`;
+    hudCtx.font = announceFont(fontPx, 700);
     for (const vp of vps) {
         const project = (e) => {
             _fbVec.set(worldX(e.x), e.z != null ? e.z : 30, worldZ(e.y)).project(vp.cam);
@@ -1728,7 +1766,42 @@ function syncDebugUnlockUI() {
 // state readouts (per-player HP/meter panel, round timer) rather
 // than every decorative label, persisted like the other settings here.
 let HUD_TEXT_SCALE = parseFloat(safeLSGet('astralClashHudScale')) || 1;
-function hudFont(px, bold) { return `${bold ? 'bold ' : ''}${Math.round(px * HUD_TEXT_SCALE)}px sans-serif`; }
+// Plain strings, because ctx.font is a string - no CSS variables reach a canvas.
+// The fallbacks are load-bearing: if the woff2 fails, ctx.font falls back
+// SILENTLY and per-call, and Courier New is at least also monospaced with
+// tabular advances, so metrics shift once rather than jittering every frame.
+const HUD_FAMILY = "'AstralHUD', 'Courier New', monospace";
+const DISPLAY_FAMILY = "'AstralDisplay', 'Segoe UI', Tahoma, sans-serif";
+
+// FIGHT!, KO and the result use the DISPLAY cut - they are display type, not
+// telemetry, and they are the one place the typeface should be the loudest
+// thing on screen.
+function announceFont(px, weight) { return `${weight || 800} ${Math.round(px)}px ${DISPLAY_FAMILY}`; }
+
+// Ask for both faces up front. The HUD starts drawing on the first frame, and
+// ctx.font offers no callback and no error - so without this the opening
+// seconds of the first match render in Courier New and then silently reflow
+// when the real face arrives. Deliberately NOT awaited: the game must never
+// block on a font.
+let hudFontReady = false;
+if (document.fonts && document.fonts.load) {
+    Promise.all([
+        document.fonts.load("500 13px AstralHUD"),
+        document.fonts.load("700 13px AstralHUD"),
+        document.fonts.load("800 32px AstralDisplay"),
+    ]).then(() => { hudFontReady = !!document.fonts.check("13px AstralHUD"); })
+      .catch(() => { hudFontReady = false; });
+}
+
+// Batch 36: the HUD cut, at a whole pixel size.
+//
+// The rounding is not cosmetic. The HUD is drawn to a 1755x975 virtual canvas
+// that is then scaled to the window, so an unrounded size lands on fractional
+// pixels with no hinting to rescue it and 9px text turns to mush. `bold` maps
+// to 700 on the variable weight axis.
+function hudFont(px, bold) {
+    return `${bold ? 700 : 500} ${Math.max(9, Math.round(px * HUD_TEXT_SCALE))}px ${HUD_FAMILY}`;
+}
 function cycleHudScale() {
     HUD_TEXT_SCALE = HUD_TEXT_SCALE >= 1.3 ? 1 : 1.3;
     safeLSSet('astralClashHudScale', HUD_TEXT_SCALE);
@@ -2674,10 +2747,61 @@ keyLight.layers.enableAll();
 scene.add(keyLight);
 // A cool sky-bounce fill from the opposite side to keep shadows from going
 // muddy — subtle, just lifts the shadowed faces toward the sky color.
-const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.4);
-fillLight.position.set(900, 500, -700);
+const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.85);
+fillLight.position.set(700, 1400, -600);
 fillLight.layers.enableAll();
 scene.add(fillLight);
+
+// Batch 34: re-fit the sun's shadow frustum to wherever the sun actually is.
+//
+// The frustum was authored once, as a fixed +/-1000 x +/-650 orthographic box,
+// for the default sun at (-1400, 2600, 1600). applyLighting() then moved the
+// sun per map - as far as (-2000, 1700, 1100) for Skyreach Spire - and never
+// touched the frustum, so on maps with a low or distant sun part of the arena
+// fell outside the shadow camera and simply stopped casting or receiving
+// shadows. Fitting it means every map is correct by construction instead of
+// tuned per map.
+//
+// The arena is a 1755 x 975 virtual rectangle centred on the origin (see
+// worldX/worldZ), enclosed by WALL_HEIGHT walls, and the tallest scenery
+// (skylines, pylons, crystals) reaches roughly twice that. The box below is
+// the world-space AABB those occupy; the fit projects its 8 corners into the
+// light's own view space, which is exactly the space the ortho frustum is
+// expressed in.
+const SHADOW_FIT_HX = (VIRTUAL_W / 2) + 120;   // half-width  + wall thickness
+const SHADOW_FIT_HZ = (VIRTUAL_H / 2) + 120;   // half-depth  + wall thickness
+const SHADOW_FIT_HY = WALL_HEIGHT * 2.2;       // tallest scenery above the floor
+const SHADOW_FIT_PAD = 80;
+const _shadowFitV = new THREE.Vector3();
+const _shadowFitInv = new THREE.Matrix4();
+function fitKeyShadow() {
+    const cam = keyLight.shadow.camera;
+    // Replicate what DirectionalLightShadow.updateMatrices is about to do, so
+    // the extents are measured in the same basis the shadow map will use.
+    cam.position.copy(keyLight.position);
+    cam.lookAt(keyLight.target.position);
+    cam.updateMatrixWorld();
+    _shadowFitInv.copy(cam.matrixWorld).invert();
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const sx of [-1, 1]) for (const sy of [0, 1]) for (const sz of [-1, 1]) {
+        _shadowFitV.set(sx * SHADOW_FIT_HX, sy * SHADOW_FIT_HY, sz * SHADOW_FIT_HZ)
+            .applyMatrix4(_shadowFitInv);
+        if (_shadowFitV.x < minX) minX = _shadowFitV.x;
+        if (_shadowFitV.x > maxX) maxX = _shadowFitV.x;
+        if (_shadowFitV.y < minY) minY = _shadowFitV.y;
+        if (_shadowFitV.y > maxY) maxY = _shadowFitV.y;
+        if (_shadowFitV.z < minZ) minZ = _shadowFitV.z;
+        if (_shadowFitV.z > maxZ) maxZ = _shadowFitV.z;
+    }
+    cam.left = minX - SHADOW_FIT_PAD; cam.right = maxX + SHADOW_FIT_PAD;
+    cam.bottom = minY - SHADOW_FIT_PAD; cam.top = maxY + SHADOW_FIT_PAD;
+    // A camera looks down its own -Z, so the near/far DISTANCES are the
+    // negated z extents, nearest first. Getting this backwards silently
+    // clips every shadow in the scene.
+    cam.near = Math.max(1, -maxZ - SHADOW_FIT_PAD);
+    cam.far = -minZ + SHADOW_FIT_PAD;
+    cam.updateProjectionMatrix();
+}
 
 // Recolor/re-aim the daylight for a map's theme (all daytime, just different
 // times/moods). keyLight is placed at the sun's sky position so shadows fall
@@ -2688,6 +2812,8 @@ function applyLighting(theme) {
     keyLight.color.set(theme.sun.color); keyLight.intensity = theme.sun.int;
     keyLight.position.set(theme.sun.pos[0], theme.sun.pos[1], theme.sun.pos[2]);
     fillLight.color.set(theme.hemi.sky);
+    fillLight.intensity = (theme.fill != null) ? theme.fill : 0.85;
+    fitKeyShadow();   // the sun moved; the shadow frustum must follow it
 }
 
 // --- Per-map visual THEMES. Each map has a distinct palette, wall shape +
@@ -3003,6 +3129,7 @@ function _roughCanvas(canvas, lo, hi) {
 // can carry its own `repeat` - a wall, a platform and the floor all tile the
 // same source at different densities.
 const derivedCanvasCache = {};
+const derivedTextureCache = {};
 function attachSurfaceMaps(mat, key, opts) {
     opts = opts || {};
     if (!mat.map || !mat.map.image) return mat;
@@ -3013,19 +3140,30 @@ function attachSurfaceMaps(mat, key, opts) {
             r: _roughCanvas(mat.map.image, opts.lo || 0.35, opts.hi || 0.98),
         };
     }
-    const mk = (cv, srgb) => {
+    // Batch 34: cached by (key, slot, repeat, offset) rather than built fresh.
+    // These land on keepMap materials, so a new one per material per loadMap()
+    // was never freed - a permanent two-textures-per-mesh leak that grew every
+    // time you changed arena. The clone exists only because `repeat` lives on
+    // the texture, not the material, so one per distinct tiling is the correct
+    // granularity.
+    const mk = (cv, slot) => {
+        const r = mat.map.repeat, o = mat.map.offset;
+        const ck = `${key}:${slot}:${r.x.toFixed(3)}x${r.y.toFixed(3)}:${o.x.toFixed(3)},${o.y.toFixed(3)}`;
+        const hit = derivedTextureCache[ck];
+        if (hit) return hit;
         const t = new THREE.CanvasTexture(cv);
         t.wrapS = t.wrapT = THREE.RepeatWrapping;
         t.anisotropy = 8;
         // A normal/roughness map is DATA, not colour: tagging it sRGB would
         // gamma-decode the vectors and flatten the lighting.
         t.encoding = THREE.LinearEncoding;
-        t.repeat.copy(mat.map.repeat);
-        t.offset.copy(mat.map.offset);
+        t.repeat.copy(r);
+        t.offset.copy(o);
+        derivedTextureCache[ck] = t;
         return t;
     };
-    mat.normalMap = mk(entry.n);
-    mat.roughnessMap = mk(entry.r);
+    mat.normalMap = mk(entry.n, 'n');
+    mat.roughnessMap = mk(entry.r, 'r');
     mat.normalScale = new THREE.Vector2(opts.scale || 1, opts.scale || 1);
     mat.needsUpdate = true;
     return mat;
@@ -3054,7 +3192,322 @@ function _speckle(css) { return (g, bx, by, bw, bh) => { g.save(); g.globalAlpha
 function _marbleVeins(g, bx, by, bw, bh) { g.strokeStyle = 'rgba(140,140,155,0.28)'; g.lineWidth = 1; g.beginPath(); g.moveTo(bx + Math.random() * bw, by); g.bezierCurveTo(bx + bw * 0.3, by + bh * 0.4, bx + bw * 0.7, by + bh * 0.6, bx + Math.random() * bw, by + bh); g.stroke(); }
 function _redStrata(g, bx, by, bw, bh) { g.fillStyle = 'rgba(80,40,25,0.16)'; for (let yy = by + 4; yy < by + bh; yy += 6) g.fillRect(bx, yy, bw, 2); }
 
+// ===========================================================================
+// Batch 34: PHOTOGRAPHIC ARENA SURFACES
+//
+// The arenas were dressed entirely in 256x256 canvases painted at runtime,
+// with normal and roughness maps derived from their luminance
+// (attachSurfaceMaps, above). That is a good trick and it is what made ten
+// visually distinct maps affordable - but hand-painted 256px albedo is the
+// single biggest reason the arenas read as toy-like rather than real, which is
+// the complaint this work exists to answer.
+//
+// So: real 1k PBR sets from PolyHaven (CC0), three files each -
+//   Diffuse  base colour, sRGB
+//   nor_gl   normal, OPENGL convention. Not nor_dx - three.js is GL, and the
+//            DirectX variant has Y inverted, which lights everything backwards.
+//   arm      AO + Roughness + Metalness packed in R/G/B, which is exactly the
+//            glTF ORM convention three.js reads natively: one file, three slots.
+//
+// Three things make this safe to bolt onto the existing pipeline:
+//
+// 1. IT IS AN UPGRADE, NOT A REPLACEMENT. The procedural material is built
+//    first and rendered immediately; the photo set is fetched asynchronously
+//    and swapped onto the SAME material when it arrives. A slow or failed
+//    fetch leaves a fully playable, fully textured arena - the game never
+//    waits on the network and never shows an untextured one.
+// 2. THE MAP'S IDENTITY IS PRESERVED. `theme.wallColor`/`floorColor` still
+//    multiply the albedo, and the procedural canvas is kept as an EMISSIVE
+//    overlay (see accentEmissiveTexture) so each arena keeps its glow
+//    signature - the tech grid, the lava cracks, the ivy. Dropping those would
+//    have flattened ten distinctive arenas into two rock textures.
+// 3. TEXTURES ARE SHARED AND CACHED BY TILING, never cloned per mesh - the
+//    same discipline getTiledWallTexture needed for exactly the same reason.
+// ===========================================================================
+
+// Which PolyHaven set dresses each theme surface. Several themes share a set
+// and separate themselves by tint - a set is ~2-4 MB, so one per surface per
+// theme would be a 40 MB download for a game that renders one arena at a time.
+//
+// `tile` MULTIPLIES the procedural texture's existing repeat, and getting it
+// wrong is the single most visible mistake available here. The procedural
+// canvases were 256px hand-painted patterns authored to tile every ~190 world
+// units on the floor and ~80 on the walls; at that density a real 1k
+// photograph reads as one enormous slab - the first pass put diamond plate on
+// the floor at 190 units per tile and it looked like giant scoops rather than
+// metal. A fighter is 40 units wide, so the target is roughly 45-55 units per
+// tile: small enough that the surface has grain at standing height, large
+// enough that the tiling pattern does not become obvious.
+const PHOTO_SETS = {
+    // walls, keyed by theme.wallTex. Base repeat is ~80 units/tile, so ~1.8x
+    // lands near 45.
+    wall: {
+        // Third choice, and worth recording why. factory_wall is green
+        // corrugated industrial steel and no tint can take green out of an
+        // albedo. metal_plate is neutral but it is dark brown diamond PLATE -
+        // a floor material, and at wall tiling its tread pattern reads as
+        // woven fabric. concrete_wall_003 is a clean, bright, flat man-made
+        // wall, which takes Voltaic Nexus' blue cast cleanly and lets the
+        // glowing accent rails be the thing your eye goes to. Both other sets
+        // stay in assets/tex - metal_plate is still the techgrid FLOOR, where
+        // being diamond plate is exactly right.
+        metal:       { set: 'concrete_wall_003',  tile: 1.7 },
+        ashlar:      { set: 'medieval_blocks_03', tile: 1.5 },   // block courses read best large-ish
+        sandstone:   { set: 'medieval_blocks_03', tile: 1.4 },
+        mossstone:   { set: 'medieval_blocks_03', tile: 1.5 },
+        marble:      { set: 'marble_01',          tile: 1.6 },
+        cloudmarble: { set: 'marble_01',          tile: 1.5 },
+        redrock:     { set: 'rock_face_03',       tile: 1.9 },
+        basalt:      { set: 'rock_face_03',       tile: 2.1 },
+        coralstone:  { set: 'rock_face_03',       tile: 1.8 },
+        ice:         { set: 'snow_02',            tile: 1.7 },
+    },
+    // floors, keyed by theme.floorTex. Base repeat is ~190 units/tile, so
+    // ~3.8x lands near 50.
+    floor: {
+        techgrid:  { set: 'metal_plate',          tile: 4.2 },   // plate tread is small in reality
+        flagstone: { set: 'cobblestone_floor_04', tile: 3.6 },
+        sand:      { set: 'sand_01',              tile: 4.6 },   // fine grain, tiles invisibly
+        redsand:   { set: 'sand_01',              tile: 4.6 },
+        coralsand: { set: 'sand_01',              tile: 4.4 },
+        grass:     { set: 'aerial_grass_rock',    tile: 3.4 },
+        jungle:    { set: 'forest_ground_04',     tile: 3.4 },
+        lava:      { set: 'rock_face_03',         tile: 3.8 },
+        ice:       { set: 'snow_02',              tile: 4.0 },
+        cloud:     { set: 'marble_01',            tile: 3.0 },
+    },
+};
+
+const PHOTO_BASE = '../assets/tex/';
+let _photoLoader = null;
+const _photoSetPromises = {};    // setId -> Promise<{map, nor, orm} | null>
+const _photoTiled = {};          // "setId:slot:rx x ry" -> THREE.Texture
+
+// Loads one set's three files. Resolves to null rather than rejecting when a
+// file is missing, so a partial or absent assets/tex/ directory degrades to the
+// procedural look instead of throwing inside a .then() nobody is watching.
+function loadPhotoSet(setId) {
+    if (_photoSetPromises[setId]) return _photoSetPromises[setId];
+    if (typeof THREE === 'undefined' || !THREE.TextureLoader) return Promise.resolve(null);
+    const L = _photoLoader || (_photoLoader = new THREE.TextureLoader());
+    const one = (file, srgb) => new Promise(resolve => {
+        L.load(PHOTO_BASE + setId + '/' + file,
+            t => {
+                t.wrapS = t.wrapT = THREE.RepeatWrapping;
+                t.anisotropy = 8;
+                // Colour is colour; normals and packed ORM are DATA. Tagging
+                // data as sRGB gamma-decodes the vectors and flattens the
+                // lighting - the single easiest way to make PBR look wrong.
+                t.encoding = srgb ? THREE.sRGBEncoding : THREE.LinearEncoding;
+                resolve(t);
+            },
+            undefined,
+            () => resolve(null));
+    });
+    _photoSetPromises[setId] = Promise.all([
+        one('Diffuse.jpg', true), one('nor_gl.jpg', false), one('arm.jpg', false),
+    ]).then(([map, nor, orm]) => (map ? { map, nor, orm } : null))
+      .catch(() => null);
+    return _photoSetPromises[setId];
+}
+
+// One texture per (set, slot, tiling) - NOT per mesh. Cloning per mesh is what
+// leaked a GPU texture per platform per round before Batch 34; the clone is
+// needed only because `repeat` lives on the texture rather than the material.
+function tiledPhotoTexture(base, setId, slot, rx, ry) {
+    if (!base) return null;
+    const key = setId + ':' + slot + ':' + rx.toFixed(2) + 'x' + ry.toFixed(2);
+    let t = _photoTiled[key];
+    if (t) return t;
+    t = base.clone();
+    t.needsUpdate = true;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    t.encoding = base.encoding;
+    t.repeat.set(rx, ry);
+    _photoTiled[key] = t;
+    return t;
+}
+
+// r128's aoMap samples vUv2, NOT vUv (verified in three.min.js:
+// `texture2D( aoMap, vUv2 )`). Without a uv2 attribute the AO channel samples
+// garbage and the surface goes blotchy - so any geometry receiving the packed
+// ORM's AO needs uv2, and for our meshes it is simply a copy of uv.
+function ensureUV2(geo) {
+    if (!geo || !geo.attributes || !geo.attributes.uv) return;
+    if (geo.attributes.uv2) return;
+    geo.setAttribute('uv2', geo.attributes.uv);
+}
+
+// Swap a photographic set onto a material that is ALREADY rendering with its
+// procedural texture. Async by design: see note 1 at the top of this section.
+//
+// `kind` is 'wall' or 'floor'; `texId` is theme.wallTex / theme.floorTex.
+function attachPhotoSurface(mat, kind, texId, rx, ry, opts) {
+    opts = opts || {};
+    const entry = (PHOTO_SETS[kind] || {})[texId];
+    if (!entry) return mat;
+    const setId = entry.set;
+    const sx = rx * entry.tile, sy = ry * entry.tile;
+    loadPhotoSet(setId).then(set => {
+        if (!set || !set.map) return;             // keep the procedural look
+        // The material may belong to an arena that has since been unloaded.
+        // disposeObject3D stamps nothing on a disposed material, so check the
+        // cheap proxy: a disposed material has had its program dropped and is
+        // no longer attached to anything we can reach. Guard on an explicit
+        // flag we set ourselves in disposeObject3D instead.
+        if (mat.userData.photoStale) return;
+        mat.map = tiledPhotoTexture(set.map, setId, 'map', sx, sy);
+        if (set.nor) {
+            mat.normalMap = tiledPhotoTexture(set.nor, setId, 'nor', sx, sy);
+            const ns = opts.normalScale != null ? opts.normalScale : 1;
+            mat.normalScale = new THREE.Vector2(ns, ns);
+        }
+        if (set.orm) {
+            // One texture, three slots - three.js reads .r/.g/.b for
+            // AO/roughness/metalness respectively.
+            const orm = tiledPhotoTexture(set.orm, setId, 'orm', sx, sy);
+            mat.aoMap = orm;
+            mat.roughnessMap = orm;
+            mat.metalnessMap = orm;
+            // The maps MULTIPLY these scalars, so leaving roughness at 0.9 and
+            // metalness at 0.03 would crush the map's whole range. Hand both
+            // back to the texture and let the tint do the art direction.
+            mat.roughness = opts.roughness != null ? opts.roughness : 1.0;
+            // metalness is a MULTIPLIER on the map's blue channel, and 1.0 -
+            // the physically correct value - renders these walls almost black.
+            // A fully metallic surface has NO diffuse term: every bit of its
+            // brightness is reflected environment, and this scene's
+            // environment is a PMREM of the sky gradient, which is dim and
+            // mostly sky-blue. Floors face up into the bright part and look
+            // right; walls face sideways into the dark part and go black.
+            // docs/arena-art-plan.md recorded this trap from Batch 25 and it
+            // caught us again here.
+            //
+            // Capping at 0.45 keeps the map's per-texel variation (rivets read
+            // as metal, grime does not) while leaving enough diffuse for the
+            // key light to actually light the surface. Less physical, far more
+            // legible - and legibility is the point in a fighting game.
+            mat.metalness = opts.metalness != null ? opts.metalness : 0.45;
+            mat.aoMapIntensity = opts.ao != null ? opts.ao : 0.85;
+            // Lift the environment contribution to compensate for the sky
+            // PMREM being much dimmer than a real HDRI.
+            mat.envMapIntensity = opts.envMapIntensity != null ? opts.envMapIntensity : 1.8;
+        }
+        // Soften the theme tint. `color` multiplies the albedo, and the
+        // procedural canvases were near-grey by design so a strong tint WAS
+        // the map's colour. A real photograph already carries its own colour,
+        // so multiplying it by, say, Voltaic Nexus' blue-grey turned green
+        // industrial steel into mud. Pulling the tint most of the way toward
+        // white keeps each arena's cast - which is what makes them
+        // recognisable - without fighting the albedo for control of the hue.
+        if (!mat.userData.photoTinted) {
+            // 0.72 rather than 0.55: the theme wall colours are genuinely dark
+            // (Voltaic Nexus is 0x3a557e), and multiplying an already mid-dark
+            // steel albedo by a dark blue produced near-black walls - the
+            // opposite of the problem the tint fade was added to solve. A
+            // photographic albedo needs the tint as a CAST, not as the colour.
+            mat.color.lerp(new THREE.Color(0xffffff), opts.tintFade != null ? opts.tintFade : 0.72);
+            mat.userData.photoTinted = true;   // idempotent: never lerp twice
+        }
+        mat.userData.keepMap = true;   // shared across rounds; never freed here
+        mat.needsUpdate = true;
+    });
+    return mat;
+}
+
+// The procedural canvas, reduced to just its accent-coloured pixels, as an
+// emissive overlay. This is what keeps each arena recognisable once a shared
+// photographic base is doing the heavy lifting: Voltaic Nexus' glowing seams,
+// Molten Foundry's lava cracks and the Colosseum's ivy are all painted in the
+// theme accent, and they are the map's signature. Everything that is not close
+// to the accent hue becomes black, and black is simply "not emitting".
+const _accentCanvasCache = {};
+const _accentTiled = {};      // "key:emi:RxR" -> THREE.Texture
+function accentEmissiveTexture(sourceCanvas, accentHex, key) {
+    const cached = _accentCanvasCache[key];
+    if (cached !== undefined) return cached;
+    let out = null;
+    try {
+        const w = sourceCanvas.width, h = sourceCanvas.height;
+        const src = sourceCanvas.getContext('2d').getImageData(0, 0, w, h);
+        const ar = (accentHex >> 16) & 255, ag = (accentHex >> 8) & 255, ab = accentHex & 255;
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const ctx = cv.getContext('2d');
+        const img = ctx.createImageData(w, h);
+        let lit = 0;
+        for (let i = 0; i < w * h; i++) {
+            const r = src.data[i * 4], g = src.data[i * 4 + 1], b = src.data[i * 4 + 2];
+            // Distance in RGB is crude but sufficient here: the accents are
+            // saturated and the base palettes are greys and browns, so the
+            // two are far apart in any colour space.
+            const d = Math.hypot(r - ar, g - ag, b - ab);
+            const k = Math.max(0, 1 - d / 92);          // 1 at the accent, 0 well away
+            const v = k * k;                            // bias toward the strongest matches
+            if (v > 0.02) lit++;
+            img.data[i * 4]     = ar * v;
+            img.data[i * 4 + 1] = ag * v;
+            img.data[i * 4 + 2] = ab * v;
+            img.data[i * 4 + 3] = 255;
+        }
+        // A texture that lights up almost everything is not a signature, it is
+        // a mistake - bail rather than make a wall uniformly glow.
+        if (lit > w * h * 0.34 || lit < 12) return (_accentCanvasCache[key] = null);
+        ctx.putImageData(img, 0, 0);
+        out = new THREE.CanvasTexture(cv);
+        out.wrapS = out.wrapT = THREE.RepeatWrapping;
+        out.encoding = THREE.sRGBEncoding;   // it IS colour, unlike normal/ORM
+        out.anisotropy = 4;
+    } catch (e) {
+        out = null;                          // tainted canvas or no 2d context
+    }
+    _accentCanvasCache[key] = out;
+    return out;
+}
+
+// Applies the accent overlay to a material whose `map` is (or was) the
+// procedural canvas for this theme surface.
+function attachAccentGlow(mat, sourceTexture, theme, key, rx, ry, intensity) {
+    if (!sourceTexture || !sourceTexture.image) return mat;
+    const tex = accentEmissiveTexture(sourceTexture.image, theme.accent, key);
+    if (!tex) return mat;
+    // Cached by tiling for the same reason as everything else here: this lands
+    // on a keepMap material, so a clone per material would never be freed.
+    const ck = `${key}:emi:${rx.toFixed(3)}x${ry.toFixed(3)}`;
+    let t = _accentTiled[ck];
+    if (!t) {
+        t = tex.clone();
+        t.needsUpdate = true;
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.encoding = THREE.sRGBEncoding;
+        t.repeat.set(rx, ry);
+        _accentTiled[ck] = t;
+    }
+    mat.emissiveMap = t;
+    mat.emissive = new THREE.Color(0xffffff);   // the MAP carries the colour
+    mat.emissiveIntensity = intensity != null ? intensity : 0.85;
+    mat.userData.keepMap = true;
+    mat.needsUpdate = true;
+    return mat;
+}
+
 const wallTextureCache = {};
+// Batch 34: see the note in buildPlatformMesh. A clone is needed per distinct
+// `repeat`, not per mesh, so cache them by it.
+const tiledWallTextureCache = {};
+function getTiledWallTexture(theme, rx, ry) {
+    const key = theme.id + ':' + rx + 'x' + ry;
+    let t = tiledWallTextureCache[key];
+    if (t) return t;
+    t = getWallTexture(theme).clone();
+    t.needsUpdate = true;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(rx, ry);
+    tiledWallTextureCache[key] = t;
+    return t;
+}
+
 function getWallTexture(theme) {
     if (wallTextureCache[theme.id]) return wallTextureCache[theme.id];
     const g = _canvas();
@@ -3252,14 +3705,16 @@ function buildPillarMesh(ob, theme) {
 // so interior cover matches the perimeter, with a glowing accent-trimmed top.
 function buildPlatformMesh(p, theme) {
     const group = new THREE.Group();
-    const tex = getWallTexture(theme).clone();
-    tex.needsUpdate = true;
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(Math.max(1, Math.round(p.hw / 40)), Math.max(1, Math.round(p.height / 60)));
+    const tex = getTiledWallTexture(theme,
+        Math.max(1, Math.round(p.hw / 40)),
+        Math.max(1, Math.round(p.height / 60)));
     const metalish = theme.wallTex === 'metal';
     const slabMat = new THREE.MeshStandardMaterial({ map: tex, color: theme.wallColor, roughness: metalish ? 0.5 : 0.85, metalness: metalish ? 0.5 : 0.04 });
     attachSurfaceMaps(slabMat, 'wall:' + theme.id, { strength: 2.6, scale: 1.1 });
     slabMat.userData.keepMap = true;
+    attachAccentGlow(slabMat, tex, theme, 'wall:' + theme.id, tex.repeat.x, tex.repeat.y, 0.7);
+    attachPhotoSurface(slabMat, 'wall', theme.wallTex, tex.repeat.x, tex.repeat.y,
+        { normalScale: 1.0, ao: 0.8, tintFade: 0.62 });
     const slab = new THREE.Mesh(new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2), slabMat);
     slab.position.y = p.height / 2;
     slab.castShadow = true; slab.receiveShadow = true;
@@ -3376,14 +3831,18 @@ let outerWalls = []; // {mesh, side, baseLen} — the 4 enclosing walls; syncAre
 function buildOuterWall(side, theme) {
     const runX = (side === 'top' || side === 'bottom');
     const along = runX ? (ARENA_RIGHT - ARENA_LEFT) : (ARENA_BOTTOM - ARENA_TOP);
-    const wtex = getWallTexture(theme).clone(); wtex.needsUpdate = true; wtex.wrapS = wtex.wrapT = THREE.RepeatWrapping;
-    wtex.repeat.set(Math.max(3, Math.round(along / 80)), Math.max(2, Math.round(WALL_HEIGHT / 80)));
+    const wtex = getTiledWallTexture(theme,
+        Math.max(3, Math.round(along / 80)),
+        Math.max(2, Math.round(WALL_HEIGHT / 80)));
     const thick = 18;
     const group = new THREE.Group();
     const metalish = theme.wallTex === 'metal';
     const bodyMat = new THREE.MeshStandardMaterial({ map: wtex, color: theme.wallColor, roughness: metalish ? 0.5 : 0.9, metalness: metalish ? 0.5 : 0.03 });
     attachSurfaceMaps(bodyMat, 'wall:' + theme.id, { strength: 2.6, scale: 1.15 });
     bodyMat.userData.keepMap = true; // maps wrap canvases shared across rounds
+    attachAccentGlow(bodyMat, wtex, theme, 'wall:' + theme.id, wtex.repeat.x, wtex.repeat.y, 0.8);
+    attachPhotoSurface(bodyMat, 'wall', theme.wallTex, wtex.repeat.x, wtex.repeat.y,
+        { normalScale: 1.15, ao: 0.85, tintFade: 0.62 });
     const capMat = new THREE.MeshStandardMaterial({ color: theme.capColor, roughness: 0.85, metalness: metalish ? 0.4 : 0.03 });
     const body = new THREE.Mesh(new THREE.BoxGeometry(along, WALL_HEIGHT, thick), bodyMat);
     body.position.y = WALL_HEIGHT / 2; body.receiveShadow = true; body.castShadow = true;
@@ -3459,6 +3918,10 @@ function loadMap(map) {
         shinyFloor ? { strength: 1.2, scale: 0.55, lo: 0.2, hi: 0.7 }
                    : { strength: 2.4, scale: 1.0 });
     floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it
+    attachAccentGlow(floorMat, floorTex, theme, 'floor:' + theme.id,
+        floorTex.repeat.x, floorTex.repeat.y, theme.floorTex === 'lava' ? 1.5 : 0.95);
+    attachPhotoSurface(floorMat, 'floor', theme.floorTex, floorTex.repeat.x, floorTex.repeat.y,
+        shinyFloor ? { normalScale: 0.55, ao: 0.6 } : { normalScale: 1.0, ao: 0.9 });
     floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d), floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.position.set(worldX(ARENA_CX), 0, worldZ(ARENA_CY));
@@ -5930,7 +6393,7 @@ function makeNameSprite(text, color) {
     const c = document.createElement('canvas');
     c.width = 128; c.height = 32;
     const ctx = c.getContext('2d');
-    ctx.font = 'bold 20px sans-serif';
+    ctx.font = announceFont(20, 700);
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -7010,12 +7473,53 @@ function buildHollowkinMesh(color) {
 // empty, buildRiggedCharacter() returns null, and initMesh() falls back to the
 // primitive builder. The game must never fail to start over art.
 const CHAR_MODEL_URLS = {
+    // Batch 35: the whole roster, generated with Hyper3D Rodin and rigged by
+    // art/pipeline.py (see art/generate_chars.py and art/build_headless.py).
+    // These are fetched ON DEMAND, not at boot - fourteen models is ~29 MB
+    // and a match needs two of them. See ensureCharModel.
     Kaelen: '../assets/chars/kaelen.glb',
+    Lyra: '../assets/chars/lyra.glb',
+    Gorgonok: '../assets/chars/gorgonok.glb',
+    Voss: '../assets/chars/voss.glb',
+    Draven: '../assets/chars/draven.glb',
+    Seraphine: '../assets/chars/seraphine.glb',
+    Nyx: '../assets/chars/nyx.glb',
+    Ignis: '../assets/chars/ignis.glb',
+    Aurelia: '../assets/chars/aurelia.glb',
+    Thorne: '../assets/chars/thorne.glb',
+    Grint: '../assets/chars/grint.glb',
+    Slagling: '../assets/chars/slagling.glb',
+    Hollowkin: '../assets/chars/hollowkin.glb',
+    Karrigos: '../assets/chars/karrigos.glb',
 };
 // Total height in world units that a loaded model is scaled to. The procedural
 // rig stands about this tall (hipY 15 + torsoH 20 + head ~13) and EYE_HEIGHT is
 // 46, so matching it keeps cameras, muzzle heights and hitboxes valid.
 const RIG_TARGET_HEIGHT = 50;
+// Batch 34: per-character size, so a rigged Karrigos is not the same height as
+// a rigged Grint.
+//
+// buildRiggedCharacter scales every model to exactly RIG_TARGET_HEIGHT, which
+// is right for the roster (they are all roughly human) and wrong for the
+// creatures: the PROCEDURAL builders apply their size multiplier to the OUTER
+// group instead, so the two paths disagreed and a rigged Karrigos would have
+// come out the same height as a rigged Grint. These are the multipliers the
+// procedural builders already use, in one table both paths can read.
+//
+// Mesh scale is PURELY VISUAL - nothing in the simulation reads it. `width`
+// and `height` are hardcoded 40/40 for every fighter, EYE_HEIGHT (46) and
+// MUZZLE_HEIGHT (34) are single globals, and attack reach is `cfg.range` data.
+// So Karrigos is a 75-unit-tall model on a 40-unit collision circle with his
+// eyes at the same height as Grint's. That is a pre-existing design property,
+// not something this table changes; it is written down here because it is
+// surprising and someone will eventually try to "fix" it.
+const RIG_HEIGHT_MULT = {
+    Karrigos: 1.5,
+    Grint: 0.72,
+    Slagling: 0.86,
+    Hollowkin: 1.08,
+};
+function rigHeightFor(name) { return RIG_TARGET_HEIGHT * (RIG_HEIGHT_MULT[name] || 1); }
 const charModels = {};        // name -> { scene, animations, height }
 let charModelsLoaded = 0, charModelsFailed = 0;
 let modelsReady = null;       // Promise, resolved once every load has settled
@@ -7099,7 +7603,8 @@ function buildRiggedCharacter(name) {
     // rotate the model into that convention here rather than special-casing
     // rigged characters everywhere downstream.
     inner.rotation.y = Math.PI / 2;
-    inner.scale.setScalar(RIG_TARGET_HEIGHT / m.height);
+    const rigTarget = rigHeightFor(name);   // per-character; see RIG_HEIGHT_MULT
+    inner.scale.setScalar(rigTarget / m.height);
     g.add(inner);
 
     const arm = (side) => {
@@ -7118,7 +7623,7 @@ function buildRiggedCharacter(name) {
     g.userData.head = findBone(inner, 'Head');
     g.userData.torso = findBone(inner, 'Chest');
     g.userData.rigged = true;
-    g.userData.rigScale = RIG_TARGET_HEIGHT / m.height;
+    g.userData.rigScale = rigTarget / m.height;
 
     // Rather than re-declare each character's weapon and swing timings beside
     // the rig (a second copy free to drift from the real one), build the
@@ -8860,16 +9365,16 @@ function drawIntroOverlay() {
     hudCtx.globalAlpha = nameA;
     hudCtx.shadowColor = accent; hudCtx.shadowBlur = W * 0.02;
     hudCtx.fillStyle = '#ffffff';
-    hudCtx.font = `bold ${Math.round(W * 0.045)}px sans-serif`;
+    hudCtx.font = announceFont(W * 0.045, 800);
     hudCtx.fillText((currentMap && currentMap.name) || '', W / 2, H * 0.235);
     hudCtx.shadowBlur = 0;
     if (player1 && player2) {
-        hudCtx.font = `${Math.round(W * 0.02)}px sans-serif`;
+        hudCtx.font = announceFont(W * 0.02, 500);
         hudCtx.fillStyle = '#cbd5e1';
         hudCtx.fillText(`${player1.name}`, W * 0.5 - W * 0.10, H * 0.235 + W * 0.045);
-        hudCtx.fillStyle = accent; hudCtx.font = `bold ${Math.round(W * 0.02)}px sans-serif`;
+        hudCtx.fillStyle = accent; hudCtx.font = announceFont(W * 0.02, 800);
         hudCtx.fillText('VS', W / 2, H * 0.235 + W * 0.045);
-        hudCtx.fillStyle = '#cbd5e1'; hudCtx.font = `${Math.round(W * 0.02)}px sans-serif`;
+        hudCtx.fillStyle = '#cbd5e1'; hudCtx.font = announceFont(W * 0.02, 500);
         hudCtx.fillText(`${player2.name}`, W * 0.5 + W * 0.10, H * 0.235 + W * 0.045);
     }
     hudCtx.globalAlpha = 1;
@@ -8882,7 +9387,7 @@ function drawIntroOverlay() {
         hudCtx.globalAlpha = Math.min(1, t * 1.6);
         hudCtx.shadowColor = accent; hudCtx.shadowBlur = W * 0.035;
         hudCtx.fillStyle = '#ffffff';
-        hudCtx.font = `bold ${Math.round(W * 0.085)}px sans-serif`;
+        hudCtx.font = announceFont(W * 0.085, 800);
         hudCtx.fillText('FIGHT!', 0, 0);
         hudCtx.strokeStyle = accent; hudCtx.lineWidth = Math.max(2, W * 0.002);
         hudCtx.strokeText('FIGHT!', 0, 0);
@@ -8890,7 +9395,7 @@ function drawIntroOverlay() {
     } else {
         hudCtx.globalAlpha = 0.55 + 0.35 * Math.sin(arenaTime * 0.18);
         hudCtx.fillStyle = accent;
-        hudCtx.font = `bold ${Math.round(W * 0.028)}px sans-serif`;
+        hudCtx.font = announceFont(W * 0.028, 800);
         hudCtx.fillText('GET READY', W / 2, H * 0.57);
         hudCtx.globalAlpha = 1;
     }

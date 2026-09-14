@@ -280,6 +280,17 @@
         #slot-foe.locked { border-color: #4ade80; }
         #slot-you.locked { box-shadow: 0 0 18px rgba(74,222,128,0.2); border-color: #4ade80; }
         .pslot-role { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-bottom: 8px; }
+        /* Batch 37: the roster card's face chip. */
+        .fighter-btn { display: flex; align-items: center; gap: 9px; text-align: left; }
+        .fighter-btn .fface {
+            flex: 0 0 auto; width: 34px; height: 34px; border-radius: 6px;
+            background-size: cover; background-position: center top;
+            background-repeat: no-repeat;
+            border: 1px solid rgba(255,255,255,0.16);
+        }
+        .fighter-btn .fmeta { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+        .fighter-btn.locked .fface { filter: grayscale(1) brightness(0.6); }
+
         .pslot-portrait {
             width: 52px; height: 52px; margin: 0 auto 8px; border-radius: 50%;
             background: #0d1017; border: 2px solid #2e3a59;
@@ -513,9 +524,14 @@
             background: #0b0f18; color: #e2e8f0; border: 1px solid #2e3a59; border-radius: 5px;
             font-family: var(--font-hud); font-size: 0.78rem; text-align: center;
         }
+        /* Batch 37: smaller. It sat at the same weight as the primary actions
+           beside it, which made "Copy" compete with "Host Game" for attention
+           when it is a convenience, not a step. */
         .menu-section .lobby-copy {
-            width: auto; margin: 0; padding: 7px 12px; font-size: 0.7rem; font-weight: bold;
-            background: transparent; color: #4ade80; border: 1px solid #4ade80; border-radius: 5px;
+            width: auto; margin: 0; padding: 4px 9px; font-size: 0.62rem; font-weight: bold;
+            letter-spacing: 0.04em; line-height: 1.2;
+            background: transparent; color: #4ade80; border: 1px solid #4ade80; border-radius: 4px;
+            flex: 0 0 auto; align-self: center;
         }
         .menu-section .lobby-copy:hover { background: rgba(74, 222, 128, 0.14); box-shadow: none; }
         /* Batch 32: the online entry point sits with the branding, beside the
@@ -685,6 +701,12 @@
         /* Short screens centre themselves in the scroll container (B2). */
         #gameover-screen { display: none; margin: auto 0; }
         #pause-screen { display: none; margin: auto 0; }
+        .pause-away-note {
+            color: #fbbf24; font-size: 0.82rem; line-height: 1.5;
+            border: 1px solid #f59e0b; border-radius: 7px;
+            background: rgba(245, 158, 11, 0.10);
+            padding: 9px 11px; margin: 0 0 12px;
+        }
         /* Batch 34: the page opens on HOME, so the room starts hidden. Getting
            this wrong shows both at once on first paint, before any JS runs. */
         #select-screen { display: none; margin-top: 0; }
@@ -1037,6 +1059,10 @@
             <div id="pause-screen">
                 <div class="menu-section">
                     <h3>Paused</h3>
+                    <!-- Batch 37: why it is paused and what is blocking the
+                         resume. A disabled button with no explanation is what
+                         makes someone reload the page and lose the match. -->
+                    <p id="pause-away-note" class="pause-away-note" style="display:none;"></p>
                     <p id="pause-controls-reminder"></p>
                     <button id="btn-resume">Resume (Esc)</button>
                     <button id="btn-pause-rebind">Rebind Keys</button>
@@ -1156,7 +1182,7 @@
                             <div id="tutorial-controls"></div>
                         </div>
                     </div>
-                    <label class="tutorial-hide-row">
+                    <label class="tutorial-hide-row" id="tutorial-hide-row">
                         <input type="checkbox" id="chk-tutorial-hide"> Don't show this automatically next time
                     </label>
                     <button id="btn-tutorial-close">Got it!</button>
@@ -1553,6 +1579,37 @@ const net = {
     pendingSetup: null,    // joiner: setup received before it could be applied
 };
 function netActive() { return !!(net.conn && net.conn.open); }
+
+// ---------------------------------------------------------------------------
+// Batch 37: AWAY-PAUSE. Leaving the game tab pauses the match for both
+// players, and it stays paused until BOTH are back AND the host resumes.
+//
+// Until now pause was strictly per-client, and that was a deliberate netcode
+// property - but it makes tabbing away a way to keep playing while your
+// opponent cannot. Worse, it is not even an advantage you choose: a hidden tab
+// gets no requestAnimationFrame, so the away player's fighter simply stops
+// responding and stands there being hit.
+//
+// The design has one rule that matters: the pause is not lifted by whoever
+// caused it. Both sides have to be present AND the host has to resume, so
+// nobody can un-pause the instant they tab back and catch the other player
+// still reading their email. That is why `awayPaused` is separate from an
+// ordinary Escape pause - Escape is yours to undo, this is not.
+//
+// The keepalive already survives this: Batch 36 moved it off the render loop
+// onto its own interval precisely because a hidden tab stops rAF. Timers are
+// throttled to about 1 Hz in a hidden tab but not stopped, and the 15 s
+// timeout tolerates that - without which every away-pause would end in a
+// disconnect instead.
+let localAway = false;        // this tab is hidden
+let remoteAway = false;       // their tab is hidden (from PRESENCE)
+let awayPaused = false;       // the current pause was caused by absence
+const anyoneAway = () => localAway || remoteAway;
+// Who may lift an away-pause: the host, or whoever is alone (offline/debug).
+const mayResumeAway = () => !anyoneAway() && (!netActive() || netIsHost());
+// The host always drives p1 (netHost/netJoin set LOCAL_SIDE), so naming the
+// host is a matter of which side we are, not a separate piece of state.
+const hostSide = () => (netIsHost() ? LOCAL_SIDE : otherSide(LOCAL_SIDE));
 function netIsHost() { return net.role === 'host'; }
 const otherSide = side => (side === 'p1' ? 'p2' : 'p1');
 
@@ -1619,6 +1676,10 @@ window.addEventListener('keydown', e => {
     // a fighter-select action even if some action were rebound to it.
     if (e.key === 'Escape') {
         if (modalOpen()) closeTopModalByEscape();
+        // Batch 37: requestResume, not togglePause. Escape must not lift an
+        // away-pause - that is the whole point of one (see `localAway`). It
+        // still pauses and unpauses an ordinary Escape pause normally.
+        else if (gameState === 'PAUSED') requestResume();
         else togglePause();
         return;
     }
@@ -2268,8 +2329,18 @@ function buildTutorialControls() {
         `<div class="tutorial-controls-row">${controlsSummary()}</div>` +
         `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> left stick move/strafe, right stick look, A jump, B attack, X special, Y dash</div>`;
 }
-function openTutorial() {
+// `auto` is true only when the game opened this by itself on first load.
+//
+// Batch 37: the "Don't show this automatically next time" checkbox is hidden
+// when you opened it deliberately. Reported plainly: "it shouldn't say don't
+// show this automatically next time with a check box next to it, because it
+// didn't show automatically, you made it show on purpose." Offering to stop
+// something that is not happening is worse than offering nothing - it implies
+// the button you just pressed was an accident.
+function openTutorial(auto) {
     buildTutorialControls();
+    const row = document.getElementById('tutorial-hide-row');
+    if (row) row.style.display = auto ? '' : 'none';
     openModal('tutorial');
 }
 function closeTutorial() {
@@ -2278,12 +2349,14 @@ function closeTutorial() {
     // stops auto-opening; the checkbox is now redundant but harmless.
     safeLSSet('astralClashTutorialSeen', '1');
 }
-document.getElementById('btn-open-tutorial').addEventListener('click', openTutorial);
+// Explicitly `openTutorial(false)`: passing the handler directly would hand it
+// the click EVENT as `auto`, and an event object is truthy.
+document.getElementById('btn-open-tutorial').addEventListener('click', () => openTutorial(false));
 document.getElementById('btn-tutorial-close').addEventListener('click', closeTutorial);
 // Auto-opens the first time anyone loads the game in this browser (and on
 // every load after that, until they check "don't show automatically" —
 // see closeTutorial()).
-if (!safeLSGet('astralClashTutorialSeen')) openTutorial();
+if (!safeLSGet('astralClashTutorialSeen')) openTutorial(true);   // auto: the checkbox applies
 
 // --- Low-level synth primitives ---
 // A short, percussive tone: linear attack then exponential decay to
@@ -2978,7 +3051,20 @@ const _fwd = new THREE.Vector3();
 function positionFpsCamera(cam, f, dt) {
     // Batch 27: the crush takes over the camera entirely (see positionCrushCamera).
     if (crushing) { positionCrushCamera(cam, f, dt); return; }
-    const cx = f.x + f.width / 2, cy = f.y + f.height / 2;
+    // Batch 37: the camera follows the VISUAL position, offset included.
+    //
+    // This is why "when you use your special there is no animation, just a snap
+    // to a new location" survived Batch 34. That batch added a visual lag
+    // offset and a motion streak - and applied both to `this.mesh`, which in
+    // first person is the one thing you never see. The camera went on reading
+    // the raw simulation position, so the entire world still jumped in a single
+    // frame; the smear was only ever visible to the OPPONENT.
+    //
+    // Reading the same offset here means a dash or a blink travels for the
+    // player using it. The simulation is still instant, so i-frames, hitboxes
+    // and range checks are untouched - it is only where the eye is put.
+    const cx = f.x + f.width / 2 + (f.visOffX || 0);
+    const cy = f.y + f.height / 2 + (f.visOffY || 0);
     const ex = worldX(cx), ey = f.z + EYE_HEIGHT, ez = worldZ(cy);
     cam.position.set(ex, ey, ez);
     _fwd.set(f.fx, 0, f.fy).normalize();
@@ -5169,9 +5255,17 @@ const TELEPORT_VIS_MIN = 26;
 // The furthest the drawn body may lag behind the simulation. Uncapped, a
 // long chain of teleports could draw a fighter through a wall.
 const TELEPORT_VIS_MAX = 150;
-// Per-frame retention of the offset. 0.62^6 is about 0.06, so roughly six
-// frames (~100ms at 60fps) to catch up, front-loaded.
-const TELEPORT_VIS_DECAY = 0.62;
+// Per-frame retention of the offset.
+//
+// Was 0.62, which catches up in about six frames - roughly 100 ms, which is too
+// brief to read as travel at all; it registers as a jump with a smear on it.
+// 0.82 takes about eighteen frames (~300 ms), which is long enough to see the
+// movement and still short enough that the visual position has rejoined the
+// simulation well before the dash's own recovery ends.
+//
+// Deliberately NOT longer than that: the offset is a lie about where you are,
+// and the longer it lasts the longer your camera disagrees with your hitbox.
+const TELEPORT_VIS_DECAY = 0.82;
 
 function hexToCss(hexNumber, alpha) {
     const r = (hexNumber >> 16) & 255, g = (hexNumber >> 8) & 255, b = hexNumber & 255;
@@ -5784,7 +5878,26 @@ class Fighter {
         return { moveX, moveY, jumpPressed };
     }
 
+    // The teleport smear decays once per SIMULATION step, here, rather than in
+    // render3D. Two reasons: the camera reads the offset now (see
+    // positionFpsCamera), so it has to advance on a frame whose body is not
+    // drawn; and decaying it in both places would halve its duration by
+    // applying the factor twice per frame.
+    decayVisualOffset(dt) {
+        if (!this.visOffX && !this.visOffY) return;
+        if (REDUCED_MOTION) { this.visOffX = this.visOffY = 0; return; }
+        const keep = Math.pow(TELEPORT_VIS_DECAY, dt || 1);
+        this.visOffX *= keep;
+        this.visOffY *= keep;
+        // Snap the last sliver to zero so the view cannot sit permanently a
+        // fraction of a unit away from the simulation.
+        if (Math.abs(this.visOffX) < 0.35 && Math.abs(this.visOffY) < 0.35) {
+            this.visOffX = this.visOffY = 0;
+        }
+    }
+
     update(opponent, dt) {
+        this.decayVisualOffset(dt);
         this.vx = 0;
         this.vy = 0;
         let moveX = 0, moveY = 0;
@@ -6680,28 +6793,67 @@ class Fighter {
                 // core (elongated along travel via a scaled octahedron) with
                 // a soft trailing tail and a faint glow halo, oriented to
                 // point the way it's flying.
-                const c = new THREE.Color(p.color || '#00f3ff');
+                // Batch 37: a lit 3D bolt, and NOTHING allocated per shot.
+                //
+                // Two reports, one cause each. "Lyra's attack animation is
+                // still 2d" was literally true: the glow was a RingGeometry -
+                // a flat annulus - so from first person it read as a paper
+                // disc stuck in the air. It is a SPHERE now, shaded, with a
+                // second additive sphere for the glow.
+                //
+                // "Lyra's attack lags a lot" was the other half: three
+                // MeshStandardMaterial/MeshBasicMaterial objects were built
+                // and later disposed FOR EVERY PROJECTILE. Lyra fires on a
+                // 16-frame cooldown and her special is a five-shard volley, so
+                // that is a constant churn of GPU objects - the same shape of
+                // problem as the Batch 30 crush stutter. Materials are cached
+                // per colour now: a projectile allocates one Group and three
+                // Meshes, and no GPU resources at all.
+                const key = (p.color || '#00f3ff');
+                const c = new THREE.Color(key);
                 const grp = new THREE.Group();
                 const scale = p.big ? 1.7 : 1;
-                const coreMat = new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 1.1 });
-                const core = new THREE.Mesh(getCachedGeometry('projCore', () => new THREE.OctahedronGeometry(4, 0)), coreMat);
-                core.scale.set(2.4 * scale, 0.85 * scale, 0.85 * scale); // long along local X (travel dir)
-                const tailMat = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.5 });
+                const coreMat = getCachedMaterial('projCore:' + key, () =>
+                    new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 1.1, roughness: 0.25, metalness: 0.0 }));
+                const core = new THREE.Mesh(
+                    getCachedGeometry('projCoreSphere', () => new THREE.SphereGeometry(4, 16, 12)), coreMat);
+                core.scale.set(1.9 * scale, 0.95 * scale, 0.95 * scale); // stretched along travel, still a solid
+                const tailMat = getCachedMaterial('projTail:' + key, () =>
+                    new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.5 }));
                 const tail = new THREE.Mesh(getCachedGeometry('projTail', () => new THREE.ConeGeometry(2.6, 14, 6)), tailMat);
                 tail.rotation.z = Math.PI / 2; tail.position.x = -9; // points backward
                 tail.scale.setScalar(scale);
-                const haloMat = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.25, side: THREE.DoubleSide });
-                const halo = new THREE.Mesh(getCachedGeometry('projHalo', () => new THREE.RingGeometry(4.5, 6.5, 16)), haloMat);
+                // The glow: a real sphere, additively blended and depth-write
+                // off so it reads as light around the core rather than as a
+                // second solid object. DoubleSide is deliberate - you see the
+                // inside of the far hemisphere through the near one.
+                const haloMat = getCachedMaterial('projHalo:' + key, () =>
+                    new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.28,
+                        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+                const halo = new THREE.Mesh(
+                    getCachedGeometry('projHaloSphere', () => new THREE.SphereGeometry(6.6, 12, 10)), haloMat);
+                halo.scale.setScalar(scale);
                 grp.add(core, tail, halo);
-                grp.castShadow = true;
+                // NO shadow from a projectile. Every shadow caster costs a
+                // pass over the shadow map, and Lyra fires on a 16-frame
+                // cooldown with a five-shard volley - so at any moment there
+                // can be six bolts each re-rendering the map for a 4-unit
+                // glowing sphere whose shadow nobody can see against a lit
+                // floor. This is the other half of "Lyra's attack lags a lot";
+                // the first half was the per-projectile material churn above.
+                core.castShadow = false;
                 p.mesh = grp;
-                p.mats = [coreMat, tailMat, haloMat];
+                p.halo = halo;
                 scene.add(grp);
             }
             p.mesh.position.set(worldX(p.x), p.z, worldZ(p.y));
             p.mesh.rotation.y = -Math.atan2(p.vy, p.vx); // face travel direction (X→X, Y→Z world mapping)
-            const flick = 0.8 + Math.sin(arenaTime * 0.6 + p.x) * 0.2; // subtle energy shimmer
-            p.mats[2].opacity = 0.25 * flick;
+            // The shimmer scales the halo instead of fading a material: the
+            // materials are shared per colour now, so writing opacity here
+            // would make every bolt on screen pulse in lockstep - and would
+            // write the same value once per projectile per frame for nothing.
+            const flick = 0.92 + Math.sin(arenaTime * 0.6 + p.x) * 0.08;
+            if (p.halo) p.halo.scale.setScalar(flick * (p.big ? 1.7 : 1));
         }
     }
 
@@ -6764,20 +6916,9 @@ class Fighter {
         // frames, which reads as a dash rather than a drift. Under
         // REDUCED_MOTION it is skipped entirely: a smear is exactly the kind of
         // large unrequested movement that setting exists to suppress.
-        if (this.visOffX || this.visOffY) {
-            if (REDUCED_MOTION) {
-                this.visOffX = this.visOffY = 0;
-            } else {
-                const keep = Math.pow(TELEPORT_VIS_DECAY, dt || 1);
-                this.visOffX *= keep;
-                this.visOffY *= keep;
-                // Snap the last sliver to zero so the mesh cannot sit
-                // permanently a fraction of a unit behind the simulation.
-                if (Math.abs(this.visOffX) < 0.35 && Math.abs(this.visOffY) < 0.35) {
-                    this.visOffX = this.visOffY = 0;
-                }
-            }
-        }
+        // The offset is DECAYED in update() (decayVisualOffset), not here - the
+        // camera reads it too, and applying the factor in both places would
+        // halve the smear's duration. This only reads it.
         this.mesh.position.set(
             worldX(this.x + this.width / 2 + this.visOffX),
             this.z,
@@ -7568,7 +7709,22 @@ function propForAtkType(f) {
 //
 // The result carries the model's own materials, so the hand, the glove, the
 // sleeve and the skin tone are the same objects the opponent sees.
-const ARM_CHAIN = ['Shoulder', 'UpperArm', 'LowerArm', 'Hand'];
+// The bones whose geometry becomes the viewmodel arm.
+//
+// 'Shoulder' is deliberately NOT in here, and that is the fix for the reported
+// "sometimes look separated and weird". The viewmodel poses UpperArm, LowerArm
+// and Hand to swing the limb forward into view, and leaves Shoulder at rest -
+// it has to, because rotating the shoulder would drag the chest with it. So any
+// triangle weighted to Shoulder STAYS IN THE BIND POSE while everything around
+// it swings forward, and a pauldron or plate left behind in mid-air is exactly
+// what "separated" looked like. No distance or connectivity filter can fix
+// that, because the geometry is genuinely arm geometry - it is simply posed by
+// a bone we are not moving.
+//
+// Losing the pauldron costs nothing: in first person the shoulder is behind the
+// camera. ARM_POSE_CHAIN is what gets posed; ARM_CHAIN is what gets kept, and
+// they are now the same set for exactly this reason.
+const ARM_CHAIN = ['UpperArm', 'LowerArm', 'Hand'];
 
 // How long the extracted arm should be in camera space, and where its centre
 // should sit. Tuned as a pair: the arm reads at roughly a third of the frame
@@ -7579,7 +7735,7 @@ const ARM_CHAIN = ['Shoulder', 'UpperArm', 'LowerArm', 'Hand'];
 // reach in from the lower right, which at this camera's field of view means an
 // arm about 30 units long with its centre 16 units out.
 const VM_ARM_LENGTH = 30;
-const VM_ARM_ANCHOR = new THREE.Vector3(6.5, -7.0, -16.0);
+const VM_ARM_ANCHOR = new THREE.Vector3(5.6, -6.2, -14.0);
 
 // Which bones count as "the arm". Bone names arrive sanitised by three.js
 // (PropertyBinding.sanitizeNodeName strips '.'), so 'UpperArm.L' may be
@@ -7597,10 +7753,12 @@ function _armBoneIndices(skeleton, side) {
     return wanted;
 }
 
-// Bakes the arm's triangles into a plain BufferGeometry in the mesh's own
-// space. Returns null when the model does not look like what we expect, so the
-// caller can fall back to the procedural arm rather than render nothing.
-function _extractArmGeometry(skinned, side) {
+// Selects the triangles that make up the arm, as a flat list of vertex indices.
+// Returns null when the model does not look like what we expect, so the caller
+// can fall back to the procedural arm rather than render nothing.
+// Selection only - _bakePosedGeometry turns these into geometry, from a POSED
+// skeleton rather than the bind pose.
+function _armTriangles(skinned, side) {
     const geo = skinned.geometry;
     const pos = geo.attributes.position;
     const skinIndex = geo.attributes.skinIndex;
@@ -7676,9 +7834,12 @@ function _extractArmGeometry(skinned, side) {
         const local = chain.map(v => v.clone().applyMatrix4(toLocal));
         let chainLen = 0;
         for (let i = 1; i < local.length; i++) chainLen += local[i].distanceTo(local[i - 1]);
-        // Generous: an arm's shells stand off the bone by a real amount (a
-        // pauldron especially), and a false reject is a hole in the model.
-        const maxDist = Math.max(1e-4, chainLen * 0.55);
+        // Deliberately loose: an arm's shells stand off the bone by a real
+        // amount, and a false reject is a HOLE in the model. Tightening this
+        // to 0.22 to chase the detached fragment cost Lyra two thirds of her
+        // sleeve and changed Draven by two triangles - which is what proved
+        // distance was never what made the fragment detach. See ARM_CHAIN.
+        const maxDist = Math.max(1e-4, chainLen * 0.45);
         const _c = new THREE.Vector3(), _ab = new THREE.Vector3(), _ap = new THREE.Vector3();
         const nearChain = (x, y, z) => {
             _c.set(x, y, z);
@@ -7693,23 +7854,281 @@ function _extractArmGeometry(skinned, side) {
             }
             return best <= maxDist;
         };
+        // ...and clip anything INBOARD OF THE SHOULDER.
+        //
+        // Two problems, one cut. The weight threshold and the proximity test
+        // together still left a small shard of torso hanging off the shoulder
+        // (it is genuinely close to the shoulder bone, so no distance test can
+        // reject it), and the deltoid end was a ragged hole where the triangles
+        // were sliced. Projecting onto the shoulder-to-hand axis and dropping
+        // everything behind the shoulder removes both - and costs nothing
+        // visually, because in first person the shoulder is behind the camera.
+        const axisA = local[0], axisB = local[local.length - 1];
+        const axis = new THREE.Vector3().subVectors(axisB, axisA);
+        const axisLen2 = Math.max(1e-9, axis.dot(axis));
+        const _pv = new THREE.Vector3();
+        const alongArm = (x, y, z) => _pv.set(x, y, z).sub(axisA).dot(axis) / axisLen2;
+
         const filtered = [];
         for (let i = 0; i < keep.length; i += 3) {
             const a = keep[i], b2 = keep[i + 1], c = keep[i + 2];
             const cx = (pos.getX(a) + pos.getX(b2) + pos.getX(c)) / 3;
             const cy = (pos.getY(a) + pos.getY(b2) + pos.getY(c)) / 3;
             const cz = (pos.getZ(a) + pos.getZ(b2) + pos.getZ(c)) / 3;
-            if (nearChain(cx, cy, cz)) filtered.push(a, b2, c);
+            if (!nearChain(cx, cy, cz)) continue;
+            if (alongArm(cx, cy, cz) < 0.06) continue;   // behind the shoulder
+            filtered.push(a, b2, c);
         }
         if (filtered.length >= 60) { keep.length = 0; keep.push(...filtered); }
 
+        // NOTE ON WHAT IS **NOT** DONE HERE.
+        //
+        // Two component filters used to live at this point, both operating on
+        // BIND-POSE positions, and both were no-ops. Measuring the result is
+        // what explained it: the leftover fragment on Draven is a 256-triangle
+        // piece of his tasset that auto-weighting bound to the arm bones, and
+        // in the BIND pose - a T-pose, arm horizontal at shoulder height - it
+        // sits right beside the upper arm. There is nothing to distinguish it
+        // from real arm geometry until the arm is POSED, at which point the arm
+        // swings forward and the tasset stays behind.
+        //
+        // So the detached-piece prune happens after baking instead, on the
+        // posed geometry, where the separation is real and obvious. See
+        // _prunePosedComponents.
     }
 
-    // REMAP to only the vertices actually used. Copying the full attribute
-    // arrays and subsetting just the index leaves every original vertex in the
-    // buffer, which makes computeBoundingBox() report the whole BODY - the
-    // first version measured Kaelen's "arm" as 50 units tall - and that box is
-    // what the shoulder pivot below is derived from.
+    return keep;
+}
+
+// Builds a viewmodel arm from the character's loaded model, or returns null.
+// Poses the arm chain into a first-person carry, then BAKES THE SKINNED RESULT.
+//
+// The first version baked the BIND pose - a T-pose, arm straight out to the
+// side - and then rigidly rotated the whole slab of geometry to point it into
+// the screen. That is why the arms came out "backwards and sometimes separated
+// and weird": a rigid rotation carries the hand's orientation with it, so the
+// palm ended up facing outward, and the shoulder end was sheared across the
+// direction the deltoid was actually modelled in.
+//
+// Posing the skeleton first and reading the SKINNED vertex positions is the
+// difference between "the arm mesh, turned" and "the arm, held". The bone axes
+// are not guessed: art/pipeline.py built these rigs and documents them -
+//     swing  -> local X, NEGATIVE IS FORWARD, same sign on both sides
+//     spread -> local Z, mirrored on .R
+//     twist  -> local Y, mirrored on .R
+// so a first-person carry is a big negative X on the upper arm (swing it
+// forward), a bend at the elbow, and a little spread to bring it inboard.
+// WHERE THE LIMB SHOULD POINT, not how far to rotate each joint.
+//
+// The first attempt set euler angles on the bones, using art/pipeline.py's
+// documented convention ("swing -> local X, negative = forward"). That
+// convention is real, but it describes the rig's own REST pose, and these
+// characters are bound in a T-POSE: for an arm already pointing straight out
+// to the side, the bone's local X runs along the arm, so rotating about it
+// swings the limb up and down rather than forward. The result was an arm
+// hanging straight down.
+//
+// Directions do not have this problem. Each vector below is in the character's
+// own space - it faces local +X, which is what render3D relies on - and
+// _aimBone works out the rotation that gets there. No axis convention to be
+// wrong about, and it behaves identically on a rig bound in an A-pose.
+//
+// The shape being described is an ordinary first-person carry: upper arm
+// hanging down and a little forward, forearm swung forward into view with the
+// elbow bent, both tucked slightly inboard so the hand sits near the middle of
+// the frame rather than at the edge.
+const VM_AIM = {
+    //              forward,  up,     right(inboard)
+    upper: [0.42, -0.86, 0.30],
+    lower: [0.93, 0.22, 0.30],
+};
+
+// Resolves a bone by name from a SkinnedMesh's SKELETON.
+//
+// This exists because findBone(root, ...) traverses the object graph, and a
+// SkinnedMesh's bones are NOT its children - they hang off the character group
+// beside it. Calling findBone(skinnedMesh, 'UpperArm', 'L') therefore returns
+// null, always, and every `if (bone)` guard downstream silently does nothing.
+//
+// That single mistake is the whole reason the first-person arms were reported
+// as "backwards and sometimes separated and weird": the pose step below looked
+// like it was swinging the arm forward and was in fact a no-op, so what shipped
+// was the BIND pose - a T-pose, arm straight out to the side - rigidly rotated
+// a quarter turn to face the camera. It was caught by measuring the baked
+// geometry: the arm's bounding box spanned 0.7 across and 0.4 vertically, which
+// is an arm pointing sideways, not one pointing forward.
+//
+// three.js sanitises glTF node names (PropertyBinding.sanitizeNodeName strips
+// [ ] . : /), so "UpperArm.L" can arrive as either "UpperArm.L" or "UpperArmL".
+// Both spellings are tried, in that order, exactly as findBone does.
+function _skelBone(skinned, base, side) {
+    const bones = (skinned.skeleton && skinned.skeleton.bones) || [];
+    const names = side ? [base + '.' + side, base + side] : [base];
+    for (const want of names) {
+        for (const b of bones) if (b.name === want) return b;
+    }
+    // Last resort: a prefix match, so a rig naming it "UpperArm_L" still works.
+    for (const b of bones) {
+        if (b.name.indexOf(base) === 0 && (!side || b.name.indexOf(side) === b.name.length - 1)) return b;
+    }
+    return null;
+}
+
+// Rotates `bone` so the segment from it to `child` points along
+// `targetWorldDir`, working entirely in quaternions so there is no axis
+// convention to get wrong.
+//
+// The bone's world rotation is parentWorld * boneLocal, so to impose a world
+// rotation q the local part becomes inverse(parentWorld) * q * boneWorld.
+function _aimBone(bone, child, targetWorldDir) {
+    if (!bone || !child) return;
+    bone.updateWorldMatrix(true, false);
+    child.updateWorldMatrix(true, false);
+    const a = new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld);
+    const b = new THREE.Vector3().setFromMatrixPosition(child.matrixWorld);
+    const from = b.clone().sub(a);
+    if (from.lengthSq() < 1e-10) return;
+    from.normalize();
+    const to = targetWorldDir.clone().normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(from, to);
+
+    const boneWorldQ = new THREE.Quaternion();
+    bone.matrixWorld.decompose(new THREE.Vector3(), boneWorldQ, new THREE.Vector3());
+    const want = q.multiply(boneWorldQ);          // the world rotation we want
+
+    const parentWorldQ = new THREE.Quaternion();
+    if (bone.parent) {
+        bone.parent.updateWorldMatrix(true, false);
+        bone.parent.matrixWorld.decompose(new THREE.Vector3(), parentWorldQ, new THREE.Vector3());
+    }
+    bone.quaternion.copy(parentWorldQ.invert().multiply(want));
+    bone.updateMatrixWorld(true);
+}
+
+// Bakes the CURRENT pose of a skinned mesh into a plain BufferGeometry,
+// keeping only the triangles listed in `keep`.
+//
+// SkinnedMesh.boneTransform(i, v) does the CPU skinning for one vertex - the
+// same weighted-matrix sum the vertex shader does - which is exactly what is
+// needed to freeze a pose. Normals are recomputed afterwards rather than
+// transformed: three offers no normal equivalent, and for a smooth-shaded limb
+// recomputing is both simpler and correct.
+// Drops connected pieces of a POSED arm that are not on the arm any more.
+//
+// This is the filter that actually removed the reported "sometimes look
+// separated and weird", and it has to run here rather than during triangle
+// selection - see the note in _armTriangles. `chainPts` are the posed bone
+// positions in the same space as the geometry; `radius` is about an arm radius.
+//
+// Vertices are welded by position first: a UV seam duplicates vertices at
+// identical coordinates, and without welding one continuous shell splits into
+// several that each look detached, which would make this filter delete the arm.
+function _prunePosedComponents(geo, chainPts, radius) {
+    const pos = geo.attributes.position;
+    const idx = geo.index;
+    if (!pos || !idx) return geo;
+    const index = idx.array;
+
+    const Q = 1e-4;
+    const weld = new Map();
+    const rep2 = new Int32Array(pos.count).fill(-1);
+    for (let v = 0; v < pos.count; v++) {
+        const k = Math.round(pos.getX(v) / Q) + ',' +
+                  Math.round(pos.getY(v) / Q) + ',' +
+                  Math.round(pos.getZ(v) / Q);
+        const hit = weld.get(k);
+        if (hit === undefined) { weld.set(k, v); rep2[v] = v; } else { rep2[v] = hit; }
+    }
+    const par = new Map();
+    const find = x => { while (par.get(x) !== x) { par.set(x, par.get(par.get(x))); x = par.get(x); } return x; };
+    for (let i = 0; i < index.length; i++) { const r = rep2[index[i]]; if (!par.has(r)) par.set(r, r); }
+    const uni = (a, b) => { a = find(a); b = find(b); if (a !== b) par.set(a, b); };
+    for (let i = 0; i < index.length; i += 3) {
+        uni(rep2[index[i]], rep2[index[i + 1]]);
+        uni(rep2[index[i + 1]], rep2[index[i + 2]]);
+    }
+
+    // WHICH COMPONENTS TO KEEP, and why this is a size rule rather than a
+    // distance one.
+    //
+    // Four distance-based rules were tried and every one of them kept the
+    // fragment: bind-pose bone proximity, a bind-pose chain bounding box, the
+    // posed full chain, and the posed forearm. Measuring the result explained
+    // it - the piece is a 256-triangle scrap of Draven's tasset that
+    // auto-weighting bound to the arm bones, and once the arm is posed it sits
+    // roughly a forearm-radius below the wrist. There is no radius that
+    // excludes it and still admits a real sleeve.
+    //
+    // Relative size does separate them cleanly, with a large margin: the
+    // fragment is 7% of the arm, while the genuine shells - plate, sleeve,
+    // glove - are all a substantial share of it. Anything under a quarter of
+    // the largest shell is not a part of the arm at this level of detail. The
+    // component holding the HAND is always kept regardless of its size, so the
+    // one piece that is guaranteed to be on screen can never be pruned.
+    const near = new Set();
+    const _v = new THREE.Vector3(), _ab = new THREE.Vector3(), _ap = new THREE.Vector3();
+    const distToChain = (x, y, z) => {
+        _v.set(x, y, z);
+        let best = Infinity;
+        for (let i = 1; i < chainPts.length; i++) {
+            const a = chainPts[i - 1], b = chainPts[i];
+            _ab.subVectors(b, a);
+            const denom = _ab.dot(_ab);
+            const t = denom <= 1e-12 ? 0 : Math.max(0, Math.min(1, _ap.subVectors(_v, a).dot(_ab) / denom));
+            const d = _v.distanceTo(_ap.copy(a).addScaledVector(_ab, t));
+            if (d < best) best = d;
+        }
+        return best;
+    };
+    const sizes = new Map();
+    for (let i = 0; i < index.length; i += 3) {
+        const c = find(rep2[index[i]]);
+        sizes.set(c, (sizes.get(c) || 0) + 1);
+    }
+    // Records why it did what it did. A silent early return here cost seven
+    // five-minute render cycles to diagnose; the decision is cheap to keep.
+    geo.userData.prune = { comps: sizes.size, sizes: [...sizes.values()] };
+    if (sizes.size <= 1) { geo.userData.prune.why = 'single component'; return geo; }
+
+    // The component holding the vertex nearest the hand - kept unconditionally.
+    const handPt = chainPts[chainPts.length - 1];
+    let handComp = null, bestD = Infinity;
+    for (let i = 0; i < index.length; i++) {
+        const v = index[i];
+        const d = _v.set(pos.getX(v), pos.getY(v), pos.getZ(v)).distanceTo(handPt);
+        if (d < bestD) { bestD = d; handComp = find(rep2[v]); }
+    }
+    let largest = 0;
+    for (const n of sizes.values()) if (n > largest) largest = n;
+    for (const [c, n] of sizes) if (n >= largest * 0.25) near.add(c);
+    if (handComp !== null) near.add(handComp);
+    geo.userData.prune.largest = largest;
+    geo.userData.prune.handComp = handComp;
+    geo.userData.prune.handCompSize = sizes.get(handComp) || 0;
+    geo.userData.prune.kept = near.size;
+    if (!near.size || near.size === sizes.size) {
+        geo.userData.prune.why = !near.size ? 'nothing qualified' : 'all components qualified';
+        return geo;
+    }
+    geo.userData.prune.why = 'pruned';
+
+    const kept = [];
+    for (let i = 0; i < index.length; i += 3) {
+        if (near.has(find(rep2[index[i]]))) kept.push(index[i], index[i + 1], index[i + 2]);
+    }
+    if (kept.length < 60) return geo;   // never prune the arm away entirely
+    geo.setIndex(kept);
+    geo.computeVertexNormals();
+    geo.computeBoundingBox();
+    geo.computeBoundingSphere();
+    return geo;
+}
+
+function _bakePosedGeometry(skinned, keep) {
+    const geo = skinned.geometry;
+    const pos = geo.attributes.position;
+    if (!pos || typeof skinned.boneTransform !== 'function') return null;
+
     const remap = new Map();
     const order = [];
     const idx = [];
@@ -7718,11 +8137,20 @@ function _extractArmGeometry(skinned, side) {
         if (n === undefined) { n = order.length; remap.set(v, n); order.push(v); }
         idx.push(n);
     }
+    if (idx.length < 60) return null;
 
     const out = new THREE.BufferGeometry();
-    // Copy every attribute the material might sample, but drop the skinning
-    // ones - this is a static mesh now.
-    for (const name of ['position', 'normal', 'uv', 'uv2', 'color', 'tangent']) {
+    const positions = new Float32Array(order.length * 3);
+    const tmp = new THREE.Vector3();
+    for (let i = 0; i < order.length; i++) {
+        skinned.boneTransform(order[i], tmp);   // <- the posed position
+        positions[i * 3] = tmp.x;
+        positions[i * 3 + 1] = tmp.y;
+        positions[i * 3 + 2] = tmp.z;
+    }
+    out.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    // Carry UVs and vertex colours; they are pose-independent.
+    for (const name of ['uv', 'uv2', 'color']) {
         const attr = geo.attributes[name];
         if (!attr) continue;
         const it = attr.itemSize;
@@ -7734,12 +8162,12 @@ function _extractArmGeometry(skinned, side) {
         out.setAttribute(name, new THREE.BufferAttribute(dst, it, attr.normalized));
     }
     out.setIndex(idx);
+    out.computeVertexNormals();
     out.computeBoundingBox();
     out.computeBoundingSphere();
     return out;
 }
 
-// Builds a viewmodel arm from the character's loaded model, or returns null.
 function buildViewmodelArmFromModel(f) {
     const m = charModels[f.name];
     if (!m || !THREE.SkeletonUtils) return null;
@@ -7747,99 +8175,122 @@ function buildViewmodelArmFromModel(f) {
     try { group = buildRiggedCharacter(f.name); } catch (e) { return null; }
     if (!group) return null;
 
-    // Which arm holds the weapon. The procedural rigs name them armPos/armNeg;
-    // on a real skeleton armPos is the '.L' chain (see buildRiggedCharacter).
+    // Which arm holds the weapon. On a real skeleton armPos is the '.L' chain
+    // (see buildRiggedCharacter).
     const side = 'L';
     let skinned = null;
     group.traverse(o => { if (!skinned && o.isSkinnedMesh) skinned = o; });
-    if (!skinned) return null;
+    if (!skinned || !skinned.skeleton) return null;
 
-    const armGeo = _extractArmGeometry(skinned, side);
+    // ---- 1. which triangles ------------------------------------------------
+    const keep = _armTriangles(skinned, side);
+    if (!keep) return null;
+
+    // ---- 2. pose the chain -------------------------------------------------
+    // _skelBone, NOT findBone - see the note on _skelBone. findBone(skinned,...)
+    // returns null for every bone, which made this entire pose a silent no-op.
+    const upper = _skelBone(skinned, 'UpperArm', side);
+    const lower = _skelBone(skinned, 'LowerArm', side);
+    const hand = _skelBone(skinned, 'Hand', side);
+    if (!upper || !lower) return null;   // no rig we recognise: fall back
+    // The character's own basis, in world space. It faces local +X (see
+    // buildRiggedCharacter), so that is "forward"; `right` is derived rather
+    // than assumed, and mirrored for a right-handed carry so "inboard" means
+    // toward the middle of the frame on either side.
+    const mirror = side === 'R' ? -1 : 1;
+    const fwd = new THREE.Vector3(1, 0, 0).transformDirection(group.matrixWorld).normalize();
+    const up = new THREE.Vector3(0, 1, 0).transformDirection(group.matrixWorld).normalize();
+    const right = new THREE.Vector3().crossVectors(up, fwd).normalize().multiplyScalar(mirror);
+    const aimVec = a => fwd.clone().multiplyScalar(a[0])
+        .addScaledVector(up, a[1])
+        .addScaledVector(right, a[2]);
+
+    // Upper arm first, then the forearm: aiming the shoulder moves the elbow,
+    // so the forearm has to be aimed from where the elbow actually ended up.
+    _aimBone(upper, lower, aimVec(VM_AIM.upper));
+    group.updateMatrixWorld(true);
+    if (hand) _aimBone(lower, hand, aimVec(VM_AIM.lower));
+
+    // The skeleton's bone matrices have to be recomputed before boneTransform
+    // reads them, or every vertex bakes at the bind pose and the pose above is
+    // silently ignored - which looks exactly like the bug it is fixing.
+    group.updateMatrixWorld(true);
+    skinned.skeleton.update();
+
+    // ---- 3. bake -----------------------------------------------------------
+    let armGeo = _bakePosedGeometry(skinned, keep);
     if (!armGeo) return null;
 
-    const out = new THREE.Group();
+    // Drop anything the pose left behind. The bone positions have to be in the
+    // geometry's own space, and the geometry is in the SkinnedMesh's local
+    // space, so bring the (world-space) posed bones back through its inverse.
+    const toMesh = new THREE.Matrix4().copy(skinned.matrixWorld).invert();
+    const posedPts = [upper, lower, hand].filter(Boolean).map(bn => {
+        bn.updateWorldMatrix(true, false);
+        return new THREE.Vector3().setFromMatrixPosition(bn.matrixWorld).applyMatrix4(toMesh);
+    });
+    // Measured against the FOREARM AND HAND, not the whole chain. The piece
+    // this exists to remove sits beside the UPPER arm - it is a tasset bound
+    // to the shoulder end - so including the upper arm in the reference chain
+    // is what let it keep passing. Anything genuinely on the upper arm is
+    // connected to the forearm shell and survives on connectivity.
+    const foreArm = posedPts.slice(-2);
+    if (foreArm.length === 2) {
+        const foreLen = foreArm[0].distanceTo(foreArm[1]);
+        armGeo = _prunePosedComponents(armGeo, foreArm, foreLen * 0.85);
+    }
+
+    const holder = new THREE.Group();
     const arm = new THREE.Mesh(armGeo, skinned.material);
-    // The extracted triangles are in the SkinnedMesh's local space, and the
-    // model sits inside a scaled+rotated wrapper (see buildRiggedCharacter), so
-    // reproduce that world transform rather than guessing.
+    // The baked vertices are in the SkinnedMesh's own space, and the model sits
+    // inside the scaled + rotated wrapper buildRiggedCharacter made, so
+    // reproduce that transform rather than guessing at it.
     skinned.updateWorldMatrix(true, false);
     arm.applyMatrix4(skinned.matrixWorld);
-    out.add(arm);
+    holder.add(arm);
 
-    // In the bind pose the arm points straight out to the side (a T-pose), and
-    // a first-person arm has to point into the screen. Rotate the whole arm
-    // about the shoulder so its long axis lands along -Z, then let the holder's
-    // own animation take over from there.
-    armGeo.computeBoundingBox();
-    const bb = armGeo.boundingBox.clone().applyMatrix4(skinned.matrixWorld);
-    const shoulder = new THREE.Vector3(
-        side === 'L' ? bb.min.x : bb.max.x,
-        bb.max.y,
-        (bb.min.z + bb.max.z) / 2);
-    const pivot = new THREE.Group();
-    pivot.position.copy(shoulder);
-    arm.position.sub(shoulder);
-    pivot.add(arm);
-    // Aim the arm INTO frame, not straight down the view axis.
-    //
-    // The bind pose has the arm out to the side (+X), so it has to swing round
-    // to point into the screen (-Z). Rotating exactly 90 degrees does that and
-    // looks wrong: the arm then points directly away from the camera and you
-    // see it end-on, almost entirely foreshortened - the first render showed
-    // little but a gauntlet at the bottom edge. Stopping ~28 degrees short
-    // sweeps it in from the lower right, which is how a first-person arm
-    // actually reads, and the slight upward tilt lifts the hand off the floor
-    // line.
-    const IN = 0.48;                  // radians short of square-on
-    pivot.rotation.y = side === 'L' ? -(Math.PI / 2) + IN : (Math.PI / 2) - IN;
-    pivot.rotation.x = -0.16;         // hand slightly above the shoulder line
-    const holder = new THREE.Group();
-    holder.add(pivot);
-    // Bring the shoulder back to the origin so the holder's placement numbers
-    // in buildViewmodel keep meaning what they meant for the procedural arm.
-    pivot.position.set(0, 0, 0);
+    // The model faces local +X (buildRiggedCharacter rotates it so render3D can
+    // map a 2D facing straight onto rotation.y). A camera looks down -Z, so
+    // turn the arm a quarter turn to face the way the camera does. Because the
+    // arm is now POSED forward rather than sticking out sideways, this is the
+    // only rotation needed - and it is a fact about the model's convention, not
+    // a number to tune.
+    holder.rotation.y = -Math.PI / 2;
 
     holder.userData.mats = Array.isArray(skinned.material) ? skinned.material.slice() : [skinned.material];
     holder.userData.fromModel = true;
 
-    // FRAME IT DELIBERATELY, rather than inheriting placement numbers that were
-    // tuned for a different object.
-    //
-    // The procedural arm this replaces was a ~16-unit stub whose origin sat at
-    // the wrist; the extracted arm is a real limb, roughly 23 units from
-    // shoulder to fingertip, with its origin at the shoulder. Reusing the old
-    // offsets put it off the bottom of the screen twice - first pointing
-    // straight away from the camera, then out of frame entirely.
-    //
-    // So: normalise the arm's LENGTH, then position it by where its centre
-    // should appear rather than by an offset from the shoulder. Both numbers
-    // below are in camera space, which is what the eye actually judges.
+    // ---- 4. frame it -------------------------------------------------------
+    // Normalise the length, then park the arm's centre on the group origin so
+    // buildViewmodel can position it by where it should APPEAR rather than by
+    // an offset from a shoulder whose location varies per character.
     const box = new THREE.Box3().setFromObject(holder);
     const size = box.getSize(new THREE.Vector3());
     const longest = Math.max(size.x, size.y, size.z);
     if (longest > 0.001) holder.scale.setScalar(VM_ARM_LENGTH / longest);
-    // Re-measure AFTER scaling - the centre moves with it.
     const centre = new THREE.Box3().setFromObject(holder).getCenter(new THREE.Vector3());
-    holder.position.sub(centre);      // arm's centre now sits at the group origin
+    holder.position.sub(centre);
 
-    // Where the HAND ended up, in this group's own space. The weapon prop is
-    // added separately by buildViewmodel at a fixed offset that was tuned for
-    // the procedural arm's wrist; with a real arm in place that offset points
-    // at empty air, and the result is a weapon floating beside a hand instead
-    // of held in it. Handing the caller the actual hand position is the only
-    // way it can put them together.
-    holder.updateMatrixWorld(true);
-    const handBone = findBone(skinned, 'Hand', side) ||
-                     (skinned.skeleton.bones.filter(b => (b.name || '').indexOf('Hand') === 0)[0]);
-    if (handBone) {
-        handBone.updateWorldMatrix(true, false);
-        const hp = new THREE.Vector3().setFromMatrixPosition(handBone.matrixWorld);
-        holder.worldToLocal(hp);
+    // Where the hand ended up, so the weapon can be put IN it rather than at
+    // the fixed offset that was tuned for the procedural arm's wrist.
+    if (hand) {
+        hand.updateWorldMatrix(true, false);
+        // Stored in the CHARACTER's space, deliberately un-transformed.
+        //
+        // The arm mesh inside this group is in that same space -
+        // arm.applyMatrix4(skinned.matrixWorld) put it there - and this group's
+        // own matrix is what maps it into viewmodel space. So the caller
+        // applies that matrix once (see buildViewmodel).
+        //
+        // The first attempt called holder.worldToLocal(hp) here AND applied
+        // holder.matrix in the caller, which are inverses: the weapon ended up
+        // back at the character's world position, floating across the screen.
+        const hp = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
         holder.userData.handPoint = hp;
-    } else {
-        // Fall back to the far end of the arm along its own axis.
-        const b2 = new THREE.Box3().setFromObject(holder);
-        holder.userData.handPoint = new THREE.Vector3(0, b2.min.y, b2.min.z);
+        // ...and at the angle the hand is actually holding it.
+        const hq = new THREE.Quaternion();
+        hand.matrixWorld.decompose(new THREE.Vector3(), hq, new THREE.Vector3());
+        holder.userData.handQuat = hq;
     }
     return holder;
 }
@@ -7927,7 +8378,28 @@ function buildViewmodel(f, layer) {
     // and so does any character without one.
     const armGroup = buildViewmodelArmFromModel(f) || buildViewmodelArm(f);
     holder.userData.armFromModel = !!armGroup.userData.fromModel;
-    holder.userData.handPoint = armGroup.userData.handPoint || null;
+    // The hand position has to be brought into THIS group's space.
+    //
+    // buildViewmodelArmFromModel measures it in the ARM group's local space,
+    // and the arm group is a child of this holder carrying its own scale and
+    // offset - so using the raw value put the weapon a long way from the hand,
+    // floating in the middle of the frame. armGroup.matrix is exactly that
+    // child transform.
+    // One transform, from the character's space into this holder's space. See
+    // the note where handPoint is measured.
+    armGroup.updateMatrix();
+    holder.userData.handPoint = armGroup.userData.handPoint
+        ? armGroup.userData.handPoint.clone().applyMatrix4(armGroup.matrix)
+        : null;
+    // The rotation half needs the arm group's rotation composed in for the
+    // same reason, but not its translation or scale.
+    if (armGroup.userData.handQuat) {
+        const armQ = new THREE.Quaternion();
+        armGroup.matrix.decompose(new THREE.Vector3(), armQ, new THREE.Vector3());
+        holder.userData.handQuat = armQ.multiply(armGroup.userData.handQuat);
+    } else {
+        holder.userData.handQuat = null;
+    }
     holder.add(armGroup);
     const prop = propForAtkType(f);
     prop.rotation.y = Math.PI / 2; // weapon local +X (its "forward") now points into the screen (-Z)
@@ -7937,10 +8409,18 @@ function buildViewmodel(f, layer) {
     prop.rotation.z = 0.30;
     prop.rotation.x = -0.10;
     if (holder.userData.handPoint) {
-        // Put it IN the hand. The literal below is the procedural arm's wrist;
-        // a real arm's hand is somewhere else entirely, and measured.
+        // Put it IN the hand, at the angle the hand is actually holding it.
+        // The literal in the else-branch is the PROCEDURAL arm's wrist; a real
+        // arm's hand is somewhere else entirely, and both where and how it is
+        // turned are measured rather than guessed.
+        // POSITION from the measured hand; ROTATION from the tuned constants
+        // above. Composing the hand bone's own orientation in was tried and is
+        // worse: a weapon prop's geometry extends from its grip along local +X,
+        // so an extra rotation swings the whole weapon away from the hand it
+        // was just placed in. The hand's angle is the right idea and the wrong
+        // input - what it carries is the bind-pose roll of a bone in a rig
+        // authored for a body, not the grip angle of a held weapon.
         prop.position.copy(holder.userData.handPoint);
-        prop.rotation.z = 0.30; prop.rotation.x = -0.10;
     } else {
         prop.position.set(-0.6, -0.8, 1.2);
     }
@@ -8989,7 +9469,13 @@ function buildGrid(gridId, keyList, side) {
         btn.dataset.name = c.name;
         btn.dataset.key = keyList[i].toUpperCase();
         btn.style.setProperty('--accent', c.color);
-        btn.innerHTML = `<span><span class="fkey">${keyList[i].toUpperCase()}</span><span class="fname">${c.name}</span></span><span class="ftitle">${c.title}</span>`;
+        // The face chip goes FIRST so the card reads portrait-then-name, and
+        // it carries the accent colour behind it as both a tint and a fallback
+        // for a missing file. Batch 37.
+        btn.innerHTML =
+            `<span class="fface" style="background-color:${c.color};background-image:url('${faceUrl(c.name)}')"></span>`
+            + `<span class="fmeta"><span><span class="fkey">${keyList[i].toUpperCase()}</span><span class="fname">${c.name}</span></span>`
+            + `<span class="ftitle">${c.title}</span></span>`;
         // A locked card opens the Shop instead of previewing — clicking the
         // thing you want and being told where to get it beats a dead button.
         btn.addEventListener('click', () => {
@@ -9152,12 +9638,43 @@ function pickKeyHint() {
 // rendering ten headshots; the accent colour is already the fighter's identity
 // everywhere else in the UI (card border, detail panel, HUD), so reusing it
 // keeps the slot readable without inventing new art.
+// Batch 37: the circles hold the character's FACE.
+//
+// They were a flat disc of the character's accent colour, which was the right
+// answer when the fighters were assembled primitives with no face to show.
+// Every character has one now, so `assets/faces/<name>.png` is a baked
+// head-and-shoulders portrait rendered from the actual model by
+// art/render_faces.js.
+//
+// Baked rather than rendered live for two reasons: the select screen would
+// otherwise have to load fourteen 2 MB GLBs to draw fourteen 44-pixel circles
+// (the whole point of the lazy model loading was not doing that), and a
+// portrait wants its own framing and lighting rather than whatever the arena
+// happens to have.
+//
+// The accent colour stays as the border and glow - it is how a fighter is
+// identified everywhere else - and stays as the FALLBACK fill, so a missing
+// portrait file degrades to exactly the old behaviour instead of a blank hole.
+function faceUrl(name) { return 'assets/faces/' + String(name).toLowerCase() + '.png'; }
+
 function paintSlotPortrait(el, name) {
     if (!el) return;
     const c = name && CHAR_MAP[name];
-    el.style.background = c ? c.color : '#0d1017';
     el.style.borderColor = c ? c.color : '#2e3a59';
     el.style.boxShadow = c ? `0 0 12px ${c.color}66` : 'none';
+    if (c) {
+        // The accent stays underneath the portrait: it shows through the
+        // transparent background the render leaves, and it is what you see if
+        // the image 404s.
+        el.style.backgroundColor = c.color;
+        el.style.backgroundImage = `url('${faceUrl(name)}')`;
+        el.style.backgroundSize = 'cover';
+        el.style.backgroundPosition = 'center top';
+        el.style.backgroundRepeat = 'no-repeat';
+    } else {
+        el.style.backgroundColor = '#0d1017';
+        el.style.backgroundImage = 'none';
+    }
 }
 
 // Which numbered player the local client drives. Online this is decided by the
@@ -9647,6 +10164,11 @@ function netTeardown(reason) {
     net.peer = null; net.conn = null; net.role = null;
     net.remoteReady = false; net.pendingSetup = null;
     LOCAL_SIDE = 'p1';
+    // Batch 37: their absence must not outlive their connection. Left set,
+    // `remoteAway` would leave the next match paused with the resume gate
+    // waiting on a peer who is no longer there.
+    remoteAway = false;
+    awayPaused = false;
     netSetStatus(reason ? 'dropped' : 'offline', reason || '');
 }
 
@@ -9774,6 +10296,19 @@ function netOnMessage(msg) {
             break;
         case 'READY':
             net.remoteReady = true;
+            break;
+        case 'PRESENCE':
+            // Their tab changed state. Going away pauses us too; coming back
+            // does NOT resume - see the note by `localAway`.
+            remoteAway = !!msg.away;
+            if (remoteAway) pauseForAway();
+            else refreshPauseUI();
+            break;
+        case 'RESUME':
+            // Only the host sends this, and only once both sides are present.
+            awayPaused = false;
+            if (gameState === 'PAUSED') togglePause();
+            refreshPauseUI();
             break;
         case 'PICK':
             netOnPick(msg);
@@ -10026,20 +10561,8 @@ document.getElementById('btn-room-leave').addEventListener('click', () => {
     exitPointerLock();
     goHome();
 });
-document.getElementById('btn-room-copy').addEventListener('click', () => {
-    const box = document.getElementById('room-code-text');
-    if (!box || !box.value) return;
-    box.select();
-    const btn = document.getElementById('btn-room-copy');
-    const done = () => { if (btn) { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Copy'; }, 1400); } };
-    // navigator.clipboard is unavailable on an insecure origin, which is
-    // exactly how this gets served locally - hence the execCommand fallback.
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(box.value).then(done, () => { try { document.execCommand('copy'); done(); } catch (e) {} });
-    } else {
-        try { document.execCommand('copy'); done(); } catch (e) {}
-    }
-});
+document.getElementById('btn-room-copy').addEventListener('click',
+    () => copyRoomCode('room-code-text', 'btn-room-copy'));
 document.getElementById('btn-open-mapselect').addEventListener('click', () => {
     if (!netIsHost()) return;   // the host owns the arena
     openMapSelect();
@@ -10074,19 +10597,48 @@ document.getElementById('btn-net-disconnect').addEventListener('click', () => {
     netTeardown();
     refreshMenuUI();
 });
-document.getElementById('btn-copy-code').addEventListener('click', () => {
-    const box = document.getElementById('lobby-code');
-    if (!box) return;
-    box.select();
-    const done = () => { const b = document.getElementById('btn-copy-code'); if (b) { b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1400); } };
-    // navigator.clipboard needs a secure context; execCommand is the fallback
-    // for plain http://, which is exactly how this gets served locally.
+// Batch 37: one copy routine, shared by the lobby and the room bar, and it
+// LEAVES NO SELECTION BEHIND.
+//
+// Both copies called box.select() unconditionally, which left the room code
+// sitting there highlighted afterwards - reported as "when you press copy when
+// you are hosting and are still out of the lobby, it shouldn't highlight it".
+// The selection was never the point: it was only ever there to make the
+// execCommand('copy') fallback work, and that fallback is needed solely on an
+// insecure origin where navigator.clipboard does not exist. So try the
+// clipboard API first and only select if we actually have to - then clear it
+// again immediately.
+function copyRoomCode(boxId, btnId) {
+    const box = document.getElementById(boxId);
+    const btn = document.getElementById(btnId);
+    if (!box || !box.value) return;
+    const done = () => {
+        if (!btn) return;
+        btn.textContent = 'Copied';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
+    };
+    const legacy = () => {
+        // The only path that needs a selection. Undo it the moment it is done,
+        // so the code is never left highlighted.
+        try {
+            box.select();
+            document.execCommand('copy');
+            done();
+        } catch (e) { /* nothing else to try */ }
+        try {
+            box.setSelectionRange(0, 0);
+            box.blur();
+            if (window.getSelection) window.getSelection().removeAllRanges();
+        } catch (e) {}
+    };
     if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(box.value).then(done, () => { try { document.execCommand('copy'); done(); } catch (e) {} });
+        navigator.clipboard.writeText(box.value).then(done, legacy);
     } else {
-        try { document.execCommand('copy'); done(); } catch (e) {}
+        legacy();
     }
-});
+}
+document.getElementById('btn-copy-code').addEventListener('click',
+    () => copyRoomCode('lobby-code', 'btn-copy-code'));
 refreshLobbyUI();
 
 function netOnPick(msg) {
@@ -10320,8 +10872,85 @@ function togglePause() {
         gameState = 'PAUSED';
         document.getElementById('pause-controls-reminder').innerHTML = controlsSummary();
         showScreen('pause');
+        refreshPauseUI();   // says what is blocking the resume, if anything
     }
 }
+// --- Away-pause (Batch 37) -------------------------------------------------
+// See the note by `localAway`. `document.hidden` is the signal rather than
+// window blur: the request is about leaving the TAB, and blur also fires for
+// clicking a second monitor or a devtools panel, which should not stop a match.
+function inLiveMatch() {
+    return gameState === 'FIGHT' || gameState === 'INTRO'
+        || gameState === 'DEATH' || gameState === 'ROUND_END';
+}
+
+function pauseForAway() {
+    if (gameState === 'PAUSED') { awayPaused = true; refreshPauseUI(); return; }
+    if (!inLiveMatch()) return;
+    awayPaused = true;
+    exitPointerLock();          // or the cursor stays captured by a hidden tab
+    togglePause();               // enters PAUSED and shows the screen
+    refreshPauseUI();
+}
+
+function setLocalAway(away) {
+    if (localAway === away) return;
+    localAway = away;
+    // Tell them either way: coming BACK is the half that matters, because it is
+    // what re-enables the host's Resume button on the other machine.
+    netSend({ t: 'PRESENCE', away: away });
+    if (away) pauseForAway();
+    else refreshPauseUI();       // present again - but still not resumed
+}
+
+document.addEventListener('visibilitychange', () => setLocalAway(!!document.hidden));
+// A hidden tab can also be a closed laptop lid; pagehide is the reliable
+// "going away for real" signal on mobile Safari, where visibilitychange is
+// sometimes skipped entirely.
+window.addEventListener('pagehide', () => setLocalAway(true));
+
+// Rewrites the pause screen for whatever is actually blocking the resume. A
+// disabled button with no explanation is the thing that makes someone reload
+// the page and lose the match.
+function refreshPauseUI() {
+    const btn = document.getElementById('btn-resume');
+    const note = document.getElementById('pause-away-note');
+    if (!btn) return;
+    if (!awayPaused) {
+        btn.disabled = false;
+        btn.textContent = 'Resume (Esc)';
+        if (note) note.style.display = 'none';
+        return;
+    }
+    let text, enabled = false;
+    if (localAway) {
+        // Only reachable in a hidden tab, so nobody reads it - but the state
+        // has to be coherent for the moment they come back.
+        text = 'Paused - you left the game.';
+    } else if (remoteAway) {
+        text = `Paused - ${playerLabel(otherSide(LOCAL_SIDE))} left the game tab. `
+             + 'Waiting for them to come back\u2026';
+    } else if (netActive() && !netIsHost()) {
+        text = `Both back. Waiting for ${playerLabel(hostSide())} to resume\u2026`;
+    } else {
+        text = 'Both players are back. Resume when you are ready.';
+        enabled = true;
+    }
+    btn.disabled = !enabled;
+    btn.textContent = enabled ? 'Resume Match' : 'Resume';
+    if (note) { note.textContent = text; note.style.display = ''; }
+}
+
+// The one way out of an away-pause.
+function requestResume() {
+    if (!awayPaused) { togglePause(); return; }      // an ordinary Escape pause
+    if (!mayResumeAway()) { refreshPauseUI(); return; }
+    awayPaused = false;
+    netSend({ t: 'RESUME' });
+    if (gameState === 'PAUSED') togglePause();
+    refreshPauseUI();
+}
+
 // (Escape → close-modal-or-pause is handled in the single keyboard dispatcher,
 // C2 above; rebind capture is handled first there, so Escape never fights it.)
 // Route Escape to the right close handler for the top modal (so e.g. closing
@@ -10335,7 +10964,7 @@ function closeTopModalByEscape() {
     }
 }
 
-document.getElementById('btn-resume').addEventListener('click', togglePause);
+document.getElementById('btn-resume').addEventListener('click', requestResume);
 
 document.getElementById('btn-quit-to-menu').addEventListener('click', () => {
     pausedFromState = null;
@@ -11760,6 +12389,15 @@ if (DEBUG) {
         startOnline, hostRematch, enterRoom, goHome, refreshRoomUI, showLocalPickerOnly,
         // Batch 36 names
         setMyName, sanitizeName, playerLabel, playerLabelShort, nameForSide, NAME_MAX,
+        // Batch 37 away-pause: the gate is a set of rules, so the rules have
+        // to be inspectable from a test.
+        setLocalAway, requestResume, pauseForAway, refreshPauseUI, mayResumeAway, hostSide,
+        togglePause, inLiveMatch,
+        TELEPORT_VIS_MIN, TELEPORT_VIS_MAX, TELEPORT_VIS_DECAY,
+        positionFpsCamera, worldX, worldZ,
+        get localAway() { return localAway; },
+        get remoteAway() { return remoteAway; },
+        get awayPaused() { return awayPaused; },
         sideReady,
         get myPlayerName() { return myPlayerName; },
         buildModeSelect, onNetLost, refreshGameOverUI, refreshLobbyUI,
