@@ -2855,35 +2855,157 @@ onWindowResize(); // establish real pixel size now that a camera-ish setup exist
 // - each player framed in their own half of the screen. Requested, with a
 // drawing: two figures side by side, a wall closing on each from both sides.
 let crushTime = 0;           // frames since the crush began; drives the whole sequence
-// SIDE-BY-SIDE CRUSH IN THE ONLINE BUILD: ATTEMPTED, REVERTED, STILL TO DO.
+// ===========================================================================
+// THE SIDE-BY-SIDE CRUSH, AS ITS OWN SCENE.
 //
 // Batch 27 built this cinematic for split-screen, where each half already had
-// its own camera: applyCrushCameraLayers shows you your own body and hides your
-// opponent's, so each half is one fighter alone with a wall behind. That is
-// still exactly right for the archived build, and it is what the original
-// drawing asked for.
+// its own camera: each half showed one fighter alone with a wall behind, which
+// is what the original drawing asked for. Online there is ONE camera, so the
+// same code showed you only yourself and your opponent's death was invisible.
 //
-// Online there is ONE camera, so that same swap means you only ever see
-// yourself and your opponent's death is invisible. Batch 39 tried to stage both
-// fighters onto fixed marks either side of the arena centre and frame the pair.
-// It was reverted after three verification renders because it looked worse than
-// what it replaced, and the reasons are worth writing down rather than
-// rediscovering:
+// Batch 39 tried staging both fighters onto marks inside the LIVE arena and was
+// reverted, for two reasons that between them say what the right design is:
 //
-//   - The rigs moved but the BODIES did not, so the boxes and the fighters
-//     ended up in different places. The mesh position is written in render3D
-//     from the simulation position every frame, and overriding it there was not
-//     enough - something later in the frame puts it back.
-//   - The stage floor is a 300-unit box, so any gap under ~340 overlaps the two
-//     stages into one pile of slabs. 340 separates them but then needs roughly
-//     three times the camera pull-back, and at that distance the ARENA's own
-//     collapsed walls and floor are in the shot behind the stages - the staged
-//     diorama is not isolated from the level.
+//   1. The bodies would not stay put. `render3D` writes `mesh.position` from
+//      the simulation every frame, so anything that moves a fighter for
+//      presentation is overwritten before it is drawn.
+//   2. The arena is still there. Two 300-unit stages need ~640 units of gap,
+//      and at the camera distance that requires, the arena's own collapsing
+//      walls and floor are in shot behind the diorama.
 //
-// Doing it properly probably means rendering the crush as its own scene (or on
-// a layer with the arena hidden) rather than staging props inside the live
-// arena. That is a bigger change than the cinematic is currently worth, and it
-// is recorded in CHECKLIST.md.
+// Both disappear if the cinematic stops borrowing the arena. So: a separate
+// THREE.Scene with its own lights, its own two stages, and the fighters
+// REPARENTED into it for the duration. Nothing in the main scene is touched,
+// nothing fights render3D (the reparent and the placement happen at RENDER
+// time, after every update has run), and the backdrop is whatever the
+// cinematic wants rather than whatever the level happens to look like.
+//
+// The simulation is completely unaffected: crush damage, the bounds and who
+// dies first are all computed from the real arena positions. This moves only
+// what is drawn.
+// ===========================================================================
+let crushScene = null;          // the cinematic's own scene
+let crushCam = null;            // and its own camera
+const crushBorrowed = [];       // { obj, parent } so every reparent is undone
+
+// Half the distance between the two marks. Each stage floor is a 300-unit box
+// (stageGeo in buildCrushRigs), so 190 leaves a clear gap between them without
+// needing an enormous pull-back.
+// 165, not 190: the floors overlap very slightly at their far corners, which is
+// invisible once each stage is yawed toward the camera (see renderCrushCinematic)
+// and lets the camera sit close enough for the fighters to be the subject.
+const CRUSH_STAGE_HALF = 165;
+
+function buildCrushScene() {
+    if (crushScene) return crushScene;
+    crushScene = new THREE.Scene();
+    // A dark void rather than sky: the shot is a room closing, and a blue
+    // gradient behind it read as a floating diorama in the earlier attempt.
+    crushScene.background = new THREE.Color(0x05070c);
+    crushScene.fog = new THREE.Fog(0x05070c, 520, 1100);
+    // Lighting is deliberately theatrical and INDEPENDENT of the map's, so the
+    // cinematic looks the same on every arena: a hard key from above-front to
+    // model the figures, a dim fill so the far sides are not black, and a cold
+    // rim to separate them from the void.
+    const hemi = new THREE.HemisphereLight(0xdfe9ff, 0x0a0d14, 0.55);
+    hemi.layers.enableAll();
+    crushScene.add(hemi);
+    const key = new THREE.DirectionalLight(0xfff2dc, 2.2);
+    key.position.set(60, 220, 260);
+    key.layers.enableAll();
+    crushScene.add(key);
+    const rim = new THREE.DirectionalLight(0x7fb4ff, 1.1);
+    rim.position.set(-180, 90, -160);
+    rim.layers.enableAll();
+    crushScene.add(rim);
+    crushCam = new THREE.PerspectiveCamera(52, 1, 0.5, 4000);
+    crushCam.layers.enableAll();   // it must see both bodies and both rigs
+    return crushScene;
+}
+
+// Moves an object into the cinematic scene, remembering where it came from.
+// three.js `add` reparents, so this is also how it is undone.
+function borrowForCrush(obj, parent) {
+    if (!obj) return;
+    crushBorrowed.push({ obj, parent: obj.parent || parent || scene });
+    crushScene.add(obj);
+}
+
+function releaseCrushBorrowed() {
+    while (crushBorrowed.length) {
+        const { obj, parent } = crushBorrowed.pop();
+        if (obj && parent) parent.add(obj);
+    }
+}
+
+// Which mark a fighter stands on. p1 left of frame, p2 right, the same way
+// round on both machines so the two players see the same picture.
+function crushMarkX(f) {
+    return (sideOf(f) === 'p1' ? -1 : 1) * CRUSH_STAGE_HALF;
+}
+
+// Renders the cinematic. Called from renderViews INSTEAD of the normal view,
+// so it runs after every update and nothing can overwrite what it sets.
+function renderCrushCinematic(dt, W, HGT) {
+    if (!crushing) return false;
+    buildCrushScene();
+
+    const fighters = [player1, player2].filter(f => f && f.mesh);
+    if (!fighters.length) return false;
+
+    // Borrow the bodies and their crush rigs on the first frame of the shot.
+    if (!crushBorrowed.length) {
+        for (const f of fighters) borrowForCrush(f.mesh);
+        if (crushRigs) for (const k of ['p1', 'p2']) borrowForCrush(crushRigs[k]);
+    }
+
+    // The shot: centred between the two marks, easing back as the slabs close.
+    const t = Math.min(1, crushTime / CRUSH_CAM_IN);
+    const ease = 1 - Math.pow(1 - t, 3);
+    // Close enough that the fighters are the SUBJECT. At 300+220 the pair read
+    // as two dioramas with dolls in them; a fighter is ~74 units tall and needs
+    // to fill a useful part of its half of the frame, not 15% of the height.
+    const dist = 190 + 120 * ease;
+
+    // Place everything on its mark, and TURN EACH STAGE TO FACE THE CAMERA.
+    //
+    // The turn is the part that was missing. A slab is 30 wide, 208 tall and
+    // 260 DEEP, so each stage is a corridor running along Z with the fighter
+    // between the two slabs. From a single camera centred between two stages
+    // that sit at +/-190, each corridor is seen at an angle - and at that angle
+    // its own near slab hides the fighter inside it completely. The first
+    // render of this scene showed two neat boxes and no characters at all.
+    //
+    // Yawing each stage by atan(markX / dist) aims its corridor straight at the
+    // camera, so you look down it at the fighter, with the slabs closing in
+    // from left and right of frame - which is exactly the split-screen shot
+    // that worked, now twice in one view.
+    for (const f of fighters) {
+        const x = crushMarkX(f);
+        const yaw = -Math.atan2(x, dist);
+        f.mesh.position.set(x, 0, 0);
+        // Every rig's "forward" is local +X, so -PI/2 turns it onto +Z (toward
+        // the camera); the stage's own yaw is then added so the fighter keeps
+        // facing the viewer rather than facing along the turned corridor.
+        f.mesh.rotation.set(0, -Math.PI / 2 + yaw, 0);
+        const g = crushRigs && crushRigs[sideOf(f)];
+        if (g) { g.visible = true; g.position.set(x, 0, 0); g.rotation.set(0, yaw, 0); }
+    }
+    const shake = (REDUCED_MOTION ? 0.2 : 1) * (1.2 + 5.5 * ease);
+    crushCam.aspect = Math.max(0.2, W / Math.max(1, HGT));
+    crushCam.position.set(
+        (Math.random() - 0.5) * shake,
+        46 + 18 * ease + (Math.random() - 0.5) * shake * 0.6,
+        dist);
+    crushCam.updateProjectionMatrix();
+    // Chest height, not the floor - the fighters are the subject.
+    crushCam.lookAt(0, 30, 0);
+
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, W, HGT);
+    renderer.render(crushScene, crushCam);
+    return true;
+}
 
 let crushRigs = null;        // { p1, p2 } - each a Group of two slabs plus a stage floor
 const CRUSH_CAM_IN = 42;     // frames easing from the fighter's eye out to the wide shot
@@ -3014,14 +3136,22 @@ function buildCrushRigs() {
 function resetCrush() {
     crushing = false;
     crushTime = 0;
+    // Hand the bodies and rigs back BEFORE disposing anything: they were
+    // reparented into the cinematic scene, and a fighter left there would
+    // simply stop being drawn in the arena next round.
+    releaseCrushBorrowed();
     disposeCrushRigs();
     applyCrushCameraLayers();   // restore first-person layer masks + viewmodels
 }
 function disposeCrushRigs() {
     if (!crushRigs) return;
     for (const k of ['p1', 'p2']) {
-        scene.remove(crushRigs[k]);
-        disposeObject3D(crushRigs[k]);
+        const g = crushRigs[k];
+        if (!g) continue;
+        // `.parent`, not `scene`: the cinematic reparents these, and removing
+        // from the wrong parent leaves the object in the graph.
+        if (g.parent) g.parent.remove(g); else scene.remove(g);
+        disposeObject3D(g);
     }
     crushRigs = null;
 }
@@ -3205,6 +3335,11 @@ function renderViews(dt) {
     // it removes the reason post-processing was previously impractical: an
     // EffectComposer's full-screen quad passes do not honour an outer scissor
     // rect, so bloom needed one composer per half.
+    // Batch 40: the crush is its own scene, so it replaces the view entirely
+    // rather than being staged inside the arena. See renderCrushCinematic -
+    // this is also WHY it works: at render time every update has already run,
+    // so nothing overwrites the placement the way render3D did before.
+    if (crushing && netActive() && renderCrushCinematic(dt, W, H)) return;
     renderOneView(localCamera(), localFighter() || player1, 0, 0, W, H, dt);
 }
 function renderOneView(cam, viewer, x, y, vw, vh, dt) {
@@ -12494,6 +12629,10 @@ if (DEBUG) {
         MAX_WALK_STEP_UP, ZONE_RADIUS, ARENA_CX, ARENA_CY,
         loadMap, syncArenaCollapse,
         syncCrushRigs, positionCrushCamera, applyCrushCameraLayers,
+        renderCrushCinematic, crushMarkX, releaseCrushBorrowed, CRUSH_STAGE_HALF,
+        get crushScene() { return crushScene; },
+        get crushCam() { return crushCam; },
+        PROC_MESH_BUILDERS, buildRiggedCharacter,
         setShrinkTimer(v) { shrinkTimer = v; },
         get shrinkFrac() { return shrinkFrac; },
         get crushing() { return crushing; },

@@ -1427,6 +1427,85 @@ angle. All fourteen now face the viewer with the head centred.
 
 ---
 
+## Batch 40 - The side-by-side crush, and the legacy port widened to everything
+
+### The crush cinematic, done as its own scene
+
+Batch 27 built this for split-screen, where each half already had its own
+camera, so each half showed one fighter alone with a wall behind — the original
+drawing. Online has ONE camera and the same code showed you only yourself, so
+your opponent's death was invisible.
+
+Batch 39's attempt staged both fighters onto marks inside the LIVE arena and was
+reverted. Those two failures are what pointed at the right design:
+
+1. **The bodies would not stay put** — `render3D` writes `mesh.position` from the
+   simulation every frame, so anything moving a fighter for presentation is
+   overwritten before it is drawn.
+2. **The arena was still there** — two 300-unit stages need ~640 units of
+   separation, and at the camera distance that requires, the arena's own
+   collapsing walls are in shot behind the diorama.
+
+Both disappear if the cinematic stops borrowing the arena. It now has its **own
+`THREE.Scene`**, its own theatrical lighting (independent of the map, so the
+shot looks the same on every arena), and the fighters are **reparented into it**
+for the duration, with every reparent recorded so `resetCrush` can hand them
+back — a fighter left behind would simply stop being drawn next round.
+Placement happens at RENDER time, after every update has run, so nothing can
+overwrite it, which is precisely what defeated the previous attempt.
+
+**The piece still missing after that, and it cost a render to find:** a slab is
+30 wide, 208 tall and 260 DEEP, so each stage is a corridor running along Z with
+the fighter between two slabs. From one camera centred between two stages at
+±165, each corridor is seen at an angle and its own near slab hides the fighter
+completely — the first render of the new scene showed two neat boxes and no
+characters at all. **Yawing each stage by `atan(markX / dist)`** aims its
+corridor at the camera, so you look down it at the fighter with the slabs
+closing in from the sides of frame. That is the split-screen shot that worked,
+now twice in one view.
+
+It also runs at **~55fps in the harness against ~20fps for the arena view**,
+because the cinematic scene is a fraction of the geometry.
+
+**Known, not fixed:** in the harness the fighters render as their PROCEDURAL
+meshes rather than the rigged models, because the match starts before the GLBs
+finish loading. That is a loading-order question rather than a cinematic one,
+but it can happen in real play too — pick a fighter, start immediately, and the
+model may not be ready.
+
+### The legacy port now carries everything relevant
+
+Widened on request from "art/font/balance" to everything gameplay- or
+art-facing. The rule applied: anything that changes how the game **looks** or
+**plays** belongs in the archived build; only machinery that is meaningless
+without a network connection stays behind.
+
+Now carried, on top of the art and balance: the teleport smear **and its camera
+fix** (the half that made it visible to the player using it), the projectile
+sphere and per-colour material cache, the extracted first-person arm, the
+death/crush scale fix, the tutorial auto-open flag, and the roster faces.
+Deliberately not carried: the room, player names, netcode, away-pause, and
+anything keyed on `LOCAL_SIDE`.
+
+The script verifies **26 definitions** now, and refuses to write if any is
+missing.
+
+### Voss had four arms, and it was not a bug in the game
+
+Reported as "voss has 4 arms". Diagnosed by counting meshes in his group: 15
+meshes, only 1 skinned, and none of the 14 transplanted props arm-sized. So it
+was not the prop transplant — **the generated mesh itself had four arms**, two
+pairs each ending in a hand, plainly visible in the stored Rodin preview.
+
+Regenerated and re-rigged (19 bones, 0 unweighted, all 6 clips). The generation
+prompt now demands "exactly two arms and two legs, one head, anatomically
+correct humanoid, no extra limbs", because extra limbs are a known failure mode
+of image-to-3D on a T-pose prompt — the arms-out silhouette is ambiguous about
+how many there are. Nothing downstream checks limb count: the rig binds to
+whatever is present, so it reached the game unnoticed.
+
+---
+
 ## Requested, not yet done
 
 Recorded here so none of it is quietly dropped.
@@ -1463,33 +1542,6 @@ visible text is rendering in a fallback family.
   the shoulders enough to sell a relaxed stance. The rest pose should bring the
   upper arms down against the torso; `art/pipeline.py`'s `_mk_poses` is where
   the idle is authored.
-
-### The side-by-side crush in the online build: attempted and reverted
-
-Batch 27 built the crush cinematic for split-screen, where each half has its own
-camera, so each half shows one fighter alone with a wall behind - exactly the
-drawing. Online there is one camera and `applyCrushCameraLayers` hides the
-opponent, so you see only yourself and their death is invisible.
-
-Staging both fighters onto fixed marks either side of the arena centre was tried
-and **reverted after three verification renders**, because it looked worse than
-what it replaced. The two reasons are worth keeping:
-
-- **The rigs moved but the bodies did not.** The mesh position is written in
-  `render3D` from the simulation position every frame, and overriding it there
-  was not sufficient - something later in the frame restores it - so the slab
-  boxes and the fighters ended up in different places.
-- **The staged diorama is not isolated from the level.** The stage floor is a
-  300-unit box, so any gap under ~340 merges the two stages into one pile of
-  slabs; 340 separates them but then needs roughly three times the camera
-  pull-back, and at that distance the arena's own collapsed walls and floor are
-  in shot behind the stages.
-
-Doing it properly likely means rendering the crush as its **own scene** (or on a
-layer with the arena hidden) rather than staging props inside the live arena.
-That is a larger change than the cinematic is currently worth, so the online
-build keeps the single-fighter shot for now - which does read correctly, it is
-just missing the opponent.
 
 ### Weapon and limb attachment on the generated models
 

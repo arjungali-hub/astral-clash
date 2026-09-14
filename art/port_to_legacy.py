@@ -61,6 +61,129 @@ def main():
     dst = io.open(DST, encoding='utf-8').read()
     before = len(dst)
 
+    # ------------------------------------------------- gameplay + visuals
+    # Widened after "for the legacy sync gap widen the scope to everything you
+    # think are relevant". The rule applied here: anything that changes how the
+    # game LOOKS or PLAYS belongs in the archived build; only machinery that is
+    # meaningless without a network connection stays behind.
+    #
+    # Carried:   the teleport smear and its camera fix, the projectile sphere
+    #            and material cache, the extracted first-person arm, the
+    #            death/crush scale fix, the tutorial auto-open flag, the roster
+    #            faces, and the armory's full-page layout.
+    # Not carried: the room, player names, netcode, away-pause, the online-only
+    #            mode list, and anything keyed on LOCAL_SIDE - a split-screen
+    #            build has two local players and no peer, so none of it applies.
+
+    # --- teleport smear -----------------------------------------------------
+    if 'TELEPORT_VIS_DECAY' not in dst:
+        consts = block(src, "// \"r,g,b\" - the form the effect system's `color` field takes",
+                       "function hexToCss(", 'teleport consts')
+        dst = rep(dst, "function hexToCss(", consts + "function hexToCss(",
+                  'teleport constants', required=False)
+    if 'this.visOffX = 0;' not in dst:
+        init = block(src, "        // Batch 34: a VISUAL-ONLY position offset",
+                     "\n    }", 'visOff init')
+        dst = rep(dst, "        this.effects = [];", "        this.effects = [];\n" + init,
+                  'visual offset state', required=False)
+    if 'decayVisualOffset' not in dst:
+        decay = block(src, "    // The teleport smear decays once per SIMULATION step",
+                      "    update(opponent, dt) {", 'decay')
+        dst = rep(dst, "    update(opponent, dt) {\n        this.vx = 0;",
+                  decay + "    update(opponent, dt) {\n        this.decayVisualOffset(dt);\n        this.vx = 0;",
+                  'decayVisualOffset', required=False)
+    if 'const fromX = this.x, fromY = this.y;' not in dst:
+        tp = block(src, "    teleportTo(dx, dy) {", "\n    // Reactive AI for a bot-controlled fighter", 'teleportTo')
+        i = dst.find("    teleportTo(dx, dy) {")
+        if i != -1:
+            j = dst.index("\n    // Reactive AI for a bot-controlled fighter", i)
+            dst = dst[:i] + tp + dst[j:]
+            print('  %-34s ok' % 'teleportTo smear + streak')
+    # The camera half - the piece that made the smear visible to the player
+    # using it rather than only to the opponent.
+    if 'f.visOffX || 0' not in dst:
+        dst = rep(dst,
+                  "    const cx = f.x + f.width / 2, cy = f.y + f.height / 2;\n"
+                  "    const ex = worldX(cx), ey = f.z + EYE_HEIGHT, ez = worldZ(cy);",
+                  "    // Batch 37: the camera follows the VISUAL position, offset included -\n"
+                  "    // without this the smear is only ever visible to the OPPONENT.\n"
+                  "    const cx = f.x + f.width / 2 + (f.visOffX || 0);\n"
+                  "    const cy = f.y + f.height / 2 + (f.visOffY || 0);\n"
+                  "    const ex = worldX(cx), ey = f.z + EYE_HEIGHT, ez = worldZ(cy);",
+                  'camera follows the smear', required=False)
+
+    # --- projectiles: a lit sphere, and nothing allocated per shot ----------
+    if 'projCoreSphere' not in dst:
+        i = dst.find("                const c = new THREE.Color(p.color || '#00f3ff');")
+        if i != -1:
+            j = dst.index("                scene.add(grp);", i) + len("                scene.add(grp);")
+            newproj = block(src, "                // Batch 37: a lit 3D bolt, and NOTHING allocated per shot.",
+                            "                scene.add(grp);", 'projectile') + "                scene.add(grp);"
+            dst = dst[:i] + newproj + dst[j:]
+            print('  %-34s ok' % 'projectile sphere + cache')
+            dst = dst.replace(
+                "            const flick = 0.8 + Math.sin(arenaTime * 0.6 + p.x) * 0.2; // subtle energy shimmer\n"
+                "            p.mats[2].opacity = 0.25 * flick;",
+                "            const flick = 0.92 + Math.sin(arenaTime * 0.6 + p.x) * 0.08;\n"
+                "            if (p.halo) p.halo.scale.setScalar(flick * (p.big ? 1.7 : 1));", 1)
+
+    # --- the death / crush scale fix ---------------------------------------
+    if 'meshBaseScale' not in dst:
+        dst = rep(dst, "        this.isRigged = !!group.userData.rigged;",
+                  "        this.isRigged = !!group.userData.rigged;\n"
+                  "        // Batch 34: MULTIPLY by the builder's scale, never assign over it -\n"
+                  "        // otherwise Karrigos snaps from 1.5x to 1.0x the moment he dies.\n"
+                  "        this.meshBaseScale = group.scale.x || 1;",
+                  'meshBaseScale', required=False)
+        dst = dst.replace("        this.mesh.scale.setScalar(scale);",
+                          "        this.mesh.scale.setScalar(this.meshBaseScale * scale);", 1)
+        dst = dst.replace(
+            "            this.mesh.scale.x = 1 - 0.30 * t + tremor;\n"
+            "            this.mesh.scale.z = 1 - 0.06 * t;\n"
+            "            this.mesh.scale.y = 1 + 0.14 * t;",
+            "            const bs = this.meshBaseScale;\n"
+            "            this.mesh.scale.x = bs * (1 - 0.30 * t + tremor);\n"
+            "            this.mesh.scale.z = bs * (1 - 0.06 * t);\n"
+            "            this.mesh.scale.y = bs * (1 + 0.14 * t);", 1)
+
+    # --- the tutorial's auto-open flag -------------------------------------
+    if 'function openTutorial(auto)' not in dst:
+        dst = rep(dst, "function openTutorial() {\n    buildTutorialControls();\n    openModal('tutorial');\n}",
+                  "// Batch 37: the \"don't show automatically\" checkbox is hidden when you\n"
+                  "// opened this deliberately - offering to stop something that is not\n"
+                  "// happening implies the button you just pressed was an accident.\n"
+                  "function openTutorial(auto) {\n"
+                  "    buildTutorialControls();\n"
+                  "    const row = document.getElementById('tutorial-hide-row');\n"
+                  "    if (row) row.style.display = auto ? '' : 'none';\n"
+                  "    openModal('tutorial');\n}",
+                  'tutorial auto flag', required=False)
+        dst = dst.replace('<label class="tutorial-hide-row">',
+                          '<label class="tutorial-hide-row" id="tutorial-hide-row">', 1)
+        dst = dst.replace("document.getElementById('btn-open-tutorial').addEventListener('click', openTutorial);",
+                          "document.getElementById('btn-open-tutorial').addEventListener('click', () => openTutorial(false));", 1)
+        dst = dst.replace("if (!safeLSGet('astralClashTutorialSeen')) openTutorial();",
+                          "if (!safeLSGet('astralClashTutorialSeen')) openTutorial(true);", 1)
+
+    # --- roster faces -------------------------------------------------------
+    if 'function faceUrl(' not in dst:
+        face = block(src, "// Batch 37: the circles hold the character's FACE.",
+                     "function paintSlotPortrait(", 'faceUrl')
+        face = face.replace("'assets/faces/'", "'../assets/faces/'")
+        dst = rep(dst, "function buildGrid(gridId, keyList, side) {",
+                  face + "function buildGrid(gridId, keyList, side) {",
+                  'faceUrl helper', required=False)
+        dst = dst.replace(
+            '        btn.innerHTML = `<span><span class="fkey">${keyList[i].toUpperCase()}</span><span class="fname">${c.name}</span></span><span class="ftitle">${c.title}</span>`;',
+            '        btn.innerHTML =\n'
+            '            `<span class="fface" style="background-color:${c.color};background-image:url(\'${faceUrl(c.name)}\')"></span>`\n'
+            '            + `<span class="fmeta"><span><span class="fkey">${keyList[i].toUpperCase()}</span><span class="fname">${c.name}</span></span>`\n'
+            '            + `<span class="ftitle">${c.title}</span></span>`;', 1)
+        facecss = block(src, "        /* Batch 37: the roster card's face chip. */",
+                        "\n        .pslot-portrait {", 'face css')
+        dst = dst.replace("        .fighter-grid {", facecss + "        .fighter-grid {", 1)
+        print('  %-34s ok' % 'roster face chips')
+
     # ------------------------------------------------------------- balance
     # Reported as "most of the changes seem to have not landed in the legacy
     # version - like the step-up, for example", and that was exactly right:
@@ -273,6 +396,9 @@ def main():
     REQUIRED = [
         # Balance, so the two builds cannot drift on rules or tuning again.
         'const MAX_WALK_STEP_UP = 12;', 'const GRACE_PERIOD = 40;',
+        # Gameplay + visuals, widened scope.
+        'TELEPORT_VIS_DECAY', 'decayVisualOffset', 'projCoreSphere',
+        'meshBaseScale', 'function openTutorial(auto)', 'function faceUrl(',
         'const SHRINK_INTERVAL = 18;', 'Takedown Race',
         "matchMode === 'timeattack') return;", 'const clearZone',
         'const PHOTO_SETS = {', 'function getTiledWallTexture(',

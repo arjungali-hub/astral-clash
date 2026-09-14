@@ -47,9 +47,18 @@ RAW = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'raw')
 #   "full body, head to feet"- a bust is a common failure mode for a portrait-ish
 #                             prompt, and pipeline.py's ground-and-measure step
 #                             would happily scale a bust to full fighter height.
+#   "exactly two arms"      - Voss came back with FOUR, two pairs each ending in
+#                             a hand, and it shipped: nothing downstream checks
+#                             limb count, the rig binds to whatever is there,
+#                             and it reached the game before anyone noticed.
+#                             Extra limbs are a known failure mode of image-to-3D
+#                             models on a T-pose prompt, because the arms-out
+#                             silhouette is ambiguous about how many there are.
 PREAMBLE = ('full body game character, head to feet, standing T-pose with arms '
-            'straight out to the sides, symmetrical, single character, no base, '
-            'no pedestal, no weapon in hands, clean silhouette, game asset')
+            'straight out to the sides, exactly two arms and two legs, one head, '
+            'anatomically correct humanoid, symmetrical, single character, no base, '
+            'no pedestal, no extra limbs, no weapon in hands, clean silhouette, '
+            'game asset')
 
 # One line of art direction each, written from the roster's own titles and
 # descriptions. Weapons are deliberately excluded: buildRiggedCharacter
