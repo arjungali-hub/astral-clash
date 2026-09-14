@@ -1377,6 +1377,49 @@ caster costs a pass over the shadow map, and six bolts re-rendering it for a
 
 Recorded here so none of it is quietly dropped.
 
+### The typeface has to reach every piece of text
+
+Reported with a screenshot of the character select still rendering in the
+browser default. Batch 36 set `--font-ui` on `body` and routed the canvas HUD,
+but plenty of DOM text does not inherit it: `button`, `input` and `select` do
+NOT inherit `font-family` from their ancestors by default, and any rule that
+names a family explicitly overrides it. The select screen, the shop buttons and
+the coin readouts are all in that category.
+
+The fix is a sweep, not a patch: set `font-family: inherit` on form elements,
+then audit every remaining `font-family` declaration in the file and delete the
+ones that are not deliberate. Worth a checker that walks the DOM and asserts no
+visible text is rendering in a fallback family.
+
+### Three art defects still open
+
+- **The crush cinematic still uses the OLD procedural walls.** `buildCrushRigs`
+  dresses its slabs with `getWallTexture`/`getFloorTexture` - the 256px painted
+  canvases - so the one moment the camera is a metre from a wall is the one
+  place the photographic surfaces are not used. It needs the same
+  `attachPhotoSurface` treatment the arena walls got. Visible in both builds.
+- **The first-person arm is still open at the far end.** The shoulder cut leaves
+  the limb hollow, so at some angles you see through into the interior - the
+  same class of defect as the Batch 34 open-ended bracer, now on the extracted
+  mesh instead of a primitive. Needs a cap across the cut, or the cut moved
+  behind the near plane.
+- **At rest, arms should hang at the sides.** Several characters - Thorne most
+  obviously - stand with their arms open and angled outward, because that is
+  the bind pose the models were generated in and the idle clip does not move
+  the shoulders enough to sell a relaxed stance. The rest pose should bring the
+  upper arms down against the torso; `art/pipeline.py`'s `_mk_poses` is where
+  the idle is authored.
+
+### Weapons clip the body at rest
+
+Draven's hammer overlaps his leg when he is standing still. The props are
+transplanted from the procedural mesh onto the skeleton's hand bone
+(`buildRiggedCharacter`), and the offsets that positioned them were authored
+against the procedural body's proportions - a generated character's arm hangs
+in a different place, so a long weapon ends up inside the thigh. Related to the
+rest-pose item above: bringing the arms down without moving the props will make
+this worse, so the two should be fixed together.
+
 ### Mobile: one message, no escape hatches
 
 Reported after actually trying it: the desktop-only notice currently offers the
