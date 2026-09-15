@@ -431,16 +431,6 @@ def main():
                   "    if (isCoopMode()) return;\n" + guard + "    if (!crushing) {",
                   'no collapse in Takedown Race')
 
-    # Ranged health. Matched inside each character's own entry.
-    for name, old_hp, new_hp in [('Lyra', 360, 260), ('Seraphine', 380, 280), ('Aurelia', 340, 240)]:
-        k = dst.index("name: '%s'" % name)
-        h = dst.find("hp: %d" % old_hp, k, k + 400)
-        if h == -1:
-            print('  %-34s already %d' % (name + ' hp', new_hp))
-            continue
-        dst = dst[:h] + ("hp: %d" % new_hp) + dst[h + len("hp: %d" % old_hp):]
-        print('  %-34s %d -> %d' % (name + ' hp', old_hp, new_hp))
-
     # Zone Control clears its own ring.
     if 'const clearZone' not in dst:
         zone = block(src, "    // Copies, not live references", "\n    OBSTACLES.forEach(ob =>")
@@ -502,6 +492,58 @@ def main():
               "    inner.scale.setScalar(rigTarget / m.height);", 'per-character rig height', required=False)
     dst = rep(dst, "    g.userData.rigScale = RIG_TARGET_HEIGHT / m.height;",
               "    g.userData.rigScale = rigTarget / m.height;", 'rigScale', required=False)
+
+    # ------------------------------------------------------- SHARED DATA
+    # The roster, the economy and the frame data are not ported any more: both
+    # builds LOAD THE SAME FILE. Everything below this comment used to be four
+    # steps that copied those tables across by anchor, and the recurring bug
+    # report was the obvious consequence - "most of the changes seem to have not
+    # landed in the legacy version".
+    #
+    # So: delete the archived build's own copies, and load shared/roster.js
+    # instead. Classic scripts share one global scope, so bootGame() resolves
+    # CHARACTERS, FRAME_DATA, BOSS_MAP and the economy constants to the shared
+    # ones with no other change - as long as the local `const`s are GONE. A
+    # local declaration would shadow the shared value and silently restore the
+    # drift this removes.
+    if 'shared/roster.js' not in dst:
+        # Each region is cut by its own anchors, from the archived build. The
+        # closing `});` of the Object.assign is included deliberately: leaving
+        # it behind is exactly the off-by-one that shipped two syntax errors
+        # when index.html was done the same way.
+        regions = [
+            ("// Three starters spanning the three archetypes a new player needs to feel",
+             "// Batch 21: progression is PER PLAYER.", False),
+            ("// Co-op-only combatants, kept OUT of CHARACTERS so buildGrid (which iterates",
+             "const BOSS_MAP = {};", True),
+            ("const DEG = Math.PI / 180;", "\n", True),
+            ("const CHARACTERS = [",
+             "CHARACTERS.sort((a, b) => (UNLOCK_COST[a.name] || 0) - (UNLOCK_COST[b.name] || 0));",
+             True),
+            ("const CHAR_MAP = Object.fromEntries(CHARACTERS.map(c => [c.name, c]));", "\n", True),
+            # "(co-op boss)." is load-bearing: the shorter prefix also matches
+            # the mesh builder's own "Karrigos, the ... Co-op boss." heading
+            # further down the file.
+            ("// --- Batch 17: Karrigos, the Hollow Titan (co-op boss).", "\n});", True),
+            ("const FRAME_DATA = {", "\nconst DODGE_DIST", False),
+        ]
+        for start, end, keep_end in regions:
+            assert dst.count(start) == 1, 'shared cut %r: %d' % (start[:50], dst.count(start))
+            i = dst.index(start)
+            j = dst.index(end, i) + (len(end) if keep_end else 0)
+            dst = dst[:i] + dst[j:]
+        dst = rep(dst, '<script src="../three.min.js"',
+                  '<!-- Shared with the online build; see the header in that file. -->\n'
+                  '<script src="../shared/roster.js"></script>\n'
+                  '<script src="../three.min.js"', 'shared roster script tag', required=False)
+        if 'shared/roster.js' not in dst:
+            # No vendored-three tag to anchor on: fall back to the CDN one.
+            dst = rep(dst, '<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"',
+                      '<!-- Shared with the online build; see the header in that file. -->\n'
+                      '<script src="../shared/roster.js"></script>\n'
+                      '<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"',
+                      'shared roster script tag (cdn anchor)')
+        print('  %-34s ok' % 'shared/roster.js replaces 4 steps')
 
     # ------------------------------------------------ photographic surfaces
     photo = block(src, "// ===========================================================================\n"
@@ -726,8 +768,11 @@ if (location.protocol === 'https:'
     # definition behind it. Refusing to write is much cheaper than shipping a
     # build whose only symptom is a blank screen.
     REQUIRED = [
-        # Balance, so the two builds cannot drift on rules or tuning again.
+        # Balance that is NOT in shared/roster.js (arena rules, not roster data).
         'const MAX_WALK_STEP_UP = 12;', 'const GRACE_PERIOD = 40;',
+        # ...and the shared module itself, which replaced every step that used
+        # to copy the roster and the economy across.
+        'shared/roster.js',
         # Gameplay + visuals, widened scope.
         'id="desktop-only"', 'This version needs a computer',
         'function buildViewmodelArmFromModel(', 'function _skelBone(',

@@ -1,7 +1,7 @@
 # Astral Clash character pipeline (Blender 5.x).
 #
 # Turns a raw Hyper3D Rodin generation into a game-ready skinned GLB:
-#   orient -> ground -> clean -> smooth -> MEASURE -> rig -> bind
+#   orient -> ground -> clean -> DE-NOISE -> MEASURE -> rig -> bind
 #     -> smooth weights -> ARMS-DOWN REST POSE -> bake clips -> export
 #
 # Run inside Blender via the MCP bridge:
@@ -612,31 +612,153 @@ def _mk_poses():
 
 # ------------------------------------------------ surface, weights, rest pose
 
-def smooth_surface(mesh, iterations=2, factor=0.5):
-    """Takes the lumpiness off a generated surface.
+# HOW HARD TO PUSH, PER CHARACTER.
+#
+# `noise` is the Laplacian threshold as a fraction of local edge length: lower
+# means more vertices are treated as noise. `passes` is how many
+# measure-and-smooth rounds to run, and `global_factor`/`global_iters` are the
+# gentle whole-surface pass that follows.
+#
+# The defaults suit the armoured humanoids, which is most of the roster. The
+# overrides exist because two of these characters are SUPPOSED to be rough, and
+# a global setting cannot tell the difference between a reconstruction artefact
+# and a design feature:
+#
+#   Slagling  - a cracked crust creature. Its whole read is broken, uneven
+#               plating; smoothing it to the default leaves a wet pebble.
+#   Karrigos  - carved stone. Same argument: the chisel marks are the character.
+#   Hollowkin - the opposite case. It is a gaunt, near-skeletal figure where
+#               the reconstruction left the most visible mottling, on large flat
+#               planes of skin that show every bump.
+#   Grint     - big ears and thin limbs, where noise reads as lumps rather than
+#               as texture.
+SURFACE_DEFAULT = {"noise": 0.34, "passes": 3, "smooth_factor": 0.55,
+                   "global_iters": 1, "global_factor": 0.4, "shade_angle": 50.0}
+SURFACE_TUNING = {
+    "Slagling":  {"noise": 0.62, "passes": 1, "global_iters": 0, "shade_angle": 35.0},
+    "Karrigos":  {"noise": 0.58, "passes": 1, "global_iters": 0, "shade_angle": 35.0},
+    "Hollowkin": {"noise": 0.26, "passes": 4, "global_iters": 2, "global_factor": 0.5},
+    "Grint":     {"noise": 0.28, "passes": 4},
+    "Gorgonok":  {"noise": 0.30, "passes": 4},   # huge smooth muscle masses
+    "Ignis":     {"noise": 0.30, "passes": 4},
+}
 
-    These are image-to-3D reconstructions, so the surface carries the noise of
-    that process: faceting on flat planes, dents where the reconstruction was
-    unsure, a general low-frequency lumpiness. A light Smooth modifier plus
-    smooth shading is most of the visible fix, and unlike a decimate/subdivide
-    round-trip it cannot redistribute the topology into something the rig then
-    has to cope with.
+
+def surface_settings(name):
+    cfg = dict(SURFACE_DEFAULT)
+    cfg.update(SURFACE_TUNING.get(name, {}))
+    return cfg
+
+
+def _laplacian_stats(me, select_above=None):
+    """Per-vertex Laplacian offset / local edge length.
+
+    Returns (mean, p99, worst, n_selected). When `select_above` is given, every
+    vertex over that ratio is SELECTED and the rest deselected, ready for
+    vertices_smooth in edit mode.
+
+    Why a ratio and not an absolute distance: the roster spans a knee-high
+    creature and a 1.5x stone titan, and the meshes have similar vertex counts,
+    so edge length is the only scale that means the same thing for both.
+    """
+    nb = [[] for _ in range(len(me.vertices))]
+    elen = [0.0] * len(me.vertices)
+    ecount = [0] * len(me.vertices)
+    for e in me.edges:
+        a, b = e.vertices
+        nb[a].append(b)
+        nb[b].append(a)
+        d = (me.vertices[a].co - me.vertices[b].co).length
+        elen[a] += d; elen[b] += d
+        ecount[a] += 1; ecount[b] += 1
+
+    ratios = []
+    for i, v in enumerate(me.vertices):
+        if not nb[i] or not ecount[i]:
+            ratios.append(0.0)
+            continue
+        avg = mathutils.Vector((0.0, 0.0, 0.0))
+        for j in nb[i]:
+            avg += me.vertices[j].co
+        avg /= len(nb[i])
+        local = elen[i] / ecount[i]
+        ratios.append(0.0 if local <= 1e-9 else (v.co - avg).length / local)
+
+    picked = 0
+    if select_above is not None:
+        for i, r in enumerate(ratios):
+            hot = r > select_above
+            me.vertices[i].select = hot
+            if hot:
+                picked += 1
+
+    srt = sorted(ratios)
+    mean = sum(srt) / len(srt) if srt else 0.0
+    p99 = srt[int(len(srt) * 0.99)] if srt else 0.0
+    return mean, p99, (srt[-1] if srt else 0.0), picked
+
+
+def smooth_surface(mesh, name=None):
+    """Targeted de-noising, then a gentle global pass, then edge-aware shading.
 
     MUST run before measure() and bind(): it moves vertices, and both the joint
-    measurement and the weights are computed from where the vertices are.
-
-    Deliberately gentle. Slagling's cracked crust and Karrigos' stonework ARE
-    detail - a heavier pass reads as melted wax rather than smooth.
+    measurement and the weights are computed from where they are.
     """
+    cfg = surface_settings(name or mesh.name)
+    me = mesh.data
+    before = _laplacian_stats(me)
+
+    treated = 0
+    for _ in range(cfg["passes"]):
+        _activate(mesh, 'OBJECT')
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_mode(type='VERT')
+        bpy.ops.mesh.select_all(action='DESELECT')
+        bpy.ops.object.mode_set(mode='OBJECT')
+        # Selection is set in OBJECT mode, where vertex .select is writable;
+        # edit mode reads it when it rebuilds its BMesh. Doing it the other way
+        # round silently selects nothing.
+        _, _, _, picked = _laplacian_stats(me, select_above=cfg["noise"])
+        treated = max(treated, picked)
+        if not picked:
+            break
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.vertices_smooth(factor=cfg["smooth_factor"], repeat=1)
+        bpy.ops.mesh.select_all(action='DESELECT')
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+    # The gentle whole-surface pass, for the low-frequency waviness that is not
+    # a spike anywhere in particular. Kept small: this is the one that costs
+    # volume and crispness everywhere.
+    if cfg["global_iters"]:
+        _activate(mesh, 'OBJECT')
+        mod = mesh.modifiers.new(name="ACSmooth", type='SMOOTH')
+        mod.factor = cfg["global_factor"]
+        mod.iterations = cfg["global_iters"]
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+
+    # SHADING BY ANGLE, not everything-smooth.
+    #
+    # The previous pass called shade_smooth() on the whole mesh, which averages
+    # the normal across a plate's edge too - so armour reads as soft, melted
+    # metal and the surface's own waviness is exaggerated rather than hidden.
+    # Smoothing only below the angle keeps a hard edge hard.
     _activate(mesh, 'OBJECT')
-    mod = mesh.modifiers.new(name="ACSmooth", type='SMOOTH')
-    mod.factor = factor
-    mod.iterations = iterations
-    bpy.ops.object.modifier_apply(modifier=mod.name)
-    # Smooth shading, so the facets that survive stop reading as facets.
-    bpy.ops.object.shade_smooth()
+    shading = "auto %.0f deg" % cfg["shade_angle"]
+    try:
+        bpy.ops.object.shade_auto_smooth(angle=math.radians(cfg["shade_angle"]))
+    except Exception:
+        bpy.ops.object.shade_smooth()
+        shading = "smooth (no auto)"
     mesh.data.update()
-    return {"iterations": iterations, "factor": factor, "shading": "smooth"}
+
+    after = _laplacian_stats(me)
+    return {"noise_gate": cfg["noise"], "passes": cfg["passes"],
+            "treated": treated,
+            "mean": [round(before[0], 4), round(after[0], 4)],
+            "p99": [round(before[1], 3), round(after[1], 3)],
+            "worst": [round(before[2], 3), round(after[2], 3)],
+            "shading": shading}
 
 
 # The groups whose weights get softened before the arms come down. Only the
@@ -929,7 +1051,7 @@ def process(name, raw_name, keep_others_hidden=True):
     report["clean"] = clean(mesh)
     # Before measuring: smoothing moves vertices, and the joint measurement is
     # taken from where they are.
-    report["surface"] = smooth_surface(mesh)
+    report["surface"] = smooth_surface(mesh, name)
     m = measure(mesh)
     report["measured"] = {
         "H": round(m["H"], 3),

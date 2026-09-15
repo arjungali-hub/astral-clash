@@ -101,6 +101,44 @@ const H = require('./harness');
     check('both panels rendered their cards',
         sides.cards1 > 1 && sides.cards2 > 1, JSON.stringify(sides));
 
+    // ------------------------------------------- the two builds share data
+    // The point of shared/roster.js: not that the archived build loads, but
+    // that its roster IS the online one. A fingerprint of both, compared -
+    // this is the assertion that would have caught every "the legacy version
+    // still calls it time attack" report, and it cannot be satisfied by
+    // remembering to re-run a port script.
+    section('Both builds report the SAME roster, because they load the same file:');
+    // Read as BARE GLOBALS rather than through ACDebug, deliberately. A
+    // top-level `const` in a classic script lands in the global lexical
+    // environment, so this is the shared binding itself - not whatever each
+    // build chose to re-export, which is exactly the indirection that could
+    // hide a divergence.
+    const fingerprint = (p) => p.evaluate(() => {
+        const f = o => [o.name, o.title, o.hp, o.dmg, o.speed, o.specialDmg,
+                        o.meterRateMult, o.cooldown].join('|');
+        return {
+            chars: CHARACTERS.map(f).join('  '),
+            bosses: Object.keys(BOSS_MAP).sort().map(k => f(BOSS_MAP[k])).join('  '),
+            frames: JSON.stringify(FRAME_DATA),
+            costs: JSON.stringify(UNLOCK_COST) + JSON.stringify(UPGRADE_COST)
+                   + MAX_UPGRADE_LEVEL + DOUBLE_JUMP_COST,
+        };
+    });
+    const legacyFp = await fingerprint(page);
+    const onlinePage = await H.boot(await H.newPage(browser), { clearStorage: true });
+    const onlineFp = await fingerprint(onlinePage);
+    for (const key of ['chars', 'bosses', 'frames', 'costs']) {
+        check(`${key} match exactly`, legacyFp[key] === onlineFp[key],
+            key === 'chars'
+                ? JSON.stringify({ legacy: legacyFp[key].slice(0, 160),
+                                   online: onlineFp[key].slice(0, 160) })
+                : JSON.stringify({ legacy: legacyFp[key].slice(0, 120),
+                                   online: onlineFp[key].slice(0, 120) }));
+    }
+    check('and the roster is actually populated, not two empty arrays',
+        legacyFp.chars.length > 200 && /Tectonic Brute/.test(legacyFp.chars),
+        legacyFp.chars.slice(0, 120));
+
     section('The canonical-URL redirect does not fire on a local host:');
     const url = page.url();
     check('still on the legacy path, not sent to a /local that is not served here',

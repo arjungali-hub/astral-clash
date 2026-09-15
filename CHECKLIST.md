@@ -1957,3 +1957,188 @@ computed-style check cannot answer.
 **Still pending**: per-character surface refinement (the smoothing pass is global
 and gentle; the roster has not been reviewed one at a time), and the arena
 GEOMETRY redesign from `docs/arena-art-plan.md`.
+
+---
+
+## Batch 44 - One roster, two builds
+
+### The two builds share their data now, instead of one copying the other
+
+Asked directly: *"can't you make it so that local and online aren't completely
+separate (they use some of the same things), so that you don't have to manually
+edit both modes for every update?"*
+
+They can, and this is the tranche where it pays. Every drift report so far -
+"legacy version still calls it time attack", "most of the changes seem to have
+not landed in the legacy version" - was about the same handful of tables, and
+`art/port_to_legacy.py` had been copying them across by anchor after every
+batch. **`shared/roster.js`** now holds them, and both builds load it:
+
+- the economy (`STARTER_CHARS`, `UNLOCK_COST`, `UPGRADE_*`, `DOUBLE_JUMP_COST`,
+  `COIN_AWARDS`)
+- `CHARACTERS`, its price sort and `CHAR_MAP`
+- `BOSS_MAP` - Karrigos and the three Survival minions
+- `FRAME_DATA` and the DPS ledger that documents it
+- `DEG`
+
+**No call sites changed, and that is the trick worth remembering.** Both builds
+are *classic* scripts, not modules, so a top-level `const CHARACTERS = [...]` in
+a separate file is a global binding: code inside `bootGame()` resolves
+`CHARACTERS` to it exactly as it resolved the local one. The one rule is that
+the local declarations must be **deleted** - a `const` inside `bootGame()` would
+shadow the shared value and turn the shared file into dead weight that still
+looks authoritative. The port script does that deletion for the archived build,
+so a fresh re-port reproduces it.
+
+**Four port steps were deleted**, including the Gorgonok/Draven swap added an
+hour earlier and already obsolete. A step that copies data is worse than no step
+at all, because it only works while someone remembers to add the next one.
+
+What is **not** shared, unchanged from the Batch 25 decision: the renderer, the
+input model, the HUD layout and the netcode. Those are where the builds
+genuinely differ. `CHAR_MODEL_URLS` also stays ported, because it is asset
+*paths* (`assets/` vs `../assets/`) rather than data - sharing it wants a base
+path each build sets for itself, which is the next slice of this.
+
+`tests/legacyshopcheck.js` now boots **both** builds and compares a fingerprint
+of the roster, the boss table, the frame data and the costs. It reads them as
+bare globals rather than through each build's `ACDebug`, so the comparison is of
+the shared binding itself and not of whatever each build chose to re-export.
+That assertion is the one that would have caught every drift report, and unlike
+a port step it cannot be satisfied by remembering to run something.
+
+Two syntax errors were shipped and caught during the extraction, both from one
+off-by-one: the end anchor for the `Object.assign(BOSS_MAP, {...})` region cut
+*before* its closing `});`, which left the brace in `index.html` and an
+unterminated object literal in `roster.js`. The page went blank, which is the
+usual symptom, and `page.errors` named both files in one run.
+
+### Gorgonok and Draven traded stat blocks
+
+*"gorgonok looks more strong and looks like he should have more HP than Draven,
+so swap their stats"* - he does look it, at 1.5x rig height against a normal
+human frame.
+
+The swap is the **whole numeric block**, not hp alone: hp, speed, meter rate,
+basic damage, reach, cone, cooldown, special damage **and the frame windows**.
+These are ratios, not independent knobs, and moving one at a time breaks the
+balance the swap was supposed to preserve:
+
+- hp alone would have given Gorgonok 520 HP *plus* the fastest meter in the game
+  (1.8x), making him strictly the best pick on the roster.
+- damage without cooldown would have put 70 damage on a 31-frame cycle - 135
+  dps, half again as much as anything else - while Draven swung a 50-damage
+  hammer on a 46-frame cycle for 65.
+
+Swapped whole, each profile stays internally balanced because each was balanced
+already; it just belongs to the other fighter now. Reach travelling with it is a
+bonus rather than a cost: 75 units sits better on the giant than on the man.
+
+It also lands the power curve the right way round on **price** - Draven is a
+free starter and Gorgonok costs 600 coins, so the bought fighter being the
+stronger of the two is what the shop already implied.
+
+Both descriptions were rewritten to match, and one that was **already wrong**
+got fixed on the way past: Voss' "lowest health on the roster" has been false
+since Batch 38 cut the ranged fighters to 260/280/240.
+
+### New titles for all fourteen, written against the models
+
+*"edit the two word short descriptions for all characters so that they are more
+fitting than they are now (based on how each character looks). they should also
+be more original. try not to reuse words."*
+
+Each one was checked against a render of the character it names, not against the
+old title:
+
+| | was | is | why |
+|---|---|---|---|
+| Kaelen | Rhythm Blade | **Tempo Duelist** | bare-chested, belt and greaves, combo blade |
+| Lyra | Glassweaver | **Shardwing Sylph** | feathered wings at the shoulders, throws glass |
+| Gorgonok | Seismic Forge | **Tectonic Brute** | enormous, bare torso, slams the ground |
+| Voss | Shadow Dagger | **Flicker Cutthroat** | lean, crossed bandolier, blinks and stabs |
+| Draven | Ironclad Warden | **Bastion Knight** | full plate, tabard, spiked conical helm |
+| Seraphine | Astral Warden | **Haloed Aegis** | halo ring behind the head, raises a shield |
+| Nyx | Umbral Reaper | **Cowled Harvester** | hooded and cowled, tattered sleeves, scythe |
+| Ignis | Emberfist | **Cinder Pugilist** | bare-chested, fights with burning fists |
+| Aurelia | Storm Herald | **Stormcrown Valkyrie** | caped, spiked pauldrons, calls lightning |
+| Thorne | Thorncaller | **Antlered Reaver** | antlered helm, jagged plate, bramble lash |
+| Grint | Scrapling | **Scrap Gremlin** | goblin ears, scrap armour, barefoot |
+| Slagling | Cinder Caster | **Ashen Mortar** | squat cracked crust, lobs embers |
+| Hollowkin | Husk | **Gaunt Wraith** | gaunt, exposed ribs, long claws |
+| Karrigos | The Hollow Titan | **Granite Colossus** | vast smooth stone giant |
+
+All 28 words are distinct - the point of the request, and asserted by the patch
+script rather than eyeballed. "Warden" is gone rather than moved, "Thorncaller"
+no longer just repeats its owner's name, and Karrigos drops "The" so every title
+is genuinely two words.
+
+Two stale paragraphs surfaced while checking where titles are displayed, both
+wrong since Batch 42 and 43: How To Play still said the co-op modes were
+local-only because the AI was not networked, and the Boss Fight blurb still said
+either player falling ends the run.
+
+### Per-character surface refinement
+
+*"make the surfaces more smooth and less lumpy and remove all imperfections.
+This should be done slowly and carefully."*
+
+Batch 43's pass was one SMOOTH modifier at factor 0.5 for everybody - the crude
+version, which treats a noise bump and a deliberate armour ridge identically, so
+the only way to remove more noise is to melt more detail.
+
+This one **measures** the noise. For every vertex it computes the **Laplacian
+offset** - how far the vertex sits from the average of its neighbours - as a
+fraction of local edge length. Reconstruction noise is exactly a large offset at
+small wavelength; a designed ridge is a large offset *its neighbours share*, so
+it survives. Only vertices over the threshold are smoothed, and the pass reports
+the count and what it did to the mean and the 99th percentile, so "smoother" is
+a number:
+
+```
+char       treated  gate   mean            p99
+Aurelia    1419     0.34   0.187 > 0.155   0.70 > 0.45
+Draven     1562     0.34   0.190 > 0.155   0.64 > 0.39
+Gorgonok   1494     0.30   0.180 > 0.141   0.63 > 0.32
+Grint      2097     0.28   0.194 > 0.152   0.77 > 0.42
+Hollowkin  1757     0.26   0.178 > 0.136   0.71 > 0.60
+Karrigos   77       0.58   0.152 > 0.151   0.54 > 0.50
+Slagling   75       0.62   0.195 > 0.194   0.58 > 0.54
+```
+
+Karrigos and Slagling are the tell that this is per-character and not a global
+knob: **77 and 75 vertices touched**. Their carved stone and cracked crust are
+the characters, and a global setting cannot tell an artefact from a design
+feature. Hollowkin and Grint are pushed hardest (gate 0.26/0.28) because they
+are gaunt and thin-limbed, where mottling reads as lumps rather than texture.
+
+Shading changed too: `shade_auto_smooth` at 50 degrees instead of
+`shade_smooth` on everything. Averaging the normal across a plate's edge makes
+armour read as soft melted metal *and* exaggerates the surface waviness
+underneath; smoothing only below the angle keeps a hard edge hard.
+
+Remeshing is not an option and it is worth writing down why: these meshes carry
+the UVs their albedo and ORM textures are authored against, and a voxel remesh
+discards them. Every technique here moves existing vertices and never rebuilds
+topology.
+
+Verified by comparison rather than by assertion alone - the shipped Batch 43
+Draven and the new one side by side under cavity shading, plus a head-to-head on
+Kaelen's skull and Slagling's crust, to confirm the noise went and the detail did
+not.
+
+### Co-op respawn is at full health
+
+Requested after Batch 43 shipped it at half: the 25-second wait is the cost, and
+the fight you rejoin is the one your teammate has been holding alone - not the
+place for a half-empty bar. `COOP_RESPAWN_HP_FRAC` stays as a constant rather
+than being inlined, because it is what `respawn()`'s `hpFrac` argument exists
+for and it is the kind of number that gets retuned.
+
+`/legacy/local-splitscreen` also sends you to `/local` now, in the page and
+guarded to https non-localhost - the pretty path is a Vercel rewrite that does
+not exist over `file://` or on the test server, where redirecting would turn a
+working page into a 404.
+
+**Still pending**: the arena GEOMETRY redesign from `docs/arena-art-plan.md`,
+and the next slice of sharing (asset paths, then the pure-function art helpers).
