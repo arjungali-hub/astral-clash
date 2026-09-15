@@ -1506,23 +1506,38 @@ whatever is present, so it reached the game unnoticed.
 
 ---
 
+## Batch 41 - Working the checklist
+
+- **The typeface reaches every piece of text.** `button`, `input`, `select` and
+  `textarea` do not inherit `font-family` - the UA stylesheet gives them their
+  own - so setting it on `body` reached paragraphs and missed every control,
+  which in this game is most of the text: the roster cards are buttons, the coin
+  counts live in buttons, the room code is an input. `tests/fontcheck.js` walks
+  the real DOM on four screens and fails on anything rendering in a family that
+  is not ours.
+- **Mobile gets one message and no way past it.** Both Batch 33 escape hatches
+  are gone - the touch build (someone played it: "really bad and hard to play")
+  and the "I have a mouse and keyboard" override, which is self-contradictory on
+  a phone. `/local` shows the same notice rather than running.
+- **Routing:** "Switch to Local Version", at `/local` via a Vercel rewrite; the
+  archived build links back to `/`. `location.search` is carried both ways so
+  `?debug=1` survives the switch.
+- **The crush slabs are photographic** - the last surface still using the 256px
+  procedural canvases, which is where the camera gets closest to a wall. Tiled
+  at 5.5, not 2.2: a slab face is 260 long, so 2.2 gave ~110 units per tile and
+  the stone read as vertical streaks.
+- **Loading order:** `startMatch` now waits (bounded, 8s) for the models it
+  needs. Starting early meant fighters were built from procedural placeholders
+  for the whole round - permanently, because the mesh is built once per round.
+  That same wait is why smoke's boss check began failing with `state: "FIGHT"`
+  in its own failure detail: an expired budget, not a broken mode. The budget is
+  model-aware now.
+
+---
+
 ## Requested, not yet done
 
 Recorded here so none of it is quietly dropped.
-
-### The typeface has to reach every piece of text
-
-Reported with a screenshot of the character select still rendering in the
-browser default. Batch 36 set `--font-ui` on `body` and routed the canvas HUD,
-but plenty of DOM text does not inherit it: `button`, `input` and `select` do
-NOT inherit `font-family` from their ancestors by default, and any rule that
-names a family explicitly overrides it. The select screen, the shop buttons and
-the coin readouts are all in that category.
-
-The fix is a sweep, not a patch: set `font-family: inherit` on form elements,
-then audit every remaining `font-family` declaration in the file and delete the
-ones that are not deliberate. Worth a checker that walks the DOM and asserts no
-visible text is rendering in a fallback family.
 
 ### The first-person arm is still open at the shoulder cut
 
@@ -1603,42 +1618,6 @@ away-pause - because none of it means anything in a split-screen build. Things
 known still to need porting: the teleport smear and its camera fix, the
 projectile sphere and material cache, the first-person arm extraction, the
 death-scale fix, the tutorial auto-open flag, and the roster faces.
-
-### Mobile: one message, no escape hatches
-
-Reported after actually trying it: the desktop-only notice currently offers the
-archived split-screen build and a "I have a mouse and keyboard - continue"
-override, and **both are wrong on a phone**.
-
-- The touch build "was really bad and hard to play", so pointing someone at it
-  is not a kindness - it is sending them somewhere worse. **The archived build
-  must refuse to run on mobile too**, showing the same message rather than its
-  own touch UI.
-- "I have a mouse and keyboard" is self-contradictory on a phone: if they are on
-  a phone, they do not. Batch 33 added it as insurance against pointer media
-  queries misreporting on hybrid devices; the cost of being wrong the other way
-  (someone plays something unplayable) is higher.
-- So: **everything below the divider goes.** What is left is the single
-  statement that it needs a computer. `/local` shows the identical message.
-
-This reverses two Batch 33 decisions on the strength of someone having tried it,
-which is the right reason to reverse them.
-
-### Routing and labels
-- **The Settings button should read "Switch to Local Version"**, not "Switch to
-  Local Split-Screen (old version)". It is a different way to play, not an
-  archive - calling it old discourages the thing that makes the game easiest to
-  test.
-- **Its URL should be `/local`**, not `/legacy/local-splitscreen.html`. Needs a
-  Vercel rewrite (`vercel.json`) mapping `/local` to the archived file, plus the
-  in-game links updated. Note `location.search` must still be carried across, or
-  `?debug=1` stops surviving the switch.
-- **The main build should be `astral-clash.vercel.app`, not `/index.html`.**
-  Vercel already serves `index.html` at the root, so this is about the links the
-  game itself writes - the archived build's "back to online" button points at
-  `../index.html` explicitly.
-
----
 
 ## Where this arc landed
 
