@@ -1755,3 +1755,205 @@ that were going to be hand-scripted.
 GEOMETRY redesign - Batches 34-35 re-surfaced the arenas but did not restructure
 them - plus an optional real HDRI environment, and bloom, which online play
 unblocked by removing the second viewport.
+
+---
+
+## Batch 43 - The arm bones were never in the arms
+
+### The rig has been wrong since Batch 35, and it explains a list of bugs
+
+Chasing "arms up to the side looks really weird and unnatural" found the cause of
+several other reports at once. `build_rig` placed the arm bones at **anatomical
+heights** - elbow at 0.60H, wrist at 0.46H - with a measured sideways offset.
+That is correct for a figure standing at rest, which is what it was verified
+against: Kaelen, the first character, whose arms hang.
+
+Every other generation arrives **A-posed**. Measured across the raw files, their
+hands sit 0.34-0.57 H out to the side at 0.43-0.65 H up. So the "arm" bones ran
+diagonally down *through the torso*: Draven's wrist bone was at x = 0.086 H while
+his actual wrist is at 0.47 H. Heat diffusion then weighted his coat and his
+chest to the arm chain, and his real arms followed whatever bone happened to be
+nearest.
+
+One bug, several reports:
+
+- "Gorgonok's fist swings behind him"
+- "Ignis's fists aren't even connected to his arms, they are at his waist"
+- "Draven's weapon overlaps with his leg"
+- and the tabard that bell-flared the moment anything rotated his shoulders
+
+`measure_arms()` traces each arm outward from the shoulder instead: it marches
+out in X and, at each step, keeps **the cluster of Z nearest the previous step**.
+Continuity is the whole trick - a slab at arm's length also catches a cape, a
+wing or a weapon, and the median of all of it walks off the arm. Lyra's right
+side did exactly that in the first version (it drifted up her harp and ended
+above her own shoulder) while her left traced cleanly; nearest-cluster follows
+the limb. It assumes only that an arm is attached to the shoulder and continuous,
+so it works for a T-pose, an A-pose or arms already hanging.
+
+Two guards the old code lacked, both of which fired for real:
+
+- **Too long** - reject a trace reaching past 0.62 H, which is not an arm.
+- **Too short** - Kaelen traced a 0.09-unit chain: his arms *do* hang, so the
+  march found his shoulder bulge, stepped off the end and stopped. It passed the
+  monotonic test and would have rigged his whole arm as a stub beside his neck.
+  Anything under 0.30 H is a march that ended early, and for a figure at rest the
+  anatomical fallback is not a compromise - it is the placement it was verified
+  on. Kaelen and Slagling use it; the other twelve are traced.
+
+The old code floored a nonsense measurement into a plausible-looking number
+instead of rejecting it, which is why none of this ever showed up as a failure.
+
+### Arms down at rest, as the BIND pose
+
+Batch 42 tried this at runtime and reverted it: horizontal to hanging is ~90
+degrees of shoulder rotation and automatic weights do not survive it. So the arms
+come down in Blender now, and the game rotates nothing:
+
+1. aim the arm bones where a relaxed arm hangs,
+2. **apply** the armature modifier, writing the deformed shape into the mesh data
+   while leaving the vertex groups alone,
+3. `pose.armature_apply()`, making that pose the rest pose,
+4. re-attach an armature modifier.
+
+The target is an **absolute direction** (20 degrees out, 8 forward), not a
+rotation off whatever the generation happened to be. The first version rotated
+"68 degrees down from here" and crossed Draven's arms in front of his crotch,
+because his rig's arms were already near-vertical. The roster is not one
+generated pose, so no single relative rotation is right for all of it; an
+absolute target comes out the same either way, and running it twice changes
+nothing.
+
+`smooth_arm_weights` runs first, softening the shoulder so the bake does not
+shear. Its first version reported a failure for all nine groups and smoothed
+nothing: `vertex_group_smooth`'s poll fails in OBJECT mode.
+
+The game's own animation still means what it meant. Bringing an arm down is a
+rotation about the world fore/aft axis, which is the arm bone's local Z - so
+local Z is preserved and `_applyArms`' "negative local X is forward" holds in the
+new rest exactly as it did in the old one.
+
+Also in the pipeline: a light `smooth_surface` pass (2 iterations, factor 0.5,
+plus smooth shading) before measuring, since the surface carries reconstruction
+noise. Deliberately gentle - Slagling's cracked crust and Karrigos' stonework
+ARE detail. **Per-character refinement is still pending** and is the next job.
+
+All fourteen rebuilt, 0 unweighted vertices. Kaelen had no raw GLB at all (he
+predates `art/raw/`), so his mesh was extracted out of `art/kaelen.blend` and
+written to `art/raw/Kaelen.glb` - he goes through the same pipeline as everyone
+else now. `build_all(force=True)` exists because `pending()` asks "what has never
+been built", which is the wrong question every time the PIPELINE changes.
+
+### Portraits were stretched 1.8x, and nothing was checking
+
+Every face came out **184x102**. The portrait camera is aspect 1, but it rendered
+into the GAME's canvas, which at a 192x192 window is a 16:9 arena view - a square
+projection written into a 1.8:1 buffer. Nothing in the framing was wrong; the
+aspect it was drawn into was. The renderer gets a square drawing buffer for the
+shot now, and the script **reads the PNG's own IHDR and refuses to write a
+non-square file**, because "it looked fine in the code" is how this shipped.
+
+### /local 404'd, and the reason is a cleanUrls interaction
+
+    /local                         -> 404
+    /legacy/local-splitscreen      -> 200
+    /legacy/local-splitscreen.html -> 308
+
+`cleanUrls: true` serves every .html file at its extensionless path and
+308-redirects the .html one, so a rewrite *destination* ending in .html points at
+a path that is not an output of the deployment. Locally it looks fine, because a
+plain static server has no cleanUrls. `tests/routingcheck.js` now checks every
+rewrite against both the config and the filesystem.
+
+`/legacy/local-splitscreen` also sends you to `/local` now - in the page, not as
+a Vercel redirect, because `/local` is a REWRITE to that same path and a redirect
+sitting on a rewrite's destination risks the loop that would take `/local` down
+again. Guarded to https non-localhost: the pretty path does not exist over
+file:// or on the test server, where redirecting would turn a working page into
+a 404.
+
+### The copy button, third time
+
+Reported tall three times. The rule being edited was scoped to `.menu-section`,
+and the room bar is not inside one - so `#btn-room-copy` never matched it and
+kept the base button style (14px padding, 1.08rem, filled cyan) through two
+rounds of shrinking. Unscoped now, and **both** copy buttons are measured by
+`onlineuxcheck`: nothing had ever measured either, which is how a cosmetic fix
+shipped twice without landing. Each is measured with its own container actually
+on screen, because a hidden element is 0px tall and passes "not too tall" while
+measuring nothing.
+
+### Co-op: downed, not dead
+
+Requested: "if one person dies, it shouldn't end. Instead, they should respawn
+after a while (20-30 seconds). If the person who is still alive dies before this
+happens, then the game ends."
+
+Batch 16 ended the run on either KO and its comment said why - a revivable
+teammate needed a sub-state the file did not have. It does now: the continuous
+modes brought `respawn()` and a KO that is a setback. So a KO puts you **down**
+for 25 seconds and only a **wipe** ends the run. Back at full health (asked for
+explicitly - the wait is the cost, and the fight you rejoin is the one your
+teammate has been holding alone), at your own spawn, with the existing spawn
+i-frames so the boss cannot camp the return.
+
+Details that are each their own small bug avoided:
+
+- Both fighters are checked for a new KO *before* the wipe test, so a double KO
+  on one frame reads as a wipe rather than as one player going down and the other
+  dying alone a frame later.
+- A downed fighter takes **no damage**: `pickTarget` falls back to its given
+  opponent when nobody is alive, so otherwise the boss keeps swinging at the body
+  and it soaks hits aimed at the player still up.
+- Survival's wave clear does **not** heal a downed teammate. hp above 0 with
+  `downed` still set is a fighter stuck on the floor for the rest of the run.
+- The clock is owner-authoritative and rides in `STATE.dn` - sent rather than
+  inferred from hp, because hp 0 is also what a fighter looks like in the instant
+  before their own client has downed them.
+
+`tests/coopdowncheck.js`, 22 assertions.
+
+### The sandbox override could reach online play
+
+"I have everything unlocked in the online version. This might be a result of me
+playing in the sandbox version in local" - it was. Both builds are served from
+the same origin, so they share localStorage. That is deliberate for
+**progression** and wrong for the unlock-everything override: the archived build
+still offers the toggle, this one dropped it in Batch 34, so flipping it there
+unlocked the online build with no UI left here to flip it back. A one-way
+trapdoor.
+
+Two fixes, because there were two problems:
+
+- The key is **per build** (`astralClashDebugUnlockAll:online`). No migration
+  needed - the old unscoped key simply stops being read here.
+- The override is **ignored while connected**, whatever the key says. It returns
+  MAX_UPGRADE_LEVEL for every stat, so a sandbox player in a netgame is not just
+  unlocked, they are flatly stronger than an opponent who earned their upgrades -
+  and nothing on the wire would reveal it, because picks are synced by name.
+
+### The archived build's shop no longer freezes the other player out
+
+"if the shop opens on one side of the screen in the local version currently the
+other side is useless, but the other side should still be able to select
+characters and open the other person's shop like normal."
+
+It was one panel behind a full-screen opaque scrim: the other half of the screen
+was both invisible and unclickable. Now **two independent panels**, one per half,
+with no scrim and `pointer-events: none` on the overlay - only the panels take
+clicks. Both can be open at once, they close independently, and the overlay only
+goes away once neither is open. Legacy-only: the online build has one account and
+one full-screen shop, so the problem does not exist there.
+
+It lives in `art/port_to_legacy.py`, because a hand edit to a generated file is
+erased by the next port. The legacy co-op functions live in
+`art/legacy_coop_respawn.js` as real JavaScript rather than as a 60-line string
+inside a Python file - that is where escaping mistakes come from. The port
+verifies **42 definitions** and 15 called identifiers or refuses to write, and
+`tests/legacyshopcheck.js` is now that build's load check too: it asks the
+browser's own hit-testing whether the other side is reachable, which a
+computed-style check cannot answer.
+
+**Still pending**: per-character surface refinement (the smoothing pass is global
+and gentle; the roster has not been reviewed one at a time), and the arena
+GEOMETRY redesign from `docs/arena-art-plan.md`.

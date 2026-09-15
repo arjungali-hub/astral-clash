@@ -32,7 +32,7 @@ const SIZE = 192;   // 2x the largest place it is displayed, for retina
     let ok = 0, failed = [];
 
     for (const name of roster) {
-        const out = await page.evaluate(async n => {
+        const out = await page.evaluate(async (n, outSize) => {
             const D = window.ACDebug;
             const m = await D.ensureCharModel(n);
             if (!m) return 'NO MODEL';
@@ -103,25 +103,60 @@ const SIZE = 192;   // 2x the largest place it is displayed, for retina
             cam.position.y += headH * 0.18;
             cam.lookAt(centre);
 
+            // A SQUARE DRAWING BUFFER, because the camera is square.
+            //
+            // Reported as "the pictures here are horizontally stretched out and
+            // look weird", and they were: every portrait came out 184x102. The
+            // camera above is aspect 1, but this renders into the GAME's canvas,
+            // which at a 192x192 window is a 16:9 arena view - so a square
+            // projection was being written into a 1.8:1 buffer and every face
+            // came out 1.8x too wide. Nothing in the framing was wrong; the
+            // aspect it was drawn into was.
+            //
+            // Resizing the buffer rather than setting cam.aspect to the canvas:
+            // a portrait wants to BE square (it is displayed in a square chip
+            // and a round slot), and matching the camera to a wide buffer would
+            // just produce a correctly-proportioned wide image that then gets
+            // cropped differently in every place it appears.
             const r = D.renderer;
             const hadAlpha = r.getClearAlpha();
+            const prevRatio = r.getPixelRatio();
+            const prevW = r.domElement.width, prevH = r.domElement.height;
             r.setClearAlpha(0);
             r.setScissorTest(false);
-            r.setViewport(0, 0, r.domElement.width, r.domElement.height);
+            r.setPixelRatio(1);                 // so the buffer is exactly size x size
+            r.setSize(outSize, outSize, false); // false: leave the CSS size alone
+            cam.aspect = 1;
+            cam.updateProjectionMatrix();
+            r.setViewport(0, 0, outSize, outSize);
             r.render(scene, cam);
             const url = r.domElement.toDataURL('image/png');
+            // Put the renderer back. updateStyle was false both ways, so the
+            // canvas element itself never changed and the game's own resize
+            // handler owns it again from here.
             r.setClearAlpha(hadAlpha);
-            return url;
-        }, name);
+            r.setPixelRatio(prevRatio);
+            r.setSize(prevW / prevRatio, prevH / prevRatio, false);
+            return { url, w: r.domElement.width, h: r.domElement.height };
+        }, name, SIZE);
 
-        if (typeof out !== 'string' || !out.startsWith('data:image/png')) {
-            failed.push(name + ' (' + out + ')');
+        const url = out && out.url;
+        if (typeof url !== 'string' || !url.startsWith('data:image/png')) {
+            failed.push(name + ' (' + JSON.stringify(out) + ')');
             continue;
         }
-        fs.writeFileSync(path.join(OUT, name.toLowerCase() + '.png'),
-            Buffer.from(out.split(',')[1], 'base64'));
+        const buf = Buffer.from(url.split(',')[1], 'base64');
+        // Verify the PNG really is square, from its own IHDR rather than from
+        // what we asked for. The stretched portraits shipped once because
+        // nothing checked, and "it looked fine in the code" is how.
+        const pw = buf.readUInt32BE(16), ph = buf.readUInt32BE(20);
+        if (pw !== ph) {
+            failed.push(`${name} (not square: ${pw}x${ph})`);
+            continue;
+        }
+        fs.writeFileSync(path.join(OUT, name.toLowerCase() + '.png'), buf);
         ok++;
-        console.log('  ' + name);
+        console.log(`  ${name}  ${pw}x${ph}`);
     }
 
     console.log(`\n${ok} portrait(s) written to assets/faces/`);

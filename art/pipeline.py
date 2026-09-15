@@ -1,7 +1,8 @@
 # Astral Clash character pipeline (Blender 5.x).
 #
 # Turns a raw Hyper3D Rodin generation into a game-ready skinned GLB:
-#   orient upright -> ground -> clean -> MEASURE -> rig -> bind -> bake clips -> export
+#   orient -> ground -> clean -> smooth -> MEASURE -> rig -> bind
+#     -> smooth weights -> ARMS-DOWN REST POSE -> bake clips -> export
 #
 # Run inside Blender via the MCP bridge:
 #   exec(open(r"C:\Users\arjun\Documents\astral-clash\art\pipeline.py").read())
@@ -128,15 +129,145 @@ def _clusters(vals, gap):
     return [(min(r), max(r), len(r)) for r in out]
 
 
+def _trace_arm(me, H, s, sh_x, sh_z, steps=14):
+    """Follow one arm outward from the shoulder. Returns a polyline or None.
+
+    Marches out in X, and at each step takes the geometry in a thin slab and
+    keeps the CLUSTER OF Z NEAREST THE PREVIOUS STEP. Continuity is the whole
+    trick: a slab out at arm's length also catches a cape, a wing, a weapon or
+    a pauldron, and the median of all of it walks off the arm. Lyra's right
+    side did exactly that in the first version - it drifted up her harp and
+    ended at z = 1.78, above her own shoulder - while her left side traced
+    cleanly. Picking the nearest cluster instead follows the limb.
+
+    Works for a T-pose, an A-pose or arms already hanging, because it never
+    assumes a height: it only assumes the arm is attached to the shoulder and
+    continuous, which is what makes it an arm.
+    """
+    xs = sorted(v.co.x * s for v in me.vertices if v.co.x * s > 0 and v.co.z > 0.42 * H)
+    if not xs:
+        return None
+    # 99.5th percentile, not the maximum: one stray vertex should not define
+    # the hand, and these meshes do have strays.
+    tip = xs[int(len(xs) * 0.995)]
+    if tip < sh_x * 1.25:
+        return None          # nothing out there; the arm is tucked in
+
+    step = (tip - sh_x) / steps
+    pts = [mathutils.Vector((sh_x, 0.0, sh_z))]
+    z0, y0 = sh_z, 0.0
+    for i in range(1, steps + 1):
+        x = sh_x + step * i
+        band = [v.co for v in me.vertices
+                if abs(v.co.x * s - x) <= step * 0.8 and abs(v.co.z - z0) <= 0.13 * H]
+        if len(band) < 4:
+            break
+        zs = sorted(v.z for v in band)
+        groups = _clusters(zs, 0.05 * H)
+        groups = [g for g in groups if g[2] >= 3]
+        if not groups:
+            break
+        lo, hi, _n = min(groups, key=lambda g: abs((g[0] + g[1]) / 2.0 - z0))
+        zc = (lo + hi) / 2.0
+        if abs(zc - z0) > 0.09 * H:
+            break            # a jump that big is a different structure
+        inb = [v for v in band if lo - 1e-6 <= v.z <= hi + 1e-6]
+        z0 = sum(v.z for v in inb) / len(inb)
+        y0 = sum(v.y for v in inb) / len(inb)
+        pts.append(mathutils.Vector((x, y0, z0)))
+    return pts if len(pts) >= 4 else None
+
+
+def _along(pts, frac):
+    """The point `frac` of the way along a polyline, by arc length."""
+    segs = [(pts[i + 1] - pts[i]).length for i in range(len(pts) - 1)]
+    total = sum(segs)
+    if total <= 1e-9:
+        return pts[0].copy()
+    want = total * frac
+    run = 0.0
+    for i, L in enumerate(segs):
+        if run + L >= want:
+            t = 0.0 if L <= 1e-9 else (want - run) / L
+            return pts[i] + (pts[i + 1] - pts[i]) * t
+        run += L
+    return pts[-1].copy()
+
+
+def measure_arms(ob, H, sh_x, sh_z):
+    """Elbow, wrist and fingertip as MEASURED 3-D points, or None.
+
+    Both arms are traced and then averaged (with x mirrored), because the rig
+    is built symmetric and a one-sided prop or cape should not tilt it. Where
+    one side traced much shorter than the other, the longer trace wins rather
+    than being averaged with a failure - a short trace means the march stopped
+    early, not that the arm is short.
+
+    Fractions along the arm are human proportions from the shoulder: upper arm
+    to 47%, forearm to 85%, hand to the tip. Those are shared across the roster
+    on purpose - what varies between a duelist and a stone titan is WHERE the
+    arm goes, which is now measured, not how it divides up.
+    """
+    me = ob.data
+    traces = {}
+    for s in (1, -1):
+        pts = _trace_arm(me, H, s, sh_x, sh_z)
+        if pts:
+            traces[s] = pts
+    if not traces:
+        return None
+
+    def length(pts):
+        return sum((pts[i + 1] - pts[i]).length for i in range(len(pts) - 1))
+
+    if len(traces) == 2 and min(length(traces[1]), length(traces[-1])) < \
+            0.6 * max(length(traces[1]), length(traces[-1])):
+        keep = max(traces.items(), key=lambda kv: length(kv[1]))
+        traces = {keep[0]: keep[1]}
+
+    out = {}
+    for label, frac in (("elbow", 0.47), ("wrist", 0.85), ("tip", 1.0)):
+        acc = mathutils.Vector((0.0, 0.0, 0.0))
+        for s, pts in traces.items():
+            q = _along(pts, frac)
+            acc += mathutils.Vector((abs(q.x), q.y, q.z))   # mirror onto +X
+        out[label] = acc / len(traces)
+
+    # Monotonic outward, and arm-LENGTHED in both directions. These are the
+    # guards the old code lacked: it floored a nonsense measurement into a
+    # plausible-looking number instead of rejecting it.
+    #
+    # The short check matters as much as the long one. Kaelen's arms actually
+    # hang, so the march found his shoulder bulge, stepped off the end of it
+    # and stopped: a 0.09-unit chain that passed the monotonic test and would
+    # have rigged his whole arm as a stub beside his neck. A real arm is about
+    # 0.42 H from shoulder to fingertip, so anything under 0.30 H is a march
+    # that ended early - and for a figure standing at rest the anatomical
+    # fallback is not a compromise, it is the placement it was verified on.
+    if not (out["elbow"].x > sh_x and out["wrist"].x > out["elbow"].x):
+        return None
+    reach = (out["tip"] - mathutils.Vector((sh_x, 0, sh_z))).length
+    if reach > 0.62 * H or reach < 0.30 * H:
+        return None
+    return {"elbow": out["elbow"], "wrist": out["wrist"], "tip": out["tip"],
+            "sides": len(traces)}
+
+
 def measure(ob):
     """Locate joints from the mesh itself.
 
     Heights come from anatomical fractions of total height - verified against
     Kaelen, where the measured shoulder/elbow/wrist/hip/knee/ankle landed within
     a percent of 0.80/0.60/0.46/0.50/0.27/0.05 H. Sideways offsets are MEASURED,
-    because those are what actually vary: how far an A-pose spreads the arms, how
-    wide the stance is, how bulky the limbs are. That combination fits a lean
-    duelist and a stone titan without per-character tuning."""
+    because those are what actually vary: how wide the stance is, how bulky the
+    limbs are.
+
+    THE ARMS ARE THE EXCEPTION, and it took a while to see why. A fraction of
+    height only locates a joint on a figure standing at rest, which Kaelen was
+    and the other thirteen generations are not - they arrive A-posed, hands
+    0.34-0.57 H out to the side. Their elbow and wrist are traced from the
+    geometry by measure_arms() instead; elbow_x/wrist_x below survive only as
+    the fallback for a figure whose arms really do hang, and as report values."""
     me = ob.data
     H = max(v.co.z for v in me.vertices)
     front_is_neg_y = (abs(min(v.co.y for v in me.vertices))
@@ -193,12 +324,18 @@ def measure(ob):
     knee_x = max(outer_centre(z["knee"]) or 0.09 * H, 0.55 * hip_x)
     ankle_x = max(outer_centre(z["ankle"]) or 0.11 * H, 0.5 * hip_x)
 
+    # The arm, traced rather than assumed. See measure_arms: the fixed elbow
+    # and wrist HEIGHTS above are only right for a figure whose arms hang, and
+    # the generations are A-posed.
+    arm = measure_arms(ob, H, shoulder_x, z["shoulder"])
+
     # Toes point along the mesh's front.
     foot_y = (-1 if front_is_neg_y else 1) * 0.075 * H
 
     return {
         "H": H, "front_is_neg_y": front_is_neg_y,
         "z": z,
+        "arm": arm,
         "shoulder_x": shoulder_x, "elbow_x": elbow_x, "wrist_x": wrist_x,
         "hip_x": hip_x, "knee_x": knee_x, "ankle_x": ankle_x,
         "foot_y": foot_y,
@@ -223,19 +360,38 @@ def build_rig(name, m):
 
     z, H = m["z"], m["H"]
 
+    # The arm chain, from measure_arms when the trace succeeded. THE BONES MUST
+    # LIE INSIDE THE ARM: placed at anatomical heights instead, they ran down
+    # through the torso of every A-posed generation, and heat diffusion then
+    # weighted the torso and the coat to them while the real arm followed
+    # whatever bone happened to be nearest. Gorgonok's fist swinging behind
+    # him and Ignis' hands at his waist were both this.
+    arm = m.get("arm")
+
+    def arm_pts(s):
+        if arm:
+            e, w, t = arm["elbow"], arm["wrist"], arm["tip"]
+            return ((e.x * s, e.y, e.z), (w.x * s, w.y, w.z), (t.x * s, t.y, t.z))
+        # Fallback: the old anatomical placement, for a figure whose arms are
+        # already down (the trace returns None, having found nothing out to
+        # the side) - which is exactly the case it was verified on.
+        return ((m["elbow_x"] * s, 0, z["elbow"]),
+                (m["wrist_x"] * s, 0, z["wrist"]),
+                (m["wrist_x"] * 1.04 * s, 0, z["wrist"] - 0.042 * H))
+
     def side(s):
         L = '.L' if s > 0 else '.R'
+        elbow, wrist, tip = arm_pts(s)
         return [
             ("Shoulder" + L, "Chest",
              (m["shoulder_x"] * 0.28 * s, 0, z["shoulder"] + 0.005 * H),
              (m["shoulder_x"] * s, 0, z["shoulder"])),
             ("UpperArm" + L, "Shoulder" + L,
-             (m["shoulder_x"] * s, 0, z["shoulder"]), (m["elbow_x"] * s, 0, z["elbow"])),
-            ("LowerArm" + L, "UpperArm" + L,
-             (m["elbow_x"] * s, 0, z["elbow"]), (m["wrist_x"] * s, 0, z["wrist"])),
-            ("Hand" + L, "LowerArm" + L,
-             (m["wrist_x"] * s, 0, z["wrist"]),
-             (m["wrist_x"] * 1.04 * s, 0, z["wrist"] - 0.042 * H)),
+             (m["shoulder_x"] * s, 0, z["shoulder"]), elbow),
+            ("LowerArm" + L, "UpperArm" + L, elbow, wrist),
+            # The hand bone points at the MEASURED fingertip, which is what
+            # index.html's prop transplant reads to place a weapon in the grip.
+            ("Hand" + L, "LowerArm" + L, wrist, tip),
             ("UpperLeg" + L, "Hips",
              (m["hip_x"] * s, 0, z["hips"]), (m["knee_x"] * s, 0, z["knee"])),
             ("LowerLeg" + L, "UpperLeg" + L,
@@ -454,6 +610,237 @@ def _mk_poses():
     }
 
 
+# ------------------------------------------------ surface, weights, rest pose
+
+def smooth_surface(mesh, iterations=2, factor=0.5):
+    """Takes the lumpiness off a generated surface.
+
+    These are image-to-3D reconstructions, so the surface carries the noise of
+    that process: faceting on flat planes, dents where the reconstruction was
+    unsure, a general low-frequency lumpiness. A light Smooth modifier plus
+    smooth shading is most of the visible fix, and unlike a decimate/subdivide
+    round-trip it cannot redistribute the topology into something the rig then
+    has to cope with.
+
+    MUST run before measure() and bind(): it moves vertices, and both the joint
+    measurement and the weights are computed from where the vertices are.
+
+    Deliberately gentle. Slagling's cracked crust and Karrigos' stonework ARE
+    detail - a heavier pass reads as melted wax rather than smooth.
+    """
+    _activate(mesh, 'OBJECT')
+    mod = mesh.modifiers.new(name="ACSmooth", type='SMOOTH')
+    mod.factor = factor
+    mod.iterations = iterations
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+    # Smooth shading, so the facets that survive stop reading as facets.
+    bpy.ops.object.shade_smooth()
+    mesh.data.update()
+    return {"iterations": iterations, "factor": factor, "shading": "smooth"}
+
+
+# The groups whose weights get softened before the arms come down. Only the
+# arm chain and its neighbours: smoothing EVERY group is how you get mushy
+# legs, traded for nothing, since nothing down there gets re-posed.
+_ARM_WEIGHT_GROUPS = ("Shoulder", "UpperArm", "LowerArm", "Hand", "Chest")
+
+
+def smooth_arm_weights(mesh, repeat=4, factor=0.5):
+    """Softens the shoulder weights so the joint survives being re-posed.
+
+    Heat diffusion produces a SHARP shoulder: a vertex belongs almost entirely
+    to UpperArm or almost entirely to Chest, with little blend across the
+    deltoid. That is exactly the distribution that collapses under a large
+    rotation - there is no gradient for the deformation to spread over, so the
+    two halves shear past each other instead of bending.
+
+    Smoothing costs a little crispness and buys a shoulder that can be posed,
+    which is what set_rest_pose_arms_down() below needs. Groups are smoothed
+    one at a time (the operator's ALL mode would take the legs with it), then
+    everything is renormalised - smoothing a subset of groups leaves the
+    per-vertex weights summing to less than 1, which shows up as a limb that
+    shrinks toward its bone.
+    """
+    # EDIT mode with everything selected: vertex_group_smooth's poll fails in
+    # OBJECT mode ("context is incorrect"), which the first run of this pass
+    # hit for all nine groups - it reported a failure per group and smoothed
+    # nothing. It operates on the SELECTED vertices, so the select_all is not
+    # decoration either.
+    _activate(mesh, 'EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    done, failed = [], []
+    for base in _ARM_WEIGHT_GROUPS:
+        for name in (base, base + ".L", base + ".R"):
+            grp = mesh.vertex_groups.get(name)
+            if grp is None:
+                continue
+            mesh.vertex_groups.active_index = grp.index
+            try:
+                bpy.ops.object.vertex_group_smooth(
+                    group_select_mode='ACTIVE', factor=factor, repeat=repeat)
+                done.append(name)
+            except Exception as e:
+                failed.append("%s: %s" % (name, str(e)[:60]))
+    bpy.ops.object.mode_set(mode='OBJECT')
+    try:
+        bpy.ops.object.vertex_group_normalize_all(lock_active=False)
+    except Exception as e:
+        failed.append("normalize: %s" % str(e)[:40])
+    return {"smoothed": len(done), "repeat": repeat, "factor": factor,
+            "failed": failed}
+
+
+# WHERE A RELAXED ARM POINTS, as an absolute direction rather than a rotation
+# off the generated pose. Degrees from straight down: OUT is lateral, FWD is
+# toward the mesh's front.
+#
+# Absolute on purpose. The first version of this pass rotated 68 degrees down
+# from wherever the bone already was, which crossed Draven's arms in front of
+# his crotch - his rig's arms were already near-vertical, because measure()
+# found no arm cluster at wrist height and fell back to 0.75 * shoulder_x. The
+# roster is not one generated pose (some arrive in a T-pose, some already
+# slack), so no single relative rotation is right for all of it. An absolute
+# target is: the stance comes out the same either way, and running the pass
+# twice changes nothing the second time.
+#
+# 20 degrees out clears a generated body's hips, which are wider than a human's,
+# without reading as a shrug. The forward angles are what separate a relaxed
+# stance from a soldier at attention.
+REST_ARM_OUT = 20.0
+REST_ARM_FWD = 8.0
+REST_FOREARM_OUT = 11.0       # the elbow keeps a slight inward bend
+REST_FOREARM_FWD = 17.0
+
+
+def _aim_pose_bone(rig, name, target):
+    """Point a pose bone along `target` (armature space).
+
+    Direction-based, like the viewmodel's _aimBone in index.html and for the
+    same reason: it needs no knowledge of which local channel does what. Bones
+    must be done parent-first - pb.y_axis reads the CURRENT posed direction, so
+    a forearm aimed after its upper arm is aimed relative to where the elbow
+    actually ended up.
+    """
+    pb = rig.pose.bones.get(name)
+    if pb is None:
+        return None
+    cur = pb.y_axis.copy()
+    cur.normalize()
+    t = target.copy()
+    t.normalize()
+    q = cur.rotation_difference(t)
+    loc = pb.matrix.translation.copy()
+    M = (mathutils.Matrix.Translation(loc)
+         @ q.to_matrix().to_4x4()
+         @ mathutils.Matrix.Translation(-loc))
+    pb.matrix = M @ pb.matrix
+    bpy.context.view_layer.update()
+    return round(math.degrees(q.angle), 1)
+
+
+def set_rest_pose_arms_down(mesh, rig, front_is_neg_y=True):
+    """Makes arms-down the BIND pose rather than a runtime rotation.
+
+    Reported as "when characters are at rest, their arms should be at their
+    sides, not open and facing sideways". They were out because what you see at
+    rest IS the bind pose - the game rotates bones itself and never plays the
+    baked Idle clip - and these models are generated arms-out, because that is
+    what automatic weighting needs (limbs touching the torso weld together in
+    clean() and then bleed weights across the seam).
+
+    Four steps, and the middle two are the point:
+      1. aim the arm bones at where a relaxed arm hangs,
+      2. APPLY the armature modifier, writing the deformed shape into the mesh
+         data while leaving the vertex groups alone - they name the same bones
+         and the same vertices either way,
+      3. pose.armature_apply(), making that pose the rest pose,
+      4. re-attach an armature modifier.
+
+    Afterwards the mesh IS arms-down, the rest pose IS arms-down, the weights
+    still describe the same vertices, and the game rotates nothing - so there
+    is no runtime collapse to suffer. Whatever the shoulder deformation costs
+    is paid once, here, where smooth_arm_weights() has already softened it.
+
+    The game's own animation still means what it meant: bringing an arm down is
+    a rotation about the world fore/aft axis, which is the arm bone's local Z
+    (measured: local Z is world +Y for both sides), so local Z is PRESERVED and
+    _applyArms' "negative local X is forward" holds in the new rest exactly as
+    it did in the old one.
+    """
+    front = -1.0 if front_is_neg_y else 1.0
+
+    def target(out_deg, fwd_deg, lat):
+        """A direction: mostly down, `out_deg` out to `lat`, `fwd_deg` forward.
+
+        Built from angles rather than rotated out of a documented bone channel.
+        Misapplying the _mk_poses convention to a T-pose - where local X runs
+        ALONG the arm - is what made the first-person arm hang straight down
+        for three render cycles, and a direction cannot make that mistake.
+        """
+        o, f = math.radians(out_deg), math.radians(fwd_deg)
+        v = mathutils.Vector((lat * math.sin(o),
+                              front * math.sin(f),
+                              -math.cos(o) * math.cos(f)))
+        v.normalize()
+        return v
+
+    _activate(rig, 'POSE')
+    angles = {}
+    for side in ("L", "R"):
+        # Which way is "out" for this side is read off the rig, not assumed.
+        # The .L/.R naming says which side a bone is, not which direction that
+        # is in world space, and a symmetric pair is exactly where an assumed
+        # sign goes unnoticed - see the "every arm bone is at x=0" wrong
+        # diagnosis, which was really the lateral axis mapping through a
+        # rotation.
+        ref = rig.data.bones.get("UpperArm." + side)
+        if ref is None:
+            continue
+        lat = 1.0 if ref.head_local.x >= 0 else -1.0
+
+        a = _aim_pose_bone(rig, "UpperArm." + side,
+                           target(REST_ARM_OUT, REST_ARM_FWD, lat))
+        if a is not None:
+            angles["UpperArm." + side] = a
+        # The forearm is aimed absolutely too - after the upper arm has moved,
+        # so what it inherits is already the new shoulder.
+        a = _aim_pose_bone(rig, "LowerArm." + side,
+                           target(REST_FOREARM_OUT, REST_FOREARM_FWD, lat))
+        if a is not None:
+            angles["LowerArm." + side] = a
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    arm_mods = [m for m in mesh.modifiers if m.type == 'ARMATURE']
+    if not arm_mods:
+        return {"error": "no armature modifier to bake", "angles": angles}
+    keep = arm_mods[0].object or rig
+
+    _activate(mesh, 'OBJECT')
+    bpy.ops.object.modifier_apply(modifier=arm_mods[0].name)
+
+    _activate(rig, 'POSE')
+    bpy.ops.pose.armature_apply()
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    _activate(mesh, 'OBJECT')
+    mod = mesh.modifiers.new(name="Armature", type='ARMATURE')
+    mod.object = keep
+    mesh.parent = keep
+    mesh.parent_type = 'OBJECT'    # the modifier deforms; PARSKEL must not too
+
+    # Did the arms actually come down? Cheap, and it is the one thing worth
+    # measuring: every failure mode here - a missing bone, a sign picked wrong,
+    # a modifier that silently did not apply - shows up as an arm still out,
+    # and therefore as a span that never narrowed.
+    span = (max(v.co.x for v in mesh.data.vertices)
+            - min(v.co.x for v in mesh.data.vertices))
+    height = max(v.co.z for v in mesh.data.vertices)
+    return {"out_deg": REST_ARM_OUT, "fwd_deg": REST_ARM_FWD,
+            "bones": angles, "span": round(span, 3),
+            "span_over_height": round(span / height, 3) if height else None}
+
+
 def bake_clips(rig, scale_hint=1.0):
     """Author the six locomotion clips as Blender actions.
 
@@ -540,11 +927,19 @@ def process(name, raw_name, keep_others_hidden=True):
 
     report["height_blender"] = round(orient_and_ground(mesh), 4)
     report["clean"] = clean(mesh)
+    # Before measuring: smoothing moves vertices, and the joint measurement is
+    # taken from where they are.
+    report["surface"] = smooth_surface(mesh)
     m = measure(mesh)
     report["measured"] = {
         "H": round(m["H"], 3),
         "front_is_neg_y": m["front_is_neg_y"],
         "shoulder_x": round(m["shoulder_x"], 3),
+        "arm_traced": (None if not m.get("arm") else
+                       {"sides": m["arm"]["sides"],
+                        "elbow": [round(v, 3) for v in m["arm"]["elbow"]],
+                        "wrist": [round(v, 3) for v in m["arm"]["wrist"]],
+                        "tip": [round(v, 3) for v in m["arm"]["tip"]]}),
         "wrist_x": round(m["wrist_x"], 3),
         "knee_x": round(m["knee_x"], 3),
         "ankle_x": round(m["ankle_x"], 3),
@@ -552,6 +947,13 @@ def process(name, raw_name, keep_others_hidden=True):
     rig = build_rig(name, m)
     report["bones"] = len(rig.data.bones)
     report["bind"] = bind(mesh, rig)
+    # Soften the shoulder, then make arms-down the rest pose. In this order:
+    # the smoothing is what lets a 68-degree shoulder rotation bake cleanly,
+    # and both happen before the clips so the clips are authored against the
+    # NEW rest rather than the T-pose.
+    report["weights"] = smooth_arm_weights(mesh)
+    report["restpose"] = set_rest_pose_arms_down(
+        mesh, rig, front_is_neg_y=m["front_is_neg_y"])
     report["clips"] = bake_clips(rig, scale_hint=m["H"] / 1.9)
     path, size = export(name, mesh, rig)
     report["export"] = {"path": path, "bytes": size}

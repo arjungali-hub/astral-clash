@@ -503,9 +503,16 @@
         #shop-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
-            align-items: center; justify-content: center; z-index: 30; padding: 20px;
+            /* NO scrim and NO pointer capture: the half of the screen this shop
+               is not on belongs to the other player, who is still picking a
+               fighter. Only the panels themselves take clicks. */
+            background: none;
+            pointer-events: none;
+            align-items: center; justify-content: space-between; z-index: 30; padding: 20px;
         }
+        #shop-screen .shop-panel { pointer-events: auto; }
+        #shop-panel-p1 { margin-right: auto; }
+        #shop-panel-p2 { margin-left: auto; }
         /* Batch 24: there is no longer ONE shop with a player tab — each side
            opens its own, on its own half of the screen, so whose coins you are
            spending is answered by where the panel is rather than by reading a
@@ -1132,13 +1139,23 @@
             </div>
         </div>
 
+        <!-- TWO stores, open independently. In split-screen both players are at
+             the same screen at the same time, so one player shopping cannot be
+             allowed to freeze the other out. -->
         <div id="shop-screen">
-            <div class="menu-section shop-panel">
-                <h3 id="shop-title">Shop</h3>
+            <div class="menu-section shop-panel" id="shop-panel-p1" style="display:none;">
+                <h3 id="shop-title-p1">Player 1 — Shop</h3>
                 <p class="shop-sub">Your own coins, unlocks and upgrades. Win a match to earn more.</p>
-                <div class="shop-head"><span class="coin-balance" id="shop-coin-balance">0</span></div>
-                <div id="shop-list"></div>
-                <button id="btn-shop-close" class="btn-back">← Back</button>
+                <div class="shop-head"><span class="coin-balance" id="shop-coin-balance-p1">0</span></div>
+                <div id="shop-list-p1"></div>
+                <button class="btn-back" data-shop-close="p1">← Back</button>
+            </div>
+            <div class="menu-section shop-panel" id="shop-panel-p2" style="display:none;">
+                <h3 id="shop-title-p2">Player 2 — Shop</h3>
+                <p class="shop-sub">Your own coins, unlocks and upgrades. Win a match to earn more.</p>
+                <div class="shop-head"><span class="coin-balance" id="shop-coin-balance-p2">0</span></div>
+                <div id="shop-list-p2"></div>
+                <button class="btn-back" data-shop-close="p2">← Back</button>
             </div>
         </div>
 
@@ -1212,6 +1229,24 @@
     </div>
 
 <script>
+// The shareable address for this build is /local. Anyone who arrives at the
+// file path gets moved there, so links, bookmarks and the browser's own history
+// all say the same thing.
+//
+// Deliberately NOT a Vercel redirect: /local is a rewrite TO this path, and a
+// redirect sitting on a rewrite destination is how you get a loop - which would
+// break the one URL this is meant to tidy up.
+// ...and only where /local is actually SERVED. The pretty path is a Vercel
+// rewrite, so it does not exist over file:// or on the test server's plain
+// static host - redirecting there would turn a working page into a 404, which
+// is a far worse bug than an ugly URL.
+const CANONICAL_PATH = '/local';
+if (location.protocol === 'https:'
+    && !/^(localhost|127\.|\[::1\])/.test(location.hostname)
+    && location.pathname !== CANONICAL_PATH
+    && /local-splitscreen(\.html)?$/.test(location.pathname)) {
+    location.replace(CANONICAL_PATH + location.search + location.hash);
+}
 // Three.js is the only external dependency (all audio is synthesized, no asset
 // files). It loads from the CDN, but if that's blocked/offline we fall back to
 // a vendored copy sitting next to this file (three.min.js), and only show
@@ -1287,6 +1322,12 @@ function openModal(name) {
 function closeModal() {
     const name = modalStack.pop();
     if (name) document.getElementById(MODAL_EL[name]).style.display = 'none';
+    // Closing the shop overlay closes BOTH stores - otherwise the next open
+    // reveals a stale panel belonging to the other player.
+    if (name === 'shop' && typeof shopOpen !== 'undefined') {
+        shopOpen.p1 = false; shopOpen.p2 = false;
+        syncShopPanels();
+    }
     return name;
 }
 function closeAllModals() { while (modalStack.length) closeModal(); }
@@ -1647,6 +1688,14 @@ const MATCH_MODES = [
     // The ID stays `timeattack`. It is a localStorage progression key and a
     // value on the wire in SETUP/START packets, so renaming it would reset
     // players' records and desync a mixed-version match for a cosmetic gain.
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
     { id: 'timeattack', name: 'Takedown Race', blurb: 'Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse - the race is the pressure.' },
     { id: 'boss', name: 'Boss Fight (Co-op)', blurb: 'Both players team up against Karrigos, the Hollow Titan. Its attacks are slow and telegraphed — punish the wind-up. If either of you falls, the run is over.', coop: true },
     { id: 'survival', name: 'Survival Waves (Co-op)', blurb: 'Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.', coop: true },
@@ -1697,6 +1746,22 @@ const TIME_ATTACK_KOS = 3;
 let koTally = { p1: 0, p2: 0 };
 const RESPAWN_INVULN = 60; // frames of i-frames after respawning, so you can't be spawn-camped
 
+// Co-op: a KO puts you DOWN, not out. The survivor fights alone until you are
+// back, and the run only ends if they go down while you are still on the floor.
+//
+// 25 seconds is long enough to be a real loss - a boss with no one on it heals
+// nothing, but it hits the one player who is left twice as often - and short
+// enough that being downed is not just watching.
+//
+// FULL health on return, by request. The first pass returned you at half, on
+// the reasoning that a chain of deaths should get more expensive; the 25-second
+// wait is the cost instead, and it is a co-op mode - the fight it puts you back
+// into is the one your teammate has been holding alone, which is not the place
+// for a half-empty bar. The constant stays rather than being inlined: it is
+// what respawn()'s hpFrac argument exists for, and the number is the kind of
+// thing that gets retuned.
+const COOP_RESPAWN_FRAMES = 25 * 60;
+const COOP_RESPAWN_HP_FRAC = 1.0;
 // Batch 18: Survival Waves pacing. A short breather between waves so a cleared
 // wave feels like an accomplishment and you get a moment to reposition, rather
 // than the next challenger materialising on top of you mid-swing.
@@ -1722,7 +1787,9 @@ let shopSide = 'p1';
 // were reading about. Cleared on each open (see openShop) so the shop never
 // reopens part-way through a wall of expanded cards. Declared up here with
 // shopSide for the same TDZ reason spelled out above it.
-const shopExpanded = new Set();
+const shopExpanded = { p1: new Set(), p2: new Set() };
+// Which stores are open right now. BOTH may be: see syncShopPanels.
+const shopOpen = { p1: false, p2: false };
 
 // Batch 13 sets this; declared here because the accessors below are the
 // single gate every unlock/upgrade check in the game goes through, and they
@@ -1776,7 +1843,11 @@ function refreshCoinDisplays() {
         const el = document.getElementById(`${side}-coins`);
         if (el) el.textContent = String(prog(side).coins);
     }
-    const shopEl = document.getElementById('shop-coin-balance');
+    for (const s of SIDES) {
+        const el2 = document.getElementById('shop-coin-balance-' + s);
+        if (el2) el2.textContent = String(prog(s).coins);
+    }
+    const shopEl = null;
     if (shopEl) shopEl.textContent = String(prog(shopSide).coins);
 }
 function buyUnlock(side, name) {
@@ -3033,6 +3104,28 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
 // Rises up to this are walkable on foot; taller is a wall you must jump - see
 // resolveTallTerrain(), which reverts the move when the rise is too great.
 //
@@ -5228,6 +5321,9 @@ class Fighter {
         this.shieldReduction = 0.5;
         this.shieldColor = 0xfacc15; // Batch 8: tint applied whenever a shield is granted (currently only Seraphine's Astral Ward special)
         this.invulnFrames = 0;
+        // Co-op only: down and counting, rather than dead.
+        this.downed = false;
+        this.respawnTimer = 0;
         this.muzzleFlash = 0; // frames left on the viewmodel muzzle flash after firing
         this.projectiles = [];
         this.effects = [];
@@ -5429,9 +5525,11 @@ class Fighter {
     // cleared — leaving stale hitstun, a burn tick, an in-flight action or old
     // projectiles attached to a "fresh" fighter is exactly the kind of thing
     // that produces a fighter who respawns already staggered or on fire.
-    respawn(spawn) {
-        this.hp = this.maxHp;
-        this.hpGhost = this.maxHp;
+    respawn(spawn, hpFrac) {
+        this.hp = this.maxHp * (hpFrac === undefined ? 1 : hpFrac);
+        this.hpGhost = this.hp;
+        this.downed = false;
+        this.respawnTimer = 0;
         this.x = spawn.x; this.y = spawn.y;
         this.z = groundLevelAt(spawn.x + this.width / 2, spawn.y + this.height / 2);
         this.vx = this.vy = this.vz = 0;
@@ -5682,7 +5780,12 @@ class Fighter {
         // Outside co-op pickTarget returns `opponent` untouched.
         const target = pickTarget(this, opponent);
 
-        if (this.isBot) {
+        if (this.downed) {
+            // Down in co-op: no input, no AI, no actions - but the rest of
+            // update() still runs, so gravity settles the body and the Death
+            // clip plays. Gating here rather than returning early is what
+            // keeps a downed fighter from hanging in mid-air.
+        } else if (this.isBot) {
             const decision = this.botDecide(target, dt);
             moveX = decision.moveX; moveY = decision.moveY; jumpPressed = decision.jumpPressed;
         } else if (this.isPlayerOne) {
@@ -5954,6 +6057,8 @@ class Fighter {
     // knock you sideways. Dodge i-frames block only this path.
     takeDamage(amount, attacker, dir) {
         if (this.invulnFrames > 0) return;
+        // A downed co-op teammate is out of the fight, not a shield.
+        if (this.downed) return;
         this.applyDamage(amount, { attacker: attacker || null, dir: dir || null });
     }
 
@@ -9379,10 +9484,13 @@ document.getElementById('btn-mapselect-back').addEventListener('click', () => cl
 // no benefit; a tab makes whose coins you're spending unambiguous.
 // (`shopSide` itself is declared up with the progression state — it's read by
 // refreshCoinDisplays, which runs during load, long before this point.) ---
-function buildShop() {
-    const list = document.getElementById('shop-list');
+function buildShop(only) {
+    // No argument: rebuild BOTH stores, which is what every purchase
+    // wants. openShop passes the one side it just opened.
+    if (!only) { for (const s of SIDES) buildShop(s); return; }
+    const side = only;
+    const list = document.getElementById('shop-list-' + side);
     if (!list) return;
-    const side = shopSide;
     list.innerHTML = '';
 
     // Applies to all of this player's fighters, so it goes above the
@@ -9418,12 +9526,12 @@ function buildShop() {
         // exactly backwards for the one screen where you're deciding. Offered on
         // unlocked cards too, where the stats shown are this side's UPGRADED
         // numbers — so it doubles as "what did my upgrades actually buy me".
-        const open = shopExpanded.has(c.name);
+        const open = shopExpanded[side].has(c.name);
         const info = document.createElement('button');
         info.className = 'shop-info' + (open ? ' open' : '');
         info.textContent = open ? 'Hide' : 'Details';
         info.addEventListener('click', () => {
-            if (shopExpanded.has(c.name)) shopExpanded.delete(c.name); else shopExpanded.add(c.name);
+            if (shopExpanded[side].has(c.name)) shopExpanded[side].delete(c.name); else shopExpanded[side].add(c.name);
             buildShop();
         });
         head.appendChild(info);
@@ -9517,21 +9625,34 @@ document.getElementById('btn-open-modeselect').addEventListener('click', () => {
 document.getElementById('btn-modeselect-close').addEventListener('click', () => closeModal());
 refreshModeUI();
 
+function syncShopPanels() {
+    for (const s of SIDES) {
+        const el = document.getElementById('shop-panel-' + s);
+        if (el) el.style.display = shopOpen[s] ? '' : 'none';
+    }
+}
+
+function closeShopSide(side) {
+    shopOpen[side] = false;
+    syncShopPanels();
+    // The overlay itself only goes away once NEITHER store is open.
+    if (!shopOpen.p1 && !shopOpen.p2) closeModal();
+}
+
 function openShop(side) {
     if (side) shopSide = side;
     // Anchor the panel to whichever player opened it. With the tabs gone this
     // position IS the label for whose account you're looking at, so it has to be
     // set before the modal is shown, not after.
-    const screen = document.getElementById('shop-screen');
-    if (screen) screen.className = `side-${shopSide}`;
-    const title = document.getElementById('shop-title');
-    if (title) title.textContent = `${shopSide === 'p1' ? 'Player 1' : 'Player 2'} — Shop`;
-    shopExpanded.clear(); // every visit starts collapsed; see buildShop
-    buildShop();
+    shopOpen[shopSide] = true;
+    syncShopPanels();
+    shopExpanded[shopSide].clear(); // every visit starts collapsed; see buildShop
+    buildShop(shopSide);
     refreshCoinDisplays();
     openModal('shop');
 }
-document.getElementById('btn-shop-close').addEventListener('click', () => closeModal());
+document.querySelectorAll('[data-shop-close]').forEach(b =>
+    b.addEventListener('click', () => closeShopSide(b.dataset.shopClose)));
 // Each player's own Shop button, from their own panel. With the footer's shared
 // button gone these are the only entry points besides a locked roster card, and
 // every one of them passes a side explicitly — which is what keeps the two
@@ -9951,9 +10072,34 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 //
 // See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
 // 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
 const GRACE_PERIOD = 40;        // seconds the arena stays full-size before the first collapse tick
 const SHRINK_INTERVAL = 18;     // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
 // Once the collapse fraction passes this, snap fully shut and start crushing.
 //
 // WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
@@ -10563,6 +10709,7 @@ function drawHUD() {
     // Batch 16: the co-op challenger gets a wide bar across the top centre —
     // the conventional boss-bar placement, and the one region the two
     // side panels leave free in both split and full-screen layouts.
+    if (isCoopMode()) drawCoopDownHUD();
     if (coopEnemies.length) drawBossHUD();
     else if (matchMode === 'survival' && waveBreakTimer > 0) drawWaveBreakHUD();
 
@@ -10975,6 +11122,10 @@ function onBossDefeated() {
         // phantom missing chunk.
         let healed = 0;
         for (const p of [player1, player2]) {
+            // A downed teammate is NOT healed by the wave clear: hp above 0
+            // with `downed` still set is a fighter stuck on the floor for the
+            // rest of the run.
+            if (p.downed) continue;
             const before = p.hp;
             p.hp = Math.min(p.maxHp, p.hp + p.maxHp * WAVE_HEAL_PCT);
             p.hpGhost = p.hp;
@@ -10999,18 +11150,90 @@ function onBossDefeated() {
 // would need a new player-facing sub-state (spectating, revive timers, a revive
 // interaction) that doesn't exist anywhere in this file, which is a bigger
 // feature than the boss itself — flagged rather than half-built.
-function resolveCoopMode() {
+// Co-op down-and-respawn for the ARCHIVED split-screen build, inserted by
+// art/port_to_legacy.py ahead of resolveCoopMode.
+//
+// Hand-written rather than lifted out of index.html because the online version
+// reasons about which client owns a fighter's respawn clock, and this build has
+// no netcode at all: there is one machine, and it owns both. Everything else -
+// the 25-second clock, the half-bar return, the wipe condition - is the same
+// rule, and lives in the constants the port copies across verbatim.
+//
+// It lives in its own file rather than as a string inside the port script so
+// that it is readable AS JavaScript: a 60-line JS function embedded in a Python
+// string literal is where escaping mistakes come from.
+
+// Split-screen owns both fighters, so both clocks run here.
+function coopOwnsRespawn(f) { return true; }
+
+// A KO in co-op. Everything in flight is dropped for the same reason respawn()
+// drops it: a body that comes back already on fire or mid-swing is the classic
+// shape of this bug.
+function coopDown(f) {
+    f.downed = true;
+    f.respawnTimer = COOP_RESPAWN_FRAMES;
+    f.hp = 0;
+    f.vx = f.vy = 0;
+    f.atkState = 'idle'; f.atkStateTimer = 0; f.atkKind = null; f.atkOpponent = null;
+    f.hitstunTimer = 0; f.rootedFrames = 0;
+    f.burnFrames = 0; f.burnDps = 0;
+    f.shieldFrames = 0;
+    f.projectiles.forEach(p => removeAndDispose(p.mesh));
+    f.projectiles.length = 0;
+    f.queue.length = 0;
+}
+
+function coopRevive(f) {
+    // Back at your own spawn, not next to your teammate: dropping a half-health
+    // fighter into the middle of the fight they just lost is a second death,
+    // and the walk back is the rest of the cost of the first.
+    f.respawn(f === player1 ? matchMap.spawn1 : matchMap.spawn2, COOP_RESPAWN_HP_FRAC);
+    sfxRoundStart();
+}
+
+// The respawn clock, for both players: the one on the floor needs to know how
+// long, and the one still standing needs to know how long they are alone.
+function drawCoopDownHUD() {
+    const down = [player1, player2].filter(f => f && f.downed);
+    if (!down.length) return;
+    hudCtx.textAlign = 'center';
+    let y = coopEnemies.length ? 196 : 150;
+    for (const f of down) {
+        const secs = Math.max(1, Math.ceil(f.respawnTimer / 60));
+        hudCtx.font = hudFont(17, true);
+        hudCtx.fillStyle = '#fbbf24';
+        hudCtx.fillText(f.name + ' is down — back in ' + secs + 's', VIRTUAL_W / 2, y);
+        y += 22;
+    }
+    hudCtx.font = hudFont(12);
+    hudCtx.fillStyle = '#94a3b8';
+    hudCtx.fillText('If the last fighter standing falls, the run is over.', VIRTUAL_W / 2, y);
+    hudCtx.textAlign = 'left';
+}
+
+function resolveCoopMode(dt) {
     if (!isCoopMode()) return false;
-    if (!isAlive(player1) || !isAlive(player2)) {
-        const fallen = !isAlive(player1) ? player1.name : player2.name;
+
+    // Newly downed, both checked before the wipe test, so a double KO on one
+    // frame reads as a wipe rather than as one player going down and the other
+    // dying alone a frame later.
+    for (const f of [player1, player2]) {
+        if (f && !f.downed && f.hp <= 0) coopDown(f);
+    }
+
+    if (player1.downed && player2.downed) {
         endCoopMatch(false, matchMode === 'survival'
-            ? `${fallen} fell on wave ${waveNumber + 1}.  <b>Waves cleared: ${waveNumber}</b>`
-            : `${fallen} fell. ${(() => {
-                const b = liveEnemies()[0];
-                return b ? `${b.name} had ${Math.max(0, Math.ceil(b.hp))} HP (${Math.round(100 * b.hp / b.maxHp)}%) left.` : '';
-            })()}`);
+            ? `Both fighters fell on wave ${waveNumber + 1}.  <b>Waves cleared: ${waveNumber}</b>`
+            : 'Both fighters fell.');
         return true;
     }
+
+    for (const f of [player1, player2]) {
+        if (!f || !f.downed || !coopOwnsRespawn(f)) continue;
+        f.respawnTimer -= dt;
+        if (f.respawnTimer <= 0) coopRevive(f);
+    }
+
     // Batch 23: the wave is cleared when EVERY enemy is down, not just one.
     if (coopEnemies.length && !liveEnemies().length) return onBossDefeated();
     return false;
@@ -11023,7 +11246,7 @@ function stepFight(dt) {
     // Score/crush win conditions are checked before combat so a match that's
     // already decided doesn't run another frame of fighting first.
     if (isContinuousMode() && resolveContinuousMode()) return;
-    if (isCoopMode() && resolveCoopMode()) return;
+    if (isCoopMode() && resolveCoopMode(dt)) return;
     // Batch 18: Survival's between-wave breather. Ticked here (not in
     // onBossDefeated) so the countdown runs on real frames and the next
     // challenger arrives after the players have had a beat to reposition.
@@ -11251,6 +11474,8 @@ if (DEBUG) {
         LOOK_SPEED, PITCH_LIMIT, TURN_SPEED, MUZZLE_HEIGHT, PROJECTILE_CEILING,
         // Batch 19 game modes
         MATCH_MODES, ZONE_RADIUS, ZONE_TARGET, TIME_ATTACK_KOS, RESPAWN_INVULN,
+        COOP_RESPAWN_FRAMES, COOP_RESPAWN_HP_FRAC, coopDown, coopRevive,
+        coopOwnsRespawn, syncShopPanels, closeShopSide,
         setMatchMode, isContinuousMode, inZone, resolveContinuousMode, finishContinuousKO,
         // Batch 16 co-op
         isCoopMode, pickTarget, getExtraCombatTargets, isAlive,

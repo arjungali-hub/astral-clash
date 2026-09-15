@@ -56,6 +56,133 @@ def rep(hay, old, new, label, required=True):
     return hay.replace(old, new, 1)
 
 
+# The archived build's shop markup, before and after. Two panels, one per
+# player, each shown independently.
+SHOP_HTML_OLD = """        <div id="shop-screen">
+            <div class="menu-section shop-panel">
+                <h3 id="shop-title">Shop</h3>
+                <p class="shop-sub">Your own coins, unlocks and upgrades. Win a match to earn more.</p>
+                <div class="shop-head"><span class="coin-balance" id="shop-coin-balance">0</span></div>
+                <div id="shop-list"></div>
+                <button id="btn-shop-close" class="btn-back">\u2190 Back</button>
+            </div>
+        </div>"""
+
+SHOP_HTML_NEW = """        <!-- TWO stores, open independently. In split-screen both players are at
+             the same screen at the same time, so one player shopping cannot be
+             allowed to freeze the other out. -->
+        <div id="shop-screen">
+            <div class="menu-section shop-panel" id="shop-panel-p1" style="display:none;">
+                <h3 id="shop-title-p1">Player 1 \u2014 Shop</h3>
+                <p class="shop-sub">Your own coins, unlocks and upgrades. Win a match to earn more.</p>
+                <div class="shop-head"><span class="coin-balance" id="shop-coin-balance-p1">0</span></div>
+                <div id="shop-list-p1"></div>
+                <button class="btn-back" data-shop-close="p1">\u2190 Back</button>
+            </div>
+            <div class="menu-section shop-panel" id="shop-panel-p2" style="display:none;">
+                <h3 id="shop-title-p2">Player 2 \u2014 Shop</h3>
+                <p class="shop-sub">Your own coins, unlocks and upgrades. Win a match to earn more.</p>
+                <div class="shop-head"><span class="coin-balance" id="shop-coin-balance-p2">0</span></div>
+                <div id="shop-list-p2"></div>
+                <button class="btn-back" data-shop-close="p2">\u2190 Back</button>
+            </div>
+        </div>"""
+
+SHOP_CSS_OLD = """        #shop-screen {
+            display: none;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
+            align-items: center; justify-content: center; z-index: 30; padding: 20px;
+        }"""
+
+SHOP_CSS_NEW = """        #shop-screen {
+            display: none;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            /* NO scrim and NO pointer capture: the half of the screen this shop
+               is not on belongs to the other player, who is still picking a
+               fighter. Only the panels themselves take clicks. */
+            background: none;
+            pointer-events: none;
+            align-items: center; justify-content: space-between; z-index: 30; padding: 20px;
+        }
+        #shop-screen .shop-panel { pointer-events: auto; }
+        #shop-panel-p1 { margin-right: auto; }
+        #shop-panel-p2 { margin-left: auto; }"""
+
+SHOP_HELPERS = """function syncShopPanels() {
+    for (const s of SIDES) {
+        const el = document.getElementById('shop-panel-' + s);
+        if (el) el.style.display = shopOpen[s] ? '' : 'none';
+    }
+}
+
+function closeShopSide(side) {
+    shopOpen[side] = false;
+    syncShopPanels();
+    // The overlay itself only goes away once NEITHER store is open.
+    if (!shopOpen.p1 && !shopOpen.p2) closeModal();
+}
+
+"""
+
+OPEN_SHOP_OLD = """    const screen = document.getElementById('shop-screen');
+    if (screen) screen.className = `side-${shopSide}`;
+    const title = document.getElementById('shop-title');
+    if (title) title.textContent = `${shopSide === 'p1' ? 'Player 1' : 'Player 2'} \u2014 Shop`;
+    shopExpanded.clear(); // every visit starts collapsed; see buildShop
+    buildShop();"""
+
+OPEN_SHOP_NEW = """    shopOpen[shopSide] = true;
+    syncShopPanels();
+    shopExpanded[shopSide].clear(); // every visit starts collapsed; see buildShop
+    buildShop(shopSide);"""
+
+CLOSE_MODAL_OLD = """function closeModal() {
+    const name = modalStack.pop();
+    if (name) document.getElementById(MODAL_EL[name]).style.display = 'none';
+    return name;
+}"""
+
+CLOSE_MODAL_NEW = """function closeModal() {
+    const name = modalStack.pop();
+    if (name) document.getElementById(MODAL_EL[name]).style.display = 'none';
+    // Closing the shop overlay closes BOTH stores - otherwise the next open
+    // reveals a stale panel belonging to the other player.
+    if (name === 'shop' && typeof shopOpen !== 'undefined') {
+        shopOpen.p1 = false; shopOpen.p2 = false;
+        syncShopPanels();
+    }
+    return name;
+}"""
+
+# The wipe-ending body of resolveCoopMode, for the archived build.
+COOP_RESOLVE_BODY = """    if (!isCoopMode()) return false;
+
+    // Newly downed, both checked before the wipe test, so a double KO on one
+    // frame reads as a wipe rather than as one player going down and the other
+    // dying alone a frame later.
+    for (const f of [player1, player2]) {
+        if (f && !f.downed && f.hp <= 0) coopDown(f);
+    }
+
+    if (player1.downed && player2.downed) {
+        endCoopMatch(false, matchMode === 'survival'
+            ? `Both fighters fell on wave ${waveNumber + 1}.  <b>Waves cleared: ${waveNumber}</b>`
+            : 'Both fighters fell.');
+        return true;
+    }
+
+    for (const f of [player1, player2]) {
+        if (!f || !f.downed || !coopOwnsRespawn(f)) continue;
+        f.respawnTimer -= dt;
+        if (f.respawnTimer <= 0) coopRevive(f);
+    }
+"""
+
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
 def main():
     src = io.open(SRC, encoding='utf-8').read()
     dst = io.open(DST, encoding='utf-8').read()
@@ -432,6 +559,137 @@ def main():
                   "    attachPhotoSurface(floorMat, 'floor', theme.floorTex, floorTex.repeat.x, floorTex.repeat.y,\n"
                   "        shinyFloor ? { normalScale: 0.55, ao: 0.6 } : { normalScale: 1.0, ao: 0.9 });", 'floor photo surface', required=False)
 
+    # -------------------------------------------- co-op down and respawn
+    # "if one person dies, it shouldn't end. Instead, they should respawn after
+    # a while (20-30 seconds). If the person who is still alive dies before this
+    # happens, then the game ends." A rule, so both builds get it.
+    if 'COOP_RESPAWN_FRAMES' not in dst:
+        consts = block(src, "// Co-op: a KO puts you DOWN, not out.",
+                       "\n// Batch 18: Survival Waves pacing.", 'coop respawn constants')
+        dst = rep(dst, "// Batch 18: Survival Waves pacing.",
+                  consts + "// Batch 18: Survival Waves pacing.", 'coop respawn constants')
+        dst = rep(dst, "        this.invulnFrames = 0;\n        this.muzzleFlash = 0",
+                  "        this.invulnFrames = 0;\n"
+                  "        // Co-op only: down and counting, rather than dead.\n"
+                  "        this.downed = false;\n"
+                  "        this.respawnTimer = 0;\n"
+                  "        this.muzzleFlash = 0", 'downed fighter state')
+        dst = rep(dst, "    respawn(spawn) {\n        this.hp = this.maxHp;\n        this.hpGhost = this.maxHp;",
+                  "    respawn(spawn, hpFrac) {\n"
+                  "        this.hp = this.maxHp * (hpFrac === undefined ? 1 : hpFrac);\n"
+                  "        this.hpGhost = this.hp;\n"
+                  "        this.downed = false;\n"
+                  "        this.respawnTimer = 0;", 'respawn fraction')
+        dst = rep(dst, "        if (this.isBot) {\n            const decision = this.botDecide(target, dt);",
+                  "        if (this.downed) {\n"
+                  "            // Down in co-op: no input, no AI, no actions - but the rest of\n"
+                  "            // update() still runs, so gravity settles the body and the Death\n"
+                  "            // clip plays. Gating here rather than returning early is what\n"
+                  "            // keeps a downed fighter from hanging in mid-air.\n"
+                  "        } else if (this.isBot) {\n            const decision = this.botDecide(target, dt);",
+                  'downed input gate')
+        dst = rep(dst, "        if (this.invulnFrames > 0) return;",
+                  "        if (this.invulnFrames > 0) return;\n"
+                  "        // A downed co-op teammate is out of the fight, not a shield.\n"
+                  "        if (this.downed) return;", 'downed takes no damage')
+        # The legacy-side lifecycle, as real JavaScript in its own file.
+        coop_js = io.open(os.path.join(HERE, 'legacy_coop_respawn.js'), encoding='utf-8').read()
+        dst = rep(dst, "function resolveCoopMode() {",
+                  coop_js + "\nfunction resolveCoopMode(dt) {", 'coop respawn lifecycle')
+        # ...and its body: the either-down ending becomes a WIPE ending.
+        old_end = block(dst, "    if (!isCoopMode()) return false;\n    if (!isAlive(player1) || !isAlive(player2)) {",
+                        "\n    // Batch 23: the wave is cleared when EVERY enemy is down", 'coop end block')
+        dst = dst.replace(old_end, COOP_RESOLVE_BODY, 1)
+        dst = rep(dst, "resolveCoopMode())", "resolveCoopMode(dt))", 'coop resolve call')
+        dst = rep(dst, "        let healed = 0;\n        for (const p of [player1, player2]) {\n            const before = p.hp;",
+                  "        let healed = 0;\n        for (const p of [player1, player2]) {\n"
+                  "            // A downed teammate is NOT healed by the wave clear: hp above 0\n"
+                  "            // with `downed` still set is a fighter stuck on the floor for the\n"
+                  "            // rest of the run.\n"
+                  "            if (p.downed) continue;\n            const before = p.hp;",
+                  'wave heal skips the downed')
+        dst = rep(dst, "    if (coopEnemies.length) drawBossHUD();",
+                  "    if (isCoopMode()) drawCoopDownHUD();\n"
+                  "    if (coopEnemies.length) drawBossHUD();", 'coop down HUD')
+        # ...and the debug handles, so legacyshopcheck can assert the rule
+        # arrived rather than assuming the port worked.
+        dst = rep(dst, "        MATCH_MODES, ZONE_RADIUS, ZONE_TARGET, TIME_ATTACK_KOS, RESPAWN_INVULN,",
+                  "        MATCH_MODES, ZONE_RADIUS, ZONE_TARGET, TIME_ATTACK_KOS, RESPAWN_INVULN,\n"
+                  "        COOP_RESPAWN_FRAMES, COOP_RESPAWN_HP_FRAC, coopDown, coopRevive,\n"
+                  "        coopOwnsRespawn, syncShopPanels, closeShopSide,",
+                  'coop respawn debug handles')
+
+    # ------------------------------------------------ the shop, on both sides
+    # One panel covered the whole screen behind an opaque scrim, so whichever
+    # player did not open it could do nothing at all - not pick a fighter, not
+    # open their own store. Two independent panels instead, one per half, and no
+    # scrim: the overlay passes clicks through everywhere except the panels.
+    if 'shop-panel-p1' not in dst:
+        dst = rep(dst, SHOP_HTML_OLD, SHOP_HTML_NEW, 'two shop panels')
+        dst = rep(dst, SHOP_CSS_OLD, SHOP_CSS_NEW, 'shop overlay is click-through')
+        dst = rep(dst, "function buildShop() {\n"
+                       "    const list = document.getElementById('shop-list');\n"
+                       "    if (!list) return;\n"
+                       "    const side = shopSide;",
+                  "function buildShop(only) {\n"
+                  "    // No argument: rebuild BOTH stores, which is what every purchase\n"
+                  "    // wants. openShop passes the one side it just opened.\n"
+                  "    if (!only) { for (const s of SIDES) buildShop(s); return; }\n"
+                  "    const side = only;\n"
+                  "    const list = document.getElementById('shop-list-' + side);\n"
+                  "    if (!list) return;", 'buildShop per side')
+        dst = dst.replace("shopExpanded.has(c.name)", "shopExpanded[side].has(c.name)")
+        dst = dst.replace("shopExpanded.delete(c.name); else shopExpanded.add(c.name);",
+                          "shopExpanded[side].delete(c.name); else shopExpanded[side].add(c.name);")
+        dst = rep(dst, "const shopExpanded = new Set();",
+                  "const shopExpanded = { p1: new Set(), p2: new Set() };\n"
+                  "// Which stores are open right now. BOTH may be: see syncShopPanels.\n"
+                  "const shopOpen = { p1: false, p2: false };", 'per-side shop state')
+        dst = rep(dst, "    const shopEl = document.getElementById('shop-coin-balance');",
+                  "    for (const s of SIDES) {\n"
+                  "        const el2 = document.getElementById('shop-coin-balance-' + s);\n"
+                  "        if (el2) el2.textContent = String(prog(s).coins);\n"
+                  "    }\n"
+                  "    const shopEl = null;", 'both shop balances')
+        dst = rep(dst, "function openShop(side) {\n    if (side) shopSide = side;",
+                  SHOP_HELPERS + "function openShop(side) {\n    if (side) shopSide = side;",
+                  'shop panel helpers')
+        dst = rep(dst, OPEN_SHOP_OLD, OPEN_SHOP_NEW, 'openShop opens one side')
+        dst = rep(dst, "document.getElementById('btn-shop-close').addEventListener('click', () => closeModal());",
+                  "document.querySelectorAll('[data-shop-close]').forEach(b =>\n"
+                  "    b.addEventListener('click', () => closeShopSide(b.dataset.shopClose)));",
+                  'per-side close buttons')
+        dst = rep(dst, CLOSE_MODAL_OLD, CLOSE_MODAL_NEW, 'closeModal clears both stores')
+
+    # ------------------------------------------------------- the canonical URL
+    # Land on /local even if someone arrives at the file path. A page-level
+    # redirect rather than a Vercel one: /local is a REWRITE to this same path,
+    # and a redirect on a rewrite's destination risks the loop that would take
+    # /local down again.
+    if 'CANONICAL_PATH' not in dst:
+        # Anchored on the first script's own opening comment: "<script>" alone
+        # appears three times here (CDN loader, vendored fallback, the game).
+        dst = rep(dst, "<script>\n// Three.js is the only external dependency", """<script>
+// The shareable address for this build is /local. Anyone who arrives at the
+// file path gets moved there, so links, bookmarks and the browser's own history
+// all say the same thing.
+//
+// Deliberately NOT a Vercel redirect: /local is a rewrite TO this path, and a
+// redirect sitting on a rewrite destination is how you get a loop - which would
+// break the one URL this is meant to tidy up.
+// ...and only where /local is actually SERVED. The pretty path is a Vercel
+// rewrite, so it does not exist over file:// or on the test server's plain
+// static host - redirecting there would turn a working page into a 404, which
+// is a far worse bug than an ugly URL.
+const CANONICAL_PATH = '/local';
+if (location.protocol === 'https:'
+    && !/^(localhost|127\\.|\\[::1\\])/.test(location.hostname)
+    && location.pathname !== CANONICAL_PATH
+    && /local-splitscreen(\\.html)?$/.test(location.pathname)) {
+    location.replace(CANONICAL_PATH + location.search + location.hash);
+}
+// Three.js is the only external dependency""", 'canonical /local redirect')
+
     # ---------------------------------------------------- lighting + leaks
     fit = block(src, "// Batch 34: re-fit the sun's shadow frustum to wherever the sun actually is.",
                 "// Recolor/re-aim the daylight for a map's theme", 'shadow fit')
@@ -485,10 +743,17 @@ def main():
         'function fitKeyShadow(', 'const HUD_FAMILY', 'function announceFont(',
         'const RIG_HEIGHT_MULT', 'function rigHeightFor(',
         'const derivedTextureCache',
+        # Co-op down and respawn, the two-sided shop, the canonical URL.
+        'const COOP_RESPAWN_FRAMES', 'function coopDown(', 'function coopRevive(',
+        'function drawCoopDownHUD(', 'function resolveCoopMode(dt)',
+        'id="shop-panel-p1"', 'id="shop-panel-p2"', 'function closeShopSide(',
+        'function syncShopPanels(', "const CANONICAL_PATH = '/local';",
     ]
     CALLED = ['getTiledWallTexture', 'attachPhotoSurface', 'attachAccentGlow',
               'ensureUV2', 'fitKeyShadow', 'announceFont', 'rigHeightFor',
-              'loadPhotoSet', 'tiledPhotoTexture', 'accentEmissiveTexture']
+              'loadPhotoSet', 'tiledPhotoTexture', 'accentEmissiveTexture',
+              'coopDown', 'coopRevive', 'drawCoopDownHUD', 'syncShopPanels',
+              'closeShopSide']
     missing = [d for d in REQUIRED if d not in dst]
     undefined = [c for c in CALLED
                  if ('function %s(' % c) not in dst and ('const %s' % c) not in dst]

@@ -554,7 +554,16 @@
            but left it inheriting the base button's line-height, so it still
            stood taller than the room-code field beside it. Pinned to the same
            height as that input and centred on it. */
-        .menu-section .lobby-copy {
+        /* Batch 43: AND IT WAS STILL TALL, reported a third time - because this
+           rule was scoped to `.menu-section` and the room bar is not inside
+           one. #btn-room-copy therefore never matched it and kept the base
+           button style: 14px padding, 1.08rem, filled cyan. Two rounds of
+           "make it smaller" edited a rule that did not apply to the button in
+           the screenshot.
+           Unscoped now, so both copy buttons get it, and onlineuxcheck measures
+           BOTH - nothing had ever measured either, which is how a cosmetic fix
+           shipped twice without landing. */
+        .lobby-copy {
             width: auto; margin: 0; padding: 0 10px; font-size: 0.62rem; font-weight: bold;
             letter-spacing: 0.04em; line-height: 1;
             height: 26px; min-height: 0;
@@ -564,7 +573,7 @@
         }
         /* ...and the field it sits beside, so the two line up exactly. */
         .room-code-text, #lobby-code { height: 26px; box-sizing: border-box; padding: 0 7px; }
-        .menu-section .lobby-copy:hover { background: rgba(74, 222, 128, 0.14); box-shadow: none; }
+        .lobby-copy:hover { background: rgba(74, 222, 128, 0.14); box-shadow: none; }
         /* Batch 32: the online entry point sits with the branding, beside the
            mode selector - which mode you play and who you play it against are
            the same class of pre-match decision. */
@@ -2078,6 +2087,23 @@ const TIME_ATTACK_KOS = 3;
 let koTally = { p1: 0, p2: 0 };
 const RESPAWN_INVULN = 60; // frames of i-frames after respawning, so you can't be spawn-camped
 
+// Co-op: a KO puts you DOWN, not out. The survivor fights alone until you are
+// back, and the run only ends if they go down while you are still on the floor.
+//
+// 25 seconds is long enough to be a real loss - a boss with no one on it heals
+// nothing, but it hits the one player who is left twice as often - and short
+// enough that being downed is not just watching.
+//
+// FULL health on return, by request. The first pass returned you at half, on
+// the reasoning that a chain of deaths should get more expensive; the 25-second
+// wait is the cost instead, and it is a co-op mode - the fight it puts you back
+// into is the one your teammate has been holding alone, which is not the place
+// for a half-empty bar. The constant stays rather than being inlined: it is
+// what respawn()'s hpFrac argument exists for, and the number is the kind of
+// thing that gets retuned.
+const COOP_RESPAWN_FRAMES = 25 * 60;
+const COOP_RESPAWN_HP_FRAC = 1.0;
+
 // Batch 18: Survival Waves pacing. A short breather between waves so a cleared
 // wave feels like an accomplishment and you get a moment to reposition, rather
 // than the next challenger materialising on top of you mid-swing.
@@ -2110,18 +2136,43 @@ const shopExpanded = new Set();
 // have to read the override. Persisted under its OWN key, never inside
 // `progression` — that's what makes toggling it off restore the real save
 // exactly, since nothing ever writes into `progression` while it's on.
-let debugUnlockAll = safeLSGet('astralClashDebugUnlockAll') === '1';
+// THE KEY IS PER BUILD, and that is the fix for a real report: "I have
+// everything unlocked in the online version. This might be a result of me
+// playing in the sandbox version in local".
+//
+// It was. Both builds are served from the same origin, so they share
+// localStorage - which is deliberate for PROGRESSION (your coins and unlocks
+// should follow you between the two) and wrong for the sandbox override. The
+// archived build still offers the unlock-everything toggle; this one dropped it
+// in Batch 34. So flipping it there unlocked the online build too, and there
+// was no longer any UI here to flip it back: a one-way trapdoor into a
+// permanently unlocked online game.
+//
+// Scoping the key fixes it in both directions and needs no migration - the old
+// unscoped key simply stops being read here, so an online build that is
+// currently unlocked goes back to the real save on its next load.
+const SANDBOX_KEY = 'astralClashDebugUnlockAll:online';
+let debugUnlockAll = safeLSGet(SANDBOX_KEY) === '1';
+
+// ...AND IT IS IGNORED WHILE ONLINE, whatever the key says.
+//
+// The override returns MAX_UPGRADE_LEVEL for every stat, so a sandbox player in
+// a netgame is not just unlocked, they are flatly stronger than an opponent who
+// earned their upgrades - and nothing on the wire would reveal it, because
+// picks are synced by NAME. An override meant for trying things out locally has
+// no business deciding a match against another person.
+function sandboxActive() { return debugUnlockAll && !netActive(); }
 
 // THE accessors. Gameplay and UI both go through these rather than reading
 // `progression` directly, so there's exactly one place the debug override
 // has to be honored — and exactly one place that knows a side owns its stuff.
-function isCharUnlocked(side, name) { return debugUnlockAll || prog(side).unlockedChars.includes(name); }
+function isCharUnlocked(side, name) { return sandboxActive() || prog(side).unlockedChars.includes(name); }
 function upgradeLevel(side, name, trait) {
-    if (debugUnlockAll) return MAX_UPGRADE_LEVEL;
+    if (sandboxActive()) return MAX_UPGRADE_LEVEL;
     const u = prog(side).upgrades[name];
     return (u && u[trait]) || 0;
 }
-function isDoubleJumpUnlocked(side) { return debugUnlockAll || !!prog(side).doubleJumpUnlocked; }
+function isDoubleJumpUnlocked(side) { return sandboxActive() || !!prog(side).doubleJumpUnlocked; }
 // Multiplier a given character's base stat is scaled by, from that side's upgrades.
 function upgradeMult(side, name, trait) { return 1 + UPGRADE_STAT_BONUS * upgradeLevel(side, name, trait); }
 function unlockedCharNames(side) { return CHARACTERS.filter(c => isCharUnlocked(side, c.name)).map(c => c.name); }
@@ -2134,7 +2185,7 @@ function addCoins(side, n) {
     // unlocked there, and since the override deliberately doesn't touch the
     // real save, letting it *pay into* that save would turn the sandbox into a
     // farming shortcut for the progression it exists to bypass.
-    if (debugUnlockAll) return;
+    if (sandboxActive()) return;
     prog(side).coins = Math.max(0, prog(side).coins + n);
     saveProgression();
     refreshCoinDisplays();
@@ -2204,7 +2255,7 @@ function showToast(text) {
 }
 function setDebugUnlockAll(on) {
     debugUnlockAll = !!on;
-    safeLSSet('astralClashDebugUnlockAll', debugUnlockAll ? '1' : '0');
+    safeLSSet(SANDBOX_KEY, debugUnlockAll ? '1' : '0');
     // Everything gated on the accessors has to re-read them now.
     refreshGridLocks();
     refreshCoinDisplays();
@@ -5853,6 +5904,9 @@ class Fighter {
         this.shieldReduction = 0.5;
         this.shieldColor = 0xfacc15; // Batch 8: tint applied whenever a shield is granted (currently only Seraphine's Astral Ward special)
         this.invulnFrames = 0;
+        // Co-op only: down and counting, rather than dead. See resolveCoopMode.
+        this.downed = false;
+        this.respawnTimer = 0;
         this.muzzleFlash = 0; // frames left on the viewmodel muzzle flash after firing
         this.projectiles = [];
         this.effects = [];
@@ -6032,9 +6086,15 @@ class Fighter {
     // cleared — leaving stale hitstun, a burn tick, an in-flight action or old
     // projectiles attached to a "fresh" fighter is exactly the kind of thing
     // that produces a fighter who respawns already staggered or on fire.
-    respawn(spawn) {
-        this.hp = this.maxHp;
-        this.hpGhost = this.maxHp;
+    respawn(spawn, hpFrac) {
+        // hpFrac defaults to a full bar, because that is what a Zone Control
+        // or Takedown Race respawn has always been: there, a KO already cost
+        // the round or a point. Co-op passes a fraction instead - see
+        // COOP_RESPAWN_HP_FRAC.
+        this.hp = this.maxHp * (hpFrac === undefined ? 1 : hpFrac);
+        this.hpGhost = this.hp;
+        this.downed = false;
+        this.respawnTimer = 0;
         this.x = spawn.x; this.y = spawn.y;
         this.z = groundLevelAt(spawn.x + this.width / 2, spawn.y + this.height / 2);
         this.vx = this.vy = this.vz = 0;
@@ -6285,7 +6345,13 @@ class Fighter {
         // Outside co-op pickTarget returns `opponent` untouched.
         const target = pickTarget(this, opponent);
 
-        if (this.isBot) {
+        if (this.downed) {
+            // Down in co-op: no input, no AI, no actions - but the rest of
+            // update() still runs, so gravity settles the body, the Death clip
+            // plays and the feedback FX keep ticking. Gating here rather than
+            // returning early is what keeps a downed fighter from hanging in
+            // mid-air where it was knocked out.
+        } else if (this.isBot) {
             const decision = this.botDecide(target, dt);
             moveX = decision.moveX; moveY = decision.moveY; jumpPressed = decision.jumpPressed;
         } else if (isLocalSide(sideOf(this))) {
@@ -6608,6 +6674,11 @@ class Fighter {
 
     takeDamage(amount, attacker, dir, fromNet) {
         if (this.invulnFrames > 0) return;   // a dodge beats an incoming hit, including a networked one
+        // A downed co-op teammate is out of the fight, not a shield. Without
+        // this the boss keeps swinging at the body (pickTarget falls back to
+        // its given opponent when nobody is alive), which both flashes hit FX
+        // on a corpse and lets it soak hits aimed at the player still up.
+        if (this.downed) return;
         // --- Batch 32: damage authority. ---------------------------------
         // Hits are ATTACKER-authoritative: whoever threw the swing decides on
         // their own machine whether it landed, and tells the victim. Without
@@ -10891,6 +10962,11 @@ function netApplyState(msg) {
     }
     if (typeof msg.meter === 'number') f.specialMeter = msg.meter;
     f.grounded = !!msg.g;
+    // Their respawn clock, display-only: they own it (see coopOwnsRespawn).
+    if (msg.dn !== undefined) {
+        f.downed = msg.dn > 0;
+        f.respawnTimer = msg.dn > 0 ? msg.dn : 0;
+    }
 }
 
 // Eases the puppet toward the last received state. Called every frame, after
@@ -11075,6 +11151,10 @@ function netTick(now) {
         pitch: Math.round((f.pitch || 0) * 1000) / 1000,
         hp: Math.round(f.hp), meter: Math.round(f.specialMeter),
         g: !!f.grounded,
+        // Co-op: frames until this fighter is back, 0 when up. Sent rather
+        // than inferred from hp, because hp 0 is also what a fighter looks
+        // like in the instant before their own client has downed them.
+        dn: f.downed ? Math.max(1, Math.round(f.respawnTimer)) : 0,
     });
 }
 
@@ -12070,6 +12150,29 @@ function drawWaveBreakHUD() {
     hudCtx.textAlign = 'left';
 }
 
+// The respawn clock, for both players: the one on the floor needs to know how
+// long, and the one still standing needs to know how long they are alone.
+function drawCoopDownHUD() {
+    const down = [player1, player2].filter(f => f && f.downed);
+    if (!down.length) return;
+    const mine = down.find(f => coopOwnsRespawn(f) && (!netActive() || f === localFighter()));
+    hudCtx.textAlign = 'center';
+    let y = coopEnemies.length ? 196 : 150;
+    for (const f of down) {
+        const secs = Math.max(1, Math.ceil(f.respawnTimer / 60));
+        hudCtx.font = hudFont(17, true);
+        hudCtx.fillStyle = f === mine ? '#fca5a5' : '#fbbf24';
+        hudCtx.fillText(f === mine ? `You are down — back in ${secs}s`
+                                   : `${f.name} is down — back in ${secs}s`,
+                        VIRTUAL_W / 2, y);
+        y += 22;
+    }
+    hudCtx.font = hudFont(12);
+    hudCtx.fillStyle = '#94a3b8';
+    hudCtx.fillText('If the last fighter standing falls, the run is over.', VIRTUAL_W / 2, y);
+    hudCtx.textAlign = 'left';
+}
+
 function drawRoundStatus() {
     hudCtx.textAlign = "center";
     hudCtx.font = hudFont(14, true);
@@ -12293,6 +12396,7 @@ function drawHUD() {
     // side panels leave free in both split and full-screen layouts.
     if (coopEnemies.length) drawBossHUD();
     else if (matchMode === 'survival' && waveBreakTimer > 0) drawWaveBreakHUD();
+    if (isCoopMode()) drawCoopDownHUD();
 
     const botNote = [player1.isBot ? 'P1 Bot' : null, player2.isBot ? 'P2 Bot' : null].filter(Boolean).join(' / ');
     const drawShared = () => {
@@ -12478,7 +12582,7 @@ function endMatch() {
         addCoins('p1', earnedP1);
         addCoins('p2', earnedP2);
     }
-    const coinLine = debugUnlockAll
+    const coinLine = sandboxActive()
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} coins &nbsp;·&nbsp; P2 +${earnedP2} coins</div>`;
     document.getElementById('match-summary').innerHTML =
@@ -12551,7 +12655,7 @@ function endCoopMatch(won, detail) {
     else { addCoins('p1', earned); addCoins('p2', earned); }
 
     const s1 = matchStats.p1, s2 = matchStats.p2;
-    const coinLine = debugUnlockAll
+    const coinLine = sandboxActive()
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">Each player +${earned} coins</div>`;
     document.getElementById('match-summary').innerHTML =
@@ -12730,6 +12834,12 @@ function onBossDefeated() {
         // phantom missing chunk.
         let healed = 0;
         for (const p of [player1, player2]) {
+            // A downed teammate is NOT healed by the wave clear. Topping up
+            // their hp while `downed` is still set would leave them alive on
+            // the health bar, unable to act, and past the hp <= 0 test that
+            // would otherwise put them down again - stuck on the floor for the
+            // rest of the run. Their way back is the respawn clock.
+            if (p.downed) continue;
             const before = p.hp;
             p.hp = Math.min(p.maxHp, p.hp + p.maxHp * WAVE_HEAL_PCT);
             p.hpGhost = p.hp;
@@ -12749,22 +12859,68 @@ function onBossDefeated() {
     return true;
 }
 
-// Co-op win/loss, checked every FIGHT frame. Deliberate scope cut: if EITHER
-// player goes down the run ends. A "downed but revivable" teammate mechanic
-// would need a new player-facing sub-state (spectating, revive timers, a revive
-// interaction) that doesn't exist anywhere in this file, which is a bigger
-// feature than the boss itself — flagged rather than half-built.
-function resolveCoopMode() {
+// Who is allowed to run a fighter's respawn clock. The same rule as every
+// other piece of fighter state: each client owns its own, so two machines can
+// never disagree about whether you are back yet. The countdown the other side
+// SEES arrives on the wire (STATE.dn) and is display-only.
+function coopOwnsRespawn(f) { return !netActive() || isLocalSide(sideOf(f)); }
+
+// A KO in co-op. Everything in flight is dropped for the same reason respawn()
+// drops it: a body that comes back already on fire or mid-swing is the classic
+// shape of this bug.
+function coopDown(f) {
+    f.downed = true;
+    f.respawnTimer = COOP_RESPAWN_FRAMES;
+    f.hp = 0;
+    f.vx = f.vy = 0;
+    f.atkState = 'idle'; f.atkStateTimer = 0; f.atkKind = null; f.atkOpponent = null;
+    f.hitstunTimer = 0; f.rootedFrames = 0;
+    f.burnFrames = 0; f.burnDps = 0;
+    f.shieldFrames = 0;
+    f.projectiles.forEach(p => removeAndDispose(p.mesh));
+    f.projectiles.length = 0;
+    f.queue.length = 0;
+}
+
+function coopRevive(f) {
+    // Back at your own spawn, not next to your teammate. Dropping a
+    // half-health fighter into the middle of the fight they just lost is a
+    // second death, and the walk back is the rest of the cost of the first.
+    f.respawn(f === player1 ? matchMap.spawn1 : matchMap.spawn2, COOP_RESPAWN_HP_FRAC);
+    sfxRoundStart();
+}
+
+// Co-op win/loss, checked every FIGHT frame.
+//
+// Batch 16 ended the run the moment EITHER player hit 0, and its comment here
+// said why: a revivable teammate needed a sub-state the file did not have.
+// It does now - the continuous modes brought respawn() and a KO that is a
+// setback - so a downed player counts down instead, and only a WIPE ends it.
+function resolveCoopMode(dt) {
     if (!isCoopMode()) return false;
-    if (!isAlive(player1) || !isAlive(player2)) {
-        const fallen = !isAlive(player1) ? player1.name : player2.name;
+
+    // Newly downed. Checked for both fighters before the wipe test below, so a
+    // double KO on the same frame reads as a wipe rather than as one player
+    // going down and the other dying alone a frame later.
+    for (const f of [player1, player2]) {
+        if (f && !f.downed && f.hp <= 0) coopDown(f);
+    }
+
+    if (player1.downed && player2.downed) {
         endCoopMatch(false, matchMode === 'survival'
-            ? `${fallen} fell on wave ${waveNumber + 1}.  <b>Waves cleared: ${waveNumber}</b>`
-            : `${fallen} fell. ${(() => {
+            ? `Both fighters fell on wave ${waveNumber + 1}.  <b>Waves cleared: ${waveNumber}</b>`
+            : `Both fighters fell. ${(() => {
                 const b = liveEnemies()[0];
                 return b ? `${b.name} had ${Math.max(0, Math.ceil(b.hp))} HP (${Math.round(100 * b.hp / b.maxHp)}%) left.` : '';
             })()}`);
         return true;
+    }
+
+    // The clock. Only the owner runs it; the other client is told.
+    for (const f of [player1, player2]) {
+        if (!f || !f.downed || !coopOwnsRespawn(f)) continue;
+        f.respawnTimer -= dt;
+        if (f.respawnTimer <= 0) coopRevive(f);
     }
     // Batch 23: the wave is cleared when EVERY enemy is down, not just one.
     // Wave/boss transitions are the host's call. The guest finding out by
@@ -12782,7 +12938,7 @@ function stepFight(dt) {
     // Score/crush win conditions are checked before combat so a match that's
     // already decided doesn't run another frame of fighting first.
     if (isContinuousMode() && resolveContinuousMode()) return;
-    if (isCoopMode() && resolveCoopMode()) return;
+    if (isCoopMode() && resolveCoopMode(dt)) return;
     // Batch 18: Survival's between-wave breather. Ticked here (not in
     // onBossDefeated) so the countdown runs on real frames and the next
     // challenger arrives after the players have had a beat to reposition.
@@ -13009,6 +13165,7 @@ if (DEBUG) {
     window.ACDebug = {
         get progression() { return progression; },
         get debugUnlockAll() { return debugUnlockAll; },
+        sandboxActive, SANDBOX_KEY,
         get gameState() { return gameState; },
         get player1() { return player1; },
         get player2() { return player2; },
@@ -13021,6 +13178,9 @@ if (DEBUG) {
         LOOK_SPEED, PITCH_LIMIT, TURN_SPEED, MUZZLE_HEIGHT, PROJECTILE_CEILING,
         // Batch 19 game modes
         MATCH_MODES, ZONE_RADIUS, ZONE_TARGET, TIME_ATTACK_KOS, RESPAWN_INVULN,
+        COOP_RESPAWN_FRAMES, COOP_RESPAWN_HP_FRAC, coopDown, coopRevive,
+        coopOwnsRespawn, onBossDefeated, startMatch,
+        get coopResultText() { return coopResultText; },
         setMatchMode, isContinuousMode, inZone, resolveContinuousMode, finishContinuousKO,
         // Batch 38: the retimed collapse, the per-mode zone clear, the step
         // threshold and the live geometry arrays - all asserted by batch38check.

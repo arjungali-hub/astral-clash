@@ -377,5 +377,96 @@ const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
     check('and it says why, with the lobby open to try again',
         lost.lobbyVisible && /disconnect/i.test(lost.status), JSON.stringify(lost));
 
+    // ------------------------------------------------- the copy buttons
+    // Reported THREE times as "the copy button is still too tall". Nothing had
+    // ever measured it, and the rule that was being edited was scoped to
+    // `.menu-section` - which the room bar is not inside - so #btn-room-copy
+    // kept the base button style through two rounds of shrinking it. Both
+    // buttons are measured here, against the field each one sits beside.
+    section('The copy buttons are chips, not primary actions:');
+    // Measured one at a time, each with its OWN container actually on screen:
+    // the room bar lives on the select screen and the code row lives inside the
+    // lobby modal, so a single pass always has one of them at 0x0 - and a
+    // zero-height element passes "not too tall" while measuring nothing.
+    const roomBar = await page.evaluate(() => {
+        const D = window.ACDebug;
+        D.goHome();
+        D.enterRoom();
+        // The chip is hidden until you are hosting; show it to measure it.
+        document.getElementById('room-code-chip').style.display = 'flex';
+        const box = id => {
+            const el = document.getElementById(id);
+            const r = el.getBoundingClientRect();
+            return { h: Math.round(r.height), w: Math.round(r.width) };
+        };
+        return { btn: box('btn-room-copy'), field: box('room-code-text') };
+    });
+    const lobby = await page.evaluate(() => {
+        const D = window.ACDebug;
+        D.goHome();
+        document.getElementById('btn-home-play').click();
+        // Same again: the code row only appears once you have hosted.
+        document.getElementById('lobby-code-row').style.display = 'flex';
+        const box = id => {
+            const el = document.getElementById(id);
+            const r = el.getBoundingClientRect();
+            return { h: Math.round(r.height), w: Math.round(r.width) };
+        };
+        return { btn: box('btn-copy-code'), field: box('lobby-code') };
+    });
+    const copy = { roomCopy: roomBar.btn, roomField: roomBar.field,
+                   lobbyCopy: lobby.btn, lobbyField: lobby.field };
+
+    for (const [label, btn, field] of [
+        ['room bar', copy.roomCopy, copy.roomField],
+        ['lobby', copy.lobbyCopy, copy.lobbyField],
+    ]) {
+        check(`the ${label} copy button is no taller than 28px`,
+            !!btn && btn.h > 0 && btn.h <= 28, JSON.stringify(btn));
+        check(`and no taller than the ${label} code field beside it`,
+            !!btn && !!field && btn.h <= field.h + 1, JSON.stringify({ btn, field }));
+    }
+
+    // ------------------------------------- the sandbox cannot reach online
+    // Reported as "I have everything unlocked in the online version. This might
+    // be a result of me playing in the sandbox version in local" - it was: one
+    // localStorage key, one origin, two builds, and no toggle left in this one
+    // to turn it back off.
+    section('The unlock-everything sandbox does not leak in from the local build:');
+    const leak = await page.evaluate(() => {
+        const D = window.ACDebug;
+        const locked = () => {
+            // Anything not in the starter set: unlocked only by buying it.
+            const name = D.CHARACTERS.map(c => c.name)
+                .find(n => !D.STARTER_CHARS.includes(n));
+            return { name, unlocked: D.isCharUnlocked('p1', name),
+                     upgrades: D.upgradeLevel('p1', name, 'dmg') };
+        };
+        D.setDebugUnlockAll(false);
+        // The ARCHIVED build's key, which is what playing the local sandbox sets.
+        localStorage.setItem('astralClashDebugUnlockAll', '1');
+        const fromLegacyKey = locked();
+        // This build's own key, offline: the sandbox still works where it is meant to.
+        localStorage.setItem(D.SANDBOX_KEY, '1');
+        D.setDebugUnlockAll(true);
+        const offline = locked();
+        // ...and is ignored the moment there is an opponent.
+        D.netFakeConnect('host');
+        const online = Object.assign(locked(), { sandbox: D.sandboxActive() });
+        D.netTeardown();
+        D.setDebugUnlockAll(false);
+        localStorage.removeItem('astralClashDebugUnlockAll');
+        return { fromLegacyKey, offline, online };
+    });
+    check("the local build's key does not unlock this one",
+        leak.fromLegacyKey.unlocked === false && leak.fromLegacyKey.upgrades === 0,
+        JSON.stringify(leak.fromLegacyKey));
+    check('the sandbox still works offline, where it belongs',
+        leak.offline.unlocked === true && leak.offline.upgrades > 0,
+        JSON.stringify(leak.offline));
+    check('and is ignored in a netgame - max upgrades vs an earned save is not a match',
+        leak.online.unlocked === false && leak.online.upgrades === 0
+        && leak.online.sandbox === false, JSON.stringify(leak.online));
+
     await finish(b, page);
 })();

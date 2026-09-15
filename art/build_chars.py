@@ -83,22 +83,47 @@ def pending():
     return out
 
 
-def build_all(limit=None):
+def all_names():
+    """Every character with a raw model, built or not."""
+    return [os.path.splitext(os.path.basename(p))[0]
+            for p in sorted(glob.glob(os.path.join(RAW, "*.glb")))]
+
+
+LOG = os.path.join(RAW, "_build_log.txt")
+
+
+def build_all(limit=None, force=False):
     """Processes every pending character. Returns a list of report lines.
+
+    `force` rebuilds characters that already have an export. pending() asks
+    "what has never been built", which is right while the roster is being
+    filled in one at a time and wrong whenever the PIPELINE itself changes -
+    a new rig or a new rest pose applies to all of them, and pending() then
+    reports nothing to do.
 
     One failure does not stop the run - a roster is worth more partially
     converted than not at all, and a character with no exported GLB simply
     falls back to its procedural mesh in-game (see buildRiggedCharacter).
+
+    Each result is appended to art/raw/_build_log.txt as it lands: a full run
+    outlives the MCP bridge's patience ("No data received"), and the log is
+    then the only record of how far it got.
     """
-    todo = pending()
+    todo = all_names() if force else pending()
     if limit:
         todo = todo[:limit]
     lines = []
     for n in todo:
         try:
-            lines.append(n + " OK " + build_one(n))
+            line = n + " OK " + build_one(n)
         except Exception as e:
-            lines.append("%s FAILED %s" % (n, str(e)[:200]))
+            line = "%s FAILED %s" % (n, str(e)[:200])
+        lines.append(line)
+        try:
+            with open(LOG, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+        except Exception:
+            pass
     return "\n".join(lines)
 
 
