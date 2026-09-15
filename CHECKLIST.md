@@ -1535,21 +1535,96 @@ whatever is present, so it reached the game unnoticed.
 
 ---
 
+## Batch 42 - Co-op online, and two art fixes (one of which had to be reverted)
+
+### The co-op modes work online, because something finally owns the enemies
+
+Batch 34 excluded Boss Fight and Survival Waves from online play with a real
+reason: their enemies are AI-driven, the AI was not part of the netcode, and two
+clients each stepping their own boss with their own `dt` diverge on the first
+frame and then disagree about position, hp and whether a wave is clear. The
+reason was sound. The conclusion — leave them out — was only correct while
+nothing owned the enemies.
+
+**The host owns them now.** It simulates every co-op enemy and broadcasts the
+result; the guest never runs enemy AI at all. That is the same authority model
+the rest of the netcode already uses, applied to a third party instead of a
+second one. Three messages, matching the three things a guest cannot work out
+for itself:
+
+- **`COOP_SPAWN`** — names, hitbox sizes and scaled hp for a whole wave. Needed
+  because Survival picks its creatures randomly, so two independent rolls would
+  produce two different fights.
+- **`COOP_STATE`** — every enemy's position, facing and hp at `NET_SEND_HZ`,
+  sent on the same tick as the host's own fighter state so the two never end up
+  a frame out of step. Position is written straight in rather than eased: the
+  lerp the opponent fighter uses exists for a 30Hz humanoid that dashes, and a
+  boss does not. hp snaps, because a health bar that eases lies about how close
+  something is to dying — and the boss bar is the tension of the fight.
+- **`HIT_ENEMY`** — the guest's attack connected. Attacker-authoritative,
+  exactly like the existing `HIT`, and applied locally too so the swing you just
+  landed shows damage immediately rather than a frame late.
+
+**A real bug this exposed.** The damage-authority gate reasons in terms of
+`p1`/`p2` and `isLocalSide`, and a boss is neither: `sideOf()` returns nothing
+for it, so `iAmLocal` came out false and `attackerIsLocal` true whenever a local
+player hit it — and the code then sent a plain `HIT`, which the **opponent
+applies to themselves**. Hitting the boss would have damaged your teammate.
+Co-op enemies get their own branch, before that reasoning runs.
+
+`tests/coopnetcheck.js`: 19 assertions on the authority rules, including that a
+host hitting the boss sends no `HIT`, that a guest starts with no enemies of its
+own, and that environmental damage on an enemy is ignored by the guest.
+
+### The first-person arm's open shoulder cut is sealed
+
+The extracted arm is a slice through a closed mesh, so the cut end was a hole
+and at some angles you saw into the interior — the same defect as the Batch 34
+open-ended bracer, on extracted geometry instead of a primitive.
+
+Sealed by rendering the arm's **inside** as well: a second mesh sharing the same
+geometry with a `BackSide` material, so looking into the cut shows the limb's
+own interior surface rather than the sky through a gap. One extra draw call and
+no geometry work, and — unlike a triangulated cap — it does not care what shape
+the cut turns out to be, which matters because the boundary loop is not
+necessarily planar or even single.
+
+### Arms down at rest: attempted at runtime, reverted, belongs in Blender
+
+What you see at rest is the **bind pose**, because the game animates by rotating
+bones itself and never plays the baked Idle clip. These models were generated
+arms-out, because that is what automatic weighting needs — limbs touching the
+torso weld together and bleed weights across the seam.
+
+Lowering the arms after binding, by aiming the bones the way the viewmodel does,
+**was tried and reverted: it mangles the mesh.** Horizontal to hanging is roughly
+a 90-degree shoulder rotation, and automatic weights do not survive that — the
+deltoid collapses and the torso folds with it. Draven came out a crumpled heap,
+visibly worse than arms-out. That is a limitation of the weights, not a bug in
+the rotation, and no amount of tuning the direction fixes a shoulder with no
+corrective weighting.
+
+The fix belongs in `art/pipeline.py` **before `bind`**: pose the armature into
+the rest stance and bind the mesh in *that* pose, so arms-down is the position
+the weights were solved for. Before binding for the same reason the smoothing
+pass must be — changing the mesh or the pose afterwards invalidates the weights.
+All fourteen characters then need re-rigging, which is why it is its own job.
+
+### A correction to Batch 40's commit message
+
+It claimed the legacy port carried "the extracted first-person arm". It did not
+— the script had prose about it and no step, and `grep` for
+`buildViewmodelArmFromModel` in the archived build returned nothing. Now
+actually ported, along with the arm-triangle selection and the cut seal. While
+fixing it, the same duplicate-declaration trap appeared again: inserting the
+placement constants separately declared `VM_ARM_LENGTH` twice, because the
+extraction block already contained them. The port verifies **32 definitions**.
+
+---
+
 ## Requested, not yet done
 
 Recorded here so none of it is quietly dropped.
-
-### The first-person arm is still open at the shoulder cut
-
-The extracted arm is a cut through a closed mesh, so the cut end is a hole: at
-some angles you see into the interior. Same class of defect as the Batch 34
-open-ended bracer, now on the extracted mesh rather than a primitive.
-
-Two candidate fixes: cap the cut with a disc built from its boundary edge loop,
-or move the cut behind the camera's near plane so it is never in frame. The
-second is cheaper and probably sufficient - in a real first-person view the
-shoulder is behind you - but it depends on the arm's placement, which is still
-being tuned (`VM_ARM_LENGTH`, `VM_ARM_ANCHOR`).
 
 ### Weapon and limb attachment: what it actually was
 

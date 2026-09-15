@@ -1639,6 +1639,14 @@ const MATCH_MODES = [
     // The ID stays `timeattack`. It is a localStorage progression key and a
     // value on the wire in SETUP/START packets, so renaming it would reset
     // players' records and desync a mixed-version match for a cosmetic gain.
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
     { id: 'timeattack', name: 'Takedown Race', blurb: 'Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse - the race is the pressure.' },
     { id: 'boss', name: 'Boss Fight (Co-op)', blurb: 'Both players team up against Karrigos, the Hollow Titan. Its attacks are slow and telegraphed — punish the wind-up. If either of you falls, the run is over.', coop: true },
     { id: 'survival', name: 'Survival Waves (Co-op)', blurb: 'Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.', coop: true },
@@ -3025,6 +3033,28 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
 // Rises up to this are walkable on foot; taller is a wall you must jump - see
 // resolveTallTerrain(), which reverts the move when the rise is too great.
 //
@@ -7311,6 +7341,625 @@ function propForAtkType(f) {
 // correctly from the one angle a viewmodel is ever seen from. The palette is
 // taken from the fighter, and the plates use the same metal materials as the
 // rebuilt weapons so the hand and the thing it is holding belong together.
+// The bones whose geometry becomes the viewmodel arm.
+//
+// 'Shoulder' is deliberately NOT in here, and that is the fix for the reported
+// "sometimes look separated and weird". The viewmodel poses UpperArm, LowerArm
+// and Hand to swing the limb forward into view, and leaves Shoulder at rest -
+// it has to, because rotating the shoulder would drag the chest with it. So any
+// triangle weighted to Shoulder STAYS IN THE BIND POSE while everything around
+// it swings forward, and a pauldron or plate left behind in mid-air is exactly
+// what "separated" looked like. No distance or connectivity filter can fix
+// that, because the geometry is genuinely arm geometry - it is simply posed by
+// a bone we are not moving.
+//
+// Losing the pauldron costs nothing: in first person the shoulder is behind the
+// camera. ARM_POSE_CHAIN is what gets posed; ARM_CHAIN is what gets kept, and
+// they are now the same set for exactly this reason.
+const ARM_CHAIN = ['UpperArm', 'LowerArm', 'Hand'];
+
+// How long the extracted arm should be in camera space, and where its centre
+// should sit. Tuned as a pair: the arm reads at roughly a third of the frame
+// height, entering from the lower right the way a held weapon does.
+// Sized against the frame, not against the old procedural stub. At 11.5 the
+// arm rendered about 8% of the frame height - technically present, visually a
+// speck. A first-person arm wants to occupy roughly a third of the frame and
+// reach in from the lower right, which at this camera's field of view means an
+// arm about 30 units long with its centre 16 units out.
+const VM_ARM_LENGTH = 30;
+const VM_ARM_ANCHOR = new THREE.Vector3(5.6, -6.2, -14.0);
+
+// Which bones count as "the arm". Bone names arrive sanitised by three.js
+// (PropertyBinding.sanitizeNodeName strips '.'), so 'UpperArm.L' may be
+// 'UpperArmL' - match on prefix rather than on an exact name.
+function _armBoneIndices(skeleton, side) {
+    const wanted = new Set();
+    skeleton.bones.forEach((b, i) => {
+        const n = b.name || '';
+        for (const part of ARM_CHAIN) {
+            if (n.indexOf(part) !== 0) continue;
+            const tail = n.slice(part.length).replace(/[._]/g, '');
+            if (tail === side) { wanted.add(i); break; }
+        }
+    });
+    return wanted;
+}
+
+// Selects the triangles that make up the arm, as a flat list of vertex indices.
+// Returns null when the model does not look like what we expect, so the caller
+// can fall back to the procedural arm rather than render nothing.
+// Selection only - _bakePosedGeometry turns these into geometry, from a POSED
+// skeleton rather than the bind pose.
+function _armTriangles(skinned, side) {
+    const geo = skinned.geometry;
+    const pos = geo.attributes.position;
+    const skinIndex = geo.attributes.skinIndex;
+    const skinWeight = geo.attributes.skinWeight;
+    if (!pos || !skinIndex || !skinWeight || !skinned.skeleton) return null;
+    const armBones = _armBoneIndices(skinned.skeleton, side);
+    if (!armBones.size) return null;
+
+    // A vertex belongs to the arm when MOST of its weight does. Using "any
+    // weight at all" drags in half the chest, because auto-weighting bleeds a
+    // little shoulder influence a long way down the torso.
+    // getX/getY/getZ/getW, NOT getComponent(v, k): getComponent does not exist
+    // on BufferAttribute in three r128 (it was added later), and calling it
+    // throws rather than returning undefined.
+    const GET = ['getX', 'getY', 'getZ', 'getW'];
+    const isArm = new Uint8Array(pos.count);
+    for (let v = 0; v < pos.count; v++) {
+        let armW = 0, total = 0;
+        for (let k = 0; k < 4; k++) {
+            const w = skinWeight[GET[k]](v);
+            if (!(w > 0)) continue;
+            total += w;
+            if (armBones.has(skinIndex[GET[k]](v))) armW += w;
+        }
+        // 0.8, not 0.6. Automatic weighting is a smooth field, so the
+        // shoulder bone bleeds influence a long way down the torso - at 0.6 a
+        // patch of Draven's hip cleared the bar and came along as a floating
+        // shard. True arm vertices are weighted almost entirely to arm bones,
+        // so the threshold can be strict without losing anything real; the
+        // bone-proximity pass below is the backstop for what it still misses.
+        if (total > 0 && armW / total >= 0.8) isArm[v] = 1;
+    }
+
+    const index = geo.index;
+    const triCount = index ? index.count / 3 : pos.count / 3;
+    const keep = [];
+    for (let t = 0; t < triCount; t++) {
+        const a = index ? index.getX(t * 3) : t * 3;
+        const b = index ? index.getX(t * 3 + 1) : t * 3 + 1;
+        const c = index ? index.getX(t * 3 + 2) : t * 3 + 2;
+        // All three, not any: a triangle straddling the shoulder seam would
+        // otherwise stretch from the hand into the chest.
+        if (isArm[a] && isArm[b] && isArm[c]) keep.push(a, b, c);
+    }
+    if (keep.length < 60) return null;    // nothing recognisable was found
+
+    // Reject islands that are NOT ON THE ARM, by distance from the arm's own
+    // bone chain.
+    //
+    // The first attempt kept the largest connected component, on the theory
+    // that an arm is one piece. It is not: armour plates, a sleeve and a hand
+    // are separate shells, so "largest component" kept a single pauldron and
+    // threw the rest away - 5,150 triangles became 558. Measuring against the
+    // BONES instead keeps every shell that sits on the arm and rejects the
+    // stray patch of hip that the weight threshold let through.
+    const chain = [];
+    for (const part of ARM_CHAIN) {
+        for (const b of skinned.skeleton.bones) {
+            const n = b.name || '';
+            if (n.indexOf(part) !== 0) continue;
+            if (n.slice(part.length).replace(/[._]/g, '') !== side) continue;
+            b.updateWorldMatrix(true, false);
+            chain.push(new THREE.Vector3().setFromMatrixPosition(b.matrixWorld));
+            break;
+        }
+    }
+    if (chain.length >= 2) {
+        // Bone positions are in WORLD space; vertices are in the mesh's local
+        // space. Bring the chain into the mesh's space rather than the other
+        // way round - there are three bones and thousands of vertices.
+        skinned.updateWorldMatrix(true, false);
+        const toLocal = new THREE.Matrix4().copy(skinned.matrixWorld).invert();
+        const local = chain.map(v => v.clone().applyMatrix4(toLocal));
+        let chainLen = 0;
+        for (let i = 1; i < local.length; i++) chainLen += local[i].distanceTo(local[i - 1]);
+        // Deliberately loose: an arm's shells stand off the bone by a real
+        // amount, and a false reject is a HOLE in the model. Tightening this
+        // to 0.22 to chase the detached fragment cost Lyra two thirds of her
+        // sleeve and changed Draven by two triangles - which is what proved
+        // distance was never what made the fragment detach. See ARM_CHAIN.
+        const maxDist = Math.max(1e-4, chainLen * 0.45);
+        const _c = new THREE.Vector3(), _ab = new THREE.Vector3(), _ap = new THREE.Vector3();
+        const nearChain = (x, y, z) => {
+            _c.set(x, y, z);
+            let best = Infinity;
+            for (let i = 1; i < local.length; i++) {
+                const a = local[i - 1], b2 = local[i];
+                _ab.subVectors(b2, a);
+                const denom = _ab.dot(_ab);
+                const t = denom <= 1e-12 ? 0 : Math.max(0, Math.min(1, _ap.subVectors(_c, a).dot(_ab) / denom));
+                const d = _c.distanceTo(_ap.copy(a).addScaledVector(_ab, t));
+                if (d < best) best = d;
+            }
+            return best <= maxDist;
+        };
+        // ...and clip anything INBOARD OF THE SHOULDER.
+        //
+        // Two problems, one cut. The weight threshold and the proximity test
+        // together still left a small shard of torso hanging off the shoulder
+        // (it is genuinely close to the shoulder bone, so no distance test can
+        // reject it), and the deltoid end was a ragged hole where the triangles
+        // were sliced. Projecting onto the shoulder-to-hand axis and dropping
+        // everything behind the shoulder removes both - and costs nothing
+        // visually, because in first person the shoulder is behind the camera.
+        const axisA = local[0], axisB = local[local.length - 1];
+        const axis = new THREE.Vector3().subVectors(axisB, axisA);
+        const axisLen2 = Math.max(1e-9, axis.dot(axis));
+        const _pv = new THREE.Vector3();
+        const alongArm = (x, y, z) => _pv.set(x, y, z).sub(axisA).dot(axis) / axisLen2;
+
+        const filtered = [];
+        for (let i = 0; i < keep.length; i += 3) {
+            const a = keep[i], b2 = keep[i + 1], c = keep[i + 2];
+            const cx = (pos.getX(a) + pos.getX(b2) + pos.getX(c)) / 3;
+            const cy = (pos.getY(a) + pos.getY(b2) + pos.getY(c)) / 3;
+            const cz = (pos.getZ(a) + pos.getZ(b2) + pos.getZ(c)) / 3;
+            if (!nearChain(cx, cy, cz)) continue;
+            if (alongArm(cx, cy, cz) < 0.06) continue;   // behind the shoulder
+            filtered.push(a, b2, c);
+        }
+        if (filtered.length >= 60) { keep.length = 0; keep.push(...filtered); }
+
+        // NOTE ON WHAT IS **NOT** DONE HERE.
+        //
+        // Two component filters used to live at this point, both operating on
+        // BIND-POSE positions, and both were no-ops. Measuring the result is
+        // what explained it: the leftover fragment on Draven is a 256-triangle
+        // piece of his tasset that auto-weighting bound to the arm bones, and
+        // in the BIND pose - a T-pose, arm horizontal at shoulder height - it
+        // sits right beside the upper arm. There is nothing to distinguish it
+        // from real arm geometry until the arm is POSED, at which point the arm
+        // swings forward and the tasset stays behind.
+        //
+        // So the detached-piece prune happens after baking instead, on the
+        // posed geometry, where the separation is real and obvious. See
+        // _prunePosedComponents.
+    }
+
+    return keep;
+}
+
+// Builds a viewmodel arm from the character's loaded model, or returns null.
+// Poses the arm chain into a first-person carry, then BAKES THE SKINNED RESULT.
+//
+// The first version baked the BIND pose - a T-pose, arm straight out to the
+// side - and then rigidly rotated the whole slab of geometry to point it into
+// the screen. That is why the arms came out "backwards and sometimes separated
+// and weird": a rigid rotation carries the hand's orientation with it, so the
+// palm ended up facing outward, and the shoulder end was sheared across the
+// direction the deltoid was actually modelled in.
+//
+// Posing the skeleton first and reading the SKINNED vertex positions is the
+// difference between "the arm mesh, turned" and "the arm, held". The bone axes
+// are not guessed: art/pipeline.py built these rigs and documents them -
+//     swing  -> local X, NEGATIVE IS FORWARD, same sign on both sides
+//     spread -> local Z, mirrored on .R
+//     twist  -> local Y, mirrored on .R
+// so a first-person carry is a big negative X on the upper arm (swing it
+// forward), a bend at the elbow, and a little spread to bring it inboard.
+// WHERE THE LIMB SHOULD POINT, not how far to rotate each joint.
+//
+// The first attempt set euler angles on the bones, using art/pipeline.py's
+// documented convention ("swing -> local X, negative = forward"). That
+// convention is real, but it describes the rig's own REST pose, and these
+// characters are bound in a T-POSE: for an arm already pointing straight out
+// to the side, the bone's local X runs along the arm, so rotating about it
+// swings the limb up and down rather than forward. The result was an arm
+// hanging straight down.
+//
+// Directions do not have this problem. Each vector below is in the character's
+// own space - it faces local +X, which is what render3D relies on - and
+// _aimBone works out the rotation that gets there. No axis convention to be
+// wrong about, and it behaves identically on a rig bound in an A-pose.
+//
+// The shape being described is an ordinary first-person carry: upper arm
+// hanging down and a little forward, forearm swung forward into view with the
+// elbow bent, both tucked slightly inboard so the hand sits near the middle of
+// the frame rather than at the edge.
+const VM_AIM = {
+    //              forward,  up,     right(inboard)
+    upper: [0.42, -0.86, 0.30],
+    lower: [0.93, 0.22, 0.30],
+};
+
+// Resolves a bone by name from a SkinnedMesh's SKELETON.
+//
+// This exists because findBone(root, ...) traverses the object graph, and a
+// SkinnedMesh's bones are NOT its children - they hang off the character group
+// beside it. Calling findBone(skinnedMesh, 'UpperArm', 'L') therefore returns
+// null, always, and every `if (bone)` guard downstream silently does nothing.
+//
+// That single mistake is the whole reason the first-person arms were reported
+// as "backwards and sometimes separated and weird": the pose step below looked
+// like it was swinging the arm forward and was in fact a no-op, so what shipped
+// was the BIND pose - a T-pose, arm straight out to the side - rigidly rotated
+// a quarter turn to face the camera. It was caught by measuring the baked
+// geometry: the arm's bounding box spanned 0.7 across and 0.4 vertically, which
+// is an arm pointing sideways, not one pointing forward.
+//
+// three.js sanitises glTF node names (PropertyBinding.sanitizeNodeName strips
+// [ ] . : /), so "UpperArm.L" can arrive as either "UpperArm.L" or "UpperArmL".
+// Both spellings are tried, in that order, exactly as findBone does.
+function _skelBone(skinned, base, side) {
+    const bones = (skinned.skeleton && skinned.skeleton.bones) || [];
+    const names = side ? [base + '.' + side, base + side] : [base];
+    for (const want of names) {
+        for (const b of bones) if (b.name === want) return b;
+    }
+    // Last resort: a prefix match, so a rig naming it "UpperArm_L" still works.
+    for (const b of bones) {
+        if (b.name.indexOf(base) === 0 && (!side || b.name.indexOf(side) === b.name.length - 1)) return b;
+    }
+    return null;
+}
+
+// Rotates `bone` so the segment from it to `child` points along
+// `targetWorldDir`, working entirely in quaternions so there is no axis
+// convention to get wrong.
+//
+// The bone's world rotation is parentWorld * boneLocal, so to impose a world
+// rotation q the local part becomes inverse(parentWorld) * q * boneWorld.
+function _aimBone(bone, child, targetWorldDir) {
+    if (!bone || !child) return;
+    bone.updateWorldMatrix(true, false);
+    child.updateWorldMatrix(true, false);
+    const a = new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld);
+    const b = new THREE.Vector3().setFromMatrixPosition(child.matrixWorld);
+    const from = b.clone().sub(a);
+    if (from.lengthSq() < 1e-10) return;
+    from.normalize();
+    const to = targetWorldDir.clone().normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(from, to);
+
+    const boneWorldQ = new THREE.Quaternion();
+    bone.matrixWorld.decompose(new THREE.Vector3(), boneWorldQ, new THREE.Vector3());
+    const want = q.multiply(boneWorldQ);          // the world rotation we want
+
+    const parentWorldQ = new THREE.Quaternion();
+    if (bone.parent) {
+        bone.parent.updateWorldMatrix(true, false);
+        bone.parent.matrixWorld.decompose(new THREE.Vector3(), parentWorldQ, new THREE.Vector3());
+    }
+    bone.quaternion.copy(parentWorldQ.invert().multiply(want));
+    bone.updateMatrixWorld(true);
+}
+
+// Bakes the CURRENT pose of a skinned mesh into a plain BufferGeometry,
+// keeping only the triangles listed in `keep`.
+//
+// SkinnedMesh.boneTransform(i, v) does the CPU skinning for one vertex - the
+// same weighted-matrix sum the vertex shader does - which is exactly what is
+// needed to freeze a pose. Normals are recomputed afterwards rather than
+// transformed: three offers no normal equivalent, and for a smooth-shaded limb
+// recomputing is both simpler and correct.
+// Drops connected pieces of a POSED arm that are not on the arm any more.
+//
+// This is the filter that actually removed the reported "sometimes look
+// separated and weird", and it has to run here rather than during triangle
+// selection - see the note in _armTriangles. `chainPts` are the posed bone
+// positions in the same space as the geometry; `radius` is about an arm radius.
+//
+// Vertices are welded by position first: a UV seam duplicates vertices at
+// identical coordinates, and without welding one continuous shell splits into
+// several that each look detached, which would make this filter delete the arm.
+function _prunePosedComponents(geo, chainPts, radius) {
+    const pos = geo.attributes.position;
+    const idx = geo.index;
+    if (!pos || !idx) return geo;
+    const index = idx.array;
+
+    const Q = 1e-4;
+    const weld = new Map();
+    const rep2 = new Int32Array(pos.count).fill(-1);
+    for (let v = 0; v < pos.count; v++) {
+        const k = Math.round(pos.getX(v) / Q) + ',' +
+                  Math.round(pos.getY(v) / Q) + ',' +
+                  Math.round(pos.getZ(v) / Q);
+        const hit = weld.get(k);
+        if (hit === undefined) { weld.set(k, v); rep2[v] = v; } else { rep2[v] = hit; }
+    }
+    const par = new Map();
+    const find = x => { while (par.get(x) !== x) { par.set(x, par.get(par.get(x))); x = par.get(x); } return x; };
+    for (let i = 0; i < index.length; i++) { const r = rep2[index[i]]; if (!par.has(r)) par.set(r, r); }
+    const uni = (a, b) => { a = find(a); b = find(b); if (a !== b) par.set(a, b); };
+    for (let i = 0; i < index.length; i += 3) {
+        uni(rep2[index[i]], rep2[index[i + 1]]);
+        uni(rep2[index[i + 1]], rep2[index[i + 2]]);
+    }
+
+    // WHICH COMPONENTS TO KEEP, and why this is a size rule rather than a
+    // distance one.
+    //
+    // Four distance-based rules were tried and every one of them kept the
+    // fragment: bind-pose bone proximity, a bind-pose chain bounding box, the
+    // posed full chain, and the posed forearm. Measuring the result explained
+    // it - the piece is a 256-triangle scrap of Draven's tasset that
+    // auto-weighting bound to the arm bones, and once the arm is posed it sits
+    // roughly a forearm-radius below the wrist. There is no radius that
+    // excludes it and still admits a real sleeve.
+    //
+    // Relative size does separate them cleanly, with a large margin: the
+    // fragment is 7% of the arm, while the genuine shells - plate, sleeve,
+    // glove - are all a substantial share of it. Anything under a quarter of
+    // the largest shell is not a part of the arm at this level of detail. The
+    // component holding the HAND is always kept regardless of its size, so the
+    // one piece that is guaranteed to be on screen can never be pruned.
+    const near = new Set();
+    const _v = new THREE.Vector3(), _ab = new THREE.Vector3(), _ap = new THREE.Vector3();
+    const distToChain = (x, y, z) => {
+        _v.set(x, y, z);
+        let best = Infinity;
+        for (let i = 1; i < chainPts.length; i++) {
+            const a = chainPts[i - 1], b = chainPts[i];
+            _ab.subVectors(b, a);
+            const denom = _ab.dot(_ab);
+            const t = denom <= 1e-12 ? 0 : Math.max(0, Math.min(1, _ap.subVectors(_v, a).dot(_ab) / denom));
+            const d = _v.distanceTo(_ap.copy(a).addScaledVector(_ab, t));
+            if (d < best) best = d;
+        }
+        return best;
+    };
+    const sizes = new Map();
+    for (let i = 0; i < index.length; i += 3) {
+        const c = find(rep2[index[i]]);
+        sizes.set(c, (sizes.get(c) || 0) + 1);
+    }
+    // Records why it did what it did. A silent early return here cost seven
+    // five-minute render cycles to diagnose; the decision is cheap to keep.
+    geo.userData.prune = { comps: sizes.size, sizes: [...sizes.values()] };
+    if (sizes.size <= 1) { geo.userData.prune.why = 'single component'; return geo; }
+
+    // The component holding the vertex nearest the hand - kept unconditionally.
+    const handPt = chainPts[chainPts.length - 1];
+    let handComp = null, bestD = Infinity;
+    for (let i = 0; i < index.length; i++) {
+        const v = index[i];
+        const d = _v.set(pos.getX(v), pos.getY(v), pos.getZ(v)).distanceTo(handPt);
+        if (d < bestD) { bestD = d; handComp = find(rep2[v]); }
+    }
+    let largest = 0;
+    for (const n of sizes.values()) if (n > largest) largest = n;
+    for (const [c, n] of sizes) if (n >= largest * 0.25) near.add(c);
+    if (handComp !== null) near.add(handComp);
+    geo.userData.prune.largest = largest;
+    geo.userData.prune.handComp = handComp;
+    geo.userData.prune.handCompSize = sizes.get(handComp) || 0;
+    geo.userData.prune.kept = near.size;
+    if (!near.size || near.size === sizes.size) {
+        geo.userData.prune.why = !near.size ? 'nothing qualified' : 'all components qualified';
+        return geo;
+    }
+    geo.userData.prune.why = 'pruned';
+
+    const kept = [];
+    for (let i = 0; i < index.length; i += 3) {
+        if (near.has(find(rep2[index[i]]))) kept.push(index[i], index[i + 1], index[i + 2]);
+    }
+    if (kept.length < 60) return geo;   // never prune the arm away entirely
+    geo.setIndex(kept);
+    geo.computeVertexNormals();
+    geo.computeBoundingBox();
+    geo.computeBoundingSphere();
+    return geo;
+}
+
+function _bakePosedGeometry(skinned, keep) {
+    const geo = skinned.geometry;
+    const pos = geo.attributes.position;
+    if (!pos || typeof skinned.boneTransform !== 'function') return null;
+
+    const remap = new Map();
+    const order = [];
+    const idx = [];
+    for (const v of keep) {
+        let n = remap.get(v);
+        if (n === undefined) { n = order.length; remap.set(v, n); order.push(v); }
+        idx.push(n);
+    }
+    if (idx.length < 60) return null;
+
+    const out = new THREE.BufferGeometry();
+    const positions = new Float32Array(order.length * 3);
+    const tmp = new THREE.Vector3();
+    for (let i = 0; i < order.length; i++) {
+        skinned.boneTransform(order[i], tmp);   // <- the posed position
+        positions[i * 3] = tmp.x;
+        positions[i * 3 + 1] = tmp.y;
+        positions[i * 3 + 2] = tmp.z;
+    }
+    out.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    // Carry UVs and vertex colours; they are pose-independent.
+    for (const name of ['uv', 'uv2', 'color']) {
+        const attr = geo.attributes[name];
+        if (!attr) continue;
+        const it = attr.itemSize;
+        const dst = new Float32Array(order.length * it);
+        for (let i = 0; i < order.length; i++) {
+            const src = order[i] * it;
+            for (let c = 0; c < it; c++) dst[i * it + c] = attr.array[src + c];
+        }
+        out.setAttribute(name, new THREE.BufferAttribute(dst, it, attr.normalized));
+    }
+    out.setIndex(idx);
+    out.computeVertexNormals();
+    out.computeBoundingBox();
+    out.computeBoundingSphere();
+    // The cut at the shoulder is a hole - the arm is a slice through a closed
+    // mesh - so at some angles you see into the interior. Same defect as the
+    // Batch 34 open-ended bracer, on extracted geometry instead of a primitive.
+    out.userData.needsCap = true;
+    return out;
+}
+
+// Closes the open end left by slicing an arm out of a body.
+//
+// Rather than reconstruct the boundary edge loop and triangulate it - fiddly,
+// and the loop is not necessarily planar or even single - this renders the
+// inside of the mesh as well. BackSide on a second material means the far wall
+// of the tube is drawn instead of culled, so looking into the cut shows the
+// arm's own interior surface rather than the skybox through a hole.
+//
+// It costs one extra draw call for the arm and no geometry work at all, and it
+// is robust to whatever shape the cut happens to be - which a triangulated cap
+// would not be.
+function _sealArmCut(mesh) {
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const inner = mats[0].clone();
+    inner.side = THREE.BackSide;
+    // Slightly darkened: it is the inside of a limb, not a lit exterior, and at
+    // full brightness the interior reads as a second surface rather than depth.
+    if (inner.color) inner.color.multiplyScalar(0.55);
+    inner.userData.keepMap = true;     // shares the source model's textures
+    const shell = new THREE.Mesh(mesh.geometry, inner);
+    shell.userData.noOutline = true;   // see addRimOutline
+    shell.renderOrder = (mesh.renderOrder || 0) - 1;
+    mesh.add(shell);
+    return shell;
+}
+
+function buildViewmodelArmFromModel(f) {
+    const m = charModels[f.name];
+    if (!m || !THREE.SkeletonUtils) return null;
+    let group;
+    try { group = buildRiggedCharacter(f.name); } catch (e) { return null; }
+    if (!group) return null;
+
+    // Which arm holds the weapon. On a real skeleton armPos is the '.L' chain
+    // (see buildRiggedCharacter).
+    const side = 'L';
+    let skinned = null;
+    group.traverse(o => { if (!skinned && o.isSkinnedMesh) skinned = o; });
+    if (!skinned || !skinned.skeleton) return null;
+
+    // ---- 1. which triangles ------------------------------------------------
+    const keep = _armTriangles(skinned, side);
+    if (!keep) return null;
+
+    // ---- 2. pose the chain -------------------------------------------------
+    // _skelBone, NOT findBone - see the note on _skelBone. findBone(skinned,...)
+    // returns null for every bone, which made this entire pose a silent no-op.
+    const upper = _skelBone(skinned, 'UpperArm', side);
+    const lower = _skelBone(skinned, 'LowerArm', side);
+    const hand = _skelBone(skinned, 'Hand', side);
+    if (!upper || !lower) return null;   // no rig we recognise: fall back
+    // The character's own basis, in world space. It faces local +X (see
+    // buildRiggedCharacter), so that is "forward"; `right` is derived rather
+    // than assumed, and mirrored for a right-handed carry so "inboard" means
+    // toward the middle of the frame on either side.
+    const mirror = side === 'R' ? -1 : 1;
+    const fwd = new THREE.Vector3(1, 0, 0).transformDirection(group.matrixWorld).normalize();
+    const up = new THREE.Vector3(0, 1, 0).transformDirection(group.matrixWorld).normalize();
+    const right = new THREE.Vector3().crossVectors(up, fwd).normalize().multiplyScalar(mirror);
+    const aimVec = a => fwd.clone().multiplyScalar(a[0])
+        .addScaledVector(up, a[1])
+        .addScaledVector(right, a[2]);
+
+    // Upper arm first, then the forearm: aiming the shoulder moves the elbow,
+    // so the forearm has to be aimed from where the elbow actually ended up.
+    _aimBone(upper, lower, aimVec(VM_AIM.upper));
+    group.updateMatrixWorld(true);
+    if (hand) _aimBone(lower, hand, aimVec(VM_AIM.lower));
+
+    // The skeleton's bone matrices have to be recomputed before boneTransform
+    // reads them, or every vertex bakes at the bind pose and the pose above is
+    // silently ignored - which looks exactly like the bug it is fixing.
+    group.updateMatrixWorld(true);
+    skinned.skeleton.update();
+
+    // ---- 3. bake -----------------------------------------------------------
+    let armGeo = _bakePosedGeometry(skinned, keep);
+    if (!armGeo) return null;
+
+    // Drop anything the pose left behind. The bone positions have to be in the
+    // geometry's own space, and the geometry is in the SkinnedMesh's local
+    // space, so bring the (world-space) posed bones back through its inverse.
+    const toMesh = new THREE.Matrix4().copy(skinned.matrixWorld).invert();
+    const posedPts = [upper, lower, hand].filter(Boolean).map(bn => {
+        bn.updateWorldMatrix(true, false);
+        return new THREE.Vector3().setFromMatrixPosition(bn.matrixWorld).applyMatrix4(toMesh);
+    });
+    // Measured against the FOREARM AND HAND, not the whole chain. The piece
+    // this exists to remove sits beside the UPPER arm - it is a tasset bound
+    // to the shoulder end - so including the upper arm in the reference chain
+    // is what let it keep passing. Anything genuinely on the upper arm is
+    // connected to the forearm shell and survives on connectivity.
+    const foreArm = posedPts.slice(-2);
+    if (foreArm.length === 2) {
+        const foreLen = foreArm[0].distanceTo(foreArm[1]);
+        armGeo = _prunePosedComponents(armGeo, foreArm, foreLen * 0.85);
+    }
+
+    const holder = new THREE.Group();
+    const arm = new THREE.Mesh(armGeo, skinned.material);
+    // Seal the shoulder cut, so looking at the open end shows the inside of the
+    // limb rather than straight through it.
+    if (armGeo.userData.needsCap) _sealArmCut(arm);
+    // The baked vertices are in the SkinnedMesh's own space, and the model sits
+    // inside the scaled + rotated wrapper buildRiggedCharacter made, so
+    // reproduce that transform rather than guessing at it.
+    skinned.updateWorldMatrix(true, false);
+    arm.applyMatrix4(skinned.matrixWorld);
+    holder.add(arm);
+
+    // The model faces local +X (buildRiggedCharacter rotates it so render3D can
+    // map a 2D facing straight onto rotation.y). A camera looks down -Z, so
+    // turn the arm a quarter turn to face the way the camera does. Because the
+    // arm is now POSED forward rather than sticking out sideways, this is the
+    // only rotation needed - and it is a fact about the model's convention, not
+    // a number to tune.
+    holder.rotation.y = -Math.PI / 2;
+
+    holder.userData.mats = Array.isArray(skinned.material) ? skinned.material.slice() : [skinned.material];
+    holder.userData.fromModel = true;
+
+    // ---- 4. frame it -------------------------------------------------------
+    // Normalise the length, then park the arm's centre on the group origin so
+    // buildViewmodel can position it by where it should APPEAR rather than by
+    // an offset from a shoulder whose location varies per character.
+    const box = new THREE.Box3().setFromObject(holder);
+    const size = box.getSize(new THREE.Vector3());
+    const longest = Math.max(size.x, size.y, size.z);
+    if (longest > 0.001) holder.scale.setScalar(VM_ARM_LENGTH / longest);
+    const centre = new THREE.Box3().setFromObject(holder).getCenter(new THREE.Vector3());
+    holder.position.sub(centre);
+
+    // Where the hand ended up, so the weapon can be put IN it rather than at
+    // the fixed offset that was tuned for the procedural arm's wrist.
+    if (hand) {
+        hand.updateWorldMatrix(true, false);
+        // Stored in the CHARACTER's space, deliberately un-transformed.
+        //
+        // The arm mesh inside this group is in that same space -
+        // arm.applyMatrix4(skinned.matrixWorld) put it there - and this group's
+        // own matrix is what maps it into viewmodel space. So the caller
+        // applies that matrix once (see buildViewmodel).
+        //
+        // The first attempt called holder.worldToLocal(hp) here AND applied
+        // holder.matrix in the caller, which are inverses: the weapon ended up
+        // back at the character's world position, floating across the screen.
+        const hp = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
+        holder.userData.handPoint = hp;
+        // ...and at the angle the hand is actually holding it.
+        const hq = new THREE.Quaternion();
+        hand.matrixWorld.decompose(new THREE.Vector3(), hq, new THREE.Vector3());
+        holder.userData.handQuat = hq;
+    }
+    return holder;
+}
+
 function buildViewmodelArm(f) {
     const g = new THREE.Group();
     const mats = [];
@@ -7370,7 +8019,13 @@ function buildViewmodelArm(f) {
 
 function buildViewmodel(f, layer) {
     const holder = new THREE.Group();
-    holder.add(buildViewmodelArm(f));
+    const armGroup = buildViewmodelArmFromModel(f) || buildViewmodelArm(f);
+    holder.userData.armFromModel = !!armGroup.userData.fromModel;
+    armGroup.updateMatrix();
+    holder.userData.handPoint = armGroup.userData.handPoint
+        ? armGroup.userData.handPoint.clone().applyMatrix4(armGroup.matrix)
+        : null;
+    holder.add(armGroup);
     const prop = propForAtkType(f);
     prop.rotation.y = Math.PI / 2; // weapon local +X (its "forward") now points into the screen (-Z)
     // Batch 28: angle it up and inboard the way a held melee weapon actually
@@ -7378,7 +8033,8 @@ function buildViewmodel(f, layer) {
     // guard filling the lower third of the frame.
     prop.rotation.z = 0.30;
     prop.rotation.x = -0.10;
-    prop.position.set(-0.6, -0.8, 1.2);
+    if (holder.userData.handPoint) prop.position.copy(holder.userData.handPoint);
+    else prop.position.set(-0.6, -0.8, 1.2);
     holder.add(prop);
     // Muzzle flash at the weapon tip (in front), hidden until this fighter
     // fires — so ranged shots visibly erupt from the weapon in first person.
@@ -9284,9 +9940,34 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 //
 // See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
 // 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
 const GRACE_PERIOD = 40;        // seconds the arena stays full-size before the first collapse tick
 const SHRINK_INTERVAL = 18;     // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
 // Once the collapse fraction passes this, snap fully shut and start crushing.
 //
 // WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and

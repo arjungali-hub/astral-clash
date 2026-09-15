@@ -210,6 +210,35 @@ def main():
         dst = dst.replace("if (!safeLSGet('astralClashTutorialSeen')) openTutorial();",
                           "if (!safeLSGet('astralClashTutorialSeen')) openTutorial(true);", 1)
 
+    # --- the first-person arm, cut from the character mesh -----------------
+    # Claimed as carried in Batch 40 and in fact never ported: the script had
+    # prose about it and no step. The archived build is first-person too, so it
+    # wants the real arm exactly as much as the online one does.
+    if 'buildViewmodelArmFromModel' not in dst:
+        arm = block(src, "// The bones whose geometry becomes the viewmodel arm.",
+                    "\nfunction buildViewmodelArm(f) {", 'arm extraction')
+        dst = rep(dst, "function buildViewmodelArm(f) {",
+                  arm + "\nfunction buildViewmodelArm(f) {", 'arm extraction', required=False)
+        # ...and use it, with the procedural arm as the fallback it already is.
+        dst = rep(dst, "    holder.add(buildViewmodelArm(f));",
+                  "    const armGroup = buildViewmodelArmFromModel(f) || buildViewmodelArm(f);\n"
+                  "    holder.userData.armFromModel = !!armGroup.userData.fromModel;\n"
+                  "    armGroup.updateMatrix();\n"
+                  "    holder.userData.handPoint = armGroup.userData.handPoint\n"
+                  "        ? armGroup.userData.handPoint.clone().applyMatrix4(armGroup.matrix)\n"
+                  "        : null;\n"
+                  "    holder.add(armGroup);", 'arm used by viewmodel', required=False)
+        # The weapon goes in the measured hand when there is one.
+        dst = rep(dst, "    prop.position.set(-0.6, -0.8, 1.2);",
+                  "    if (holder.userData.handPoint) prop.position.copy(holder.userData.handPoint);\n"
+                  "    else prop.position.set(-0.6, -0.8, 1.2);", 'weapon in the measured hand', required=False)
+        # NOT the placement constants. The extraction block above already
+        # contains ARM_CHAIN, VM_ARM_LENGTH, VM_ARM_ANCHOR and VM_AIM (they
+        # sit between that comment and buildViewmodelArm), and inserting
+        # them again declared VM_ARM_LENGTH twice - a fatal redeclaration
+        # that took the whole archived build down at load.
+        # _armTriangles and _armBoneIndices are inside that block too.
+
     # --- roster faces -------------------------------------------------------
     if 'function faceUrl(' not in dst:
         face = block(src, "// Batch 37: the circles hold the character's FACE.",
@@ -443,6 +472,8 @@ def main():
         'const MAX_WALK_STEP_UP = 12;', 'const GRACE_PERIOD = 40;',
         # Gameplay + visuals, widened scope.
         'id="desktop-only"', 'This version needs a computer',
+        'function buildViewmodelArmFromModel(', 'function _skelBone(',
+        'function _aimBone(', 'function _sealArmCut(',
         'TELEPORT_VIS_DECAY', 'decayVisualOffset', 'projCoreSphere',
         'meshBaseScale', 'function openTutorial(auto)', 'function faceUrl(',
         'const SHRINK_INTERVAL = 18;', 'Takedown Race',

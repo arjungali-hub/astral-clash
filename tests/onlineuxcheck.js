@@ -67,8 +67,14 @@ const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
             all: window.ACDebug.MATCH_MODES ? window.ACDebug.MATCH_MODES.length : null,
         };
     });
-    check('three versus modes, no co-op',
-        modes.ids.length === 3 && !modes.ids.includes('boss') && !modes.ids.includes('survival'),
+    // Batch 42 REVERSED the Batch 34 exclusion this used to assert. The reason
+    // for excluding them was sound - two clients each running their own boss AI
+    // diverge - but it only held while nothing owned the enemies. The host owns
+    // them now, so every mode is available. tests/coopnetcheck.js covers the
+    // authority rules that make it safe; here we only check they are offered.
+    check('every mode is offered, co-op included',
+        modes.ids.length === modes.all
+        && modes.ids.includes('boss') && modes.ids.includes('survival'),
         JSON.stringify(modes));
 
     // =====================================================================

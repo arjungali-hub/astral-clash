@@ -2038,6 +2038,25 @@ let waveNumber = 0;         // Survival Waves: how many have been cleared
 let coopResultText = '';    // filled by endCoopMatch for the game-over screen
 let isBossWave = false;     // true while the current Survival wave is a boss wave
 function liveEnemies() { return coopEnemies.filter(e => e && e.hp > 0); }
+
+// ---------------------------------------------------------------------------
+// Batch 42: WHO OWNS THE CO-OP ENEMIES.
+//
+// Offline, and for the host, nobody else does: the enemies are simulated
+// locally like any other fighter. Online, the guest must NOT run them - two
+// independent copies of the same AI, stepped with each machine's own `dt`,
+// diverge immediately and then disagree about who is being hit and whether the
+// wave is clear.
+//
+// So: the host owns spawning, AI, movement and hp; it broadcasts enemy state at
+// the same rate it broadcasts its own fighter, and the guest applies it. The
+// guest's own attacks still land - it sends a HIT_ENEMY the way it already
+// sends a HIT for the opponent (attacker-authoritative), and the host applies
+// the damage so the hp that comes back is the one both machines agree on.
+//
+// `coopIsPuppet()` is the single question every enemy code path asks.
+function coopIsHost() { return !netActive() || netIsHost(); }
+function coopIsPuppet() { return netActive() && !netIsHost(); }
 // Co-op-only combatants, kept OUT of CHARACTERS so buildGrid (which iterates
 // CHARACTERS unconditionally) can never turn one into a pickable fighter.
 // Populated by Batch 17; declared here because the Fighter constructor reads it.
@@ -6595,6 +6614,32 @@ class Fighter {
         // this gate both clients resolve the same swing independently and can
         // disagree, which shows up as phantom damage or damage that never
         // lands.
+        // --- Batch 42: a CO-OP ENEMY is not a side. --------------------
+        //
+        // The gate below reasons in terms of p1/p2 and `isLocalSide`, which a
+        // boss satisfies neither way: sideOf() returns nothing for it, so
+        // `iAmLocal` came out false and `attackerIsLocal` true whenever a local
+        // player hit it - and the code then sent a plain HIT, which the OPPONENT
+        // applies TO THEMSELVES. Hitting the boss would have damaged your
+        // teammate. It needs its own branch, before that reasoning runs.
+        if (netActive() && !fromNet && this.isBossEntity) {
+            if (netIsHost()) {
+                // We own the enemies: resolve it here, and the guest sees the
+                // result in the next COOP_STATE.
+                this.applyDamage(amount, { attacker: attacker || null, dir: dir || null });
+                return;
+            }
+            const attackerIsLocal = !!attacker && isLocalSide(sideOf(attacker));
+            if (!attackerIsLocal) return;   // not ours to resolve; the host owns it
+            const idx = coopEnemies.indexOf(this);
+            if (idx >= 0) netSend({ t: 'HIT_ENEMY', i: idx, dmg: amount });
+            // Applied locally too, for immediate feedback - the host's hp
+            // arrives a frame later and snaps, which is imperceptible on a hit
+            // you just landed and far better than a swing that looks like it
+            // missed.
+            this.applyDamage(amount, { attacker: attacker || null, dir: dir || null });
+            return;
+        }
         if (netActive() && !fromNet) {
             const iAmLocal = isLocalSide(sideOf(this));
             const attackerIsLocal = !!attacker && isLocalSide(sideOf(attacker));
@@ -8501,7 +8546,37 @@ function _bakePosedGeometry(skinned, keep) {
     out.computeVertexNormals();
     out.computeBoundingBox();
     out.computeBoundingSphere();
+    // The cut at the shoulder is a hole - the arm is a slice through a closed
+    // mesh - so at some angles you see into the interior. Same defect as the
+    // Batch 34 open-ended bracer, on extracted geometry instead of a primitive.
+    out.userData.needsCap = true;
     return out;
+}
+
+// Closes the open end left by slicing an arm out of a body.
+//
+// Rather than reconstruct the boundary edge loop and triangulate it - fiddly,
+// and the loop is not necessarily planar or even single - this renders the
+// inside of the mesh as well. BackSide on a second material means the far wall
+// of the tube is drawn instead of culled, so looking into the cut shows the
+// arm's own interior surface rather than the skybox through a hole.
+//
+// It costs one extra draw call for the arm and no geometry work at all, and it
+// is robust to whatever shape the cut happens to be - which a triangulated cap
+// would not be.
+function _sealArmCut(mesh) {
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const inner = mats[0].clone();
+    inner.side = THREE.BackSide;
+    // Slightly darkened: it is the inside of a limb, not a lit exterior, and at
+    // full brightness the interior reads as a second surface rather than depth.
+    if (inner.color) inner.color.multiplyScalar(0.55);
+    inner.userData.keepMap = true;     // shares the source model's textures
+    const shell = new THREE.Mesh(mesh.geometry, inner);
+    shell.userData.noOutline = true;   // see addRimOutline
+    shell.renderOrder = (mesh.renderOrder || 0) - 1;
+    mesh.add(shell);
+    return shell;
 }
 
 function buildViewmodelArmFromModel(f) {
@@ -8578,6 +8653,9 @@ function buildViewmodelArmFromModel(f) {
 
     const holder = new THREE.Group();
     const arm = new THREE.Mesh(armGeo, skinned.material);
+    // Seal the shoulder cut, so looking at the open end shows the inside of the
+    // limb rather than straight through it.
+    if (armGeo.userData.needsCap) _sealArmCut(arm);
     // The baked vertices are in the SkinnedMesh's own space, and the model sits
     // inside the scaled + rotated wrapper buildRiggedCharacter made, so
     // reproduce that transform rather than guessing at it.
@@ -9397,6 +9475,31 @@ function buildRiggedCharacter(name) {
     g.userData.rigged = true;
     g.userData.rigScale = rigTarget / m.height;
 
+    // ARMS DOWN AT REST: ATTEMPTED AT RUNTIME, REVERTED. DO IT IN BLENDER.
+    //
+    // Reported as "when characters are at rest, their arms should be at their
+    // sides, not open and facing sideways, like some of them (for example
+    // Thorne) are". They are, because what you see at rest is the BIND pose:
+    // the game animates by rotating bones itself and never plays the baked Idle
+    // clip, so the pose on screen is whatever the model was generated in - and
+    // these were generated arms-out, because that is what automatic weighting
+    // needs (limbs touching the torso weld together and bleed weights across
+    // the seam).
+    //
+    // Lowering the arms HERE, by aiming the bones after binding, was tried and
+    // reverted: it mangles the mesh. Bringing an arm from horizontal to hanging
+    // is roughly a 90-degree shoulder rotation, and automatic weights do not
+    // survive that - the deltoid collapses and the torso folds with it. Draven
+    // came out as a crumpled heap, visibly worse than arms-out. That is a
+    // limitation of the weights, not a bug in the rotation: no amount of
+    // tuning the direction fixes a shoulder that has no corrective weighting.
+    //
+    // The fix belongs in art/pipeline.py, BEFORE `bind`: pose the armature into
+    // the rest stance and bind the mesh in THAT pose, so the arms-down position
+    // is the one the weights were solved for. It has to be before binding for
+    // the same reason the smoothing pass does - changing the mesh or the pose
+    // afterwards invalidates the weights. All fourteen characters then need
+    // re-rigging, which is why this is its own job rather than a line here.
     // Rather than re-declare each character's weapon and swing timings beside
     // the rig (a second copy free to drift from the real one), build the
     // ORIGINAL procedural mesh once and transplant its hand props and anim
@@ -10398,12 +10501,20 @@ function buildShop() {
 // 'classic' is already a valid choice, so nothing needs to be blocked until a
 // mode is explicitly chosen — same flag-don't-block stance as the existing
 // mirror-match handling. ---
-// Batch 34: the modes this build can actually run. The co-op modes are
-// excluded because their enemies are AI-driven and AI is NOT part of the
-// netcode - each client would simulate its own boss from its own frame timing
-// and the two would diverge on the first hit. They remain playable in the
-// archived split-screen build, which is where the Settings link points.
-function onlineModes() { return MATCH_MODES.filter(m => !m.coop); }
+// Every mode is available online now, co-op included.
+//
+// Batch 34 excluded the co-op modes with a real reason: their enemies are
+// AI-driven, AI was not part of the netcode, and two clients each running their
+// own boss from their own frame timing diverge on the first hit. The reason was
+// sound; the conclusion - leave them out - was only correct while nothing
+// owned the enemies.
+//
+// Batch 42 gives them an owner. The HOST simulates every co-op enemy and
+// broadcasts their state; the guest never runs enemy AI at all and draws them
+// from the wire, exactly as it already does for the opponent fighter. That is
+// the same authority model the rest of the netcode uses, applied to a third
+// party instead of a second one - see netCoopState / coopIsPuppet.
+function onlineModes() { return MATCH_MODES.slice(); }
 function buildModeSelect() {
     const list = document.getElementById('modeselect-list');
     if (!list) return;
@@ -10691,6 +10802,20 @@ function netOnMessage(msg) {
         case 'READY':
             net.remoteReady = true;
             break;
+        case 'COOP_SPAWN':
+            netApplyCoopSpawn(msg);
+            break;
+        case 'COOP_STATE':
+            netApplyCoopState(msg);
+            break;
+        case 'HIT_ENEMY': {
+            // The guest's attack connected. Only the host applies it, because
+            // only the host's copy of that enemy is the real one.
+            if (!netIsHost()) break;
+            const e = coopEnemies[msg.i];
+            if (e && e.hp > 0) e.takeDamage(msg.dmg, null, undefined, true);
+            break;
+        }
         case 'PRESENCE':
             // Their tab changed state. Going away pauses us too; coming back
             // does NOT resume - see the note by `localAway`.
@@ -10840,6 +10965,99 @@ function netHeartbeat() {
     if (now - net.lastSendAt < NET_PING_MS) return;
     net.lastSendAt = now;
     netSend({ t: 'PING' });
+}
+
+// ===========================================================================
+// Batch 42: CO-OP OVER THE WIRE.
+//
+// Three messages, matching the three things the guest cannot work out for
+// itself:
+//
+//   COOP_SPAWN  the host made a wave (or a boss). Names, sizes and scaled hp,
+//               so the guest builds the same creatures rather than rolling its
+//               own - Survival picks randomly, so two independent rolls would
+//               produce different fights.
+//   COOP_STATE  where every enemy is and how much hp it has, at NET_SEND_HZ.
+//               The guest never runs enemy AI, so this is its only source.
+//   HIT_ENEMY   the guest's attack connected. Attacker-authoritative, exactly
+//               like the existing HIT for the opponent fighter: whoever swings
+//               decides on their own machine, and the owner applies it.
+//
+// Why the host and not "both simulate and hope": the AI reads `dt`, which is
+// real elapsed time on each machine, so two copies diverge on the first frame
+// and then disagree about position, hp and whether a wave is clear. One owner
+// is the only arrangement that cannot drift.
+// ===========================================================================
+function netBroadcastCoopSpawn() {
+    if (!netActive() || !netIsHost()) return;
+    netSend({
+        t: 'COOP_SPAWN',
+        wave: waveNumber,
+        boss: isBossWave,
+        enemies: coopEnemies.map(e => ({
+            n: e.name,
+            x: Math.round(e.x), y: Math.round(e.y),
+            w: e.width,                  // hitboxSize, for the oversized bodies
+            hp: Math.round(e.maxHp),
+            dmg: +e.attackDmg.toFixed(2),
+            tm: e.telegraphMult,
+        })),
+    });
+}
+
+// Rebuilds the guest's enemies to match the host's. Cheaper and far more
+// predictable than trying to reconcile two lists: a wave is a handful of
+// creatures and this runs once per wave, not per frame.
+function netApplyCoopSpawn(msg) {
+    if (netIsHost()) return;
+    disposeBoss();
+    waveNumber = msg.wave || 0;
+    isBossWave = !!msg.boss;
+    for (const d of (msg.enemies || [])) {
+        const f = new Fighter(d.n, d.x, d.y, false, true);
+        f.isBossEntity = true;
+        if (d.w && d.w !== f.width) {
+            f.width = f.height = d.w;
+            f.z = groundLevelAt(d.x + d.w / 2, d.y + d.w / 2);
+        }
+        f.telegraphMult = d.tm || 1;
+        f.maxHp = d.hp; f.hp = d.hp; f.hpGhost = d.hp;
+        f.attackDmg = d.dmg;
+        f.initMesh();
+        coopEnemies.push(f);
+    }
+}
+
+function netBroadcastCoopState() {
+    if (!netActive() || !netIsHost() || !coopEnemies.length) return;
+    netSend({
+        t: 'COOP_STATE',
+        e: coopEnemies.map(e => ({
+            x: Math.round(e.x), y: Math.round(e.y), z: Math.round(e.z),
+            fx: +e.fx.toFixed(2), fy: +e.fy.toFixed(2),
+            hp: Math.round(e.hp),
+            a: e.atkState === 'idle' ? 0 : 1,
+        })),
+    });
+}
+
+function netApplyCoopState(msg) {
+    if (netIsHost()) return;
+    const list = msg.e || [];
+    for (let i = 0; i < Math.min(list.length, coopEnemies.length); i++) {
+        const e = coopEnemies[i], d = list[i];
+        if (!e || !d) continue;
+        // Position is written straight in rather than eased. These are large,
+        // slow bodies whose motion is already smooth, and the lerp the opponent
+        // fighter uses exists for a 30Hz humanoid that dashes - a boss does not.
+        e.x = d.x; e.y = d.y; e.z = d.z;
+        e.fx = d.fx; e.fy = d.fy;
+        // hp SNAPS: a health bar that eases is misleading about how close
+        // something is to dying, and the boss bar is the whole tension of the
+        // fight.
+        e.hp = d.hp;
+        if (e.hpGhost < e.hp) e.hpGhost = e.hp;
+    }
 }
 
 function netTick(now) {
@@ -11741,8 +11959,13 @@ function startRound(intro) {
     // group), so without this an explicit rematch would stack the new match's
     // enemies on top of the old ones.
     disposeBoss();
-    if (matchMode === 'boss') spawnBossForFight();
-    else if (matchMode === 'survival') spawnNextWave();
+    // Spawning is the host's, and it broadcasts what it made - otherwise the
+    // two machines roll different creatures for the same wave.
+    if (coopIsHost()) {
+        if (matchMode === 'boss') spawnBossForFight();
+        else if (matchMode === 'survival') spawnNextWave();
+        netBroadcastCoopSpawn();
+    }
     roundStartedAt = performance.now();
     if (intro) {
         player1.setFacing(player2.x - player1.x, player2.y - player1.y);
@@ -12544,7 +12767,11 @@ function resolveCoopMode() {
         return true;
     }
     // Batch 23: the wave is cleared when EVERY enemy is down, not just one.
-    if (coopEnemies.length && !liveEnemies().length) return onBossDefeated();
+    // Wave/boss transitions are the host's call. The guest finding out by
+    // itself would mean two machines deciding independently when a wave is
+    // clear, and the guest's copy of enemy hp arrives a frame late - so it
+    // would regularly decide first, and wrongly.
+    if (coopIsHost() && coopEnemies.length && !liveEnemies().length) return onBossDefeated();
     return false;
 }
 
@@ -12576,7 +12803,10 @@ function stepFight(dt) {
         // Deliberately NOT fed through resolvePlayerCollision: a much larger
         // body shoving the players around adds feel risk for no requested
         // benefit, so the boss overlaps rather than pushes.
-        for (const e of coopEnemies) if (isAlive(e)) e.update(player1, dt);
+        // The guest does not step enemy AI at all - the host owns it and the
+        // guest is fed the result (see coopIsPuppet). Effects and rendering
+        // still run below, so a puppet enemy still animates and flashes.
+        if (coopIsHost()) { for (const e of coopEnemies) if (isAlive(e)) e.update(player1, dt); }
     } else {
         // Arena Collapse's final phase: input/combat frozen, both
         // fighters take the same flat damage per second regardless of
@@ -12756,6 +12986,10 @@ function gameLoop() {
     if (netActive()) {
         netApplyRemote(dt);            // ease the opponent toward their last report
         netTick(performance.now());    // and broadcast our own state
+    // ...and, if we own them, the co-op enemies. Same cadence: netTick has
+    // already rate-limited to NET_SEND_HZ, and sending these on a different
+    // clock would put the enemies and the fighters a frame out of step.
+    if (netActive() && netIsHost() && isCoopMode()) netBroadcastCoopState();
     }
 
     decayCameraShake(dt);
@@ -12905,6 +13139,11 @@ if (DEBUG) {
         togglePause, inLiveMatch,
         hudFont, announceFont, openTutorial, addCoins,
         modelsNeededFor, neededModelsReady, MODEL_WAIT_MS,
+        // Batch 42 co-op netcode.
+        coopIsHost, coopIsPuppet, netBroadcastCoopSpawn, netBroadcastCoopState,
+        netApplyCoopSpawn, netApplyCoopState, spawnNextWave, spawnBossForFight,
+        get coopEnemies() { return coopEnemies; },
+        get waveNumber() { return waveNumber; },
         TELEPORT_VIS_MIN, TELEPORT_VIS_MAX, TELEPORT_VIS_DECAY,
         positionFpsCamera, worldX, worldZ,
         get localAway() { return localAway; },
