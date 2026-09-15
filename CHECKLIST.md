@@ -1524,50 +1524,70 @@ then audit every remaining `font-family` declaration in the file and delete the
 ones that are not deliberate. Worth a checker that walks the DOM and asserts no
 visible text is rendering in a fallback family.
 
-### Three art defects still open
+### The first-person arm is still open at the shoulder cut
 
-- **The crush cinematic still uses the OLD procedural walls.** `buildCrushRigs`
-  dresses its slabs with `getWallTexture`/`getFloorTexture` - the 256px painted
-  canvases - so the one moment the camera is a metre from a wall is the one
-  place the photographic surfaces are not used. It needs the same
-  `attachPhotoSurface` treatment the arena walls got. Visible in both builds.
-- **The first-person arm is still open at the far end.** The shoulder cut leaves
-  the limb hollow, so at some angles you see through into the interior - the
-  same class of defect as the Batch 34 open-ended bracer, now on the extracted
-  mesh instead of a primitive. Needs a cap across the cut, or the cut moved
-  behind the near plane.
-- **At rest, arms should hang at the sides.** Several characters - Thorne most
-  obviously - stand with their arms open and angled outward, because that is
-  the bind pose the models were generated in and the idle clip does not move
-  the shoulders enough to sell a relaxed stance. The rest pose should bring the
-  upper arms down against the torso; `art/pipeline.py`'s `_mk_poses` is where
-  the idle is authored.
+The extracted arm is a cut through a closed mesh, so the cut end is a hole: at
+some angles you see into the interior. Same class of defect as the Batch 34
+open-ended bracer, now on the extracted mesh rather than a primitive.
 
-### Weapon and limb attachment on the generated models
+Two candidate fixes: cap the cut with a disc built from its boundary edge loop,
+or move the cut behind the camera's near plane so it is never in frame. The
+second is cheaper and probably sufficient - in a real first-person view the
+shoulder is behind you - but it depends on the arm's placement, which is still
+being tuned (`VM_ARM_LENGTH`, `VM_ARM_ANCHOR`).
 
-Four reports, and they look like one root cause: the procedural meshes' weapon
-props and arm transforms are transplanted onto the generated skeletons
-(`buildRiggedCharacter`), and the offsets were authored against the procedural
-body's proportions. A generated character's shoulder, elbow and hand are all
-somewhere else, so anything positioned by a literal offset lands wrong.
+### Weapon and limb attachment: what it actually was
 
-- **Voss appears to have four arms.** Almost certainly the procedural arms are
-  still in the group alongside the model's own - the transplant moves the hand
-  PROPS across and remaps `armPos`/`armNeg`, and if the donor limbs are not
-  removed you get both sets. This is the one to diagnose first, because it is
-  the only one that implies something is left in the scene rather than merely
-  mispositioned.
-- **Ignis's fists are not attached to his arms** - they sit at his waist.
-- **Gorgonok's fist swings behind him**, so the swing axis is inverted or the
-  pivot is being taken from the wrong bone for his rig.
-- **Draven's weapon overlaps his leg** at rest (see above).
+Four reports - Voss's four arms, Ignis's fists at his waist, Gorgonok's fist
+swinging behind him, Draven's weapon overlapping his leg - and they had three
+different causes, which is why guessing at one fix would not have worked.
 
-Fix these together with the rest-pose change: moving the arms down without
-moving the props will make the clipping worse, and all four need the props
-positioned from MEASURED bone positions the way the first-person hand now is
-(`handPoint` in `buildViewmodelArmFromModel`) rather than from literals.
+**Voss: the generated mesh genuinely had four arms.** Not a transplant bug at
+all (see Batch 40). Regenerated.
 
-### Keeping the two builds in sync
+**Gorgonok and Draven: the prop was oriented by a fixed rotation.** The
+transplant set `holder.rotation.z = Math.PI / 2` on the reasoning that a bone's
+local +Y runs wrist-to-fingertips while props are authored with +X as "out of
+the hand". That is true of the rig `art/pipeline.py` builds and NOT reliably
+true of every generated character's hand bone. It is measured now: the
+direction out of the hand is the forearm's own direction (elbow to wrist),
+expressed in the hand bone's local frame, and prop +X is rotated onto it. No
+convention left to be wrong about.
+
+**Ignis: the prop carried an offset authored against a different body.** The
+procedural builders position a weapon relative to THEIR hand, and some offsets
+are large. Moved onto a generated skeleton whose hand is elsewhere, a large
+offset becomes a weapon floating at the waist. Offsets beyond `PROP_OFFSET_MAX`
+(6 units) are now clamped back toward the hand. Measured after the fix: Ignis
+and Gorgonok's props sit 1-7 units from their hand on a 50-unit character;
+Draven's 9-22 are the hammer's head along its handle, which is correct for a
+long weapon.
+
+**A wrong diagnosis worth recording so nobody repeats it.** Mid-investigation
+every arm bone appeared to be at `x = 0` - shoulder `[0, 40, -5.7]`, hand
+`[0, 23, -4.3]` - which looks exactly like a rig whose arms were built on the
+centreline, and would have meant re-rigging all fourteen characters. It is not.
+`buildRiggedCharacter` sets `inner.rotation.y = PI/2` so the model faces local
++X, which maps the rig's lateral axis from X onto **Z**: `HandL` is at
+`z = -4.9` and `HandR` at `z = +4.9`, symmetric, exactly as they should be.
+**Check both sides of a symmetric pair before concluding a rig is broken** - one
+bone's coordinates in isolation cannot tell you.
+
+### What the same measurements DO show: the rest pose
+
+On a 50-unit character the hands sit at `y = 23` - hip height - and only ~4.9
+units out laterally, with shoulders 1.8 out. So the arms hang low and close to
+the body. That is the honest reason the fists "look like they are at the waist":
+they are on the hands, and the hands are at the hips.
+
+Which connects to the open report that at rest the arms should hang at the sides
+rather than standing open (Thorne most obviously). The two are the same
+question - what the rest pose is - and it is authored in `art/pipeline.py`'s
+`_mk_poses`. Worth settling deliberately: bring the upper arms down against the
+torso, then re-check the props, because moving the arms moves everything hanging
+off them.
+
+### Keeping the two builds in sync### Keeping the two builds in sync
 
 `art/port_to_legacy.py` now carries balance as well as art - it was art and
 fonts only, which is why the archived build still said "Time Attack", still let
@@ -1583,16 +1603,6 @@ away-pause - because none of it means anything in a split-screen build. Things
 known still to need porting: the teleport smear and its camera fix, the
 projectile sphere and material cache, the first-person arm extraction, the
 death-scale fix, the tutorial auto-open flag, and the roster faces.
-
-### Weapons clip the body at rest
-
-Draven's hammer overlaps his leg when he is standing still. The props are
-transplanted from the procedural mesh onto the skeleton's hand bone
-(`buildRiggedCharacter`), and the offsets that positioned them were authored
-against the procedural body's proportions - a generated character's arm hangs
-in a different place, so a long weapon ends up inside the thigh. Related to the
-rest-pose item above: bringing the arms down without moving the props will make
-this worse, so the two should be fixed together.
 
 ### Mobile: one message, no escape hatches
 

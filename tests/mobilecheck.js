@@ -40,16 +40,38 @@ const IPHONE = {
     }));
     check('detected as a touch device', m.detected === true, JSON.stringify(m));
     check('the notice is shown', m.shown === 'flex', m.shown);
-    check('it offers the touch build and an override',
-        m.hasLegacyBtn && m.hasAnywayBtn, JSON.stringify(m));
-    await mob.screenshot({ path: DIR + 'b33-mobile-notice.png' });
+    // Batch 41: the escape hatches are GONE, and their absence is the
+    // assertion now. Batch 33 offered the archived touch build and an "I have a
+    // mouse and keyboard" override; someone then played the touch build on a
+    // phone and it "was really bad and hard to play", so pointing anyone at it
+    // is sending them somewhere worse, and "I have a mouse and keyboard" is
+    // self-contradictory on a phone.
+    check('it does NOT offer the touch build',
+        !m.hasLegacyBtn, JSON.stringify(m));
+    check('and offers no mouse-and-keyboard override',
+        !m.hasAnywayBtn, JSON.stringify(m));
+    check('what is left is just the one statement',
+        /needs a computer/i.test(m.heading), m.heading);
+    await mob.screenshot({ path: DIR + 'b41-mobile-notice.png' });
 
-    const dismissed = await mob.evaluate(() => {
-        document.getElementById('btn-mobile-anyway').click();
-        return getComputedStyle(document.getElementById('desktop-only')).display;
+    section('The archived build refuses on a phone too:');
+    await mob.goto(H.gameUrl().replace('/index.html', '/legacy/local-splitscreen.html'), { waitUntil: 'load' });
+    await H.sleep(2000);
+    const legacyMobile = await mob.evaluate(() => {
+        const el = document.getElementById('desktop-only');
+        return {
+            hasNotice: !!el,
+            shown: el ? getComputedStyle(el).display : 'missing',
+            heading: el ? (el.querySelector('h3') || {}).textContent : '',
+            buttons: el ? el.querySelectorAll('button').length : -1,
+        };
     });
-    check('continue-anyway dismisses it, for a mis-detected hybrid device',
-        dismissed === 'none', dismissed);
+    check('/local shows the same notice', legacyMobile.hasNotice && legacyMobile.shown === 'flex',
+        JSON.stringify(legacyMobile));
+    check('with the same single message',
+        /needs a computer/i.test(legacyMobile.heading || ''), legacyMobile.heading);
+    check('and no buttons offering a way past it',
+        legacyMobile.buttons === 0, String(legacyMobile.buttons));
 
     section('Archived build on a phone: single-player vs bot:');
     await mob.goto(H.gameUrl().replace('/index.html', '/legacy/local-splitscreen.html'), { waitUntil: 'load' });

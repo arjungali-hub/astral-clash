@@ -761,6 +761,24 @@
         #match-summary { font-size: 0.72rem; color: #94a3b8; text-align: left; margin: 8px 0; line-height: 1.5; }
         #match-summary b { color: #e2e8f0; }
         #pause-controls-reminder { font-size: 0.72rem; line-height: 1.6; text-align: left; }
+        #desktop-only {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10,13,20,0.975);
+            /* Above every screen AND above #cdn-error's 999: if you are on a
+               phone, "you need a computer" is the more useful message than any
+               other thing that could be on screen. */
+            z-index: 1000;
+            align-items: center; justify-content: center; text-align: center;
+            padding: 20px; box-sizing: border-box;
+            overflow-y: auto;
+        }
+        #desktop-only .menu-section { max-width: 400px; }
+        #desktop-only h3 { color: #00f3ff; margin: 0 0 10px; font-size: 1.25rem; }
+        #desktop-only p { color: #cbd5e1; font-size: 0.86rem; line-height: 1.6; margin: 0 0 12px; }
+        /* Batch 41: `.desktop-only-alt` and the two buttons are gone with the
+           escape hatches - see the markup. */
         #cdn-error {
             display: none;
             position: fixed;
@@ -1155,6 +1173,33 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M11 18h2"></path></svg>
                 <p>Rotate your device to landscape for the best view — the arena is wider than it is tall.</p>
             </div>
+        </div>
+    </div>
+
+    <!-- ONE MESSAGE, NO ESCAPE HATCHES (Batch 41).
+         Batch 31 removed the touch control scheme, so on a phone this build is
+         unplayable: aiming needs a mouse and moving needs a keyboard.
+         Batch 33 softened that with a link to the archived touch build and an
+         "I have a mouse and keyboard" override. Both are now gone, reported
+         after actually trying it:
+           - the touch build "was really bad and hard to play", so pointing
+             someone at it is not a kindness, it is sending them somewhere
+             worse. /local shows this same notice now.
+           - "I have a mouse and keyboard" is self-contradictory on a phone. It
+             existed as insurance against pointer media queries misreporting on
+             hybrid devices; the cost of being wrong the OTHER way - someone
+             plays something unplayable and concludes the game is broken - is
+             higher than the cost of a touchscreen laptop user being turned
+             away. (That case is also already excluded: the detection requires
+             a coarse pointer or no hover AND real touch points, and a
+             touchscreen laptop reports a fine pointer and real hover.)
+         So: everything below the divider is gone, and what is left is the
+         single statement that it needs a computer. -->
+    <div id="desktop-only">
+        <div class="menu-section">
+            <h3>This version needs a computer</h3>
+            <p>Astral Clash is played with a <b>mouse to aim</b> and a <b>keyboard to move</b>,
+               so it needs a desktop or laptop. Open it there and you are set.</p>
         </div>
     </div>
 
@@ -1586,6 +1631,14 @@ const MATCH_MODES = [
     // The ID stays `timeattack`. It is a localStorage progression key and a
     // value on the wire in SETUP/START packets, so renaming it would reset
     // players' records and desync a mixed-version match for a cosmetic gain.
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
     { id: 'timeattack', name: 'Takedown Race', blurb: 'Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse - the race is the pressure.' },
     { id: 'boss', name: 'Boss Fight (Co-op)', blurb: 'Both players team up against Karrigos, the Hollow Titan. Its attacks are slow and telegraphed — punish the wind-up. If either of you falls, the run is over.', coop: true },
     { id: 'survival', name: 'Survival Waves (Co-op)', blurb: 'Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.', coop: true },
@@ -1971,7 +2024,7 @@ document.getElementById('btn-audio-close').addEventListener('click', () => close
 // (the modal manager keeps Settings underneath), so closing either returns
 // here — no separate "hide Settings first" listeners needed.
 document.getElementById('btn-open-settings').addEventListener('click', () => { syncDebugUnlockUI(); openModal('settings'); });
-document.getElementById('btn-back-to-online').addEventListener('click', () => { location.href = '../index.html' + location.search; });
+document.getElementById('btn-back-to-online').addEventListener('click', () => { location.href = '/' + location.search; });
 document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());
 // Batch 13: the visible half of the unlock-everything override (the other
 // entry point is the typed cheat code in the keyboard dispatcher).
@@ -2205,6 +2258,13 @@ let mapRng = Math.random; // reseeded per map in loadMap()
 // because it's needed immediately below to trim render cost for phone GPUs —
 // see PIXEL_RATIO/antialias/shadowMap.enabled just under this.
 const TOUCH_UI = !!(window.matchMedia && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches) && navigator.maxTouchPoints > 0);
+// Batch 41: a touch device gets the notice and nothing else. The touch
+// control scheme is still in this build, but it is not good enough to
+// send anyone to - which is why the main build stopped offering it.
+if (TOUCH_UI) {
+    const dOnly = document.getElementById('desktop-only');
+    if (dOnly) dOnly.style.display = 'flex';
+}
 // Rebinding is a keyboard-only concept — the touch pads are fixed-function, so
 // on a touch device the whole screen is a dead end that only advertises controls
 // the player doesn't have. Hidden rather than disabled: there's nothing useful
@@ -2965,6 +3025,28 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
 // Rises up to this are walkable on foot; taller is a wall you must jump - see
 // resolveTallTerrain(), which reverts the move when the rise is too great.
 //
@@ -7773,6 +7855,16 @@ const RIG_TARGET_HEIGHT = 50;
 // eyes at the same height as Grint's. That is a pre-existing design property,
 // not something this table changes; it is written down here because it is
 // surprising and someone will eventually try to "fix" it.
+// How far a transplanted prop may sit from the hand it is attached to.
+//
+// The procedural builders position a weapon relative to THEIR hand, and some of
+// those offsets are large (a two-handed hammer is held well forward). Moved onto
+// a generated skeleton whose hand is somewhere else, a large offset becomes a
+// weapon floating at the waist - which is exactly what was reported for Ignis.
+// Small nudges are real authoring and are kept; anything beyond this is clamped
+// back toward the hand.
+const PROP_OFFSET_MAX = 6;
+
 const RIG_HEIGHT_MULT = {
     Karrigos: 1.5,
     Grint: 0.72,
@@ -9181,9 +9273,34 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 //
 // See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
 // 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
 const GRACE_PERIOD = 40;        // seconds the arena stays full-size before the first collapse tick
 const SHRINK_INTERVAL = 18;     // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
 // Once the collapse fraction passes this, snap fully shut and start crushing.
 //
 // WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and

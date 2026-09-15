@@ -121,6 +121,29 @@
         .brand h1 { font-variation-settings: 'CASL' 0, 'MONO' 0, 'wght' 800; letter-spacing: 0.1em; }
         h1, h2, h3 { font-variation-settings: 'CASL' 0, 'wght' 700; letter-spacing: 0.02em; }
         button { font-variation-settings: 'CASL' 0, 'wght' 600; letter-spacing: 0.03em; }
+        /* EVERY piece of text, not just what inherits.
+           Reported with a screenshot of the character select still rendering in
+           the browser default. Form elements - button, input, select, textarea -
+           do NOT inherit font-family from their ancestors; the UA stylesheet
+           gives them their own, so setting the family on `body` reaches
+           paragraphs and headings and misses every control. That is most of the
+           text in this game: the roster cards are buttons, the coin counts sit
+           in buttons, the room code is an input.
+           `font: inherit` would also drag size and weight along, which those
+           elements set for themselves - so inherit only the family and the
+           OpenType features. */
+        button, input, select, textarea, optgroup {
+            font-family: inherit;
+            font-feature-settings: inherit;
+        }
+        /* Belt and braces for anything that slipped through - a bare element
+           with no rule of its own still lands on the display cut rather than
+           whatever the browser would pick. */
+        .fighter-btn, .fighter-btn *, .shop-card, .shop-card *,
+        .mode-card, .mode-card *, .map-card, .map-card *,
+        .pslot, .pslot *, .tutorial-card, .tutorial-card * {
+            font-family: inherit;
+        }
         h1 {
             color: #00f3ff;
             text-shadow: 0 0 16px rgba(0, 243, 255, 0.55);
@@ -919,16 +942,8 @@
         #desktop-only .menu-section { max-width: 400px; }
         #desktop-only h3 { color: #00f3ff; margin: 0 0 10px; font-size: 1.25rem; }
         #desktop-only p { color: #cbd5e1; font-size: 0.86rem; line-height: 1.6; margin: 0 0 12px; }
-        #desktop-only .desktop-only-alt {
-            color: #94a3b8; font-size: 0.8rem;
-            border-top: 1px solid #2e3a59; padding-top: 12px; margin-top: 14px;
-        }
-        #desktop-only #btn-mobile-legacy {
-            background: transparent; color: #4ade80; border: 1px solid #4ade80;
-            box-shadow: none; font-size: 0.84rem;
-        }
-        #desktop-only #btn-mobile-legacy:hover { background: rgba(74,222,128,0.14); box-shadow: none; }
-        #desktop-only #btn-mobile-anyway { font-size: 0.74rem; margin-top: 8px; }
+        /* Batch 41: `.desktop-only-alt` and the two buttons are gone with the
+           escape hatches - see the markup. */
         #cdn-error {
             display: none;
             position: fixed;
@@ -1161,7 +1176,7 @@
                      someone who had not. It remains available under ?debug=1
                      for development. -->
                     <div class="settings-list" style="margin-top:14px;">
-                        <button id="btn-legacy-build" class="btn-legacy">Switch to Local Split-Screen (old version)</button>
+                        <button id="btn-legacy-build" class="btn-legacy">Switch to Local Version</button>
                     </div>
                     <p class="settings-note">The build from before online play: two players on one keyboard, split screen, and touch controls. Kept because it is the only way to play on the same machine. Your saved progress and unlocks are shared with it.</p>
                     <button id="btn-settings-close" class="btn-back">Close</button>
@@ -1297,21 +1312,30 @@
         <div id="debug-toast"></div>
     </div>
 
-    <!-- Batch 33: Batch 31 removed the touch control scheme, so on a phone or
-         tablet this build is not merely awkward - it is unplayable, because
-         aiming needs a mouse and moving needs a keyboard. Saying so plainly
-         beats letting someone tap a menu and then find nothing responds.
-         The archived split-screen build DOES still have touch controls, so it
-         is offered rather than just apologised for. -->
+    <!-- ONE MESSAGE, NO ESCAPE HATCHES (Batch 41).
+         Batch 31 removed the touch control scheme, so on a phone this build is
+         unplayable: aiming needs a mouse and moving needs a keyboard.
+         Batch 33 softened that with a link to the archived touch build and an
+         "I have a mouse and keyboard" override. Both are now gone, reported
+         after actually trying it:
+           - the touch build "was really bad and hard to play", so pointing
+             someone at it is not a kindness, it is sending them somewhere
+             worse. /local shows this same notice now.
+           - "I have a mouse and keyboard" is self-contradictory on a phone. It
+             existed as insurance against pointer media queries misreporting on
+             hybrid devices; the cost of being wrong the OTHER way - someone
+             plays something unplayable and concludes the game is broken - is
+             higher than the cost of a touchscreen laptop user being turned
+             away. (That case is also already excluded: the detection requires
+             a coarse pointer or no hover AND real touch points, and a
+             touchscreen laptop reports a fine pointer and real hover.)
+         So: everything below the divider is gone, and what is left is the
+         single statement that it needs a computer. -->
     <div id="desktop-only">
         <div class="menu-section">
             <h3>This version needs a computer</h3>
             <p>Astral Clash is played with a <b>mouse to aim</b> and a <b>keyboard to move</b>,
                so it needs a desktop or laptop. Open it there and you are set.</p>
-            <p class="desktop-only-alt">On a phone or tablet? The older <b>local split-screen</b> build
-               still has full touch controls &mdash; two players on one device, no internet needed.</p>
-            <button id="btn-mobile-legacy">Play the touch version</button>
-            <button id="btn-mobile-anyway" class="btn-back">I have a mouse and keyboard &mdash; continue</button>
         </div>
     </div>
 
@@ -2627,10 +2651,10 @@ function dismissDesktopOnlyNotice() {
     const el = document.getElementById('desktop-only');
     if (el) el.style.display = 'none';
 }
-document.getElementById('btn-mobile-legacy').addEventListener('click', () => {
-    location.href = 'legacy/local-splitscreen.html' + location.search;
-});
-document.getElementById('btn-mobile-anyway').addEventListener('click', dismissDesktopOnlyNotice);
+// Batch 41: no "play the touch version" and no "continue anyway" - see the
+// markup. dismissDesktopOnlyNotice is kept because ACDebug still exposes it for
+// tests, but nothing in the UI calls it any more: on a touch device the notice
+// is the end of the road.
 if (IS_TOUCH_DEVICE) showDesktopOnlyNotice();
 
 
@@ -3051,10 +3075,15 @@ function buildCrushRigs() {
     const floorTex = theme ? getFloorTexture(theme) : null;
     const slabGeo = new THREE.BoxGeometry(30, WALL_HEIGHT * 0.8, 260);
     const stageGeo = new THREE.BoxGeometry(300, 10, 300);
+    // aoMap samples vUv2 in r128, so anything carrying the packed ORM needs a
+    // uv2 attribute or the AO channel reads garbage and the surface goes
+    // blotchy - subtle enough to survive a screenshot review.
+    ensureUV2(slabGeo); ensureUV2(stageGeo);
     // A wall BEHIND the fighter closes the box off. Without it the camera looks
     // straight past them into empty sky, which read as a floating diorama
     // rather than a room shutting on someone.
     const backGeo = new THREE.BoxGeometry(300, WALL_HEIGHT * 0.8, 26);
+    ensureUV2(backGeo);
     const dustGeo = new THREE.SphereGeometry(1, 6, 5);
     dustGeo.userData.shared = true;
     slabGeo.userData.shared = true;
@@ -3069,6 +3098,15 @@ function buildCrushRigs() {
             roughness: 0.9, metalness: 0.08,
         });
         stageMat.userData.keepMap = true;
+        // Batch 41: the photographic set, like every other surface.
+        //
+        // The crush was the ONE place still dressed in the 256px procedural
+        // canvases - which is perverse, because it is also the one moment the
+        // camera is a metre from a wall and the surface fills the frame. The
+        // arena got real PBR sets in Batch 34 and this was missed.
+        // The stage floor is 300 square, so ~6.5 lands near 45 units a tile.
+        if (theme) attachPhotoSurface(stageMat, 'floor', theme.floorTex, 6.5, 6.5,
+            { normalScale: 1.0, ao: 0.9 });
         const stage = new THREE.Mesh(stageGeo, stageMat);
         stage.position.y = -5;
         stage.receiveShadow = true;
@@ -3080,6 +3118,17 @@ function buildCrushRigs() {
                 roughness: 0.85, metalness: 0.12,
             });
             m.userData.keepMap = true;   // textures are shared with the map
+            // Batch 41: photographic, like the arena walls. Tiled tighter than
+            // an arena wall (2.2 rather than ~1) because these slabs are close
+            // enough to the camera to show texel size - the whole point of the
+            // shot is a wall arriving in your face.
+            // 5.5, not 2.2. A slab face is 260 long and 208 tall, so 2.2
+            // repeats meant ~110 units per tile and the stone read as vertical
+            // streaks. Batch 34's tiling lesson applies here more than
+            // anywhere: this is the one surface the camera gets within a metre
+            // of. ~45 units per tile is the target, so 260/45 is about 5.5.
+            if (theme) attachPhotoSurface(m, 'wall', theme.wallTex, 5.5, 5.5,
+                { normalScale: 1.25, ao: 0.85, tintFade: 0.62 });
             return m;
         };
         for (const sign of [-1, 1]) {
@@ -9192,6 +9241,16 @@ const RIG_TARGET_HEIGHT = 50;
 // eyes at the same height as Grint's. That is a pre-existing design property,
 // not something this table changes; it is written down here because it is
 // surprising and someone will eventually try to "fix" it.
+// How far a transplanted prop may sit from the hand it is attached to.
+//
+// The procedural builders position a weapon relative to THEIR hand, and some of
+// those offsets are large (a two-handed hammer is held well forward). Moved onto
+// a generated skeleton whose hand is somewhere else, a large offset becomes a
+// weapon floating at the waist - which is exactly what was reported for Ignis.
+// Small nudges are real authoring and are kept; anything beyond this is clamped
+// back toward the hand.
+const PROP_OFFSET_MAX = 6;
+
 const RIG_HEIGHT_MULT = {
     Karrigos: 1.5,
     Grint: 0.72,
@@ -9369,11 +9428,54 @@ function buildRiggedCharacter(name) {
             // +X as "forward out of the hand", so rotate +X onto +Y here.
             const holder = new THREE.Group();
             holder.scale.setScalar(invScale);
-            holder.rotation.z = Math.PI / 2;
             holder.userData.noOutline = true;
             ra.hand.add(holder);
+
+            // ORIENT THE PROP FROM THE RIG, not from a fixed rotation.
+            //
+            // This was `holder.rotation.z = Math.PI / 2`, on the reasoning that
+            // a bone's local +Y runs wrist-to-fingertips while every prop is
+            // authored with local +X as "out of the hand". That is true of the
+            // rig art/pipeline.py builds, and it is NOT true of every generated
+            // character's hand bone - which produced three separate reports:
+            // Gorgonok's fist swinging behind him, Draven's weapon overlapping
+            // his leg, and Ignis's fists sitting at his waist.
+            //
+            // Measure instead. The direction out of the hand is the forearm's
+            // own direction (elbow -> wrist), so express that in the hand
+            // bone's local space and rotate prop +X onto it. No convention to
+            // be wrong about, and it self-corrects per character.
+            (() => {
+                const handBone = ra.hand;
+                const foreBone = handBone.parent;
+                if (!foreBone) { holder.rotation.z = Math.PI / 2; return; }
+                handBone.updateWorldMatrix(true, false);
+                foreBone.updateWorldMatrix(true, false);
+                const hp = new THREE.Vector3().setFromMatrixPosition(handBone.matrixWorld);
+                const fp = new THREE.Vector3().setFromMatrixPosition(foreBone.matrixWorld);
+                const outWorld = hp.clone().sub(fp);
+                if (outWorld.lengthSq() < 1e-8) { holder.rotation.z = Math.PI / 2; return; }
+                outWorld.normalize();
+                // Into the hand bone's local frame: rotation only, so use the
+                // inverse of its world quaternion rather than the full matrix.
+                const hq = new THREE.Quaternion();
+                handBone.matrixWorld.decompose(new THREE.Vector3(), hq, new THREE.Vector3());
+                const outLocal = outWorld.applyQuaternion(hq.invert()).normalize();
+                holder.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), outLocal);
+            })();
+
             for (const child of [...pa.hand.children]) {
                 pa.hand.remove(child);
+                // DROP the inherited local offset's large component.
+                //
+                // These offsets were authored against the PROCEDURAL body, whose
+                // hand sits somewhere else entirely - carrying them across is
+                // what put Ignis's fists at his waist rather than on the ends of
+                // his arms. The prop belongs at the hand it is parented to; any
+                // offset beyond a small authored nudge is a statement about a
+                // body that is no longer there.
+                const off = child.position.length();
+                if (off > PROP_OFFSET_MAX) child.position.multiplyScalar(PROP_OFFSET_MAX / off);
                 holder.add(child);
             }
         }
@@ -10823,7 +10925,11 @@ document.getElementById('btn-legacy-build').addEventListener('click', () => {
     if (netActive()) { netSend({ t: 'BYE' }); netTeardown(); }   // don't abandon a live opponent silently
     exitPointerLock();
     // Carry the query string across, so ?debug=1 survives the switch.
-    location.href = 'legacy/local-splitscreen.html' + location.search;
+    // `/local`, not the file path. A Vercel rewrite in vercel.json maps it to
+    // legacy/local-splitscreen.html, so the URL someone might type or share is
+    // a name rather than a path into the repo layout. location.search is still
+    // carried across or ?debug=1 stops surviving the switch.
+    location.href = '/local' + location.search;
 });
 
 document.getElementById('btn-home-play').addEventListener('click', () => { refreshLobbyUI(); openModal('lobby'); });
@@ -11520,7 +11626,66 @@ function resolvePlayerCollision(a, b) {
 // everything match-scoped (round wins, stats, map) and starts round 1;
 // startRound() (called again between rounds by endRound()) resets only
 // the fighters/hazard/pickup/timers, keeping the same map and score.
+// Every model this match needs, so the fighters are never built from a
+// procedural placeholder because a GLB was still in flight.
+function modelsNeededFor(mode) {
+    const names = [];
+    if (p1Choice) names.push(p1Choice);
+    if (p2Choice) names.push(p2Choice);
+    if (mode === 'boss') names.push('Karrigos');
+    else if (mode === 'survival') names.push('Grint', 'Slagling', 'Hollowkin', 'Karrigos');
+    return [...new Set(names)];
+}
+
+function neededModelsReady(mode) {
+    return modelsNeededFor(mode).every(n => !CHAR_MODEL_URLS[n] || charModels[n]);
+}
+
+// Batch 41: WAIT for the models before the match starts.
+//
+// Reported from a render where both crushed fighters appeared as their
+// PROCEDURAL meshes: the match had started before the GLBs finished loading,
+// and `initMesh` falls back to the primitive builder when `charModels[name]` is
+// empty. It is not a test artifact - pick a fighter and press Start immediately
+// and the same thing happens in a real match, permanently, because the mesh is
+// built once per round.
+//
+// It was also making boss mode appear to fail: the smoke check waits 30s for
+// FIGHT, and loading Karrigos on top of two fighters pushed past it. The state
+// was correct, just late.
+//
+// A short wait is the honest fix. The alternative - swapping the mesh in when
+// the model arrives - means rebuilding a live fighter's group mid-round, which
+// touches the weapon transplant, the material clones the hit flash mutates and
+// the outline shell. Far more moving parts than pausing for a moment before a
+// match that is about to last minutes.
+//
+// The wait is BOUNDED: if a model genuinely will not load, the match starts
+// anyway with the procedural mesh rather than hanging on a blank screen. That
+// was always the contract - the game must never fail to start over art.
+const MODEL_WAIT_MS = 8000;
+let awaitingModels = false;
+
 function startMatch(mapOverride) {
+    if (!neededModelsReady(matchMode) && !awaitingModels) {
+        awaitingModels = true;
+        const names = modelsNeededFor(matchMode);
+        names.forEach(ensureCharModel);
+        const started = performance.now();
+        const note = document.getElementById('setup-note');
+        if (note) note.textContent = 'Loading fighters\u2026';
+        const waitThenStart = () => {
+            if (neededModelsReady(matchMode) || performance.now() - started > MODEL_WAIT_MS) {
+                awaitingModels = false;
+                startMatch(mapOverride);
+                return;
+            }
+            setTimeout(waitThenStart, 60);
+        };
+        setTimeout(waitThenStart, 60);
+        return;
+    }
+    awaitingModels = false;
     closeAllModals();
     hideOverlay(); // the match takes over the viewport — no menu/gameover screen behind it
     matchMap = mapOverride || MAPS[Math.floor(Math.random() * MAPS.length)];
@@ -12738,6 +12903,8 @@ if (DEBUG) {
         // to be inspectable from a test.
         setLocalAway, requestResume, pauseForAway, refreshPauseUI, mayResumeAway, hostSide,
         togglePause, inLiveMatch,
+        hudFont, announceFont, openTutorial, addCoins,
+        modelsNeededFor, neededModelsReady, MODEL_WAIT_MS,
         TELEPORT_VIS_MIN, TELEPORT_VIS_MAX, TELEPORT_VIS_DECAY,
         positionFpsCamera, worldX, worldZ,
         get localAway() { return localAway; },

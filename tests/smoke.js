@@ -44,7 +44,22 @@ const H = require('./harness');
             const cards = Array.from(document.querySelectorAll('#mapselect-grid .map-card'));
             cards[0].click();
         });
-        const reached = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 30000);
+        // Batch 41: the budget depends on how many MODELS the mode needs.
+        //
+        // startMatch now waits for the fighters' GLBs before building them,
+        // because starting early meant the fighters were built from procedural
+        // placeholders for the whole round. That wait is real time: a versus
+        // mode loads two ~2MB models, Boss Fight adds Karrigos and Survival
+        // adds four creatures - and this harness decodes them under software
+        // WebGL at roughly 20fps.
+        //
+        // This check was failing with `state: "FIGHT"` in its own failure
+        // detail, which is the signature of a budget that expired rather than
+        // a broken mode: the match arrived correctly, just after the wait gave
+        // up. Attributing it to the mode would have been wrong.
+        const extraModels = mode === 'survival' ? 4 : mode === 'boss' ? 1 : 0;
+        const budget = 30000 + extraModels * 20000;
+        const reached = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", budget);
         const st = await page.evaluate(() => {
             const D = window.ACDebug;
             return { state: D.gameState, enemies: D.coopEnemies.length, coop: D.isCoopMode() };

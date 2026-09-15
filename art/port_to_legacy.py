@@ -61,6 +61,51 @@ def main():
     dst = io.open(DST, encoding='utf-8').read()
     before = len(dst)
 
+    # ------------------------------------------------------------- routing
+    # The archived build links back to the root, not to /index.html - Vercel
+    # already serves index.html there, and a bare domain is the address people
+    # actually use.
+    dst = dst.replace("location.href = '../index.html' + location.search;",
+                      "location.href = '/' + location.search;")
+
+    # --------------------------------------------------------- mobile notice
+    # /local must refuse to run on a phone too.
+    #
+    # Batch 33 sent mobile users HERE, on the grounds that this build still has
+    # touch controls. Then someone actually played it: "when I tried it on
+    # mobile it was really bad and hard to play". Offering a worse experience is
+    # not a kindness, so the archived build now shows the same single message
+    # the main one does, and nothing else.
+    if 'id="desktop-only"' not in dst:
+        notice = block(src, "    <!-- ONE MESSAGE, NO ESCAPE HATCHES (Batch 41).",
+                       "\n    <div id=\"cdn-error\">", 'notice markup')
+        dst = rep(dst, '    <div id="cdn-error">', notice + '\n    <div id="cdn-error">',
+                  'desktop-only notice markup', required=False)
+        css = block(src, "        #desktop-only {", "        #cdn-error {", 'notice css')
+        dst = rep(dst, "        #cdn-error {", css + "        #cdn-error {",
+                  'desktop-only notice css', required=False)
+        # Show it on a touch device. Anchored to `const TOUCH_UI = ...`,
+        # which is unique - `if (TOUCH_UI) {` appears TWICE in this build,
+        # so a rep on that silently skipped and the notice was inserted
+        # with nothing to display it. TOUCH_UI is the same coarse-pointer
+        # plus real-touch-points test the main build uses for
+        # IS_TOUCH_DEVICE, so it is reused rather than declared a second
+        # time where the two could drift apart.
+        touch_anchor = 'const TOUCH_UI = !!(window.matchMedia'
+        if touch_anchor in dst and "getElementById('desktop-only')" not in dst:
+            k = dst.index(chr(10), dst.index(touch_anchor)) + 1
+            wiring = (
+                '// Batch 41: a touch device gets the notice and nothing else. The touch',
+                '// control scheme is still in this build, but it is not good enough to',
+                '// send anyone to - which is why the main build stopped offering it.',
+                'if (TOUCH_UI) {',
+                "    const dOnly = document.getElementById('desktop-only');",
+                "    if (dOnly) dOnly.style.display = 'flex';",
+                '}',
+            )
+            dst = dst[:k] + chr(10).join(wiring) + chr(10) + dst[k:]
+            print('  %-34s ok' % 'desktop-only notice wiring')
+
     # ------------------------------------------------- gameplay + visuals
     # Widened after "for the legacy sync gap widen the scope to everything you
     # think are relevant". The rule applied here: anything that changes how the
@@ -397,6 +442,7 @@ def main():
         # Balance, so the two builds cannot drift on rules or tuning again.
         'const MAX_WALK_STEP_UP = 12;', 'const GRACE_PERIOD = 40;',
         # Gameplay + visuals, widened scope.
+        'id="desktop-only"', 'This version needs a computer',
         'TELEPORT_VIS_DECAY', 'decayVisualOffset', 'projCoreSphere',
         'meshBaseScale', 'function openTutorial(auto)', 'function faceUrl(',
         'const SHRINK_INTERVAL = 18;', 'Takedown Race',
