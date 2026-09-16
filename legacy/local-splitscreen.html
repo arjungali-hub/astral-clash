@@ -85,9 +85,14 @@
         }
         #game-container {
             position: relative;
+            /* NOT aspect-ratio: 1170/650 - see hudUnitScale. That lock
+               existed because the HUD was scaled one axis at a time, and it did
+               not even hold: aspect-ratio plus max-height contradict each other
+               in a short window and max-height wins, which is how a 1280x529
+               window got a 2.29:1 frame full of 28%-wide text. The caps are
+               unchanged, so a desktop window still gets exactly 1170x650. */
             width: min(96vw, 1170px);
-            aspect-ratio: 1170 / 650;
-            max-height: 96vh;
+            height: min(96vh, 650px);
             overflow: hidden;
             box-shadow: 0 0 30px rgba(0, 243, 255, 0.3);
             border: 2px solid #1f293d;
@@ -1480,6 +1485,31 @@ function hudViewports() {
     return [{ cam: viewer === player1 ? camP1 : camP2, x: 0, y: 0, w: W, h: H }];
 }
 
+// THE HUD'S OWN VIRTUAL SPACE, which is NOT the arena's.
+//
+// The HUD is authored in VIRTUAL_W x VIRTUAL_H (1.8:1) and drawn onto a canvas
+// whose aspect is whatever the window gave it - 2.29:1 at the 1280x529 the
+// playtest ran at, because #game-container's aspect-ratio and its max-height
+// cannot both be satisfied in a short window. Scaling x and y independently to
+// fit made every string in the HUD 28% wide, which is what "the arena name at
+// the top center is unreadable" actually was.
+//
+// So: ONE scale factor, taken from whichever axis is tighter, and the other
+// axis simply gets more virtual units. hudW()/hudH() are the virtual extent of
+// the real canvas, so `hudW() / 2` is the true centre and `hudW() - 30` is 30
+// units in from the true right edge, at any aspect, undistorted.
+//
+// Only HUD layout uses these. The arena is a fixed 1755x975 in world units
+// (ARENA_LEFT..ARENA_BOTTOM, every map's hand-placed geometry, the shadow fit)
+// and must not change size with the window, so all of that still reads
+// VIRTUAL_W/VIRTUAL_H directly.
+function hudUnitScale() {
+    return Math.min(hudCanvas.width / VIRTUAL_W, hudCanvas.height / VIRTUAL_H) || 1;
+}
+function hudW() { return hudCanvas.width / hudUnitScale(); }
+function hudH() { return hudCanvas.height / hudUnitScale(); }
+function hudVirtualTransform() { const s = hudUnitScale(); hudCtx.scale(s, s); }
+
 // Floating damage numbers + impact sparks, projected from their world position
 // into each viewport that can see them (so in split-screen each shows once per
 // half). Drawn in raw canvas pixels — the projected coords are already pixels.
@@ -2017,6 +2047,22 @@ function prog(side) { return progression[side] || progression.p1; }
 const MATCH_MODES = [
     { id: 'classic', name: 'Classic Versus', blurb: 'Best of 3 rounds. Knock your opponent out to win a round.' },
     { id: 'zone', name: 'Zone Control', blurb: 'Hold the glowing ring at the center. First to 45 seconds of control wins — knock them out of it.' },
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
     // Batch 38: "Time Attack" named the one thing this mode does not involve.
     // It is first to three knockouts with no clock at all - the name was
     // borrowed from racing, where the timer IS the score. "Takedown Race" says
@@ -3519,6 +3565,50 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
 // Rises up to this are walkable on foot; taller is a wall you must jump - see
 // resolveTallTerrain(), which reverts the move when the rise is too great.
 //
@@ -10572,9 +10662,59 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 //
 // See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
 // 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
 const GRACE_PERIOD = 40;        // seconds the arena stays full-size before the first collapse tick
 const SHRINK_INTERVAL = 18;     // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
 // Once the collapse fraction passes this, snap fully shut and start crushing.
 //
 // WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
@@ -10971,7 +11111,7 @@ function drawBossHUD() {
     hudCtx.textAlign = 'center';
 
     if (single) {
-        const f = foes[0], BW = 560, BH = 16, x = (VIRTUAL_W - BW) / 2;
+        const f = foes[0], BW = 560, BH = 16, x = (hudW() - BW) / 2;
         const frac = Math.max(0, f.hp) / f.maxHp;
         hudCtx.fillStyle = 'rgba(10,14,22,0.8)';
         hudCtx.fillRect(x - 2, y - 2, BW + 4, BH + 4);
@@ -10987,9 +11127,9 @@ function drawBossHUD() {
         const label = matchMode === 'survival'
             ? `Wave ${waveNumber + 1}${isBossWave ? ' — BOSS' : ''} · ${f.name}`
             : f.name;
-        hudCtx.fillText(label, VIRTUAL_W / 2, y - 8);
+        hudCtx.fillText(label, hudW() / 2, y - 8);
         hudCtx.font = hudFont(12); hudCtx.fillStyle = '#e2e8f0';
-        hudCtx.fillText(`${Math.max(0, Math.ceil(f.hp))} / ${f.maxHp}`, VIRTUAL_W / 2, y + BH + 14);
+        hudCtx.fillText(`${Math.max(0, Math.ceil(f.hp))} / ${f.maxHp}`, hudW() / 2, y + BH + 14);
         hudCtx.textAlign = 'left';
         return;
     }
@@ -10999,10 +11139,10 @@ function drawBossHUD() {
     // make the remaining bars jump around exactly when you're reading them.
     const alive = foes.filter(f => f.hp > 0).length;
     hudCtx.font = hudFont(13, true); hudCtx.fillStyle = '#fde68a';
-    hudCtx.fillText(`Wave ${waveNumber + 1}  ·  ${alive} of ${foes.length} left`, VIRTUAL_W / 2, y - 6);
+    hudCtx.fillText(`Wave ${waveNumber + 1}  ·  ${alive} of ${foes.length} left`, hudW() / 2, y - 6);
     const BW = 96, BH = 10, gap = 10;
     const totalW = foes.length * BW + (foes.length - 1) * gap;
-    let x = (VIRTUAL_W - totalW) / 2;
+    let x = (hudW() - totalW) / 2;
     for (const f of foes) {
         const frac = Math.max(0, f.hp) / f.maxHp;
         hudCtx.fillStyle = 'rgba(10,14,22,0.8)';
@@ -11029,12 +11169,12 @@ function drawWaveBreakHUD() {
     hudCtx.textAlign = 'center';
     hudCtx.font = hudFont(20, true);
     hudCtx.fillStyle = '#4ade80';
-    hudCtx.fillText(`Wave ${waveNumber} cleared`, VIRTUAL_W / 2, y);
+    hudCtx.fillText(`Wave ${waveNumber} cleared`, hudW() / 2, y);
     hudCtx.font = hudFont(13);
     hudCtx.fillStyle = '#86efac';
-    hudCtx.fillText(`+${Math.round(WAVE_HEAL_PCT * 100)}% HP recovered`, VIRTUAL_W / 2, y + 20);
+    hudCtx.fillText(`+${Math.round(WAVE_HEAL_PCT * 100)}% HP recovered`, hudW() / 2, y + 20);
     hudCtx.fillStyle = '#fde68a';
-    hudCtx.fillText(`Wave ${waveNumber + 1} incoming in ${Math.max(1, Math.ceil(waveBreakTimer / 60))}...`, VIRTUAL_W / 2, y + 40);
+    hudCtx.fillText(`Wave ${waveNumber + 1} incoming in ${Math.max(1, Math.ceil(waveBreakTimer / 60))}...`, hudW() / 2, y + 40);
     hudCtx.textAlign = 'left';
 }
 
@@ -11046,7 +11186,7 @@ function drawRoundStatus() {
     if (isCoopMode()) { hudCtx.textAlign = "left"; return; }
     if (crushing) {
         hudCtx.fillStyle = Math.sin(arenaTime * 0.5) > 0 ? "#ef4444" : "#fca5a5";
-        hudCtx.fillText("CRUSHING!", VIRTUAL_W / 2, 44);
+        hudCtx.fillText("CRUSHING!", hudW() / 2, 44);
     } else {
         // Don't lead the round with a big "collapses in 20s" — it's not the
         // point yet. Stay silent until the arena is already closing OR the
@@ -11056,7 +11196,7 @@ function drawRoundStatus() {
             hudCtx.save();
             hudCtx.globalAlpha = collapsed ? 1 : Math.max(0, Math.min(1, (15 - shrinkTimer) / 5));
             hudCtx.fillStyle = shrinkTimer <= 3 ? "#ef4444" : "#e2e8f0";
-            hudCtx.fillText(`${collapsed ? 'Arena closing — next' : 'Arena collapses in'} ${Math.max(0, Math.ceil(shrinkTimer))}s`, VIRTUAL_W / 2, 44);
+            hudCtx.fillText(`${collapsed ? 'Arena closing — next' : 'Arena collapses in'} ${Math.max(0, Math.ceil(shrinkTimer))}s`, hudW() / 2, 44);
             hudCtx.restore();
         }
     }
@@ -11073,7 +11213,7 @@ function drawRoundStatus() {
         // One track per player, growing from the outside toward the middle, so
         // "who is closer to winning" reads as two bars racing inward.
         const BW = 120, BH = 9, gap = 26;
-        const leftX = VIRTUAL_W / 2 - gap / 2 - BW, rightX = VIRTUAL_W / 2 + gap / 2;
+        const leftX = hudW() / 2 - gap / 2 - BW, rightX = hudW() / 2 + gap / 2;
         [['p1', leftX, '#00f3ff'], ['p2', rightX, '#f472b6']].forEach(([side, x, col]) => {
             hudCtx.fillStyle = 'rgba(15,20,32,0.75)'; hudCtx.fillRect(x, MODE_Y, BW, BH);
             const w = BW * Math.min(1, zoneScore[side] / ZONE_TARGET);
@@ -11087,28 +11227,28 @@ function drawRoundStatus() {
         });
         hudCtx.font = hudFont(11);
         hudCtx.fillStyle = zoneHolder ? '#e2e8f0' : '#64748b';
-        hudCtx.fillText(zoneHolder ? `${displayName(zoneHolder)} holds the zone` : 'Zone contested', VIRTUAL_W / 2, MODE_Y - 4);
+        hudCtx.fillText(zoneHolder ? `${displayName(zoneHolder)} holds the zone` : 'Zone contested', hudW() / 2, MODE_Y - 4);
         hudCtx.fillStyle = '#94a3b8';
         hudCtx.fillText(`${Math.floor(zoneScore.p1)}s`, leftX - 16, MODE_Y + BH);
         hudCtx.fillText(`${Math.floor(zoneScore.p2)}s`, rightX + BW + 16, MODE_Y + BH);
     } else if (matchMode === 'timeattack') {
         for (let i = 0; i < TIME_ATTACK_KOS; i++) {
             hudCtx.fillStyle = i < koTally.p1 ? '#00f3ff' : '#1e293b';
-            hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 - 20 - i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
+            hudCtx.beginPath(); hudCtx.arc(hudW() / 2 - 20 - i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
             hudCtx.fillStyle = i < koTally.p2 ? '#f472b6' : '#1e293b';
-            hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 + 20 + i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
+            hudCtx.beginPath(); hudCtx.arc(hudW() / 2 + 20 + i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
         }
         hudCtx.font = hudFont(11); hudCtx.fillStyle = '#64748b';
-        hudCtx.fillText(`First to ${TIME_ATTACK_KOS} KOs`, VIRTUAL_W / 2, MODE_Y - 12);
+        hudCtx.fillText(`First to ${TIME_ATTACK_KOS} KOs`, hudW() / 2, MODE_Y - 12);
     } else {
         // Round-win pips, one row per player, filled dots for rounds already won.
         const pipY = { p1: 58, p2: 58 };
         for (let i = 0; i < ROUNDS_TO_WIN; i++) {
             const filled1 = i < roundWins.p1, filled2 = i < roundWins.p2;
             hudCtx.fillStyle = filled1 ? '#00f3ff' : '#1e293b';
-            hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 - 20 - i * 12, pipY.p1, 4, 0, Math.PI * 2); hudCtx.fill();
+            hudCtx.beginPath(); hudCtx.arc(hudW() / 2 - 20 - i * 12, pipY.p1, 4, 0, Math.PI * 2); hudCtx.fill();
             hudCtx.fillStyle = filled2 ? '#00f3ff' : '#1e293b';
-            hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 + 20 + i * 12, pipY.p2, 4, 0, Math.PI * 2); hudCtx.fill();
+            hudCtx.beginPath(); hudCtx.arc(hudW() / 2 + 20 + i * 12, pipY.p2, 4, 0, Math.PI * 2); hudCtx.fill();
         }
     }
     hudCtx.textAlign = "left";
@@ -11274,10 +11414,10 @@ function drawHUDInner() {
     // footer) are drawn once at center in full-screen, or TWICE — centered in
     // each half — in split-screen, so nothing lands on the seam (B10).
     hudCtx.save();
-    hudCtx.scale(hudCanvas.width / VIRTUAL_W, hudCanvas.height / VIRTUAL_H);
+    hudVirtualTransform();
 
     drawPlayerHUD(player1, 30, displayName('p1'));
-    drawPlayerHUD(player2, VIRTUAL_W - 30 - 420, displayName('p2'));
+    drawPlayerHUD(player2, hudW() - 30 - 420, displayName('p2'));
     // Batch 16: the co-op challenger gets a wide bar across the top centre —
     // the conventional boss-bar placement, and the one region the two
     // side panels leave free in both split and full-screen layouts.
@@ -11289,24 +11429,24 @@ function drawHUDInner() {
     const drawShared = () => {
         if (currentMap) {
             hudCtx.fillStyle = "#64748b"; hudCtx.font = hudFont(15); hudCtx.textAlign = "center";
-            hudCtx.fillText(currentMap.name, VIRTUAL_W / 2, 24); hudCtx.textAlign = "left";
+            hudCtx.fillText(currentMap.name, hudW() / 2, 24); hudCtx.textAlign = "left";
         }
         drawRoundStatus();
         if (gameState === "ROUND_END") {
             hudCtx.textAlign = "center";
             hudCtx.font = hudFont(34, true); hudCtx.fillStyle = "#00f3ff";
-            hudCtx.fillText(isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`, VIRTUAL_W / 2, 300);
+            hudCtx.fillText(isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`, hudW() / 2, 300);
             hudCtx.font = hudFont(18); hudCtx.fillStyle = "#94a3b8";
-            hudCtx.fillText(`Round ${currentRound} starting...`, VIRTUAL_W / 2, 336);
+            hudCtx.fillText(`Round ${currentRound} starting...`, hudW() / 2, 336);
             hudCtx.textAlign = "left";
         }
         hudCtx.fillStyle = "#64748b"; hudCtx.font = hudFont(13); hudCtx.textAlign = "center";
-        hudCtx.fillText(`Esc for controls / pause${botNote ? '  |  ' + botNote : ''}`, VIRTUAL_W / 2, VIRTUAL_H - 20);
+        hudCtx.fillText(`Esc for controls / pause${botNote ? '  |  ' + botNote : ''}`, hudW() / 2, hudH() - 20);
         hudCtx.textAlign = "left";
     };
     if (twoHumans) {
-        hudCtx.save(); hudCtx.translate(-VIRTUAL_W / 4, 0); drawShared(); hudCtx.restore(); // centered in the left half
-        hudCtx.save(); hudCtx.translate(VIRTUAL_W / 4, 0); drawShared(); hudCtx.restore(); // and the right half
+        hudCtx.save(); hudCtx.translate(-hudW() / 4, 0); drawShared(); hudCtx.restore(); // centered in the left half
+        hudCtx.save(); hudCtx.translate(hudW() / 4, 0); drawShared(); hudCtx.restore(); // and the right half
     } else {
         drawShared();
     }
@@ -11319,11 +11459,11 @@ function drawHUDInner() {
 function drawDebugOverlay() {
     if (!DEBUG || !player1 || !player2) return;
     hudCtx.save();
-    hudCtx.scale(hudCanvas.width / VIRTUAL_W, hudCanvas.height / VIRTUAL_H);
+    hudVirtualTransform();
     hudCtx.textAlign = 'center';
     hudCtx.font = '11px monospace';
     hudCtx.fillStyle = '#4ade80';
-    hudCtx.fillText(`FPS ${fpsSmoothed.toFixed(0)}  dt ${lastDt.toFixed(2)}  hitstop ${hitStopFrames.toFixed(1)}  calls ${renderer.info.render.calls}  tris ${renderer.info.render.triangles}`, VIRTUAL_W / 2, 34);
+    hudCtx.fillText(`FPS ${fpsSmoothed.toFixed(0)}  dt ${lastDt.toFixed(2)}  hitstop ${hitStopFrames.toFixed(1)}  calls ${renderer.info.render.calls}  tris ${renderer.info.render.triangles}`, hudW() / 2, 34);
     hudCtx.textAlign = 'left';
 
     for (const f of [player1, player2]) {
@@ -11774,12 +11914,12 @@ function drawCoopDownHUD() {
         const secs = Math.max(1, Math.ceil(f.respawnTimer / 60));
         hudCtx.font = hudFont(17, true);
         hudCtx.fillStyle = '#fbbf24';
-        hudCtx.fillText(f.name + ' is down — back in ' + secs + 's', VIRTUAL_W / 2, y);
+        hudCtx.fillText(f.name + ' is down — back in ' + secs + 's', hudW() / 2, y);
         y += 22;
     }
     hudCtx.font = hudFont(12);
     hudCtx.fillStyle = '#94a3b8';
-    hudCtx.fillText('If the last fighter standing falls, the run is over.', VIRTUAL_W / 2, y);
+    hudCtx.fillText('If the last fighter standing falls, the run is over.', hudW() / 2, y);
     hudCtx.textAlign = 'left';
 }
 

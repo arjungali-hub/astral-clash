@@ -60,9 +60,19 @@
         }
         #game-container {
             position: relative;
+            /* NOT aspect-ratio: 1170/650. That lock existed because the HUD was
+               scaled onto this box one axis at a time, so any other aspect
+               stretched it - and it did not even hold: `aspect-ratio` plus
+               `max-height: 96vh` contradict each other in a short window, and
+               max-height wins, which is how a 1280x529 window ended up with a
+               2.29:1 frame full of 28%-wide text.
+               The HUD scales uniformly now (see hudUnitScale), so the frame is
+               free to take the window it is given. The caps are unchanged, so
+               nothing moves on a desktop-sized window: at 1440x900 this is
+               still exactly 1170x650. A short window gets its ~189px of dead
+               letterbox band back as playable view. */
             width: min(96vw, 1170px);
-            aspect-ratio: 1170 / 650;
-            max-height: 96vh;
+            height: min(96vh, 650px);
             overflow: hidden;
             box-shadow: 0 0 30px rgba(0, 243, 255, 0.3);
             border: 2px solid #1f293d;
@@ -238,7 +248,19 @@
            then pick + setup) instead of the old three-column
            P1 / VS / P2 arrangement, because the two sides are no longer
            symmetrical: one of them is you. */
-        #home-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; }
+        /* `safe center`: centre the home screen while it fits, top-align it
+           once it does not. Plain `justify-content: center` pushes content that
+           is taller than its container out of BOTH ends, and the top half is
+           then unreachable - scrolling only reaches overflow below. At 638x528
+           that put the wordmark 46px above the frame that clips it. The plain
+           `center` stays as the fallback for an engine that does not know the
+           keyword. */
+        #home-screen {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center;
+            justify-content: safe center;
+            min-height: 100%;
+        }
         .home-card { width: min(430px, 92vw); text-align: center; }
         .home-card .btn-online { width: 100%; font-size: 1rem; padding: 13px 18px; }
         .home-note { color: #94a3b8; font-size: 0.8rem; line-height: 1.55; margin: 12px 0 14px; }
@@ -355,6 +377,11 @@
         @media (max-width: 700px) {
             .picker-side { flex-direction: column; }
             .picker-side .fighter-detail { width: auto; align-self: stretch; }
+            /* Stacked, the roster is the full width of the column. `flex: 1 1
+               auto` does not do this here - in a column flexbox that sizes the
+               HEIGHT, and the width falls to align-items: flex-start, which
+               shrinks the grid to its two cards' natural width. */
+            .picker-side .fighter-grid { align-self: stretch; }
         }
         .picker-panel h3 { margin: 0 0 10px; font-size: 1rem; }
         .sandbox-banner {
@@ -378,7 +405,13 @@
 
         @media (max-width: 780px) {
             .room-main { flex-direction: column; align-items: stretch; }
-            .setup-panel { width: auto; }
+            /* EVERY panel in the stacked room, not just .setup-panel.
+               `align-items: stretch` above is powerless against the explicit
+               `.menu-section { width: 350px }`, so the fighter picker kept the
+               width of a side panel from the old two-column design and filled
+               a little over half of a 640px window - reported as "the picker
+               fills only the left half". */
+            .room-main .menu-section { width: auto; }
             .room-slots { flex-wrap: wrap; }
             .pslot-vs { width: 100%; height: 34px; }
         }
@@ -1590,6 +1623,31 @@ function hudViewports() {
     // Batch 31: a single full-canvas viewport, since there is one view.
     return [{ cam: localCamera(), x: 0, y: 0, w: hudCanvas.width, h: hudCanvas.height }];
 }
+
+// THE HUD'S OWN VIRTUAL SPACE, which is NOT the arena's.
+//
+// The HUD is authored in VIRTUAL_W x VIRTUAL_H (1.8:1) and drawn onto a canvas
+// whose aspect is whatever the window gave it - 2.29:1 at the 1280x529 the
+// playtest ran at, because #game-container's aspect-ratio and its max-height
+// cannot both be satisfied in a short window. Scaling x and y independently to
+// fit made every string in the HUD 28% wide, which is what "the arena name at
+// the top center is unreadable" actually was.
+//
+// So: ONE scale factor, taken from whichever axis is tighter, and the other
+// axis simply gets more virtual units. hudW()/hudH() are the virtual extent of
+// the real canvas, so `hudW() / 2` is the true centre and `hudW() - 30` is 30
+// units in from the true right edge, at any aspect, undistorted.
+//
+// Only HUD layout uses these. The arena is a fixed 1755x975 in world units
+// (ARENA_LEFT..ARENA_BOTTOM, every map's hand-placed geometry, the shadow fit)
+// and must not change size with the window, so all of that still reads
+// VIRTUAL_W/VIRTUAL_H directly.
+function hudUnitScale() {
+    return Math.min(hudCanvas.width / VIRTUAL_W, hudCanvas.height / VIRTUAL_H) || 1;
+}
+function hudW() { return hudCanvas.width / hudUnitScale(); }
+function hudH() { return hudCanvas.height / hudUnitScale(); }
+function hudVirtualTransform() { const s = hudUnitScale(); hudCtx.scale(s, s); }
 
 // Floating damage numbers + impact sparks, projected from their world position
 // into each viewport that can see them (so in split-screen each shows once per
@@ -10043,11 +10101,29 @@ const PROC_MESH_BUILDERS = {
 //   'cast'   — raise/point the casting arm(s) and hold through the active
 //              window while the held focus flares (Lyra forward, Seraphine
 //              overhead, Aurelia forward two-handed).
+// How much of the active window a swing spends TRAVELLING; the rest is spent
+// held at full extension. See swingT.
+const SWING_CONTACT_FRAC = 0.55;
+
 function swingT(f, fd) {
-    // 0 at rest -> 1 wind-up extreme -> -1 follow-through -> back to 0.
+    // 0 at rest -> 1 wind-up extreme -> -1 full extension (HELD) -> back to 0.
     if (f.atkState === 'startup') return fd.startup > 0 ? (1 - f.atkStateTimer / fd.startup) : 1;
-    if (f.atkState === 'active') { const p = fd.active > 0 ? (1 - f.atkStateTimer / fd.active) : 1; return 1 - p * 2; }
-    return fd.recovery > 0 ? -(f.atkStateTimer / fd.recovery) : 0;
+    if (f.atkState === 'active') {
+        // THE CONTACT POSE IS HELD. A linear 1 -> -1 across the window puts the
+        // arm at full extension for exactly one frame - the last one - and
+        // already returning on the next, which is why a hammer landing read as
+        // a wipe rather than a hit ("lengthen Gorgonok's hold at full
+        // extension"). The travel is front-loaded and the remainder is the
+        // hold. The window, the hitbox and the damage are untouched.
+        const p = fd.active > 0 ? (1 - f.atkStateTimer / fd.active) : 1;
+        const travel = Math.min(1, p / SWING_CONTACT_FRAC);
+        return 1 - travel * 2;
+    }
+    // The return EASES OUT: the arm leaves the contact pose slowly and finishes
+    // quickly, instead of retracting at a constant rate. `r` is the fraction of
+    // recovery still to run, so this is 1 at the start and 0 at the end.
+    const r = fd.recovery > 0 ? (f.atkStateTimer / fd.recovery) : 0;
+    return -Math.sin(r * Math.PI / 2);
 }
 function actionPhase(f, fd) {
     // 0..1 across the whole startup+active+recovery window — for driving
@@ -12627,7 +12703,7 @@ function drawBossHUD() {
     hudCtx.textAlign = 'center';
 
     if (single) {
-        const f = foes[0], BW = 560, BH = 16, x = (VIRTUAL_W - BW) / 2;
+        const f = foes[0], BW = 560, BH = 16, x = (hudW() - BW) / 2;
         const frac = Math.max(0, f.hp) / f.maxHp;
         hudCtx.fillStyle = 'rgba(10,14,22,0.8)';
         hudCtx.fillRect(x - 2, y - 2, BW + 4, BH + 4);
@@ -12643,9 +12719,9 @@ function drawBossHUD() {
         const label = matchMode === 'survival'
             ? `Wave ${waveNumber + 1}${isBossWave ? ' — BOSS' : ''} · ${f.name}`
             : f.name;
-        hudCtx.fillText(label, VIRTUAL_W / 2, y - 8);
+        hudCtx.fillText(label, hudW() / 2, y - 8);
         hudCtx.font = hudFont(12); hudCtx.fillStyle = '#e2e8f0';
-        hudCtx.fillText(`${Math.max(0, Math.ceil(f.hp))} / ${f.maxHp}`, VIRTUAL_W / 2, y + BH + 14);
+        hudCtx.fillText(`${Math.max(0, Math.ceil(f.hp))} / ${f.maxHp}`, hudW() / 2, y + BH + 14);
         hudCtx.textAlign = 'left';
         return;
     }
@@ -12655,10 +12731,10 @@ function drawBossHUD() {
     // make the remaining bars jump around exactly when you're reading them.
     const alive = foes.filter(f => f.hp > 0).length;
     hudCtx.font = hudFont(13, true); hudCtx.fillStyle = '#fde68a';
-    hudCtx.fillText(`Wave ${waveNumber + 1}  ·  ${alive} of ${foes.length} left`, VIRTUAL_W / 2, y - 6);
+    hudCtx.fillText(`Wave ${waveNumber + 1}  ·  ${alive} of ${foes.length} left`, hudW() / 2, y - 6);
     const BW = 96, BH = 10, gap = 10;
     const totalW = foes.length * BW + (foes.length - 1) * gap;
-    let x = (VIRTUAL_W - totalW) / 2;
+    let x = (hudW() - totalW) / 2;
     for (const f of foes) {
         const frac = Math.max(0, f.hp) / f.maxHp;
         hudCtx.fillStyle = 'rgba(10,14,22,0.8)';
@@ -12685,12 +12761,12 @@ function drawWaveBreakHUD() {
     hudCtx.textAlign = 'center';
     hudCtx.font = hudFont(20, true);
     hudCtx.fillStyle = '#4ade80';
-    hudCtx.fillText(`Wave ${waveNumber} cleared`, VIRTUAL_W / 2, y);
+    hudCtx.fillText(`Wave ${waveNumber} cleared`, hudW() / 2, y);
     hudCtx.font = hudFont(13);
     hudCtx.fillStyle = '#86efac';
-    hudCtx.fillText(`+${Math.round(WAVE_HEAL_PCT * 100)}% HP recovered`, VIRTUAL_W / 2, y + 20);
+    hudCtx.fillText(`+${Math.round(WAVE_HEAL_PCT * 100)}% HP recovered`, hudW() / 2, y + 20);
     hudCtx.fillStyle = '#fde68a';
-    hudCtx.fillText(`Wave ${waveNumber + 1} incoming in ${Math.max(1, Math.ceil(waveBreakTimer / 60))}...`, VIRTUAL_W / 2, y + 40);
+    hudCtx.fillText(`Wave ${waveNumber + 1} incoming in ${Math.max(1, Math.ceil(waveBreakTimer / 60))}...`, hudW() / 2, y + 40);
     hudCtx.textAlign = 'left';
 }
 
@@ -12708,12 +12784,12 @@ function drawCoopDownHUD() {
         hudCtx.fillStyle = f === mine ? '#fca5a5' : '#fbbf24';
         hudCtx.fillText(f === mine ? `You are down — back in ${secs}s`
                                    : `${f.name} is down — back in ${secs}s`,
-                        VIRTUAL_W / 2, y);
+                        hudW() / 2, y);
         y += 22;
     }
     hudCtx.font = hudFont(12);
     hudCtx.fillStyle = '#94a3b8';
-    hudCtx.fillText('If the last fighter standing falls, the run is over.', VIRTUAL_W / 2, y);
+    hudCtx.fillText('If the last fighter standing falls, the run is over.', hudW() / 2, y);
     hudCtx.textAlign = 'left';
 }
 
@@ -12725,7 +12801,7 @@ function drawRoundStatus() {
     if (isCoopMode()) { hudCtx.textAlign = "left"; return; }
     if (crushing) {
         hudCtx.fillStyle = Math.sin(arenaTime * 0.5) > 0 ? "#ef4444" : "#fca5a5";
-        hudCtx.fillText("CRUSHING!", VIRTUAL_W / 2, 44);
+        hudCtx.fillText("CRUSHING!", hudW() / 2, 44);
     } else {
         // Don't lead the round with a big "collapses in 20s" — it's not the
         // point yet. Stay silent until the arena is already closing OR the
@@ -12735,7 +12811,7 @@ function drawRoundStatus() {
             hudCtx.save();
             hudCtx.globalAlpha = collapsed ? 1 : Math.max(0, Math.min(1, (15 - shrinkTimer) / 5));
             hudCtx.fillStyle = shrinkTimer <= 3 ? "#ef4444" : "#e2e8f0";
-            hudCtx.fillText(`${collapsed ? 'Arena closing — next' : 'Arena collapses in'} ${Math.max(0, Math.ceil(shrinkTimer))}s`, VIRTUAL_W / 2, 44);
+            hudCtx.fillText(`${collapsed ? 'Arena closing — next' : 'Arena collapses in'} ${Math.max(0, Math.ceil(shrinkTimer))}s`, hudW() / 2, 44);
             hudCtx.restore();
         }
     }
@@ -12752,7 +12828,7 @@ function drawRoundStatus() {
         // One track per player, growing from the outside toward the middle, so
         // "who is closer to winning" reads as two bars racing inward.
         const BW = 120, BH = 9, gap = 26;
-        const leftX = VIRTUAL_W / 2 - gap / 2 - BW, rightX = VIRTUAL_W / 2 + gap / 2;
+        const leftX = hudW() / 2 - gap / 2 - BW, rightX = hudW() / 2 + gap / 2;
         [['p1', leftX, '#00f3ff'], ['p2', rightX, '#f472b6']].forEach(([side, x, col]) => {
             hudCtx.fillStyle = 'rgba(15,20,32,0.75)'; hudCtx.fillRect(x, MODE_Y, BW, BH);
             const w = BW * Math.min(1, zoneScore[side] / ZONE_TARGET);
@@ -12766,28 +12842,28 @@ function drawRoundStatus() {
         });
         hudCtx.font = hudFont(11);
         hudCtx.fillStyle = zoneHolder ? '#e2e8f0' : '#64748b';
-        hudCtx.fillText(zoneHolder ? `${playerLabelShort(zoneHolder)} holds the zone` : 'Zone contested', VIRTUAL_W / 2, MODE_Y - 4);
+        hudCtx.fillText(zoneHolder ? `${playerLabelShort(zoneHolder)} holds the zone` : 'Zone contested', hudW() / 2, MODE_Y - 4);
         hudCtx.fillStyle = '#94a3b8';
         hudCtx.fillText(`${Math.floor(zoneScore.p1)}s`, leftX - 16, MODE_Y + BH);
         hudCtx.fillText(`${Math.floor(zoneScore.p2)}s`, rightX + BW + 16, MODE_Y + BH);
     } else if (matchMode === 'timeattack') {
         for (let i = 0; i < TIME_ATTACK_KOS; i++) {
             hudCtx.fillStyle = i < koTally.p1 ? '#00f3ff' : '#1e293b';
-            hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 - 20 - i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
+            hudCtx.beginPath(); hudCtx.arc(hudW() / 2 - 20 - i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
             hudCtx.fillStyle = i < koTally.p2 ? '#f472b6' : '#1e293b';
-            hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 + 20 + i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
+            hudCtx.beginPath(); hudCtx.arc(hudW() / 2 + 20 + i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
         }
         hudCtx.font = hudFont(11); hudCtx.fillStyle = '#64748b';
-        hudCtx.fillText(`First to ${TIME_ATTACK_KOS} KOs`, VIRTUAL_W / 2, MODE_Y - 12);
+        hudCtx.fillText(`First to ${TIME_ATTACK_KOS} KOs`, hudW() / 2, MODE_Y - 12);
     } else {
         // Round-win pips, one row per player, filled dots for rounds already won.
         const pipY = { p1: 58, p2: 58 };
         for (let i = 0; i < ROUNDS_TO_WIN; i++) {
             const filled1 = i < roundWins.p1, filled2 = i < roundWins.p2;
             hudCtx.fillStyle = filled1 ? '#00f3ff' : '#1e293b';
-            hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 - 20 - i * 12, pipY.p1, 4, 0, Math.PI * 2); hudCtx.fill();
+            hudCtx.beginPath(); hudCtx.arc(hudW() / 2 - 20 - i * 12, pipY.p1, 4, 0, Math.PI * 2); hudCtx.fill();
             hudCtx.fillStyle = filled2 ? '#00f3ff' : '#1e293b';
-            hudCtx.beginPath(); hudCtx.arc(VIRTUAL_W / 2 + 20 + i * 12, pipY.p2, 4, 0, Math.PI * 2); hudCtx.fill();
+            hudCtx.beginPath(); hudCtx.arc(hudW() / 2 + 20 + i * 12, pipY.p2, 4, 0, Math.PI * 2); hudCtx.fill();
         }
     }
     hudCtx.textAlign = "left";
@@ -12948,7 +13024,7 @@ function drawHUDInner() {
     // footer) are drawn once at center in full-screen, or TWICE — centered in
     // each half — in split-screen, so nothing lands on the seam (B10).
     hudCtx.save();
-    hudCtx.scale(hudCanvas.width / VIRTUAL_W, hudCanvas.height / VIRTUAL_H);
+    hudVirtualTransform();
 
     // Batch 31: YOUR bar is always on the left and your opponent's on the
     // right, whichever side you happen to be. As the joiner you are p2, and
@@ -12958,7 +13034,7 @@ function drawHUDInner() {
     // Names, not slots. playerLabelShort falls back to P1/P2 for anyone who
     // has not typed one, so an unnamed match reads exactly as it did.
     drawPlayerHUD(mine, 30, playerLabelShort(LOCAL_SIDE));
-    drawPlayerHUD(theirs, VIRTUAL_W - 30 - 420, playerLabelShort(otherSide(LOCAL_SIDE)));
+    drawPlayerHUD(theirs, hudW() - 30 - 420, playerLabelShort(otherSide(LOCAL_SIDE)));
     // Batch 16: the co-op challenger gets a wide bar across the top centre —
     // the conventional boss-bar placement, and the one region the two
     // side panels leave free in both split and full-screen layouts.
@@ -12972,7 +13048,7 @@ function drawHUDInner() {
     const drawShared = () => {
         if (currentMap) {
             hudCtx.fillStyle = "#64748b"; hudCtx.font = hudFont(15); hudCtx.textAlign = "center";
-            hudCtx.fillText(currentMap.name, VIRTUAL_W / 2, 24); hudCtx.textAlign = "left";
+            hudCtx.fillText(currentMap.name, hudW() / 2, 24); hudCtx.textAlign = "left";
         }
         drawRoundStatus();
         if (gameState === "ROUND_END") {
@@ -12988,22 +13064,22 @@ function drawHUDInner() {
             const rt = Math.min(1, roundEndTimer / 12);
             const grow = REDUCED_MOTION ? 1 : (0.6 + 0.4 * (1 - Math.pow(1 - rt, 3)));
             hudCtx.save();
-            hudCtx.translate(VIRTUAL_W / 2, 300);
+            hudCtx.translate(hudW() / 2, 300);
             hudCtx.scale(grow, grow);
             hudCtx.font = hudFont(34, true);
             hudCtx.fillText(isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`, 0, 0);
             hudCtx.restore();
             hudCtx.font = hudFont(18); hudCtx.fillStyle = "#94a3b8";
-            hudCtx.fillText(`Round ${currentRound} starting...`, VIRTUAL_W / 2, 336);
+            hudCtx.fillText(`Round ${currentRound} starting...`, hudW() / 2, 336);
             hudCtx.textAlign = "left";
         }
         hudCtx.fillStyle = "#64748b"; hudCtx.font = hudFont(13); hudCtx.textAlign = "center";
-        hudCtx.fillText(`Esc for controls / pause${botNote ? '  |  ' + botNote : ''}`, VIRTUAL_W / 2, VIRTUAL_H - 20);
+        hudCtx.fillText(`Esc for controls / pause${botNote ? '  |  ' + botNote : ''}`, hudW() / 2, hudH() - 20);
         hudCtx.textAlign = "left";
     };
     if (twoHumans) {
-        hudCtx.save(); hudCtx.translate(-VIRTUAL_W / 4, 0); drawShared(); hudCtx.restore(); // centered in the left half
-        hudCtx.save(); hudCtx.translate(VIRTUAL_W / 4, 0); drawShared(); hudCtx.restore(); // and the right half
+        hudCtx.save(); hudCtx.translate(-hudW() / 4, 0); drawShared(); hudCtx.restore(); // centered in the left half
+        hudCtx.save(); hudCtx.translate(hudW() / 4, 0); drawShared(); hudCtx.restore(); // and the right half
     } else {
         drawShared();
     }
@@ -13016,11 +13092,11 @@ function drawHUDInner() {
 function drawDebugOverlay() {
     if (!DEBUG || !player1 || !player2) return;
     hudCtx.save();
-    hudCtx.scale(hudCanvas.width / VIRTUAL_W, hudCanvas.height / VIRTUAL_H);
+    hudVirtualTransform();
     hudCtx.textAlign = 'center';
     hudCtx.font = '11px monospace';
     hudCtx.fillStyle = '#4ade80';
-    hudCtx.fillText(`FPS ${fpsSmoothed.toFixed(0)}  dt ${lastDt.toFixed(2)}  hitstop ${hitStopFrames.toFixed(1)}  calls ${renderer.info.render.calls}  tris ${renderer.info.render.triangles}`, VIRTUAL_W / 2, 34);
+    hudCtx.fillText(`FPS ${fpsSmoothed.toFixed(0)}  dt ${lastDt.toFixed(2)}  hitstop ${hitStopFrames.toFixed(1)}  calls ${renderer.info.render.calls}  tris ${renderer.info.render.triangles}`, hudW() / 2, 34);
     hudCtx.textAlign = 'left';
 
     for (const f of [player1, player2]) {

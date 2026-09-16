@@ -1027,6 +1027,64 @@ if (location.protocol === 'https:'
                           "    mat.normalMap = mk(entry.n, 'n');\n    mat.roughnessMap = mk(entry.r, 'r');")
         print('  %-34s ok' % 'attachSurfaceMaps texture cache')
 
+    # ------------------------------------------- the HUD is not stretched
+    # Batch 51 in the main build, and the same bug here: the HUD is authored in
+    # a fixed 1.8:1 virtual space and was scaled onto the canvas one axis at a
+    # time, so any other frame aspect stretched every string in it - 28% wide
+    # at 1280x529, because `aspect-ratio` and `max-height: 96vh` cannot both
+    # hold in a short window and max-height wins.
+    #
+    # The substitution is by LINE POSITION, which is unusual for this file and
+    # deliberate: VIRTUAL_W means two different things in this source. Below the
+    # HUD section it is the arena's size in world units (ARENA_*, every map's
+    # hand-placed geometry, the shadow fit) and must not move; from the HUD
+    # section on it is pure layout. There is no textual difference between the
+    # two, so the boundary is the only thing that can distinguish them. It is
+    # asserted below rather than assumed.
+    if 'function hudUnitScale(' not in dst:
+        lines = dst.splitlines()
+        # The first HUD drawing function. Everything before it that mentions
+        # VIRTUAL_W is world-space; nothing after it is.
+        anchor = next(i for i, l in enumerate(lines) if l.startswith('function drawBossHUD('))
+        world = sum(l.count('VIRTUAL_W') + l.count('VIRTUAL_H') for l in lines[:anchor])
+        # The constant, ARENA_*, SHADOW_FIT_HX/HZ and three comments. If this
+        # ever moves, the boundary has moved and the substitution below would
+        # be rewriting arena geometry as HUD layout.
+        assert world == 10, 'world-space VIRTUAL_* uses: %d (expected 10)' % world
+        n = 0
+        for i in range(anchor, len(lines)):
+            b = lines[i]
+            lines[i] = b.replace('VIRTUAL_W', 'hudW()').replace('VIRTUAL_H', 'hudH()')
+            if lines[i] != b:
+                n += b.count('VIRTUAL_W') + b.count('VIRTUAL_H')
+        assert n > 20, 'only %d HUD uses rewritten' % n
+        dst = chr(10).join(lines)
+        dst = rep(dst, "    hudCtx.scale(hudCanvas.width / hudW(), hudCanvas.height / hudH());",
+                  "    hudVirtualTransform();", 'hud transform (shared draw)', required=False)
+        dst = dst.replace("    hudCtx.scale(hudCanvas.width / hudW(), hudCanvas.height / hudH());",
+                          "    hudVirtualTransform();")
+        helpers = block(src, "// THE HUD'S OWN VIRTUAL SPACE, which is NOT the arena's.",
+                        "// Floating damage numbers + impact sparks", 'hud space helpers')
+        dst = rep(dst, "// Floating damage numbers + impact sparks",
+                  helpers + "// Floating damage numbers + impact sparks", 'hud space helpers')
+        print('  %-34s ok (%d HUD refs)' % ('uniform HUD scale', n))
+
+    # The frame may use the window it is in, now that no aspect needs defending.
+    # Written out rather than lifted from the source: the archived build's
+    # container carries its own split-screen comment above these lines.
+    dst = rep(dst, """            width: min(96vw, 1170px);
+            aspect-ratio: 1170 / 650;
+            max-height: 96vh;""",
+              """            /* NOT aspect-ratio: 1170/650 - see hudUnitScale. That lock
+               existed because the HUD was scaled one axis at a time, and it did
+               not even hold: aspect-ratio plus max-height contradict each other
+               in a short window and max-height wins, which is how a 1280x529
+               window got a 2.29:1 frame full of 28%-wide text. The caps are
+               unchanged, so a desktop window still gets exactly 1170x650. */
+            width: min(96vw, 1170px);
+            height: min(96vh, 650px);""",
+              'frame fills the window', required=False)
+
     # VERIFY, rather than trust the guards.
     #
     # The first run of this script shipped a legacy build that died at load
