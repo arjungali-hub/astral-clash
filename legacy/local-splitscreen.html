@@ -944,6 +944,43 @@
         #orientation-prompt svg { width: 46px; height: 46px; margin-bottom: 12px; color: #00f3ff; animation: rotateHint 1.8s ease-in-out infinite; }
         @keyframes rotateHint { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(-90deg); } }
         #orientation-prompt p { color: #cbd5e1; font-size: 0.95rem; line-height: 1.5; margin: 0; max-width: 320px; }
+        /* Batch 48: EVERY modal overlay, top-aligned and self-scrolling.
+           These are `position: absolute` inside #ui-overlay, which is a scroll
+           container - so `top: 0` is the top of its CONTENT. On a short window,
+           scrolled down to reach the Settings button, the panel opened 656px
+           above the viewport and looked like nothing had happened.
+           Centring made it worse: a flex container centring a child taller than
+           itself puts that child's top ABOVE the container, where scrolling
+           cannot reach it - the tutorial lost its first 460px that way.
+           openModal() scrolls the overlay to the top and locks it, so this
+           container is the only scroller while a modal is up. */
+        #settings-screen, #audio-screen, #rebind-screen, #tutorial-screen,
+        #mapselect-screen, #modeselect-screen, #shop-screen, #lobby-screen {
+            align-items: flex-start !important;
+            overflow-y: auto;
+            padding: 24px 16px;
+            box-sizing: border-box;
+        }
+        /* ...and no panel inside them keeps a scrollbar of its own. */
+        #settings-screen .menu-section, #audio-screen .menu-section,
+        #rebind-screen .menu-section, #lobby-screen .menu-section,
+        .tutorial-panel, .mapselect-panel, .modeselect-panel, .shop-panel {
+            max-height: none !important;
+            overflow-y: visible !important;
+        }
+        .detail-scroll { max-height: none !important; overflow: visible !important; }
+        /* Batch 48: the pointer-lock prompt. Over the canvas, not a modal -
+           a match that wants the mouse should say so without interrupting
+           itself. It hides the instant the lock is taken. */
+        #lock-hint {
+            position: absolute; left: 50%; bottom: 14%;
+            transform: translateX(-50%);
+            padding: 8px 16px; border-radius: 999px;
+            background: rgba(10, 13, 20, 0.82); border: 1px solid #00f3ff;
+            color: #e2e8f0; font-size: 0.82rem; letter-spacing: 0.03em;
+            pointer-events: none; z-index: 12; display: none;
+            box-shadow: 0 0 18px rgba(0, 243, 255, 0.25);
+        }
     </style>
 </head>
 <body>
@@ -952,6 +989,7 @@
         <canvas id="gameCanvas" width="1170" height="650"></canvas>
         <canvas id="hudCanvas" width="1170" height="650"></canvas>
 
+    <div id="lock-hint">Click to capture the mouse</div>
         <div id="ui-overlay">
             <div id="select-screen">
                 <!-- Branding lives inside the select screen so it doesn't show
@@ -1358,12 +1396,22 @@ function showScreen(name) {
 function hideOverlay() { showScreen(null); } // no screen — used when a match takes over the viewport
 function openModal(name) {
     if (!modalStack.includes(name)) modalStack.push(name);
+    // The overlay is a scroll container and the modal is absolutely positioned
+    // inside it, so anything other than scrollTop 0 opens the panel off-screen.
+    // Locked while it is up, which is also what leaves exactly one scrollbar.
+    const ov = document.getElementById('ui-overlay');
+    if (ov) { ov.scrollTop = 0; ov.style.overflowY = 'hidden'; }
     const el = document.getElementById(MODAL_EL[name]);
     el.style.zIndex = 40 + modalStack.length; // newest modal always renders on top of any it stacked over
     el.style.display = 'flex';
 }
 function closeModal() {
     const name = modalStack.pop();
+    // Give the page its scroll back once nothing is stacked on top of it.
+    if (!modalStack.length) {
+        const ov = document.getElementById('ui-overlay');
+        if (ov) ov.style.overflowY = '';
+    }
     if (name) document.getElementById(MODAL_EL[name]).style.display = 'none';
     // Closing the shop overlay closes BOTH stores - otherwise the next open
     // reveals a stale panel belonging to the other player.
@@ -1498,6 +1546,21 @@ function consumePress(k) {
 //   (4) Escape closes a modal or toggles pause,
 //   (5) menu fighter-select runs only on the menu with no modal open.
 let kbAudioUnlocked = false;
+// Is the keyboard currently talking to a text field rather than to the game?
+//
+// Checked at the ONE place every keystroke passes through, rather than in each
+// hotkey handler: there are a dozen of those and the thirteenth would forget.
+// isContentEditable covers rich-text hosts; the tag check covers everything
+// else, including <input type="range"> sliders, where arrow keys belong to the
+// control and not to the fighter.
+function typingInField(target) {
+    const el = target || document.activeElement;
+    if (!el) return false;
+    if (el.isContentEditable) return true;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
 window.addEventListener('keydown', e => {
     // (1) A rebind is listening: take this key as the new binding and consume
     // it. It must not fall through to keys[]/pressed (else the captured key
@@ -1514,6 +1577,12 @@ window.addEventListener('keydown', e => {
         buttonEl.textContent = keyLabel(BINDINGS[side][action]);
         return;
     }
+    // (0) TYPING WINS. A keystroke aimed at a text field is not a game input:
+    // it must not set keys[], must not reach a menu hotkey, and must not be
+    // preventDefault()ed - Space and the arrows belong to the field while it
+    // has focus. Only the rebind capture below runs first, because a rebind is
+    // explicitly asking for the next key whatever it is.
+    if (typingInField(e.target)) return;
     // (2) The first keypress doubles as the user-gesture that unlocks audio
     // (autoplay policies block AudioContext until then). Idempotent, but gate
     // it so it's a true once.
@@ -1557,6 +1626,9 @@ window.addEventListener('keydown', e => {
         if (k === RANDOM_KEYS.p2) randomPick('p2');
     }
 });
+// keyup is NOT guarded on the field, deliberately: a key held down before
+// focus moved into an input must still be released, or the fighter walks
+// into a wall for as long as the field has focus.
 window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 // Without this, alt-tabbing or losing focus mid-keypress leaves a key
 // permanently "stuck" down since no keyup event ever fires.
@@ -1815,7 +1887,10 @@ document.addEventListener('pointerlockchange', () => {
     soloMouse.locked = document.pointerLockElement === canvas;
 });
 canvas.addEventListener('mousedown', (e) => {
-    if (!soloHumanSide() || gameState !== 'FIGHT') return;
+    // INTRO as well as FIGHT. The click a player actually makes is the one on
+    // the title card, and gating on 'FIGHT' meant the request never happened
+    // for it - so the lock was never taken and A/D kept turning.
+    if (!soloHumanSide() || (gameState !== 'FIGHT' && gameState !== 'INTRO')) return;
     // A click both takes the lock and throws a punch, in that order: the first
     // click of a match should not be swallowed by the lock request.
     if (!soloMouse.locked && canvas.requestPointerLock) canvas.requestPointerLock();
@@ -1896,6 +1971,14 @@ function prog(side) { return progression[side] || progression.p1; }
 const MATCH_MODES = [
     { id: 'classic', name: 'Classic Versus', blurb: 'Best of 3 rounds. Knock your opponent out to win a round.' },
     { id: 'zone', name: 'Zone Control', blurb: 'Hold the glowing ring at the center. First to 45 seconds of control wins — knock them out of it.' },
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
     // Batch 38: "Time Attack" named the one thing this mode does not involve.
     // It is first to three knockouts with no clock at all - the name was
     // borrowed from racing, where the timer IS the score. "Takedown Race" says
@@ -3355,6 +3438,28 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
 // Rises up to this are walkable on foot; taller is a wall you must jump - see
 // resolveTallTerrain(), which reverts the move when the rise is too great.
 //
@@ -9517,9 +9622,15 @@ function showGrid(side) {
 
 // A side is ready to fight if a human confirmed a pick, or if it's a bot
 // (bots don't pick — their fighter is rolled randomly at match start).
+// Ready means "has a fighter and has locked it in", not "says confirmed".
+//
+// A stage can be set without a pick ever having happened - a scripted confirm
+// did exactly that, and the room then painted READY over "No fighter yet" while
+// the other machine still showed that player as choosing. Checking the CHOICE
+// as well as the stage makes that state unrepresentable, wherever it comes from.
 function sideReady(side) {
-    if (side === 'p1') return p1IsBot || p1Stage === 'confirmed';
-    return p2IsBot || p2Stage === 'confirmed';
+    if (side === 'p1') return p1IsBot || (p1Stage === 'confirmed' && !!p1Choice);
+    return p2IsBot || (p2Stage === 'confirmed' && !!p2Choice);
 }
 
 function showDetail(side, name, confirmed) {
@@ -10086,6 +10197,9 @@ function previewPick(side, name) {
 }
 
 function confirmPick(side) {
+    // Nothing previewed means nothing to confirm. The stage check below is not
+    // enough on its own: a stage can be set from outside this function.
+    if (!(side === 'p1' ? p1Preview : p2Preview)) return;
     if (side === 'p1' ? p1IsBot : p2IsBot) return;
     if (side === 'p1') {
         if (p1Stage !== 'preview') return;
@@ -10277,9 +10391,34 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 //
 // See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
 // 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
 const GRACE_PERIOD = 40;        // seconds the arena stays full-size before the first collapse tick
 const SHRINK_INTERVAL = 18;     // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
 // Once the collapse fraction passes this, snap fully shut and start crushing.
 //
 // WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
@@ -10553,6 +10692,17 @@ function startMatch(mapOverride) {
 // person each player's own view falls with them, right into the arena. ---
 const INTRO_DROP_HEIGHT = 540; // world Y the fighters start above their spawn
 let introTimer = 0, introPhase = 'drop';
+// The intro is timed in MILLISECONDS, not in accumulated frame-units.
+//
+// dt is clamped to 3 (see computeDt) so a long frame cannot fling the physics
+// across the arena - correct for the simulation, wrong for a cinematic, which
+// then runs slower the worse the framerate gets. 72 frame-units of "GET READY"
+// took 24 seconds in a throttled window. Nothing in the intro is controllable,
+// so nothing here needs the clamp.
+const INTRO_SET_MS = 400, INTRO_FIGHT_MS = 800;
+let introPhaseAt = 0;      // performance.now() when the current phase began
+function introPhaseElapsed() { return performance.now() - introPhaseAt; }
+
 
 function startRound(intro) {
     for (const k in keys) keys[k] = false;
@@ -10599,7 +10749,7 @@ function startRound(intro) {
             // Perch them high above spawn, facing each other; the INTRO
             // game-loop branch drops them in.
             for (const f of [player1, player2]) { f.z = INTRO_DROP_HEIGHT; f.vz = 0; f.introLanded = false; }
-            introTimer = 0; introPhase = 'drop';
+            introTimer = 0; introPhase = 'drop'; introPhaseAt = performance.now();
         }
         gameState = "INTRO";
     } else {
@@ -11529,9 +11679,9 @@ function stepIntro(dt) {
     updateMuzzleFlashes(dt);
     drawHUD();
     if (allLanded) {
-        if (introPhase === 'drop') { introPhase = 'set'; introTimer = 0; }
-        else if (introPhase === 'set' && introTimer >= 24) { introPhase = 'fight'; introTimer = 0; sfxRoundStart(); }
-        else if (introPhase === 'fight' && introTimer >= 48) { gameState = "FIGHT"; roundStartedAt = performance.now(); }
+        if (introPhase === 'drop') { introPhase = 'set'; introTimer = 0; introPhaseAt = performance.now(); }
+        else if (introPhase === 'set' && introPhaseElapsed() >= INTRO_SET_MS) { introPhase = 'fight'; introTimer = 0; introPhaseAt = performance.now(); sfxRoundStart(); }
+        else if (introPhase === 'fight' && introPhaseElapsed() >= INTRO_FIGHT_MS) { gameState = "FIGHT"; roundStartedAt = performance.now(); }
     }
 }
 
@@ -11612,8 +11762,21 @@ const STATE_STEPS = {
     ROUND_END: stepRoundEnd,
 };
 
+// Shows the prompt whenever the solo human's mouse is wanted and not captured.
+// Only for a solo human: two people on one keyboard cannot share a pointer, so
+// a split-screen match deliberately keeps the keyboard-turn scheme and says
+// nothing about the mouse.
+function syncLockHint() {
+    const el = document.getElementById('lock-hint');
+    if (!el) return;
+    const wantIt = !!soloHumanSide() && !soloMouse.locked
+        && (gameState === 'FIGHT' || gameState === 'INTRO');
+    el.style.display = wantIt ? 'block' : 'none';
+}
+
 function gameLoop() {
     const dt = computeDt();
+    syncLockHint();
     lastDt = dt;
     fpsSmoothed = fpsSmoothed * 0.9 + (dt > 0.001 ? (60 / dt) : 60) * 0.1;
     syncTouchUI();

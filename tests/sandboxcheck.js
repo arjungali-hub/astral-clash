@@ -63,6 +63,8 @@ const H = require('./harness');
     });
     check('coins do not move while it is on', st.during === st.start, JSON.stringify(st));
     check('and they do once it is off', st.after === st.start + 250, JSON.stringify(st));
+    // ...and back on, since the sections below are about what it unlocks.
+    await D(() => window.ACDebug.setSandboxMatch(true));
 
     section('It rides START too, so a late guest cannot miss it:');
     st = await D(() => {
@@ -111,7 +113,7 @@ const H = require('./harness');
         /no coins/i.test(st.guestRow || ''), JSON.stringify(st.guestRow));
     check('with the same banner the host sees', st.banner === true, JSON.stringify(st));
 
-    section('It does NOT touch the fighters - that is the other sandbox:');
+    section('It unlocks the roster - for BOTH players, because the host said so:');
     st = await D(() => {
         const A = window.ACDebug;
         const name = A.CHARACTERS.map(c => c.name).find(n => !A.STARTER_CHARS.includes(n));
@@ -120,12 +122,25 @@ const H = require('./harness');
             unlocked: A.isCharUnlocked('p1', name),
             upgrades: A.upgradeLevel('p1', name, 'dmg'),
             overrideActive: A.sandboxActive(),
+            max: A.MAX_UPGRADE_LEVEL,
         };
     });
-    check('a sandbox match unlocks nothing',
-        st.unlocked === false, JSON.stringify(st));
-    check('and grants no upgrades - both fighters are still their real saves',
-        st.upgrades === 0 && st.overrideActive === false, JSON.stringify(st));
+    const A_MAX = st.max;
+    // Batch 48 REVERSED these two, and the reasoning is worth keeping. Batch 47
+    // argued a sandbox must not unlock, because unlocking grants
+    // MAX_UPGRADE_LEVEL and that would out-stat an opponent who earned theirs.
+    // True of the LOCAL override - private, per-machine, invisible to the other
+    // player - and not true of a host-declared match: it is symmetric, it rides
+    // SETUP and START, and both players see the banner. The playtest put it
+    // plainly: with the banner showing, the cards were still locked and priced,
+    // and clicking one opened the Armory. A sandbox that cannot let you try the
+    // fighter you have not bought is not a sandbox.
+    check('a sandbox match unlocks the whole roster',
+        st.unlocked === true, JSON.stringify(st));
+    check('with upgrades, so both sides are equally kitted out',
+        st.upgrades === A_MAX, JSON.stringify(st));
+    check('and it is the SAME predicate the progression accessors read',
+        st.overrideActive === true, JSON.stringify(st));
 
     await finish(browser, page);
 })();

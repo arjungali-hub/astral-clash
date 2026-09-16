@@ -1002,6 +1002,43 @@
         }
         #debug-toast.show { opacity: 1; transform: translateY(0); }
         @media (prefers-reduced-motion: reduce) { #debug-toast { transition: none; } }
+        /* Batch 48: EVERY modal overlay, top-aligned and self-scrolling.
+           These are `position: absolute` inside #ui-overlay, which is a scroll
+           container - so `top: 0` is the top of its CONTENT. On a short window,
+           scrolled down to reach the Settings button, the panel opened 656px
+           above the viewport and looked like nothing had happened.
+           Centring made it worse: a flex container centring a child taller than
+           itself puts that child's top ABOVE the container, where scrolling
+           cannot reach it - the tutorial lost its first 460px that way.
+           openModal() scrolls the overlay to the top and locks it, so this
+           container is the only scroller while a modal is up. */
+        #settings-screen, #audio-screen, #rebind-screen, #tutorial-screen,
+        #mapselect-screen, #modeselect-screen, #shop-screen, #lobby-screen {
+            align-items: flex-start !important;
+            overflow-y: auto;
+            padding: 24px 16px;
+            box-sizing: border-box;
+        }
+        /* ...and no panel inside them keeps a scrollbar of its own. */
+        #settings-screen .menu-section, #audio-screen .menu-section,
+        #rebind-screen .menu-section, #lobby-screen .menu-section,
+        .tutorial-panel, .mapselect-panel, .modeselect-panel, .shop-panel {
+            max-height: none !important;
+            overflow-y: visible !important;
+        }
+        .detail-scroll { max-height: none !important; overflow: visible !important; }
+        /* Batch 48: the pointer-lock prompt. Over the canvas, not a modal -
+           a match that wants the mouse should say so without interrupting
+           itself. It hides the instant the lock is taken. */
+        #lock-hint {
+            position: absolute; left: 50%; bottom: 14%;
+            transform: translateX(-50%);
+            padding: 8px 16px; border-radius: 999px;
+            background: rgba(10, 13, 20, 0.82); border: 1px solid #00f3ff;
+            color: #e2e8f0; font-size: 0.82rem; letter-spacing: 0.03em;
+            pointer-events: none; z-index: 12; display: none;
+            box-shadow: 0 0 18px rgba(0, 243, 255, 0.25);
+        }
     </style>
 </head>
 <body>
@@ -1010,6 +1047,7 @@
         <canvas id="gameCanvas" width="1170" height="650"></canvas>
         <canvas id="hudCanvas" width="1170" height="650"></canvas>
 
+    <div id="lock-hint">Click to capture the mouse</div>
         <div id="ui-overlay">
             <!-- Batch 34: the front page. This build plays exactly one way -
                  online, one fighter each - so the home screen offers that and
@@ -1087,7 +1125,7 @@
                      only the host can see is just a host secretly not paying
                      out. -->
                 <div id="sandbox-banner" class="sandbox-banner" style="display:none;">
-                    Sandbox match &mdash; nothing earns coins
+                    Sandbox match &mdash; every fighter unlocked, fully upgraded, no coins earned
                 </div>
                 <div class="room-main">
                     <div class="menu-section picker-panel">
@@ -1484,12 +1522,22 @@ function showScreen(name) {
 function hideOverlay() { showScreen(null); } // no screen — used when a match takes over the viewport
 function openModal(name) {
     if (!modalStack.includes(name)) modalStack.push(name);
+    // The overlay is a scroll container and the modal is absolutely positioned
+    // inside it, so anything other than scrollTop 0 opens the panel off-screen.
+    // Locked while it is up, which is also what leaves exactly one scrollbar.
+    const ov = document.getElementById('ui-overlay');
+    if (ov) { ov.scrollTop = 0; ov.style.overflowY = 'hidden'; }
     const el = document.getElementById(MODAL_EL[name]);
     el.style.zIndex = 40 + modalStack.length; // newest modal always renders on top of any it stacked over
     el.style.display = 'flex';
 }
 function closeModal() {
     const name = modalStack.pop();
+    // Give the page its scroll back once nothing is stacked on top of it.
+    if (!modalStack.length) {
+        const ov = document.getElementById('ui-overlay');
+        if (ov) ov.style.overflowY = '';
+    }
     if (name) document.getElementById(MODAL_EL[name]).style.display = 'none';
     return name;
 }
@@ -1766,6 +1814,21 @@ function consumePress(k) {
 //   (4) Escape closes a modal or toggles pause,
 //   (5) menu fighter-select runs only on the menu with no modal open.
 let kbAudioUnlocked = false;
+// Is the keyboard currently talking to a text field rather than to the game?
+//
+// Checked at the ONE place every keystroke passes through, rather than in each
+// hotkey handler: there are a dozen of those and the thirteenth would forget.
+// isContentEditable covers rich-text hosts; the tag check covers everything
+// else, including <input type="range"> sliders, where arrow keys belong to the
+// control and not to the fighter.
+function typingInField(target) {
+    const el = target || document.activeElement;
+    if (!el) return false;
+    if (el.isContentEditable) return true;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
 window.addEventListener('keydown', e => {
     // (1) A rebind is listening: take this key as the new binding and consume
     // it. It must not fall through to keys[]/pressed (else the captured key
@@ -1782,6 +1845,12 @@ window.addEventListener('keydown', e => {
         buttonEl.textContent = keyLabel(BINDINGS[action]);
         return;
     }
+    // (0) TYPING WINS. A keystroke aimed at a text field is not a game input:
+    // it must not set keys[], must not reach a menu hotkey, and must not be
+    // preventDefault()ed - Space and the arrows belong to the field while it
+    // has focus. Only the rebind capture below runs first, because a rebind is
+    // explicitly asking for the next key whatever it is.
+    if (typingInField(e.target)) return;
     // (2) The first keypress doubles as the user-gesture that unlocks audio
     // (autoplay policies block AudioContext until then). Idempotent, but gate
     // it so it's a true once.
@@ -1830,6 +1899,9 @@ window.addEventListener('keydown', e => {
         if (k === RANDOM_KEYS.p2) randomPick('p2');
     }
 });
+// keyup is NOT guarded on the field, deliberately: a key held down before
+// focus moved into an input must still be released, or the fighter walks
+// into a wall for as long as the field has focus.
 window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 // Without this, alt-tabbing or losing focus mid-keypress leaves a key
 // permanently "stuck" down since no keyup event ever fires.
@@ -2179,14 +2251,26 @@ const shopExpanded = new Set();
 const SANDBOX_KEY = 'astralClashDebugUnlockAll:online';
 let debugUnlockAll = safeLSGet(SANDBOX_KEY) === '1';
 
-// ...AND IT IS IGNORED WHILE ONLINE, whatever the key says.
+// WHEN IS EVERYTHING UNLOCKED?
 //
-// The override returns MAX_UPGRADE_LEVEL for every stat, so a sandbox player in
-// a netgame is not just unlocked, they are flatly stronger than an opponent who
-// earned their upgrades - and nothing on the wire would reveal it, because
-// picks are synced by NAME. An override meant for trying things out locally has
-// no business deciding a match against another person.
-function sandboxActive() { return debugUnlockAll && !netActive(); }
+// Two separate things can say yes, and the difference is who knows about it:
+//
+//   debugUnlockAll   The LOCAL override. Per-machine, privately flipped, and
+//                    invisible to an opponent - so it is ignored the moment
+//                    you are connected. It grants MAX_UPGRADE_LEVEL on every
+//                    stat, which against someone who earned theirs is not a
+//                    match. (Batch 44, after it leaked in from /local.)
+//
+//   sandboxMatch     A host-declared SANDBOX MATCH. Set by the host, carried
+//                    on SETUP and START, applied by both clients, and shown to
+//                    both in a banner. Symmetric and announced, so the
+//                    fairness objection above does not apply - and Batch 47
+//                    got this wrong by treating the two as the same thing.
+//                    Reported as "Sandbox: On leaves fighters locked... in the
+//                    local build, sandbox unlocks everything", which is fair:
+//                    a sandbox that cannot let you try the fighter you have
+//                    not bought is not a sandbox.
+function sandboxActive() { return sandboxMatch || (debugUnlockAll && !netActive()); }
 
 // THE accessors. Gameplay and UI both go through these rather than reading
 // `progression` directly, so there's exactly one place the debug override
@@ -10410,9 +10494,15 @@ function showGrid(side) {
 
 // A side is ready to fight if a human confirmed a pick, or if it's a bot
 // (bots don't pick — their fighter is rolled randomly at match start).
+// Ready means "has a fighter and has locked it in", not "says confirmed".
+//
+// A stage can be set without a pick ever having happened - a scripted confirm
+// did exactly that, and the room then painted READY over "No fighter yet" while
+// the other machine still showed that player as choosing. Checking the CHOICE
+// as well as the stage makes that state unrepresentable, wherever it comes from.
 function sideReady(side) {
-    if (side === 'p1') return p1IsBot || p1Stage === 'confirmed';
-    return p2IsBot || p2Stage === 'confirmed';
+    if (side === 'p1') return p1IsBot || (p1Stage === 'confirmed' && !!p1Choice);
+    return p2IsBot || (p2Stage === 'confirmed' && !!p2Choice);
 }
 
 function showDetail(side, name, confirmed) {
@@ -11187,11 +11277,19 @@ function setSandboxMatch(on) {
     if (netActive() && netIsHost()) netSend({ t: 'SETUP', sandbox: sandboxMatch });
 }
 
-// Is this match off the books? True in a host-declared sandbox, and also in
-// the local unlock-everything override, which never paid out either.
-function matchIsSandbox() { return sandboxMatch || sandboxActive(); }
+// Is this match off the books? Same predicate as sandboxActive(), kept under
+// its own name because the call sites are about MONEY rather than about what is
+// unlocked, and those two could diverge again.
+function matchIsSandbox() { return sandboxActive(); }
 
 function refreshSandboxUI() {
+    // Everything gated on isCharUnlocked/upgradeLevel has to re-read them now.
+    // Without this the cards stayed locked and priced with the banner showing,
+    // and clicking one opened the Armory - which is exactly what was reported.
+    refreshGridLocks();
+    refreshCoinDisplays();
+    buildShop();
+    if (currentScreen === 'select') refreshRoomUI();
     const btn = document.getElementById('btn-sandbox');
     if (btn) btn.textContent = `Sandbox: ${sandboxMatch ? 'On' : 'Off'}`;
     const g = document.getElementById('guest-sandbox');
@@ -11720,6 +11818,9 @@ function netAnnouncePick(side, name, stage) {
 }
 
 function confirmPick(side) {
+    // Nothing previewed means nothing to confirm. The stage check below is not
+    // enough on its own: a stage can be set from outside this function.
+    if (!(side === 'p1' ? p1Preview : p2Preview)) return;
     if (side === 'p1' ? p1IsBot : p2IsBot) return;
     if (side === 'p1') {
         if (p1Stage !== 'preview') return;
@@ -12286,6 +12387,17 @@ function startMatch(mapOverride) {
 // person each player's own view falls with them, right into the arena. ---
 const INTRO_DROP_HEIGHT = 540; // world Y the fighters start above their spawn
 let introTimer = 0, introPhase = 'drop';
+// The intro is timed in MILLISECONDS, not in accumulated frame-units.
+//
+// dt is clamped to 3 (see computeDt) so a long frame cannot fling the physics
+// across the arena - correct for the simulation, wrong for a cinematic, which
+// then runs slower the worse the framerate gets. 72 frame-units of "GET READY"
+// took 24 seconds in a throttled window. Nothing in the intro is controllable,
+// so nothing here needs the clamp.
+const INTRO_SET_MS = 400, INTRO_FIGHT_MS = 800;
+let introPhaseAt = 0;      // performance.now() when the current phase began
+function introPhaseElapsed() { return performance.now() - introPhaseAt; }
+
 
 function startRound(intro) {
     for (const k in keys) keys[k] = false;
@@ -12337,7 +12449,7 @@ function startRound(intro) {
             // Perch them high above spawn, facing each other; the INTRO
             // game-loop branch drops them in.
             for (const f of [player1, player2]) { f.z = INTRO_DROP_HEIGHT; f.vz = 0; f.introLanded = false; }
-            introTimer = 0; introPhase = 'drop';
+            introTimer = 0; introPhase = 'drop'; introPhaseAt = performance.now();
         }
         gameState = "INTRO";
     } else {
@@ -13308,9 +13420,9 @@ function stepIntro(dt) {
     updateMuzzleFlashes(dt);
     drawHUD();
     if (allLanded) {
-        if (introPhase === 'drop') { introPhase = 'set'; introTimer = 0; }
-        else if (introPhase === 'set' && introTimer >= 24) { introPhase = 'fight'; introTimer = 0; sfxRoundStart(); }
-        else if (introPhase === 'fight' && introTimer >= 48) { gameState = "FIGHT"; roundStartedAt = performance.now(); }
+        if (introPhase === 'drop') { introPhase = 'set'; introTimer = 0; introPhaseAt = performance.now(); }
+        else if (introPhase === 'set' && introPhaseElapsed() >= INTRO_SET_MS) { introPhase = 'fight'; introTimer = 0; introPhaseAt = performance.now(); sfxRoundStart(); }
+        else if (introPhase === 'fight' && introPhaseElapsed() >= INTRO_FIGHT_MS) { gameState = "FIGHT"; roundStartedAt = performance.now(); }
     }
 }
 
@@ -13391,8 +13503,20 @@ const STATE_STEPS = {
     ROUND_END: stepRoundEnd,
 };
 
+// Shows the prompt whenever this match wants the mouse and does not have it.
+// Called from the game loop, so it follows the lock being lost (Escape, a
+// tab-switch) as well as never being taken.
+function syncLockHint() {
+    const el = document.getElementById('lock-hint');
+    if (!el) return;
+    const wantIt = wantsPointerLock() && !pointerLocked
+        && (gameState === 'FIGHT' || gameState === 'INTRO');
+    el.style.display = wantIt ? 'block' : 'none';
+}
+
 function gameLoop() {
     const dt = computeDt();
+    syncLockHint();
     lastDt = dt;
     fpsSmoothed = fpsSmoothed * 0.9 + (dt > 0.001 ? (60 / dt) : 60) * 0.1;
 
