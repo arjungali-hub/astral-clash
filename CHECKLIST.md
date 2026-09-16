@@ -2282,3 +2282,112 @@ timeattack reported `state: "INTRO"`, because the drop cinematic is frame-paced
 and five extra full-screen passes on a **software rasteriser** stretch it in
 wall-clock time. Not evidence about a real GPU - but it is why the toggle
 exists.
+
+---
+
+## Batch 46 - Every character was striking backwards
+
+`_applyArms` rotated the arm bone about its own **local X**, on the strength of
+a real Batch 25 measurement: local Z was world +Y on both sides, making local X
+the fore/aft axis. True of *that* rig, whose arm bones all ran along world X.
+Batch 43 re-rigged all fourteen with bones that follow the **traced** arm -
+angled down and out, with whatever roll Blender derived - so a local-X rotation
+sweeps a tilted plane. The axis is derived from a direction now, like the
+first-person arm and the Blender rest pose before it.
+
+**And the sign was inverted.** Measured directly rather than inferred from the
+animation data: +60° put Gorgonok's fist **17 units behind** his shoulder, -60°
+put it 17 in front - while every animation passes *positive* for the strike
+(`fwdDeg: 115`, `reachDeg: 95`, `+150 * strike`). One sign, the whole roster.
+
+**Ignis' "snap"** was the same bug's second half plus a frame budget that could
+not pay for the animation it was asked to draw: the jab loops assigned
+`rotation.z` directly, bypassing the axis-aware helper, *and* his data asks for
+four jabs inside a **six-frame** active window - 1.5 frames per jab, so no
+intermediate position was ever drawn. `readableJabs()` clamps the count to what
+the window can show, and the flurry now spans startup → active → recovery
+continuously.
+
+Two limits that are **rules, not tuning**: a shoulder cannot usefully swing past
+~95° (beyond that the hand passes its peak and comes *back*, which is why
+`fwdDeg: 105` measured less forward travel than a 60° wind-up measured
+backward), and a wind-up may not exceed half the strike it precedes.
+
+**The first-person arm was on backwards**, and this one is arithmetic:
+`Ry(-90)` sends the model's forward axis to `(0, 0, +1)` - straight *at* the
+camera. Which also means the `VM_AIM` constants were right all along. With it
+fixed, the weapon's carry angle (tuned while the hand sat near the camera) and
+the **fake fist prop** (a second fist dropped into a hand that already exists -
+Gorgonok's floating black slab) both had to go. A viewmodel's resting roll is
+part of the *animation's* base now, because `syncViewmodels` assigns rotation
+every frame - a roll set at build time survived until the first frame, which is
+fine in every screenshot taken before the loop runs.
+
+`tests/swingcheck.js` drives the real action pipeline and projects
+`(hand - shoulder)` onto the fighter's own forward vector. Its own first version
+captured that vector once, before the attack, and **accused Nyx wrongly**: her
+animation twists the body 65° mid-swing, so it was measuring against a body that
+had since turned.
+
+---
+
+## Batch 47 - Nothing snaps, an online sandbox, and the local build's requests
+
+### Nothing snaps
+
+The visual-offset machinery has existed since Batch 34 but was gated off below
+26 units, with a comment that a shove "must not acquire a smear, it would make
+ordinary knockback feel mushy". Right concern, wrong conclusion: mushiness is a
+function of **duration**. 300ms of lag on an 8-unit shove is mush; the same
+shove drawn over four frames *is* the hit landing. The gate is gone and the
+decay is distance-scaled - ~4 frames for a shove, the tuned ~300ms for a dash.
+Every instant move already routed through `teleportTo`, so all of them slide;
+only the dust **streak** keeps a threshold.
+
+`teleportcheck`'s "ordinary knockback stays crisp" was reversed deliberately,
+and its replacement found a trap: the arena centre is **inside a platform** on
+Voltaic Nexus, so a teleport from there is silently eaten and every assertion
+reads zero. It measures from a spawn point now.
+
+### The copy button, fourth time - my own regression
+
+Batch 43 unscoped `.menu-section .lobby-copy` so the room bar would get it,
+which was right, and thereby dropped its specificity to (0,1,0) - where it
+loses to `.menu-section button { width: 100% }` at (0,1,1). Inside the lobby the
+button went full width and squeezed the room code into a sliver. Both selectors
+are listed now, and `onlineuxcheck` measures **width** as well as height, which
+is exactly what let it through.
+
+### An online sandbox
+
+A property of the **match**, not of a machine - and that distinction is the
+design. The unlock-everything override grants `MAX_UPGRADE_LEVEL` on every stat,
+which is why Batch 44 made online ignore it. A sandbox match changes the
+**payout** and nothing else: both fighters are exactly what their saves say, and
+nobody banks coins. Host-owned, carried on both `SETUP` and `START` so a late or
+reconnecting guest cannot miss it, shown in the guest's read-only summary, and
+bannered for both - a sandbox only the host can see is just a host quietly not
+paying out.
+
+### The local build's own requests
+
+All of them come back to the one thing it has that the online build does not:
+two people share one machine.
+
+| | |
+|---|---|
+| **Names** | Two, per side, persisted. Every "Player 1" label reads what they typed. `headingHTML()` rebuilds each heading from a template every refresh, so a static span did not survive first contact - the template reads the name. |
+| **Reset progress** | In Settings, armed by one click and carried out by a second. Names are kept: they are not progress. |
+| **Explicit Start Fight** | Auto-starting on the second confirm let whoever confirms *last* decide when the other was ready. |
+| **No nested scrollbars** | The fighter detail had its own 200px scroll box, inside a panel, inside a scrollable overlay. |
+| **Settings reachable** | A panel taller than the viewport in a *centred* flex container overflows equally both ways, and the top half is unreachable - "shifted upwards". Top-aligned and scrollable. |
+| **Two bots: watch from above** | No human means no first-person view to be in, and the only view in the game that holds the whole arena. |
+| **One human: online controls** | The split-keyboard scheme exists to fit two people on one board. This build predates Batch 31, so the pointer lock, mouse deltas and strafe axis are all new - and gated on `soloHumanSide()`. |
+
+The logic lives in `art/legacy_local_extras.js` as real JavaScript. Worth
+recording what that did *not* save me from: the port rewrites every
+`(side === 'p1' ? 'Player 1' : 'Player 2')` into `playerName(side)`, and
+`playerName`'s own fallback **was** that ternary - so the first run rewrote the
+function into `return localNames[side] || playerName(side)` and the archived
+build died at load with "Maximum call stack size exceeded". The fallback is a
+lookup table now, with a note saying why.
