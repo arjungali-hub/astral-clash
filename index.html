@@ -1231,6 +1231,12 @@
                     <p id="pause-controls-reminder"></p>
                     <button id="btn-resume">Resume (Esc)</button>
                     <button id="btn-pause-rebind">Rebind Keys</button>
+                    <!-- Reported: Glow, HUD Text and Audio could not be changed
+                         during a fight, which is the only time anyone wants to
+                         change them. Opens the same panel the home screen does;
+                         the modal stack puts it over the pause screen and
+                         Escape closes it back to here. -->
+                    <button id="btn-pause-settings" class="btn-secondary">Settings</button>
                     <button id="btn-quit-to-menu">Return to Menu</button>
                 </div>
             </div>
@@ -2558,6 +2564,10 @@ function closeRebind() {
     closeModal(); // returns to Settings underneath if it was opened from there
 }
 document.getElementById('btn-open-rebind').addEventListener('click', openRebind);
+document.getElementById('btn-pause-settings').addEventListener('click', () => {
+    if (typeof syncDebugUnlockUI === 'function') syncDebugUnlockUI();
+    openModal('settings');
+});
 document.getElementById('btn-pause-rebind').addEventListener('click', openRebind);
 document.getElementById('btn-rebind-close').addEventListener('click', closeRebind);
 document.getElementById('btn-rebind-reset').addEventListener('click', () => {
@@ -3981,10 +3991,16 @@ const MAP_THEMES = {
     },
     // Volcanic foundry — black basalt with glowing lava seams, smoky warm daylight.
     'Molten Foundry': {
-        // Its whole identity is being nearly black, and both of its texture
-        // sets are tan rock - so this is the one theme that needs its own
-        // colour to actually apply. See themeTintFade.
+        // Its whole identity is being nearly black, so this is the one theme
+        // that needs its own colour to actually apply (see themeTintFade) AND
+        // its own exposure, the same lever the three pale arenas use in the
+        // other direction. A foundry should be the darkest room in the game.
         tintFade: 0.10,
+        // 0.62 was a genuinely dark foundry and unplayable with it - the far
+        // wall went to near-black and an opponent standing against it was
+        // invisible. 0.75 keeps the plate dark and the lava seams glowing while
+        // leaving enough range to see someone coming.
+        exposure: 0.75,
         id: 'volcanic', wallStyle: 'jagged', wallTex: 'basalt', wallColor: 0x2e2a33, capColor: 0x1a1720,
         floorTex: 'lava', floorColor: 0x403a46, column: 'redspire', stoneColor: 0x2a2530, stepColor: 0x241f28,
         sky: ['#5f5560', '#9a6a55', '#c88a5a', '#e0b487'],
@@ -4413,7 +4429,14 @@ const PHOTO_SETS = {
         marble:      { set: 'marble_01',          tile: 1.6 },
         cloudmarble: { set: 'marble_01',          tile: 1.5 },
         redrock:     { set: 'rock_face_03',       tile: 1.9 },
-        basalt:      { set: 'rock_face_03',       tile: 2.1 },
+        // NOT rock_face_03, which is tan sandstone. Measured three times as
+        // "Molten Foundry loads a bright tan canyon": the theme tint is applied
+        // correctly (#2e2a33 -> #423f47) and a 26% multiply still cannot make a
+        // bright tan photograph read as basalt. metal_plate is the only dark
+        // industrial set in assets/tex, and for a FOUNDRY dark plate is the
+        // right material rather than a substitute. Tiled coarsely - plate tread
+        // at arena scale reads as fabric otherwise (see the techgrid note).
+        basalt:      { set: 'metal_plate',        tile: 1.0 },
         coralstone:  { set: 'rock_face_03',       tile: 1.8 },
         ice:         { set: 'snow_02',            tile: 1.7 },
     },
@@ -4431,7 +4454,7 @@ const PHOTO_SETS = {
         coralsand: { set: 'sand_01',              tile: 4.4 },
         grass:     { set: 'aerial_grass_rock',    tile: 3.4 },
         jungle:    { set: 'forest_ground_04',     tile: 3.4 },
-        lava:      { set: 'rock_face_03',         tile: 3.8 },
+        lava:      { set: 'metal_plate',          tile: 2.0 },   // see the basalt note above
         ice:       { set: 'snow_02',              tile: 4.0 },
         cloud:     { set: 'marble_01',            tile: 3.0 },
     },
@@ -4566,14 +4589,31 @@ function attachPhotoSurface(mat, kind, texId, rx, ry, opts) {
         // industrial steel into mud. Pulling the tint most of the way toward
         // white keeps each arena's cast - which is what makes them
         // recognisable - without fighting the albedo for control of the hue.
-        if (!mat.userData.photoTinted) {
-            // 0.72 rather than 0.55: the theme wall colours are genuinely dark
-            // (Voltaic Nexus is 0x3a557e), and multiplying an already mid-dark
-            // steel albedo by a dark blue produced near-black walls - the
-            // opposite of the problem the tint fade was added to solve. A
-            // photographic albedo needs the tint as a CAST, not as the colour.
-            mat.color.lerp(new THREE.Color(0xffffff), opts.tintFade != null ? opts.tintFade : 0.72);
-            mat.userData.photoTinted = true;   // idempotent: never lerp twice
+        // 0.72 rather than 0.55: the theme wall colours are genuinely dark
+        // (Voltaic Nexus is 0x3a557e), and multiplying an already mid-dark
+        // steel albedo by a dark blue produced near-black walls - the opposite
+        // of the problem the tint fade was added to solve. A photographic
+        // albedo needs the tint as a CAST, not as the colour.
+        //
+        // KEYED BY THE TINT, not by "has this ever been tinted". These
+        // materials are cached and shared across arenas (see getCachedMaterial
+        // / keepMap), so a `photoTinted` boolean meant the first arena loaded in
+        // a session tinted the shared material and every arena after it
+        // inherited that tint and skipped its own. Load the Colosseum, then
+        // Molten Foundry, and the Foundry rendered in the Colosseum's pale
+        // sandstone cast - reported three times as "Molten Foundry loads a
+        // bright tan canyon".
+        //
+        // The guard cannot just be dropped: lerp compounds, so a material would
+        // creep toward white on every load. The base colour is kept instead and
+        // the tint recomputed from it, which is idempotent for a repeat and
+        // correct for a change.
+        const fade = opts.tintFade != null ? opts.tintFade : 0.72;
+        const tintKey = mat.color.getHex() + ':' + fade.toFixed(3);
+        if (mat.userData.photoTintKey !== tintKey) {
+            if (!mat.userData.photoBaseColor) mat.userData.photoBaseColor = mat.color.clone();
+            mat.color.copy(mat.userData.photoBaseColor).lerp(new THREE.Color(0xffffff), fade);
+            mat.userData.photoTintKey = mat.userData.photoBaseColor.getHex() + ':' + fade.toFixed(3);
         }
         mat.userData.keepMap = true;   // shared across rounds; never freed here
         mat.needsUpdate = true;
@@ -8289,6 +8329,9 @@ function buildScytheProp(len = 34) {
     return g;
 }
 
+// A knuckle-plate cap for the PROCEDURAL arm, which ends in a stub. A rigged
+// model ends in its own modelled hand and must not be given one of these - see
+// the marker's use in buildRiggedCharacter and finishViewmodel.
 function buildFistProp(color) {
     const g = new THREE.Group();
     const mats = [];
@@ -8327,6 +8370,9 @@ function buildFistProp(color) {
     mats.push(eMat);
 
     g.userData.mats = mats;
+    // See the note above this function: a rigged body already has a hand, so
+    // this cap is hidden there rather than stacked on top of it.
+    g.userData.bareFistCap = true;
     return g;
 }
 
@@ -8520,6 +8566,9 @@ const VM_ARM_LENGTH = 30;
 // but a dark interior sitting in shot still reads as a hole - and the game's
 // canvas is wider (1170/650) than the preview it was tuned in, so it shows
 // MORE of that side, not less.
+// The viewmodel's overall size in camera space, and the mirror that makes the
+// model's left arm read as the player's right one (see finishViewmodel).
+const VM_SCALE = 0.30;
 const VM_ARM_ANCHOR = new THREE.Vector3(10.6, -6.8, -13.6);
 
 // Which bones count as "the arm". Bone names arrive sanitised by three.js
@@ -9215,6 +9264,30 @@ function buildViewmodel(f, layer) {
     // child transform.
     // One transform, from the character's space into this holder's space. See
     // the note where handPoint is measured.
+    // THE LIMB IS MIRRORED, and nothing else is.
+    //
+    // Reported: "all of the arms are flipped when in first person view, they
+    // look like left arms, but they should be right arms... This will also hide
+    // the back of the arm, which is currently visible."
+    //
+    // Both halves are one cause: buildViewmodelArmFromModel extracts the '.L'
+    // chain, because that is the arm these rigs hold the weapon in. Hung on the
+    // right of the frame, a left arm shows the camera its outer side and its
+    // back. Switching to the '.R' chain is not the fix - the weapon is rigged
+    // to the '.L' hand, so the other arm arrives empty.
+    //
+    // Mirroring the whole HOLDER was tried and is worse: it also mirrors the
+    // prop's tuned carry angles and the arm's inboard aim, which took three
+    // more sign flips to undo and still measured wrong. Only the limb reads as
+    // a left arm, so only the limb is flipped - and it is flipped HERE, above
+    // the hand-point transform below, so the one matrix that mirrors the arm
+    // carries the hand with it. (Negating the hand point afterwards was wrong
+    // by twice the arm group's own offset: the sword floated a hand's width
+    // inboard of the hand holding it.)
+    //
+    // three.js flips the winding order for a negative determinant, so faces and
+    // lighting stay correct.
+    armGroup.scale.x *= -1;
     armGroup.updateMatrix();
     holder.userData.handPoint = armGroup.userData.handPoint
         ? armGroup.userData.handPoint.clone().applyMatrix4(armGroup.matrix)
@@ -9321,7 +9394,7 @@ function finishViewmodel(holder, f, layer) {
         holder.userData.baseRoll = VM_ARM_ROLL;   // see syncViewmodels
     }
     else holder.position.set(6.0, -6.0, -12);
-    holder.scale.setScalar(0.30);
+    holder.scale.setScalar(VM_SCALE);
     holder.userData.baseX = holder.position.x;
     holder.userData.baseY = holder.position.y;
     holder.userData.baseZ = holder.position.z;
@@ -10022,6 +10095,14 @@ function buildRiggedCharacter(name) {
 
             for (const child of [...pa.hand.children]) {
                 pa.hand.remove(child);
+                // A BARE FIST IS NOT A WEAPON TO CARRY OVER. buildFistProp caps
+                // the procedural arm's stub; this body has a modelled hand
+                // already, so the cap lands on top of it as a floating block -
+                // reported as Gorgonok's "large gold hexagonal prism", with one
+                // face rendering solid black because it is the cap's interior.
+                // Kept in the graph but not drawn, so userData.weapon stays
+                // wired for animateWeapon and the hit-flash material list.
+                if (child.userData && child.userData.bareFistCap) child.visible = false;
                 // DROP the inherited local offset's large component.
                 //
                 // These offsets were authored against the PROCEDURAL body, whose

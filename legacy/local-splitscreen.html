@@ -2215,6 +2215,22 @@ const MATCH_MODES = [
     // The ID stays `timeattack`. It is a localStorage progression key and a
     // value on the wire in SETUP/START packets, so renaming it would reset
     // players' records and desync a mixed-version match for a cosmetic gain.
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
     { id: 'timeattack', name: 'Takedown Race', blurb: 'Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse - the race is the pressure.' },
     { id: 'boss', name: 'Boss Fight (Co-op)', blurb: 'Both players team up against Karrigos, the Hollow Titan. Its attacks are slow and telegraphed — punish the wind-up. If either of you falls, the run is over.', coop: true },
     { id: 'survival', name: 'Survival Waves (Co-op)', blurb: 'Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.', coop: true },
@@ -3654,6 +3670,50 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
 // Rises up to this are walkable on foot; taller is a wall you must jump - see
 // resolveTallTerrain(), which reverts the move when the rise is too great.
 //
@@ -7921,11 +7981,16 @@ function buildOrbProp(coreHex, emissiveHex) {
 // their camera and placed on their own viewmodel layer so only their camera
 // renders it. Small and toward the lower-right, so it reads as "your hands"
 // without eating the screen. ---
-function propForAtkType(f) {
+function propForAtkType(f, forVm) {
     switch (f.atkType) {
-        case 'slash': return buildSwordProp('#e6faff', '#38bdf8', 17, 5);
+        // The blade is LONGER for the viewmodel than for the body. 17 units is
+        // right on a 40-unit-wide fighter seen from outside; in your own hand,
+        // foreshortened down the view axis and next to a full-size cross-guard,
+        // it read as "a dagger or spearhead" (reported). Third person still
+        // gets 17 - see buildWeapon.
+        case 'slash': return buildSwordProp('#e6faff', '#38bdf8', forVm ? 29 : 17, forVm ? 8 : 5);
         case 'dagger': return buildDaggerProp('#99f6e4', '#14b8a6');
-        case 'hammer': return buildHammerProp();
+        case 'hammer': return buildHammerProp(forVm);
         case 'scythe': return buildScytheProp(46); // a touch longer in-hand to convey Nyx's reach, but foreshortened for the viewmodel
         case 'punch': return buildFistProp(f.color);
         case 'bolt': return buildStaffProp();
@@ -7967,6 +8032,7 @@ function propForAtkType(f) {
 // blade inboard across the frame, pitch lifts the tip, roll tilts the flat of
 // the blade toward the light so it reads as a blade rather than a line.
 // How far the whole limb is tipped toward the bottom-right corner.
+const VM_SCALE = 0.30;
 const VM_ARM_ROLL = -0.34;
 const VM_PROP_YAW = 0.99, VM_PROP_PITCH = -0.34, VM_PROP_ROLL = 0.62;
 const ARM_CHAIN = ['UpperArm', 'LowerArm', 'Hand'];
@@ -8443,6 +8509,46 @@ function _sealArmCut(mesh) {
     return shell;
 }
 
+const VM_PROP_TUNE = {
+    // A hammer is turned so its FACE is across the view, not pointing down it,
+    // and dropped slightly so the head is not level with the crosshair.
+    hammer: { yaw: 0.34, pitch: -0.12, roll: 1.35 },
+    // A scythe is mostly haft with the blade far out; less yaw keeps the blade
+    // in frame rather than swinging it off the left edge.
+    scythe: { yaw: 0.72, pitch: -0.22, roll: 0.45 },
+    // A whip hangs; rolling it does nothing but hide the coil.
+    whip: { yaw: 0.80, pitch: -0.10, roll: 0.10 },
+    // An orb or a staff head reads from any angle, so they keep it simple and
+    // sit where a caster would actually hold them: up and inboard.
+    orb: { yaw: 0.75, pitch: -0.45, roll: 0.0 },
+    shard: { yaw: 0.75, pitch: -0.45, roll: 0.0 },
+    bolt: { yaw: 0.55, pitch: -0.30, roll: 0.25 },
+};
+function vmPropAngles(atkType) {
+    const t = VM_PROP_TUNE[atkType] || {};
+    return {
+        yaw: t.yaw != null ? t.yaw : VM_PROP_YAW,
+        pitch: t.pitch != null ? t.pitch : VM_PROP_PITCH,
+        roll: t.roll != null ? t.roll : VM_PROP_ROLL,
+    };
+}
+
+
+// How long the extracted arm should be in camera space, and where its centre
+// should sit. Tuned as a pair: the arm reads at roughly a third of the frame
+// height, entering from the lower right the way a held weapon does.
+// Sized against the frame, not against the old procedural stub. At 11.5 the
+// arm rendered about 8% of the frame height - technically present, visually a
+// speck. A first-person arm wants to occupy roughly a third of the frame and
+// reach in from the lower right, which at this camera's field of view means an
+// arm about 30 units long with its centre 16 units out.
+// Pushed further right than the arm needs, so the SEALED SHOULDER CUT leaves
+// the frame. The seal draws the limb's interior rather than the sky (Batch 42),
+// but a dark interior sitting in shot still reads as a hole - and the game's
+// canvas is wider (1170/650) than the preview it was tuned in, so it shows
+// MORE of that side, not less.
+// The viewmodel's overall size in camera space, and the mirror that makes the
+// model's left arm read as the player's right one (see finishViewmodel).
 function buildViewmodelArmFromModel(f) {
     const m = charModels[f.name];
     if (!m || !THREE.SkeletonUtils) return null;
@@ -8529,12 +8635,6 @@ function buildViewmodelArmFromModel(f) {
 
     // The model faces local +X (buildRiggedCharacter rotates it so render3D can
     // map a 2D facing straight onto rotation.y). A camera looks down -Z, so
-    // turn the arm a quarter turn to face the way the camera does. Because the
-    // arm is now POSED forward rather than sticking out sideways, this is the
-    // only rotation needed - and it is a fact about the model's convention, not
-    // a number to tune.
-    // The model faces local +X (buildRiggedCharacter rotates it so render3D can
-    // map a 2D facing straight onto rotation.y). A camera looks down -Z, so
     // turn the arm a quarter turn to face the way the camera does.
     //
     // THE SIGN WAS WRONG, and it is why "the arms are backwards" kept being
@@ -8597,32 +8697,50 @@ function buildViewmodelArm(f) {
     const trim = darkMetalMat('#242a34');
 
     // Forearm, tapering from elbow (back, +Z) toward the wrist.
+    //
+    // Batch 34: LONGER than it needs to be on purpose. The holder sits at
+    // z = -12 scaled 0.30, so the elbow end lands around z = -9 in camera
+    // space - in front of the near plane and pointed straight at the viewer.
+    // At the old length the limb simply STOPPED there, in mid-air, which is
+    // what made it read as detached: a real first-person arm continues past
+    // the edge of the frame. Running it back to z = 16 pushes the far end out
+    // of view so the arm reads as attached to a body you cannot see.
     const fore = new THREE.Mesh(
-        getCachedGeometry('vmFore', () => new THREE.CylinderGeometry(1.5, 2.0, 11, 12)),
+        getCachedGeometry('vmFore2', () => new THREE.CylinderGeometry(1.5, 2.2, 16, 14)),
         skin);
     fore.rotation.x = Math.PI / 2;
-    fore.position.set(-0.6, -1.4, 4.6);
+    fore.position.set(-0.6, -1.4, 6.4);
     g.add(fore);
     mats.push(skin);
 
     // Bracer over the forearm, with a rim at the elbow end.
+    //
+    // Batch 34: the trailing `true` here was `openEnded`, and it was the actual
+    // reported defect - "the arm of the character is detached from the body in
+    // first person, you can see the back of the block". An open-ended cylinder
+    // has no end caps, so with default FrontSide culling the far interior wall
+    // is discarded and you look straight through the tube to the background.
+    // The elbow end being the nearest part of the model to the camera made it
+    // the first thing you saw. Closed now, and it overlaps the forearm along
+    // its whole length so the two read as one limb rather than two abutting
+    // solids.
     const bracer = new THREE.Mesh(
-        getCachedGeometry('vmBracer', () => new THREE.CylinderGeometry(2.1, 2.35, 6.2, 12, 1, true)),
+        getCachedGeometry('vmBracer2', () => new THREE.CylinderGeometry(2.1, 2.45, 8.4, 14)),
         plate);
     bracer.rotation.x = Math.PI / 2;
-    bracer.position.set(-0.6, -1.4, 6.2);
+    bracer.position.set(-0.6, -1.4, 7.4);
     g.add(bracer);
     const rim = new THREE.Mesh(
-        getCachedGeometry('vmRim', () => new THREE.TorusGeometry(2.3, 0.34, 6, 14)),
+        getCachedGeometry('vmRim', () => new THREE.TorusGeometry(2.4, 0.34, 6, 14)),
         trim);
-    rim.position.set(-0.6, -1.4, 9.1);
+    rim.position.set(-0.6, -1.4, 11.2);
     g.add(rim);
 
     // Glove: palm block plus knuckle plates, angled as a closed grip.
     const palm = new THREE.Mesh(
         getCachedGeometry('vmPalm', () => new THREE.BoxGeometry(3.3, 3.0, 3.4)),
         plate);
-    palm.position.set(-0.3, -1.2, 0.6);
+    palm.position.set(-0.3, -1.2, 0.2);   // overlaps the forearm's wrist end (B34)
     palm.rotation.y = 0.18;
     g.add(palm);
     const knuckleGeo = getCachedGeometry('vmKnuckle', () => new THREE.SphereGeometry(0.62, 8, 6));
@@ -8648,23 +8766,116 @@ function buildViewmodelArm(f) {
 
 function buildViewmodel(f, layer) {
     const holder = new THREE.Group();
+    // Batch 36: the real arm when there is a model to cut it from, the
+    // primitive assembly otherwise. The fallback is not dead code - a model
+    // that has not finished downloading yet lands here (see ensureCharModel),
+    // and so does any character without one.
     const armGroup = buildViewmodelArmFromModel(f) || buildViewmodelArm(f);
     holder.userData.armFromModel = !!armGroup.userData.fromModel;
+    // The hand position has to be brought into THIS group's space.
+    //
+    // buildViewmodelArmFromModel measures it in the ARM group's local space,
+    // and the arm group is a child of this holder carrying its own scale and
+    // offset - so using the raw value put the weapon a long way from the hand,
+    // floating in the middle of the frame. armGroup.matrix is exactly that
+    // child transform.
+    // One transform, from the character's space into this holder's space. See
+    // the note where handPoint is measured.
+    // THE LIMB IS MIRRORED, and nothing else is.
+    //
+    // Reported: "all of the arms are flipped when in first person view, they
+    // look like left arms, but they should be right arms... This will also hide
+    // the back of the arm, which is currently visible."
+    //
+    // Both halves are one cause: buildViewmodelArmFromModel extracts the '.L'
+    // chain, because that is the arm these rigs hold the weapon in. Hung on the
+    // right of the frame, a left arm shows the camera its outer side and its
+    // back. Switching to the '.R' chain is not the fix - the weapon is rigged
+    // to the '.L' hand, so the other arm arrives empty.
+    //
+    // Mirroring the whole HOLDER was tried and is worse: it also mirrors the
+    // prop's tuned carry angles and the arm's inboard aim, which took three
+    // more sign flips to undo and still measured wrong. Only the limb reads as
+    // a left arm, so only the limb is flipped - and it is flipped HERE, above
+    // the hand-point transform below, so the one matrix that mirrors the arm
+    // carries the hand with it. (Negating the hand point afterwards was wrong
+    // by twice the arm group's own offset: the sword floated a hand's width
+    // inboard of the hand holding it.)
+    //
+    // three.js flips the winding order for a negative determinant, so faces and
+    // lighting stay correct.
+    armGroup.scale.x *= -1;
     armGroup.updateMatrix();
     holder.userData.handPoint = armGroup.userData.handPoint
         ? armGroup.userData.handPoint.clone().applyMatrix4(armGroup.matrix)
         : null;
+    // The rotation half needs the arm group's rotation composed in for the
+    // same reason, but not its translation or scale.
+    if (armGroup.userData.handQuat) {
+        const armQ = new THREE.Quaternion();
+        armGroup.matrix.decompose(new THREE.Vector3(), armQ, new THREE.Vector3());
+        holder.userData.handQuat = armQ.multiply(armGroup.userData.handQuat);
+    } else {
+        holder.userData.handQuat = null;
+    }
     holder.add(armGroup);
-    const prop = propForAtkType(f);
-    prop.rotation.y = Math.PI / 2; // weapon local +X (its "forward") now points into the screen (-Z)
-    // Batch 28: angle it up and inboard the way a held melee weapon actually
-    // sits, instead of running dead-straight into the screen with the cross
-    // guard filling the lower third of the frame.
-    prop.rotation.z = 0.30;
-    prop.rotation.x = -0.10;
-    if (holder.userData.handPoint) prop.position.copy(holder.userData.handPoint);
-    else prop.position.set(-0.6, -0.8, 1.2);
+    // NO PROP FOR A FIST WHEN THE HAND IS REAL.
+    //
+    // buildFistProp is a knuckle-plate assembly authored for the PROCEDURAL
+    // arm, which ends in a stub. An extracted arm already ends in the
+    // character's own modelled hand, so adding it drops a second fist into the
+    // middle of the frame - reported for Gorgonok as a black slab floating at
+    // the wrist, and it is the same duplication behind "Ignis's fists aren't
+    // even connected to his arms".
+    const handIsTheWeapon = f.atkType === 'punch' && holder.userData.armFromModel;
+    if (handIsTheWeapon) {
+        holder.userData.prop = null;
+        finishViewmodel(holder, f, layer);
+        return holder;
+    }
+    const prop = propForAtkType(f, true);
+    // A weapon's geometry extends from its grip along local +X, so Ry(+90)
+    // aims it into the screen (-Z) - and then it is turned across the view,
+    // because a weapon pointing exactly where the camera looks is seen
+    // end-on and reads as a dot.
+    //
+    // Batch 46: the carry angle is much stronger than Batch 28's 0.30/-0.10.
+    // Those were tuned while the ARM was reversed (see the rotation note in
+    // buildViewmodelArmFromModel): the hand sat near the camera, so a small
+    // tilt was enough to swing the blade across the frame. With the arm the
+    // right way round the hand is 16 units downrange and a small tilt leaves
+    // the blade pointing away into nothing.
+    const vmAng = vmPropAngles(f.atkType);
+    prop.rotation.y = Math.PI / 2 + vmAng.yaw;
+    prop.rotation.x = vmAng.pitch;
+    prop.rotation.z = vmAng.roll;
+    if (holder.userData.handPoint) {
+        // Put it IN the hand, at the angle the hand is actually holding it.
+        // The literal in the else-branch is the PROCEDURAL arm's wrist; a real
+        // arm's hand is somewhere else entirely, and both where and how it is
+        // turned are measured rather than guessed.
+        // POSITION from the measured hand; ROTATION from the tuned constants
+        // above. Composing the hand bone's own orientation in was tried and is
+        // worse: a weapon prop's geometry extends from its grip along local +X,
+        // so an extra rotation swings the whole weapon away from the hand it
+        // was just placed in. The hand's angle is the right idea and the wrong
+        // input - what it carries is the bind-pose roll of a bone in a rig
+        // authored for a body, not the grip angle of a held weapon.
+        prop.position.copy(holder.userData.handPoint);
+    } else {
+        prop.position.set(-0.6, -0.8, 1.2);
+    }
     holder.add(prop);
+    finishViewmodel(holder, f, layer);
+    return holder;
+}
+
+// Everything a viewmodel needs after its arm and (optional) weapon exist: the
+// muzzle flash, a caster's charge glow, the camera-space placement, the
+// animation kind and the layer. Extracted so the punch path - which returns
+// early because the model's own hand IS the weapon - cannot drift from the
+// weapon path.
+function finishViewmodel(holder, f, layer) {
     // Muzzle flash at the weapon tip (in front), hidden until this fighter
     // fires — so ranged shots visibly erupt from the weapon in first person.
     const flash = new THREE.Mesh(
@@ -8686,17 +8897,46 @@ function buildViewmodel(f, layer) {
     holder.userData.special = f.cfg.special;
     // Place & scale the whole thing in camera space: right of center, below
     // the crosshair line, a short distance in front of the near plane.
-    holder.position.set(6.0, -6.0, -12);
-    holder.scale.setScalar(0.30);
+    // The model arm is positioned by where its CENTRE should appear (see
+    // buildViewmodelArmFromModel, which parks that centre on its own origin),
+    // so this is a straight camera-space target: right of centre, below the
+    // crosshair, comfortably in front of the near plane.
+    if (holder.userData.armFromModel) {
+        holder.position.copy(VM_ARM_ANCHOR);
+        // Tip the limb so it enters from the bottom-right CORNER rather than
+        // lying across the lower edge. It also carries the sealed shoulder cut
+        // off-frame: the seal is a dark interior surface, and a dark hole
+        // sitting in the frame reads as a hole however well it is sealed.
+        holder.rotation.z = VM_ARM_ROLL;
+        holder.userData.baseRoll = VM_ARM_ROLL;   // see syncViewmodels
+    }
+    else holder.position.set(6.0, -6.0, -12);
+    holder.scale.setScalar(VM_SCALE);
     holder.userData.baseX = holder.position.x;
     holder.userData.baseY = holder.position.y;
     holder.userData.baseZ = holder.position.z;
     holder.userData.animKind = viewmodelAnimKind(f.atkType); // how this weapon swings in first person
     setLayerRecursive(holder, layer);
     holder.traverse(n => { if (n.isLight) n.parent.remove(n); }); // strip any point lights from props (Seraphine glow etc.) — viewmodel shouldn't light the world
-    return holder;
 }
 let vmP1 = null, vmP2 = null;
+// Rebuilds both viewmodels once a character's GLB has landed.
+//
+// Without this, a viewmodel built during the load window keeps the PROCEDURAL
+// arm for the whole match: a primitive forearm tinted by the arena's light,
+// holding a fist prop that the real arm does not want. Reported as Gorgonok's
+// "large yellow/gold hexagonal block" and an arm that changed colour between
+// arenas - neither of which was his arm at all.
+//
+// Guarded on actually needing it, so a match that started with both models
+// ready never rebuilds.
+function upgradeViewmodelsIfPlaceholder() {
+    if (gameState === 'MENU') return;
+    const stale = [[vmP1, player1], [vmP2, player2]].some(([vm, f]) =>
+        vm && f && !vm.userData.armFromModel && charModels[f.name]);
+    if (stale) rebuildViewmodels();
+}
+
 function rebuildViewmodels() {
     if (vmP1) { camP1.remove(vmP1); disposeObject3D(vmP1); vmP1 = null; }
     if (vmP2) { camP2.remove(vmP2); disposeObject3D(vmP2); vmP2 = null; }
@@ -10806,9 +11046,59 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 //
 // See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
 // 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
 const GRACE_PERIOD = 40;        // seconds the arena stays full-size before the first collapse tick
 const SHRINK_INTERVAL = 18;     // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
 // Once the collapse fraction passes this, snap fully shut and start crushing.
 //
 // WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and

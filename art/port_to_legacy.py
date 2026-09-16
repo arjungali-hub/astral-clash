@@ -1027,6 +1027,80 @@ if (location.protocol === 'https:'
                           "    mat.normalMap = mk(entry.n, 'n');\n    mat.roughnessMap = mk(entry.r, 'r');")
         print('  %-34s ok' % 'attachSurfaceMaps texture cache')
 
+    # ------------------------------------------- the first-person rig, whole
+    # Reported P0: in the LOCAL build Gorgonok's first-person hand is "a large
+    # flat-shaded gold hexagonal prism", and "check whether the local and online
+    # builds use different first-person rigs". They do, and that is the whole
+    # bug: this build forked before Batch 46, so it has none of the viewmodel
+    # work - no handIsTheWeapon guard (so a punch character gets buildFistProp
+    # bolted onto the model's real hand, which IS the gold block), no tuned prop
+    # angles, no camera-space anchor, and no arm mirror.
+    #
+    # Ported as ONE contiguous region rather than as a dozen edits: everything
+    # from buildViewmodelArmFromModel down to viewmodelAnimKind is the rig, the
+    # two builds' copies start and end on the same lines, and half a rig is
+    # worse than either whole one. The animation driver below it (syncViewmodels)
+    # is deliberately NOT included - it is split-screen-aware here.
+    VM_END = chr(10) + 'const _vmLerp = (a, b, t) => a + (b - a) * t;'
+    if 'function finishViewmodel(' not in dst:
+        new_rig = block(src, 'function buildViewmodelArmFromModel(f) {', VM_END, 'first-person rig')
+        old_rig = block(dst, 'function buildViewmodelArmFromModel(f) {', VM_END, 'first-person rig (old)')
+        dst = dst.replace(old_rig, new_rig, 1)
+        # ...and the pieces the rig calls that live further up the file.
+        # A source end marker and a destination one, because a block does not
+        # always end the same way in both files. Getting this wrong is not a
+        # subtle failure: an end marker 1800 lines too late once pulled 106KB of
+        # unrelated code into the archived build, which the byte count caught.
+        for start, src_end, dst_end, label in (
+            ('function propForAtkType(',
+             chr(10) + '// Batch 28: the first-person arm.',
+             chr(10) + '// Batch 28: the first-person arm.',
+             'propForAtkType'),
+            ('const VM_PROP_TUNE = {', chr(10) + 'const VM_SCALE',
+             chr(10) + 'const VM_SCALE', 'VM_PROP_TUNE + vmPropAngles'),
+        ):
+            end = src_end
+            new_blk = block(src, start, src_end, label)
+            # A ported block can carry a TOP-LEVEL `const` this build already
+            # declares further up, and a duplicate const is a SyntaxError that
+            # kills the whole page - which is how the first run of this step
+            # shipped a blank archived build ("Identifier 'ARM_CHAIN' has
+            # already been declared"). Dropping the redeclaration is right and
+            # removing the older one is not: code between the two would then
+            # reference it before its declaration.
+            #
+            # COLUMN 0 ONLY, and whole lines only. The first version of this
+            # matched any `const NAME`, which stripped a one-letter local
+            # (`const t = VM_PROP_TUNE[...]`) out of the middle of a function
+            # because some unrelated line elsewhere declared a `t`. Both the
+            # candidate and the existing declaration have to be top-level.
+            for line in new_blk.split(chr(10)):
+                m = re.match(r'^const ([A-Za-z_$][\w$]*)\s*=.*;$', line)
+                if not m:
+                    continue
+                ident = m.group(1)
+                if re.search(r'(?m)^const %s\s*=' % re.escape(ident), dst):
+                    new_blk = new_blk.replace(line + chr(10), '', 1)
+                    print('  %-34s already declared here; kept' % ident)
+            if start in dst:
+                old_blk = block(dst, start, dst_end, label + ' (old)')
+                dst = dst.replace(old_blk, new_blk, 1)
+            else:
+                # The trailing newline matters: a block that ends on a comment
+                # line, concatenated straight onto the next declaration, makes
+                # the declaration part of the comment. The whole page then dies
+                # with "Unexpected token".
+                dst = rep(dst, 'function buildViewmodelArmFromModel(f) {',
+                          new_blk.rstrip(chr(10)) + chr(10)
+                          + 'function buildViewmodelArmFromModel(f) {', label)
+        for decl, after in (
+            ('const VM_SCALE = 0.30;', 'const VM_ARM_ROLL'),
+            ('const VM_ARM_ANCHOR = new THREE.Vector3(10.6, -6.8, -13.6);', 'const VM_ARM_ROLL'),
+        ):
+            if decl.split(' =')[0] + ' =' not in dst:
+                dst = rep(dst, after, decl + chr(10) + after, decl.split(' ')[1])
+        print('  %-34s ok' % 'first-person rig')
+
     # --------------------------------- the spectator camera follows the fight
     # The extras fragment is injected once, guarded on `function playerName(`,
     # so a change inside it never reaches a build that already has it. Rather
