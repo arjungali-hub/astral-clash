@@ -357,6 +357,13 @@
             .picker-side .fighter-detail { width: auto; align-self: stretch; }
         }
         .picker-panel h3 { margin: 0 0 10px; font-size: 1rem; }
+        .sandbox-banner {
+            width: min(880px, 94vw); margin: 0 auto 10px; padding: 7px 10px;
+            box-sizing: border-box; text-align: center; border-radius: 8px;
+            background: rgba(168, 85, 247, 0.14); border: 1px solid #a855f7;
+            color: #d8b4fe; font-size: 0.74rem; font-weight: bold;
+            letter-spacing: 0.04em; text-transform: uppercase;
+        }
         .setup-panel { width: 236px; flex: none; margin: 0; }
         .setup-panel h3 { margin: 0 0 10px; font-size: 1rem; }
         .setup-panel .btn-mode { width: 100%; margin: 0 0 8px; font-size: 0.76rem; padding: 8px 10px; text-align: left; }
@@ -563,7 +570,18 @@
            Unscoped now, so both copy buttons get it, and onlineuxcheck measures
            BOTH - nothing had ever measured either, which is how a cosmetic fix
            shipped twice without landing. */
-        .lobby-copy {
+        /* Batch 47: BOTH selectors, and the pair is the point.
+           Batch 43 unscoped this rule from `.menu-section .lobby-copy` so the
+           room bar would get it - correct - and thereby dropped its
+           specificity to (0,1,0), which loses to `.menu-section button {
+           width: 100% }` at (0,1,1). Inside the lobby panel the Copy button
+           went full width and squeezed the room-code field to nothing:
+           "hosting a game makes the code and copy button look weird".
+           Listing both selectors wins in both places without depending on
+           source order. onlineuxcheck measures WIDTH now as well as height -
+           height alone is what let this through. */
+        .lobby-copy,
+        .menu-section .lobby-copy {
             width: auto; margin: 0; padding: 0 10px; font-size: 0.62rem; font-weight: bold;
             letter-spacing: 0.04em; line-height: 1;
             height: 26px; min-height: 0;
@@ -573,7 +591,8 @@
         }
         /* ...and the field it sits beside, so the two line up exactly. */
         .room-code-text, #lobby-code { height: 26px; box-sizing: border-box; padding: 0 7px; }
-        .lobby-copy:hover { background: rgba(74, 222, 128, 0.14); box-shadow: none; }
+        .lobby-copy:hover,
+        .menu-section .lobby-copy:hover { background: rgba(74, 222, 128, 0.14); box-shadow: none; }
         /* Batch 32: the online entry point sits with the branding, beside the
            mode selector - which mode you play and who you play it against are
            the same class of pre-match decision. */
@@ -1064,6 +1083,12 @@
                         <div class="pslot-state" id="slot-foe-state">Not connected</div>
                     </div>
                 </div>
+                <!-- Visible to BOTH players, which is the point: a sandbox that
+                     only the host can see is just a host secretly not paying
+                     out. -->
+                <div id="sandbox-banner" class="sandbox-banner" style="display:none;">
+                    Sandbox match &mdash; nothing earns coins
+                </div>
                 <div class="room-main">
                     <div class="menu-section picker-panel">
                         <h3 id="picker-heading">Choose your fighter</h3>
@@ -1094,10 +1119,12 @@
                         <div id="host-controls">
                             <button id="btn-open-modeselect" class="btn-mode">Mode: Classic Versus</button>
                             <button id="btn-open-mapselect" class="btn-mode">Arena: Random</button>
+                            <button id="btn-sandbox" class="btn-mode">Sandbox: Off</button>
                         </div>
                         <div id="guest-setup" class="guest-setup" style="display:none;">
                             <div class="guest-row"><span class="guest-label">Mode</span><span id="guest-mode">Classic Versus</span></div>
                             <div class="guest-row"><span class="guest-label">Arena</span><span id="guest-arena">Host's choice</span></div>
+                            <div class="guest-row"><span class="guest-label">Sandbox</span><span id="guest-sandbox">Off</span></div>
                         </div>
                         <div id="setup-note" class="setup-note">Waiting for both fighters.</div>
                         <button id="btn-start-match" style="display:none;">Start Match</button>
@@ -1660,6 +1687,12 @@ function playerLabelShort(side) {
 // the netcode module below - `net.timeoutMs` is reassignable and netcheck
 // raises it (a CDP relay cannot sustain 30Hz), so the literal must stay in
 // sync with the constant there.
+// A SANDBOX MATCH: nobody banks coins, both players are told, and the host
+// owns the switch. Part of the match, not of a machine - see the note at
+// setSandboxMatch. Declared up here with `net` because refreshRoomUI() reads
+// it while the menu paints itself, and this file has lost whole releases to
+// temporal-dead-zone regressions on exactly that pattern.
+let sandboxMatch = false;
 const net = {
     peer: null,
     conn: null,
@@ -2177,7 +2210,8 @@ function addCoins(side, n) {
     // unlocked there, and since the override deliberately doesn't touch the
     // real save, letting it *pay into* that save would turn the sandbox into a
     // farming shortcut for the progression it exists to bypass.
-    if (sandboxActive()) return;
+    // No banking in a sandbox - the host-declared kind or the local override.
+    if (matchIsSandbox()) return;
     prog(side).coins = Math.max(0, prog(side).coins + n);
     saveProgression();
     refreshCoinDisplays();
@@ -2308,6 +2342,7 @@ function cycleHudScale() {
     safeLSSet('astralClashHudScale', HUD_TEXT_SCALE);
     document.getElementById('btn-hud-scale').textContent = `HUD Text: ${HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal'}`;
 }
+document.getElementById('btn-sandbox').addEventListener('click', () => setSandboxMatch(!sandboxMatch));
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
 document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
 document.getElementById('btn-hud-scale').textContent = `HUD Text: ${HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal'}`;
@@ -5672,9 +5707,19 @@ function hexToRgbTriplet(hex) {
 }
 
 // --- Batch 34: teleport visual smoothing. See Fighter.visOffX / teleportTo. --
-// Below this distance a move is a nudge, not a teleport, and gets no smear -
-// otherwise ordinary knockback would feel mushy.
-const TELEPORT_VIS_MIN = 26;
+// Batch 47: THERE IS NO MINIMUM ANY MORE.
+//
+// This used to be 26 units, with a comment explaining that a shove is not a
+// teleport and must not acquire a smear "otherwise ordinary knockback would
+// feel mushy". The concern was right and the conclusion was wrong: mushiness
+// is a function of DURATION, not of whether the slide exists. A 300ms lag on
+// an 8-unit shove is mush; the same shove drawn over four frames is the hit
+// landing. Requested as "knockbacks/dashes/literally anything shouldn't snap
+// you into a spot".
+//
+// Kept as a named constant at 0 rather than deleted, because the decay curve
+// below is what replaced it and the two belong together.
+const TELEPORT_VIS_MIN = 0;
 // The furthest the drawn body may lag behind the simulation. Uncapped, a
 // long chain of teleports could draw a fighter through a wall.
 const TELEPORT_VIS_MAX = 150;
@@ -5689,6 +5734,14 @@ const TELEPORT_VIS_MAX = 150;
 // Deliberately NOT longer than that: the offset is a lie about where you are,
 // and the longer it lasts the longer your camera disagrees with your hitbox.
 const TELEPORT_VIS_DECAY = 0.82;
+// ...and for a short shove, which must be caught up in a few frames or it
+// reads as lag rather than as impact. Interpolated by distance between the
+// two: a 10-unit knockback lands on ~0.60 (about four frames), a 70-unit dash
+// keeps the 0.82 (~eighteen frames) that was tuned for it.
+const TELEPORT_VIS_DECAY_NEAR = 0.58;
+const TELEPORT_VIS_FULL = 70;      // the distance at which the slow decay applies
+// Below this, a move slides but does not draw a streak: see teleportTo.
+const TELEPORT_STREAK_MIN = 26;
 
 function hexToCss(hexNumber, alpha) {
     const r = (hexNumber >> 16) & 255, g = (hexNumber >> 8) & 255, b = hexNumber & 255;
@@ -6153,9 +6206,10 @@ class Fighter {
         // two lines are purely what the eye is shown on the way.
         const movedX = this.x - fromX, movedY = this.y - fromY;
         const moved = Math.hypot(movedX, movedY);
-        // Short shoves (a small knockback nudge) are not teleports and must not
-        // acquire a smear - it would make ordinary hits feel mushy.
-        if (moved < TELEPORT_VIS_MIN) return;
+        // Every move is drawn, however small - see TELEPORT_VIS_MIN. The only
+        // thing a tiny move skips is the streak effect below, which on a
+        // four-unit nudge would be a puff of dust for a shuffle.
+        if (moved <= 0.01) return;
         // Draw the body where it came from, then let render3D decay the offset.
         // ADD rather than assign: two teleports in the same frame (a dodge
         // cancelled into a special) should compose, not overwrite.
@@ -6170,6 +6224,11 @@ class Fighter {
         // A motion streak along the path, reusing the existing pooled effect
         // type rather than inventing one - no new material or shader, so this
         // cannot reintroduce the Batch 30 compile stall.
+        //
+        // Only for real travel. A knockback now gets the visual slide (above)
+        // but not the streak: a dust trail behind a four-unit shuffle reads as
+        // a special, and the streak is how a dash announces itself.
+        if (moved < TELEPORT_STREAK_MIN) return;
         const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
         this.effects.push({
             type: 'streak', life: 7, maxLife: 7,
@@ -6318,7 +6377,13 @@ class Fighter {
     decayVisualOffset(dt) {
         if (!this.visOffX && !this.visOffY) return;
         if (REDUCED_MOTION) { this.visOffX = this.visOffY = 0; return; }
-        const keep = Math.pow(TELEPORT_VIS_DECAY, dt || 1);
+        // The catch-up speed depends on how far behind the drawing is, so one
+        // mechanism serves an 8-unit shove and a 130-unit pull without either
+        // feeling like the other.
+        const lag = Math.hypot(this.visOffX, this.visOffY);
+        const t = Math.min(1, lag / TELEPORT_VIS_FULL);
+        const rate = TELEPORT_VIS_DECAY_NEAR + (TELEPORT_VIS_DECAY - TELEPORT_VIS_DECAY_NEAR) * t;
+        const keep = Math.pow(rate, dt || 1);
         this.visOffX *= keep;
         this.visOffY *= keep;
         // Snap the last sliver to zero so the view cannot sit permanently a
@@ -11113,9 +11178,36 @@ function netOnMessage(msg) {
     }
 }
 
+// Only the host may set it, and it travels with the rest of the setup so the
+// guest cannot be in a different kind of match than the host thinks.
+function setSandboxMatch(on) {
+    if (netActive() && !netIsHost()) return;    // guests observe, they do not decide
+    sandboxMatch = !!on;
+    refreshSandboxUI();
+    if (netActive() && netIsHost()) netSend({ t: 'SETUP', sandbox: sandboxMatch });
+}
+
+// Is this match off the books? True in a host-declared sandbox, and also in
+// the local unlock-everything override, which never paid out either.
+function matchIsSandbox() { return sandboxMatch || sandboxActive(); }
+
+function refreshSandboxUI() {
+    const btn = document.getElementById('btn-sandbox');
+    if (btn) btn.textContent = `Sandbox: ${sandboxMatch ? 'On' : 'Off'}`;
+    const g = document.getElementById('guest-sandbox');
+    if (g) g.textContent = sandboxMatch ? 'On \u2014 no coins' : 'Off';
+    // The banner is deliberately in BOTH players' room, not just the host's:
+    // the point of a visible sandbox is that the other person knows.
+    for (const id of ['sandbox-banner', 'sandbox-banner-game']) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = sandboxMatch ? '' : 'none';
+    }
+}
+
 function netApplySetup(msg) {
     if (msg.p1) p1Choice = msg.p1;
     if (msg.p2) p2Choice = msg.p2;
+    if (msg.sandbox !== undefined) { sandboxMatch = !!msg.sandbox; refreshSandboxUI(); }
     if (msg.mode && msg.mode !== matchMode) setMatchMode(msg.mode);
     if (msg.difficulty) botDifficulty = msg.difficulty;
     p1IsBot = false; p2IsBot = false;      // online is always two humans
@@ -11550,6 +11642,10 @@ function startOnline() {
         t: 'START',
         p1: p1Choice, p2: p2Choice,
         map: chosen.name, mode: matchMode, difficulty: botDifficulty,
+        // On START as well as on SETUP: a guest that joined late, or
+        // reconnected, has to learn the match is a sandbox from the message
+        // that starts it rather than from one it might have missed.
+        sandbox: sandboxMatch,
     });
     closeAllModals();
     startMatch(chosen);
@@ -11698,6 +11794,7 @@ function hostRematch(map) {
             t: 'START',
             p1: p1Choice, p2: p2Choice,
             map: chosen.name, mode: matchMode, difficulty: botDifficulty,
+            sandbox: sandboxMatch,   // see the note on the other START
         });
         closeAllModals();
         startMatch(chosen);
@@ -12763,7 +12860,7 @@ function endMatch() {
         addCoins('p1', earnedP1);
         addCoins('p2', earnedP2);
     }
-    const coinLine = sandboxActive()
+    const coinLine = matchIsSandbox()
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} coins &nbsp;·&nbsp; P2 +${earnedP2} coins</div>`;
     document.getElementById('match-summary').innerHTML =
@@ -12836,7 +12933,7 @@ function endCoopMatch(won, detail) {
     else { addCoins('p1', earned); addCoins('p2', earned); }
 
     const s1 = matchStats.p1, s2 = matchStats.p2;
-    const coinLine = sandboxActive()
+    const coinLine = matchIsSandbox()
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">Each player +${earned} coins</div>`;
     document.getElementById('match-summary').innerHTML =
@@ -13346,7 +13443,8 @@ if (DEBUG) {
     window.ACDebug = {
         get progression() { return progression; },
         get debugUnlockAll() { return debugUnlockAll; },
-        sandboxActive, SANDBOX_KEY,
+        sandboxActive, SANDBOX_KEY, matchIsSandbox, setSandboxMatch, refreshSandboxUI,
+        get sandboxMatch() { return sandboxMatch; },
         get gameState() { return gameState; },
         get player1() { return player1; },
         get player2() { return player2; },

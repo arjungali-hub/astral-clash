@@ -122,15 +122,48 @@ const H = require('./harness');
     check('and the camera ends on the simulation position',
         settled.camToSim < 2, JSON.stringify(settled));
 
-    section('A small shove is not a teleport and gets no smear:');
+    // Batch 47 REVERSED this assertion, deliberately. It used to require that a
+    // sub-26-unit shove got NO smear at all, which is what "knockbacks... snap
+    // you into a spot" was describing. A shove slides now; what keeps it from
+    // feeling mushy is that it catches up in a few frames instead of the ~300ms
+    // a dash gets.
+    section('A small shove slides too - it just catches up fast:');
     const nudge = await page.evaluate(() => {
         const D = window.ACDebug;
         const f = D.player1;
+        // A SPAWN POINT, not the arena centre: this map has a platform dead
+        // centre (Voltaic Nexus), so teleportTo was silently eaten by the
+        // collision test and every assertion here read zero.
+        f.x = D.matchMap.spawn1.x; f.y = D.matchMap.spawn1.y;
         f.visOffX = 0; f.visOffY = 0;
-        f.teleportTo(8, 0);          // below TELEPORT_VIS_MIN
-        return { offset: Math.hypot(f.visOffX, f.visOffY), min: D.TELEPORT_VIS_MIN };
+        const before = f.x;
+        f.teleportTo(8, 0);
+        const moved = f.x - before;
+        const start = Math.hypot(f.visOffX, f.visOffY);
+        // Step the decay by hand, one frame at a time, and count.
+        let frames = 0;
+        while ((f.visOffX || f.visOffY) && frames < 60) { f.decayVisualOffset(1); frames++; }
+        return { moved: +moved.toFixed(2), start: +start.toFixed(2), frames,
+                 min: D.TELEPORT_VIS_MIN };
     });
-    check('ordinary knockback stays crisp', nudge.offset === 0, JSON.stringify(nudge));
+    const dash = await page.evaluate(() => {
+        const D = window.ACDebug;
+        const f = D.player1;
+        f.x = D.matchMap.spawn1.x; f.y = D.matchMap.spawn1.y;
+        f.visOffX = 0; f.visOffY = 0;
+        f.teleportTo(70, 0);
+        const start = Math.hypot(f.visOffX, f.visOffY);
+        let frames = 0;
+        while ((f.visOffX || f.visOffY) && frames < 120) { f.decayVisualOffset(1); frames++; }
+        return { start: +start.toFixed(2), frames };
+    });
+    check('the shove actually moved the fighter', nudge.moved > 7, JSON.stringify(nudge));
+    check('and it IS drawn as travel rather than a snap',
+        nudge.start > 5, JSON.stringify(nudge));
+    check('it catches up quickly - a shove is impact, not lag',
+        nudge.frames > 0 && nudge.frames <= 9, JSON.stringify(nudge));
+    check('while a full dash is allowed to take longer',
+        dash.frames > nudge.frames, JSON.stringify({ nudge: nudge.frames, dash: dash.frames }));
 
     section('The streak that sells the travel is spawned:');
     const streak = await page.evaluate(() => {

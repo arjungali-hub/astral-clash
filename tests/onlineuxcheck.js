@@ -425,6 +425,14 @@ const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
             !!btn && btn.h > 0 && btn.h <= 28, JSON.stringify(btn));
         check(`and no taller than the ${label} code field beside it`,
             !!btn && !!field && btn.h <= field.h + 1, JSON.stringify({ btn, field }));
+        // WIDTH TOO. Height alone passed while the lobby's Copy button was
+        // stretching to 100% and squeezing the room code into a sliver -
+        // reported as "hosting a game makes the code and copy button look
+        // weird". A chip is narrow; the field it sits beside is the wide one.
+        check(`the ${label} copy button is a chip, not a full-width action`,
+            !!btn && btn.w > 0 && btn.w <= 90, JSON.stringify(btn));
+        check(`and the ${label} code field is wider than the button`,
+            !!btn && !!field && field.w > btn.w, JSON.stringify({ btn, field }));
     }
 
     // ------------------------------------- the sandbox cannot reach online

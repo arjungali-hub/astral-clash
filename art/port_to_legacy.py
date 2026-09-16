@@ -183,6 +183,70 @@ COOP_RESOLVE_BODY = """    if (!isCoopMode()) return false;
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
+AUTO_START_OLD = """    // A human confirming as the final action that makes both sides ready
+    // auto-starts (the classic pick\u2192pick\u2192fight feel). Other cases start
+    // via the explicit Start Match button \u2014 see refreshMenuUI().
+    if (sideReady('p1') && sideReady('p2')) beginMatch();"""
+
+AUTO_START_NEW = """    // NO AUTO-START. Requested as "you should still have to press start fight
+    // after both players confirm in local mode", and the reason is the one
+    // thing this build has that the online one does not: two people at one
+    // keyboard. Auto-starting on the second confirm lets whoever confirms last
+    // decide when the other one is ready. The Start Fight button that
+    // refreshMenuUI() already reveals is now the only way in."""
+
+DETAIL_SCROLL_OLD = ".detail-scroll { max-height: min(200px, 30vh); overflow-y: auto; padding-right: 4px; }"
+
+DETAIL_SCROLL_NEW = """/* Batch 47: NO inner scroller. Reported as "in local there shouldn't be this
+           nested scroll down thing. The only scroll downs should be for the whole
+           page" - the fighter detail had its own 200px scroll box, inside a panel,
+           inside a scrollable overlay: three nested scrollbars to read one
+           paragraph. It grows now and the page carries it. */
+        .detail-scroll { max-height: none; overflow: visible; padding-right: 0; }"""
+
+PANEL_SCROLLERS = [
+    ".modeselect-panel { width: min(560px, 94vw); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }",
+    ".shop-panel { width: min(560px, 46vw); max-height: 90vh; overflow-y: auto; text-align: left; }",
+    ".mapselect-panel { width: min(1000px, 96vw); max-height: 92vh; overflow-y: auto; text-align: center; }",
+    ".tutorial-panel { width: min(760px, 94vw); max-height: 90vh; overflow-y: auto; text-align: left; }",
+]
+
+MODALS_OLD = """        #mapselect-screen, #shop-screen, #tutorial-screen, #settings-screen, #audio-screen, #rebind-screen, #modeselect-screen {
+            box-sizing: border-box;
+        }"""
+
+MODALS_NEW = """        #mapselect-screen, #shop-screen, #tutorial-screen, #settings-screen, #audio-screen, #rebind-screen, #modeselect-screen {
+            box-sizing: border-box;
+            /* Batch 47: TOP-aligned and scrollable, not centred.
+               A panel taller than the viewport inside a centred flex container
+               overflows EQUALLY in both directions, and the half above the top
+               edge is simply unreachable - which is "when you open settings in
+               local, the thing that pops up is shifted upwards". This is also
+               the one scroller that stays: for a fixed overlay, this container
+               IS the page. */
+            align-items: flex-start;
+            overflow-y: auto;
+            padding-top: 24px;
+            padding-bottom: 24px;
+        }"""
+
+WATCH_OLD = """    const twoHumans = !player1.isBot && !player2.isBot;
+    renderer.setScissorTest(true);"""
+
+WATCH_NEW = """    // Nobody is playing: one camera, from above. Two split-screen halves of a
+    // fight neither player is in is the least useful way to show it, and this
+    // is the only view in the game that holds the whole arena at once.
+    if (botsOnly()) {
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, W, H);
+        positionWatchCamera(W / H);
+        renderWithBloomLocal(scene, watchCam);
+        return;
+    }
+    const twoHumans = !player1.isBot && !player2.isBot;
+    renderer.setScissorTest(true);"""
+
+
 def main():
     src = io.open(SRC, encoding='utf-8').read()
     dst = io.open(DST, encoding='utf-8').read()
@@ -798,6 +862,139 @@ if (location.protocol === 'https:'
 }
 // Three.js is the only external dependency""", 'canonical /local redirect')
 
+    # ------------------------------------------- local-build requests (B47)
+    # Names, a progress reset, an explicit Start Fight, no nested scrollbars,
+    # and a spectator camera when both sides are bots. Archived-build only: the
+    # online build has one player per machine, so none of it applies there.
+    if 'function playerName(' not in dst:
+        extras = io.open(os.path.join(HERE, 'legacy_local_extras.js'), encoding='utf-8').read()
+        # After freshSideProgress/progression exist, and before anything can
+        # call in. watchCam is a const built at load, so it needs THREE (which
+        # is present by then) and nothing from the arena.
+        dst = rep(dst, "function saveProgression() {", extras + "\nfunction saveProgression() {",
+                  'local extras')
+
+        # --- a name field per side -----------------------------------------
+        # Anchored on each panel's own heading, which is unique. `.side-purse`
+        # appears once per side, and a single-match replacement cannot tell the
+        # two apart - the first attempt asserted on that and stopped.
+        for side, label in (('p1', 'Player 1'), ('p2', 'Player 2')):
+            head_old = ('<h3 id="%s-heading">%s <span class="key-hint">(keys on cards)</span></h3>'
+                        % (side, label))
+            head_new = (
+                '<h3 id="%s-heading"><span id="side-name-%s">%s</span> '
+                '<span class="key-hint">(keys on cards)</span></h3>\n'
+                '                        <div class="side-name-row">\n'
+                '                            <input id="name-%s" class="side-name" maxlength="14"\n'
+                '                                   placeholder="%s" aria-label="%s name">\n'
+                '                        </div>' % (side, side, label, side, label, label))
+            dst = rep(dst, head_old, head_new, '%s name field' % side)
+
+        dst = rep(dst, "        .side-purse {",
+                  "        .side-name-row { display: flex; justify-content: center; margin: 0 0 8px; }\n"
+                  "        .side-name {\n"
+                  "            width: 100%; max-width: 220px; box-sizing: border-box;\n"
+                  "            padding: 5px 8px; text-align: center;\n"
+                  "            background: #0b0f18; color: #e2e8f0; border: 1px solid #2e3a59;\n"
+                  "            border-radius: 5px; font-family: var(--font-hud); font-size: 0.72rem;\n"
+                  "        }\n"
+                  "        .side-name:focus { outline: none; border-color: #00f3ff; }\n"
+                  "        .side-purse {", 'name field css')
+
+        # --- reset progress, in settings -----------------------------------
+        dst = rep(dst, '<button id="btn-settings-close"',
+                  '<div class="settings-list" style="margin-top:14px;">\n'
+                  '                        <button id="btn-reset-progress" class="btn-danger">Reset Progress</button>\n'
+                  '                    </div>\n'
+                  '                    <p class="settings-note">Clears both players\' coins, unlocks and upgrades on this machine. Names are kept. Click twice to confirm.</p>\n'
+                  '                    <button id="btn-settings-close"', 'reset progress button')
+        dst = rep(dst, "        .settings-note {",
+                  "        .btn-danger {\n"
+                  "            background: transparent; color: #f87171; border: 1px solid #f87171;\n"
+                  "            box-shadow: none;\n"
+                  "        }\n"
+                  "        .btn-danger:hover { background: rgba(248, 113, 113, 0.14); box-shadow: none; }\n"
+                  "        .settings-note {", 'danger button css')
+
+        # --- wiring --------------------------------------------------------
+        dst = rep(dst, "refreshCoinDisplays(); // initial paint at load, before any menu interaction",
+                  "refreshCoinDisplays(); // initial paint at load, before any menu interaction\n"
+                  "for (const nameSide of SIDES) {\n"
+                  "    const input = document.getElementById('name-' + nameSide);\n"
+                  "    if (input) input.addEventListener('input', () => setLocalName(nameSide, input.value));\n"
+                  "}\n"
+                  "document.getElementById('btn-reset-progress')\n"
+                  "    .addEventListener('click', resetProgressClicked);\n"
+                  "refreshLocalNames();", 'local extras wiring')
+
+        # --- the names replace the literals --------------------------------
+        dst = dst.replace("`${shopSide === 'p1' ? 'Player 1' : 'Player 2'} \u2014 Shop`",
+                          "playerName(shopSide) + ' \u2014 Shop'")
+        dst = dst.replace("(side === 'p1' ? 'Player 1' : 'Player 2')", "playerName(side)")
+        dst = dst.replace("winner === player1 ? 'Player 1' : 'Player 2'",
+                          "winner === player1 ? playerName('p1') : playerName('p2')")
+
+        # --- an explicit Start Fight ---------------------------------------
+        dst = rep(dst, AUTO_START_OLD, AUTO_START_NEW, 'no auto-start in local')
+        dst = dst.replace('<button id="btn-start-match" style="display:none;">Start Match</button>',
+                          '<button id="btn-start-match" style="display:none;">Start Fight</button>')
+
+        # --- scrolling: the page, not the panels ---------------------------
+        dst = dst.replace(DETAIL_SCROLL_OLD, DETAIL_SCROLL_NEW)
+        for old_css in PANEL_SCROLLERS:
+            if old_css in dst:
+                dst = dst.replace(old_css, old_css
+                                  .replace("overflow-y: auto", "overflow-y: visible")
+                                  .replace("max-height: 100%", "max-height: none")
+                                  .replace("max-height: 90vh", "max-height: none")
+                                  .replace("max-height: 92vh", "max-height: none"))
+        print('  %-34s ok' % 'page scroll, not panel scroll')
+
+        # --- the modal that was clipped off the top -----------------------
+        dst = rep(dst, MODALS_OLD, MODALS_NEW, 'modals align to top')
+
+        # --- two bots: watch from above -----------------------------------
+        dst = rep(dst, WATCH_OLD, WATCH_NEW, 'bots-only watch view')
+        dst = rep(dst, "function renderOneView(cam, viewer, x, y, vw, vh, dt) {",
+                  "// The archived build renders directly - bloom is an online-build addition,\n"
+                  "// which one viewport is what made practical. Named rather than inlined so\n"
+                  "// the two builds' render paths read the same shape.\n"
+                  "function renderWithBloomLocal(scn, cam) { renderer.render(scn, cam); }\n\n"
+                  "function renderOneView(cam, viewer, x, y, vw, vh, dt) {", 'local render helper')
+        dst = rep(dst, "        openShop, buildShop, refreshBotUI,",
+                  "        openShop, buildShop, refreshBotUI,\n"
+                  "        playerName, setLocalName, refreshLocalNames, resetProgressClicked,\n"
+                  "        botsOnly, soloHumanSide, positionWatchCamera,\n"
+                  "        get localNames() { return localNames; },",
+                  'local debug handles')
+        # headingHTML() regenerates each side's heading on every
+        # refreshMenuUI, from a hardcoded `Player ${num}` - so the name span
+        # inserted above is wiped the moment anything changes. The template
+        # reads the name instead.
+        n_head = dst.count("`Player ${num}${botTag}")
+        dst = dst.replace("`Player ${num}${botTag}", "`${playerName(side)}${botTag}")
+        print('  %-34s %d templates' % ('heading uses the name', n_head))
+        # ...and typing a name repaints the headings through the same path.
+        dst = rep(dst, "function refreshLocalNames() {",
+                  "function refreshLocalNames() {\n"
+                  "    // refreshMenuUI owns the headings (see headingHTML), so the name\n"
+                  "    // change goes through it rather than poking at the DOM twice.\n"
+                  "    if (typeof refreshMenuUI === 'function') refreshMenuUI();",
+                  'name change repaints the headings')
+        # ONE branch, ahead of the two per-side ones: when exactly one side is
+        # human, that side uses the online scheme instead of the
+        # split-keyboard one. Inserted rather than merged into both branches so
+        # the two-human path is textually untouched.
+        dst = rep(dst, "        } else if (this.isPlayerOne) {",
+                  "        } else if (soloHumanSide() === sideOf(this)) {\n"
+                  "            // One human, so the reason for the split-keyboard scheme is\n"
+                  "            // gone - see applySoloControls.\n"
+                  "            const r = applySoloControls(this, BINDINGS[sideOf(this)], dt, target);\n"
+                  "            moveX = r.moveX; moveY = r.moveY;\n"
+                  "            jumpPressed = r.jumpPressed; jumpJustPressed = r.jumpJustPressed;\n"
+                  "        } else if (this.isPlayerOne) {", 'solo human controls')
+        print('  %-34s ok' % 'local requests wired')
+
     # ---------------------------------------------------- lighting + leaks
     fit = block(src, "// Batch 34: re-fit the sun's shadow frustum to wherever the sun actually is.",
                 "// Recolor/re-aim the daylight for a map's theme", 'shadow fit')
@@ -839,6 +1036,10 @@ if (location.protocol === 'https:'
         # ...and the shared module itself, which replaced every step that used
         # to copy the roster and the economy across.
         'shared/roster.js', 'AC_ASSET_BASE',
+        # Batch 47's local-build requests.
+        'function playerName(', 'function resetProgressClicked(',
+        'function botsOnly(', 'id="name-p1"', 'id="btn-reset-progress"',
+        '>Start Fight<',
         # Gameplay + visuals, widened scope.
         'id="desktop-only"', 'This version needs a computer',
         'function buildViewmodelArmFromModel(', 'function _skelBone(',
@@ -867,7 +1068,8 @@ if (location.protocol === 'https:'
               'ensureUV2', 'fitKeyShadow', 'announceFont',
               'loadPhotoSet', 'tiledPhotoTexture', 'accentEmissiveTexture',
               'coopDown', 'coopRevive', 'drawCoopDownHUD', 'syncShopPanels',
-              'closeShopSide']
+              'closeShopSide', 'playerName', 'resetProgressClicked',
+              'refreshLocalNames', 'botsOnly', 'positionWatchCamera']
     # What must live in shared/roster.js, and must NOT be re-declared here. A
     # local copy would shadow the shared binding and silently restore exactly
     # the drift this file stopped porting around.

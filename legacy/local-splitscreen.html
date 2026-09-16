@@ -455,6 +455,14 @@
         .coin-balance::before { content: "\25CF"; margin-right: 5px; color: #fbbf24; }
         /* Batch 21: each side panel owns its purse + a shortcut into that
            player's Shop tab, so whose coins are whose is never ambiguous. */
+        .side-name-row { display: flex; justify-content: center; margin: 0 0 8px; }
+        .side-name {
+            width: 100%; max-width: 220px; box-sizing: border-box;
+            padding: 5px 8px; text-align: center;
+            background: #0b0f18; color: #e2e8f0; border: 1px solid #2e3a59;
+            border-radius: 5px; font-family: var(--font-hud); font-size: 0.72rem;
+        }
+        .side-name:focus { outline: none; border-color: #00f3ff; }
         .side-purse {
             display: flex; align-items: center; justify-content: space-between; gap: 8px;
             margin: 0 0 8px; padding: 5px 9px; border-radius: 5px;
@@ -487,7 +495,7 @@
             background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
             align-items: center; justify-content: center; z-index: 30; padding: 20px; box-sizing: border-box;
         }
-        .modeselect-panel { width: min(560px, 94vw); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
+        .modeselect-panel { width: min(560px, 94vw); max-height: none; overflow-y: visible; box-sizing: border-box; text-align: center; }
         .modeselect-panel h3 { color: #a855f7; margin: 0 0 4px; font-size: 1.3rem; }
         .mode-card {
             display: block; width: 100%; text-align: left; margin: 0 0 8px; padding: 11px 14px;
@@ -520,7 +528,7 @@
            left still reaches across the half it is meant to leave alone. */
         #shop-screen.side-p1 { justify-content: flex-start; }
         #shop-screen.side-p2 { justify-content: flex-end; }
-        .shop-panel { width: min(560px, 46vw); max-height: 90vh; overflow-y: auto; text-align: left; }
+        .shop-panel { width: min(560px, 46vw); max-height: none; overflow-y: visible; text-align: left; }
         @media (max-width: 900px) {
             /* Too narrow to sit beside anything — fall back to centred and wide. */
             #shop-screen.side-p1, #shop-screen.side-p2 { justify-content: center; }
@@ -596,7 +604,12 @@
            outside this box so they never scroll away from the text they act on.
            A small hover-local scroll region, unlike the row-wide one the
            .select-row comment above rules out for fighting the mouse wheel. */
-        .detail-scroll { max-height: min(200px, 30vh); overflow-y: auto; padding-right: 4px; }
+        /* Batch 47: NO inner scroller. Reported as "in local there shouldn't be this
+           nested scroll down thing. The only scroll downs should be for the whole
+           page" - the fighter detail had its own 200px scroll box, inside a panel,
+           inside a scrollable overlay: three nested scrollbars to read one
+           paragraph. It grows now and the page carries it. */
+        .detail-scroll { max-height: none; overflow: visible; padding-right: 0; }
         .detail-desc { font-size: 0.68rem; color: #94a3b8; margin: 4px 0 8px; }
         .detail-stats { margin-bottom: 8px; }
         .stat-row { display: flex; align-items: center; gap: 6px; font-size: 0.6rem; color: #94a3b8; margin-bottom: 3px; }
@@ -663,6 +676,11 @@
             font-size: 0.78rem; color: #e2e8f0; cursor: pointer; text-align: left;
         }
         .settings-check input { width: auto; margin: 0; flex-shrink: 0; cursor: pointer; }
+        .btn-danger {
+            background: transparent; color: #f87171; border: 1px solid #f87171;
+            box-shadow: none;
+        }
+        .btn-danger:hover { background: rgba(248, 113, 113, 0.14); box-shadow: none; }
         .settings-note { font-size: 0.66rem; color: #64748b; line-height: 1.45; margin: 0 0 4px; text-align: left; }
         .btn-tutorial {
             width: auto;
@@ -690,6 +708,17 @@
            overflow-y actually do the scrolling. */
         #mapselect-screen, #shop-screen, #tutorial-screen, #settings-screen, #audio-screen, #rebind-screen, #modeselect-screen {
             box-sizing: border-box;
+            /* Batch 47: TOP-aligned and scrollable, not centred.
+               A panel taller than the viewport inside a centred flex container
+               overflows EQUALLY in both directions, and the half above the top
+               edge is simply unreachable - which is "when you open settings in
+               local, the thing that pops up is shifted upwards". This is also
+               the one scroller that stays: for a fixed overlay, this container
+               IS the page. */
+            align-items: flex-start;
+            overflow-y: auto;
+            padding-top: 24px;
+            padding-bottom: 24px;
         }
         .mapselect-panel, .shop-panel, .tutorial-panel, .modeselect-panel,
         #settings-screen .menu-section, #audio-screen .menu-section, #rebind-screen .menu-section {
@@ -703,7 +732,7 @@
             align-items: center; justify-content: center; z-index: 25;
             padding: 20px;
         }
-        .mapselect-panel { width: min(1000px, 96vw); max-height: 92vh; overflow-y: auto; text-align: center; }
+        .mapselect-panel { width: min(1000px, 96vw); max-height: none; overflow-y: visible; text-align: center; }
         .mapselect-panel h3 { color: #00f3ff; margin: 0 0 4px; font-size: 1.5rem; letter-spacing: 1px; }
         .mapselect-sub { color: #8aa0b8; margin: 0 0 14px; font-size: 0.9rem; }
         /* Random Arena is a secondary (outline) action — the default choice,
@@ -737,7 +766,7 @@
             align-items: center; justify-content: center; z-index: 30;
             padding: 20px;
         }
-        .tutorial-panel { width: min(760px, 94vw); max-height: 90vh; overflow-y: auto; text-align: left; }
+        .tutorial-panel { width: min(760px, 94vw); max-height: none; overflow-y: visible; text-align: left; }
         .tutorial-panel h3 { text-align: center; color: #00f3ff; margin: 0 0 14px; font-size: 1.1rem; }
         .tutorial-grid {
             display: grid;
@@ -937,7 +966,11 @@
                 <p id="touch-warning" style="display:none;color:#8aa0b8;font-size:0.75rem;max-width:480px;text-align:center;">Touch controls: left stick to move/turn, right-side buttons to fight. Best in landscape.</p>
                 <div class="select-row">
                     <div class="menu-section side-panel">
-                        <h3 id="p1-heading">Player 1 <span class="key-hint">(keys on cards)</span></h3>
+                        <h3 id="p1-heading"><span id="side-name-p1">Player 1</span> <span class="key-hint">(keys on cards)</span></h3>
+                        <div class="side-name-row">
+                            <input id="name-p1" class="side-name" maxlength="14"
+                                   placeholder="Player 1" aria-label="Player 1 name">
+                        </div>
                         <div class="side-purse">
                             <span class="purse-label">Coins</span>
                             <span class="coin-balance" id="p1-coins">0</span>
@@ -959,11 +992,15 @@
                         <div class="vs-glow"></div>
                         <div class="vs-label">VS</div>
                         <div class="vs-status" id="vs-status">Choose your fighters</div>
-                        <button id="btn-start-match" style="display:none;">Start Match</button>
+                        <button id="btn-start-match" style="display:none;">Start Fight</button>
                         <button id="btn-difficulty" class="btn-cycler">Difficulty: &lsaquo; Normal &rsaquo;</button>
                     </div>
                     <div class="menu-section side-panel">
-                        <h3 id="p2-heading">Player 2 <span class="key-hint">(keys on cards)</span></h3>
+                        <h3 id="p2-heading"><span id="side-name-p2">Player 2</span> <span class="key-hint">(keys on cards)</span></h3>
+                        <div class="side-name-row">
+                            <input id="name-p2" class="side-name" maxlength="14"
+                                   placeholder="Player 2" aria-label="Player 2 name">
+                        </div>
                         <div class="side-purse">
                             <span class="purse-label">Coins</span>
                             <span class="coin-balance" id="p2-coins">0</span>
@@ -1054,6 +1091,10 @@
                         <span>Unlock everything (sandbox)</span>
                     </label>
                     <p class="settings-note">Try every fighter and maxed-out upgrades without spending coins, and play against a bot. Each player's real progress is kept separately and comes back exactly as it was when you turn this off. Nothing you do in here earns coins &mdash; progression matches are two players, one keyboard.</p>
+                    <div class="settings-list" style="margin-top:14px;">
+                        <button id="btn-reset-progress" class="btn-danger">Reset Progress</button>
+                    </div>
+                    <p class="settings-note">Clears both players' coins, unlocks and upgrades on this machine. Names are kept. Click twice to confirm.</p>
                     <button id="btn-settings-close" class="btn-back">Close</button>
                 </div>
             </div>
@@ -1603,6 +1644,235 @@ let progression = (() => {
         return { p1: freshSideProgress(), p2: freshSideProgress() };
     }
 })();
+// Local-build features, inserted into bootGame() by art/port_to_legacy.py.
+//
+// These exist only in the archived split-screen build, because they only make
+// sense there: two people share one machine, so there are two names and two
+// purses, and one of them might be a bot.
+//
+// It lives here as real JavaScript rather than as a string inside the port
+// script for the same reason art/legacy_coop_respawn.js does: a sixty-line
+// function embedded in a Python literal is where escaping mistakes come from,
+// and this file can be syntax-checked on its own.
+
+// ---------------------------------------------------------------- names
+// "there should also be a naming/renaming feature in local so it doesn't just
+// say player 1 and player 2".
+//
+// Two names, persisted, per SIDE - not per account. The online build has one
+// name because it has one player per machine; here both players are at the
+// same keyboard, so P1 and P2 each need their own, and the labels that used to
+// read "Player 1" read whatever they typed.
+const LOCAL_NAME_KEY = 'astralClashLocalNames';
+const LOCAL_NAME_MAX = 14;
+// The archived build has no sanitizeName - that is the online room's helper for
+// a name that goes over the wire. These names never leave the machine, so the
+// rules are only about fitting the UI and not being blank-but-not-empty.
+function cleanLocalName(v) {
+    // Control characters are stripped by CODE, not by a literal range in the
+    // source. Writing the range as characters is how this regex became /[ -]/
+    // on its way through a shell heredoc - which silently deleted every space
+    // and hyphen from anybody's name.
+    let out = '';
+    for (const ch of String(v == null ? '' : v)) {
+        if (ch.charCodeAt(0) >= 32) out += ch;
+    }
+    return out.trim().slice(0, LOCAL_NAME_MAX);
+}
+const localNames = { p1: '', p2: '' };
+try {
+    const raw = JSON.parse(localStorage.getItem(LOCAL_NAME_KEY) || '{}');
+    if (raw && typeof raw === 'object') {
+        localNames.p1 = cleanLocalName(raw.p1);
+        localNames.p2 = cleanLocalName(raw.p2);
+    }
+} catch (e) { /* a corrupt or blocked store just means the defaults */ }
+
+// The label for a side, everywhere a human is named: the select panels, the
+// shop title, the HUD, the result screen.
+//
+// The fallback is a LOOKUP, not the ternary it obviously wants to be, and that
+// is load-bearing. The port replaces every `(side === 'p1' ? 'Player 1' :
+// 'Player 2')` in the build with `playerName(side)` - and the first run of it
+// rewrote this function's own body into `return localNames[side] ||
+// playerName(side)`. The archived build died at load with "Maximum call stack
+// size exceeded".
+const DEFAULT_LOCAL_NAMES = { p1: 'Player 1', p2: 'Player 2' };
+function playerName(side) {
+    return localNames[side] || DEFAULT_LOCAL_NAMES[side] || String(side);
+}
+
+function setLocalName(side, value) {
+    localNames[side] = cleanLocalName(value);
+    try { localStorage.setItem(LOCAL_NAME_KEY, JSON.stringify(localNames)); } catch (e) {}
+    refreshLocalNames();
+}
+
+function refreshLocalNames() {
+    // refreshMenuUI owns the headings (see headingHTML), so the name
+    // change goes through it rather than poking at the DOM twice.
+    if (typeof refreshMenuUI === 'function') refreshMenuUI();
+    for (const side of SIDES) {
+        const input = document.getElementById('name-' + side);
+        if (input && input.value !== localNames[side]) input.value = localNames[side];
+        // The heading keeps its "(keys on cards)" hint, so the name goes in
+        // its own span rather than replacing the whole h3's text.
+        const head = document.getElementById('side-name-' + side);
+        if (head) head.textContent = playerName(side);
+        const title = document.getElementById('shop-title-' + side);
+        if (title) title.textContent = playerName(side) + ' — Shop';
+    }
+}
+
+// ------------------------------------------------------- reset progress
+// "there should be an option to reset progress in local".
+//
+// Two clicks, not one: the button arms itself and says what it is about to do,
+// and a second click inside five seconds carries it out. A confirm() dialog
+// would do the same job, but this build is played fullscreen with a gamepad or
+// two keyboards, where a modal browser prompt is a worse interruption than an
+// inline one.
+let resetArmed = 0;
+function resetProgressClicked() {
+    const btn = document.getElementById('btn-reset-progress');
+    const now = performance.now();
+    if (!resetArmed || now - resetArmed > 5000) {
+        resetArmed = now;
+        if (btn) btn.textContent = 'Erase everything? Click again';
+        setTimeout(() => {
+            if (resetArmed && performance.now() - resetArmed > 4900) {
+                resetArmed = 0;
+                if (btn) btn.textContent = 'Reset Progress';
+            }
+        }, 5100);
+        return;
+    }
+    resetArmed = 0;
+    // Both sides' coins, unlocks, upgrades and double jump, back to a new save.
+    // Names are kept deliberately: they are not progress, and retyping them
+    // after every reset is a chore rather than a safeguard.
+    for (const side of SIDES) {
+        progression[side] = freshSideProgress();
+    }
+    saveProgression();
+    refreshGridLocks();
+    refreshCoinDisplays();
+    buildShop();
+    if (btn) btn.textContent = 'Progress reset';
+    setTimeout(() => { if (btn) btn.textContent = 'Reset Progress'; }, 2500);
+}
+
+// ------------------------------------------------- one human, one bot
+// "if there is only one person playing in local mode (because of bot), the
+// controls should be the same as for online mode."
+//
+// With a bot on the other side there is exactly one human, so there is no
+// reason to keep the split-keyboard scheme that exists to fit two people on
+// one board. `soloHumanSide()` returns that side, and the input code uses it
+// to switch to the online scheme: mouse look, WASD strafing, left click to
+// attack, on whichever side the human is actually playing.
+function soloHumanSide() {
+    if (p1IsBot && !p2IsBot) return 'p2';
+    if (p2IsBot && !p1IsBot) return 'p1';
+    return null;
+}
+
+// ------------------------------------------------------ bots only: watch
+// "When you select both characters to be bot in local mode, you should view
+// from the top."
+//
+// With no human there is no first-person view to be in, and two split-screen
+// halves of a fight nobody is playing is the least useful way to show it. One
+// camera, looking straight down at the whole arena, is a spectator view - and
+// it is the only mode in this game where you can see the whole layout at once.
+function botsOnly() { return p1IsBot && p2IsBot; }
+
+const watchCam = new THREE.PerspectiveCamera(46, 1, 1, 6000);
+watchCam.layers.enableAll();
+function positionWatchCamera(aspect) {
+    // Framed to hold the arena's longer axis with a margin, from directly
+    // above and tilted a few degrees so the fighters' own height reads.
+    const w = ARENA_RIGHT - ARENA_LEFT, h = ARENA_BOTTOM - ARENA_TOP;
+    const span = Math.max(w / Math.max(0.6, aspect), h) * 1.12;
+    const dist = span / (2 * Math.tan((watchCam.fov * Math.PI / 180) / 2));
+    watchCam.aspect = aspect;
+    watchCam.position.set(worldX(ARENA_CX), dist, worldZ(ARENA_CY) + dist * 0.22);
+    watchCam.lookAt(worldX(ARENA_CX), 0, worldZ(ARENA_CY));
+    watchCam.updateProjectionMatrix();
+}
+
+// ------------------------------------------- the solo human's controls
+// Mouse look, strafing and left-click attack: the online build's scheme,
+// available here whenever exactly one side is human (see soloHumanSide).
+//
+// This build was forked before Batch 31 added any of it, so the pointer lock,
+// the mouse deltas and the strafe axis are all new - and all gated, so a
+// two-human split-screen match still has the keyboard-turn scheme it needs.
+const soloMouse = { dx: 0, dy: 0, attack: false, locked: false };
+const SOLO_SENSITIVITY = 0.0022;
+
+document.addEventListener('pointerlockchange', () => {
+    soloMouse.locked = document.pointerLockElement === canvas;
+});
+canvas.addEventListener('mousedown', (e) => {
+    if (!soloHumanSide() || gameState !== 'FIGHT') return;
+    // A click both takes the lock and throws a punch, in that order: the first
+    // click of a match should not be swallowed by the lock request.
+    if (!soloMouse.locked && canvas.requestPointerLock) canvas.requestPointerLock();
+    if (e.button === 0) soloMouse.attack = true;
+});
+document.addEventListener('mousemove', (e) => {
+    if (!soloMouse.locked) return;
+    soloMouse.dx += e.movementX || 0;
+    soloMouse.dy += e.movementY || 0;
+});
+
+// Applies the online scheme to `f` for this frame and returns its movement.
+// Mirrors index.html's own input block: forward/back along the facing, A/D as
+// STRAFE, mouse for looking, left click to attack.
+function applySoloControls(f, b, dt, target) {
+    const out = { moveX: 0, moveY: 0, jumpPressed: false, jumpJustPressed: false };
+    // Mouse deltas are an absolute displacement already, so they are
+    // deliberately NOT scaled by dt - scaling them would make sensitivity
+    // depend on framerate. Drained here so one frame cannot apply them twice.
+    if (soloMouse.dx || soloMouse.dy) {
+        f.turnBy(soloMouse.dx * SOLO_SENSITIVITY);
+        f.lookBy(-soloMouse.dy * SOLO_SENSITIVITY);
+        soloMouse.dx = 0; soloMouse.dy = 0;
+    }
+    // Screen-right for a camera looking along (fx, fy) is (-fy, fx): three.js
+    // cameras look down local -Z and the basis is right-handed, so right is
+    // forward x up. Getting this sign wrong is what made strafing reversed in
+    // the online build for a release (Batch 36).
+    const rx = -f.fy, ry = f.fx;
+    if (keys[b.up]) { out.moveX += f.fx; out.moveY += f.fy; }
+    if (keys[b.down]) { out.moveX -= f.fx; out.moveY -= f.fy; }
+    if (keys[b.left]) { out.moveX -= rx; out.moveY -= ry; }
+    if (keys[b.right]) { out.moveX += rx; out.moveY += ry; }
+    // The keyboard pitch keys stay available, for when pointer lock is refused.
+    if (keys[b.lookUp]) f.lookBy(LOOK_SPEED * dt);
+    if (keys[b.lookDown]) f.lookBy(-LOOK_SPEED * dt);
+    if (keys[b.jump]) out.jumpPressed = true;
+    if (consumePress(b.jump)) out.jumpJustPressed = true;
+    if (soloMouse.attack) { soloMouse.attack = false; f.tryStartAction('basic', target); }
+    if (consumePress(b.attack)) f.tryStartAction('basic', target);
+    if (consumePress(b.special)) f.tryStartAction('special', target);
+    if (consumePress(b.dodge)) f.tryDodge(out.moveX, out.moveY);
+    // A gamepad keeps working exactly as it did.
+    const gp = pollGamepad(padSlots[sideOf(f)]);
+    if (gp) {
+        if (gp.moveX) { out.moveX += gp.moveX * rx; out.moveY += gp.moveX * ry; } // stick X STRAFES now
+        if (gp.moveY) { out.moveX += -gp.moveY * f.fx; out.moveY += -gp.moveY * f.fy; }
+        if (gp.lookX) f.turnBy(gp.lookX * TURN_SPEED * dt * 1.6);                 // right stick turns
+        if (gp.lookY) f.lookBy(-gp.lookY * LOOK_SPEED * dt * 1.6);
+        if (gp.jump) { out.jumpPressed = true; out.jumpJustPressed = true; }
+        if (gp.attack) f.tryStartAction('basic', target);
+        if (gp.special) f.tryStartAction('special', target);
+        if (gp.dodge) f.tryDodge(out.moveX, out.moveY);
+    }
+    return out;
+}
+
 function saveProgression() { safeLSSet(PROGRESSION_KEY, JSON.stringify(progression)); }
 function prog(side) { return progression[side] || progression.p1; }
 // --- Batch 19: game modes. `matchMode` is deliberately ORTHOGONAL to
@@ -1626,14 +1896,6 @@ function prog(side) { return progression[side] || progression.p1; }
 const MATCH_MODES = [
     { id: 'classic', name: 'Classic Versus', blurb: 'Best of 3 rounds. Knock your opponent out to win a round.' },
     { id: 'zone', name: 'Zone Control', blurb: 'Hold the glowing ring at the center. First to 45 seconds of control wins — knock them out of it.' },
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
     // Batch 38: "Time Attack" named the one thing this mode does not involve.
     // It is first to three knockouts with no clock at all - the name was
     // borrowed from racing, where the timer IS the score. "Takedown Race" says
@@ -2843,6 +3105,16 @@ function renderViews(dt) {
     if (gameState === 'MENU' || !player1 || !player2) return;
     renderer.getSize(_rendSize);
     const W = _rendSize.x, H = _rendSize.y;
+    // Nobody is playing: one camera, from above. Two split-screen halves of a
+    // fight neither player is in is the least useful way to show it, and this
+    // is the only view in the game that holds the whole arena at once.
+    if (botsOnly()) {
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, W, H);
+        positionWatchCamera(W / H);
+        renderWithBloomLocal(scene, watchCam);
+        return;
+    }
     const twoHumans = !player1.isBot && !player2.isBot;
     renderer.setScissorTest(true);
     if (twoHumans) {
@@ -2855,6 +3127,11 @@ function renderViews(dt) {
     }
     renderer.setScissorTest(false);
 }
+// The archived build renders directly - bloom is an online-build addition,
+// which one viewport is what made practical. Named rather than inlined so
+// the two builds' render paths read the same shape.
+function renderWithBloomLocal(scn, cam) { renderer.render(scn, cam); }
+
 function renderOneView(cam, viewer, x, y, vw, vh, dt) {
     renderer.setViewport(x, y, vw, vh);
     renderer.setScissor(x, y, vw, vh);
@@ -3078,28 +3355,6 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
 // Rises up to this are walkable on foot; taller is a wall you must jump - see
 // resolveTallTerrain(), which reverts the move when the rise is too great.
 //
@@ -5598,6 +5853,12 @@ class Fighter {
         } else if (this.isBot) {
             const decision = this.botDecide(target, dt);
             moveX = decision.moveX; moveY = decision.moveY; jumpPressed = decision.jumpPressed;
+        } else if (soloHumanSide() === sideOf(this)) {
+            // One human, so the reason for the split-keyboard scheme is
+            // gone - see applySoloControls.
+            const r = applySoloControls(this, BINDINGS[sideOf(this)], dt, target);
+            moveX = r.moveX; moveY = r.moveY;
+            jumpPressed = r.jumpPressed; jumpJustPressed = r.jumpJustPressed;
         } else if (this.isPlayerOne) {
             const b = BINDINGS.p1;
             // First-person controls: Left/Right TURN (look) instead of
@@ -9286,14 +9547,14 @@ function headingHTML(num, stage) {
     const isBotSide = num === 1 ? p1IsBot : p2IsBot;
     const botTag = isBotSide ? ' <span style="color:#f59e0b">[BOT]</span>' : '';
     const padTag = padSlots[side] != null ? ` <span class="pad-badge" title="Gamepad connected"><svg viewBox="0 0 24 16" width="1.1em" height="0.73em" fill="currentColor" aria-hidden="true" style="vertical-align:middle"><rect x="1" y="3" width="22" height="10" rx="5"/><circle cx="7" cy="8" r="1.5" fill="#0d0f18"/><circle cx="17" cy="8" r="1.5" fill="#0d0f18"/></svg></span>` : '';
-    if (stage === 'pick') return `Player ${num}${botTag}${padTag} <span class="key-hint">(keys on cards)</span>`;
+    if (stage === 'pick') return `${playerName(side)}${botTag}${padTag} <span class="key-hint">(keys on cards)</span>`;
     if (stage === 'preview') {
         // Labels come from the live bindings, so a rebound confirm/back key
         // shows the real key instead of a stale "F"/"G" literal.
         const hint = `${keyLabel(b.attack)} confirm / ${keyLabel(b.special)} back`;
-        return `Player ${num}${botTag}${padTag} <span class="key-hint">(${hint})</span>`;
+        return `${playerName(side)}${botTag}${padTag} <span class="key-hint">(${hint})</span>`;
     }
-    return `Player ${num}${botTag}${padTag} <span class="key-hint" style="color:#4ade80">READY</span>`;
+    return `${playerName(side)}${botTag}${padTag} <span class="key-hint" style="color:#4ade80">READY</span>`;
 }
 
 function refreshMenuUI() {
@@ -9327,6 +9588,13 @@ function refreshMenuUI() {
     refreshCoinDisplays(); // coins change on match end / purchases; cheap to keep in sync here
 }
 refreshCoinDisplays(); // initial paint at load, before any menu interaction
+for (const nameSide of SIDES) {
+    const input = document.getElementById('name-' + nameSide);
+    if (input) input.addEventListener('input', () => setLocalName(nameSide, input.value));
+}
+document.getElementById('btn-reset-progress')
+    .addEventListener('click', resetProgressClicked);
+refreshLocalNames();
 
 // Rolls random fighters for any bot side (their pick is hidden until now),
 // then hands off to startMatch(). The single entry point for actually
@@ -9829,10 +10097,12 @@ function confirmPick(side) {
         showDetail('p2', p2Choice, true);
     }
     refreshMenuUI();
-    // A human confirming as the final action that makes both sides ready
-    // auto-starts (the classic pick→pick→fight feel). Other cases start
-    // via the explicit Start Match button — see refreshMenuUI().
-    if (sideReady('p1') && sideReady('p2')) beginMatch();
+    // NO AUTO-START. Requested as "you should still have to press start fight
+    // after both players confirm in local mode", and the reason is the one
+    // thing this build has that the online one does not: two people at one
+    // keyboard. Auto-starting on the second confirm lets whoever confirms last
+    // decide when the other one is ready. The Start Fight button that
+    // refreshMenuUI() already reveals is now the only way in.
 }
 
 function backToPick(side) {
@@ -10007,34 +10277,9 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 //
 // See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
 // 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
 const GRACE_PERIOD = 40;        // seconds the arena stays full-size before the first collapse tick
 const SHRINK_INTERVAL = 18;     // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
 // Once the collapse fraction passes this, snap fully shut and start crushing.
 //
 // WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
@@ -10792,7 +11037,7 @@ function endMatch() {
     if (isDraw) {
         winnerText = "Draw!";
     } else {
-        const winnerLabel = winner === player1 ? 'Player 1' : 'Player 2';
+        const winnerLabel = winner === player1 ? playerName('p1') : playerName('p2');
         // Batch 19: each mode reports its own score, not round pips it never used.
         let score;
         if (matchMode === 'zone') score = `${Math.floor(zoneScore.p1)}s-${Math.floor(zoneScore.p2)}s held`;
@@ -11489,6 +11734,9 @@ if (DEBUG) {
         DODGE_DIST, DODGE_IFRAMES, DODGE_COOLDOWN, STAT_MAX,
         specialHitDmg, specialDamageValue, specialDamageText, characterInfoHTML,
         openShop, buildShop, refreshBotUI,
+        playerName, setLocalName, refreshLocalNames, resetProgressClicked,
+        botsOnly, soloHumanSide, positionWatchCamera,
+        get localNames() { return localNames; },
         get shopSide() { return shopSide; },
         get shopExpanded() { return shopExpanded; },
     };
