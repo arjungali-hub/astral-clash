@@ -993,6 +993,12 @@ if (location.protocol === 'https:'
                   "            moveX = r.moveX; moveY = r.moveY;\n"
                   "            jumpPressed = r.jumpPressed; jumpJustPressed = r.jumpJustPressed;\n"
                   "        } else if (this.isPlayerOne) {", 'solo human controls')
+        # The extras declare p1IsBot/p2IsBot themselves (see the note there),
+        # so the original declaration has to go or it is a redeclaration.
+        dst = rep(dst, "let p1IsBot = false, p2IsBot = false;",
+                  "// p1IsBot/p2IsBot are declared with the local extras above, because the\n"
+                  "// load-time menu build reads them through displayName().",
+                  'bot flags hoisted')
         print('  %-34s ok' % 'local requests wired')
 
     # ---------------------------------------------------- lighting + leaks

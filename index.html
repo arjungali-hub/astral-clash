@@ -2869,7 +2869,9 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 // Colosseum's marble rendered as near-white, which flattens every bevel and
 // leaves bloom nothing but surfaces to grab. Slightly under 1 also gives the
 // emissive accents somewhere to be brighter THAN.
-renderer.toneMappingExposure = 0.92;
+// The base, which applyLighting() then scales per theme (see theme.exposure).
+const BASE_EXPOSURE = 0.92;
+renderer.toneMappingExposure = BASE_EXPOSURE;
 
 // BLOOM. See docs/arena-art-plan.md item 3 - and note this reverses the
 // earlier "no EffectComposer" decision on purpose, now that there is one
@@ -3818,6 +3820,11 @@ function fitKeyShadow() {
 // times/moods). keyLight is placed at the sun's sky position so shadows fall
 // the right way; fillLight is tinted toward the sky for coherent bounce.
 function applyLighting(theme) {
+    // PER-THEME EXPOSURE. 0.92 suits stone and metal; an arena whose albedo is
+    // already near-white clips under it, and a clipped surface cannot show
+    // shading however good the lighting is - reported as "the tops of the white
+    // blocks are flat pure white" and "almost entirely white".
+    renderer.toneMappingExposure = BASE_EXPOSURE * (theme.exposure || 1);
     ambientLight.color.set(theme.ambient.color);
     ambientLight.intensity = theme.ambient.int * 0.33;   // see the Batch 45 rebalance
     // Batch 45: the per-map hemi/ambient values are SCALED, not replaced. Each
@@ -3851,6 +3858,8 @@ function applyLighting(theme) {
 const MAP_THEMES = {
     // Cyan energy arena — dark steel + glowing seams, clear cool midday.
     'Voltaic Nexus': {
+        // white blocks whose tops read as flat pure white
+        exposure: 0.84,
         id: 'astral', wallStyle: 'techrail', wallTex: 'metal', wallColor: 0x3a557e, capColor: 0x22314c,
         floorTex: 'techgrid', floorColor: 0xaecbe6, column: 'pylon', stoneColor: 0x3a557e, stepColor: 0x2a3a58,
         sky: ['#1a4fd0', '#3f86e6', '#87bff2', '#cfeaff'],
@@ -3878,6 +3887,8 @@ const MAP_THEMES = {
     },
     // Cream marble + grass colosseum — smooth ivy-topped walls, bright midday.
     'The Colosseum Ring': {
+        // marble and pale sandstone, reported as "very washed-out"
+        exposure: 0.8,
         id: 'colosseum', wallStyle: 'ivy', wallTex: 'marble', wallColor: 0xe6ddc9, capColor: 0xd2c8b0,
         floorTex: 'grass', floorColor: 0x8fbf6f, column: 'marble', stoneColor: 0xe6ddc9, stepColor: 0xcfc6b0,
         sky: ['#2f8fe0', '#66b6f2', '#a6d8fb', '#e0f4ff'],
@@ -3896,6 +3907,8 @@ const MAP_THEMES = {
     },
     // Frozen glacier — pale cracked-ice walls, crisp cold clear light.
     'The Shattered Bridge': {
+        // ice walls, ice floor and a white sun: the palest arena there is
+        exposure: 0.72,
         id: 'glacier', wallStyle: 'crystal', wallTex: 'ice', wallColor: 0xbfe4f2, capColor: 0x9fd0e8,
         floorTex: 'ice', floorColor: 0xd6eef8, column: 'icecrystal', stoneColor: 0xbfe4f2, stepColor: 0x9fd0e8,
         sky: ['#3f96de', '#79c2ef', '#aadcf5', '#e2f5ff'],
@@ -4862,7 +4875,8 @@ function buildPlatformMesh(p, theme) {
     // base surface asynchronously. Order matters: the accent overlay is
     // derived from the procedural image, so it has to be taken while `map`
     // still is that image.
-    attachAccentGlow(slabMat, tex, theme, 'wall:' + theme.id, tex.repeat.x, tex.repeat.y, 0.7);
+    attachAccentGlow(slabMat, tex, theme, 'wall:' + theme.id, tex.repeat.x, tex.repeat.y,
+        0.7 * (theme.exposure || 1));   // see the note in buildOuterWall
     attachPhotoSurface(slabMat, 'wall', theme.wallTex, tex.repeat.x, tex.repeat.y,
         { normalScale: 1.0, ao: 0.8, tintFade: 0.62 });
     const slabGeo = new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2);
@@ -5015,7 +5029,11 @@ function buildOuterWall(side, theme) {
     bodyMat.userData.keepMap = true; // maps wrap canvases shared across rounds
     // Batch 34: accent glow first (derived from the procedural canvas), then
     // the photographic base swaps in when it loads. See attachPhotoSurface.
-    attachAccentGlow(bodyMat, wtex, theme, 'wall:' + theme.id, wtex.repeat.x, wtex.repeat.y, 0.8);
+    // Scaled with the theme's exposure: on a pale arena a 0.8 emissive rail was
+    // competing with a wall already at 1.0, so it read as more white rather
+    // than as light - and put the whole arena over the bloom threshold.
+    attachAccentGlow(bodyMat, wtex, theme, 'wall:' + theme.id, wtex.repeat.x, wtex.repeat.y,
+        0.8 * (theme.exposure || 1));
     attachPhotoSurface(bodyMat, 'wall', theme.wallTex, wtex.repeat.x, wtex.repeat.y,
         { normalScale: 1.15, ao: 0.85, tintFade: 0.62 });
     const capMat = new THREE.MeshStandardMaterial({ color: theme.capColor, roughness: 0.85, metalness: metalish ? 0.4 : 0.03 });
@@ -7285,7 +7303,8 @@ class Fighter {
         // rather than P1/P2 — it belongs to neither side.
         group.add(this.isBossEntity
             ? makeNameSprite(this.name, '#f59e0b')
-            : makeNameSprite(this.isPlayerOne ? 'P1' : 'P2', this.isPlayerOne ? '#00f3ff' : '#f472b6'));
+            : makeNameSprite(playerLabelShort(this.isPlayerOne ? 'p1' : 'p2'),
+                             this.isPlayerOne ? '#00f3ff' : '#f472b6'));
 
         const flashLight = new THREE.PointLight(0xffffff, 0, 70);
         flashLight.position.y = 16;
@@ -8080,14 +8099,19 @@ function buildDaggerProp(bladeHex, emissiveHex) {
     return g;
 }
 
-function buildHammerProp() {
+function buildHammerProp(forVm) {
     const g = new THREE.Group();
     const mats = [];
     // Haft: a long tapered shaft with a bound grip, so the weight reads as
     // being at the far end.
     const haftMat = leatherMat('#2e2118');
     const haft = new THREE.Mesh(
-        getCachedGeometry('haft', () => new THREE.CylinderGeometry(1.15, 1.5, 20, 12)),
+        // Thicker in the hand than on the body: at viewmodel scale the
+        // third-person haft is two pixels wide and the head looks stuck to
+        // nothing ("a flat disc or washer on a thin stick").
+        forVm
+            ? getCachedGeometry('haftVm', () => new THREE.CylinderGeometry(1.9, 2.4, 20, 12))
+            : getCachedGeometry('haft', () => new THREE.CylinderGeometry(1.15, 1.5, 20, 12)),
         haftMat);
     haft.rotation.z = Math.PI / 2;
     haft.position.x = 9;
@@ -8281,11 +8305,20 @@ function buildOrbProp(coreHex, emissiveHex) {
 // their camera and placed on their own viewmodel layer so only their camera
 // renders it. Small and toward the lower-right, so it reads as "your hands"
 // without eating the screen. ---
-function propForAtkType(f) {
+// `forVm` asks for the FIRST-PERSON variant. Only the sword differs so far,
+// and the flag exists rather than a second builder because everything else
+// about the prop - materials, cached geometry, the weapon-swing data - should
+// stay identical between the two views.
+function propForAtkType(f, forVm) {
     switch (f.atkType) {
-        case 'slash': return buildSwordProp('#e6faff', '#38bdf8', 17, 5);
+        // The blade is LONGER for the viewmodel than for the body. 17 units is
+        // right on a 40-unit-wide fighter seen from outside; in your own hand,
+        // foreshortened down the view axis and next to a full-size cross-guard,
+        // it read as "a dagger or spearhead" (reported). Third person still
+        // gets 17 - see buildWeapon.
+        case 'slash': return buildSwordProp('#e6faff', '#38bdf8', forVm ? 29 : 17, forVm ? 8 : 5);
         case 'dagger': return buildDaggerProp('#99f6e4', '#14b8a6');
-        case 'hammer': return buildHammerProp();
+        case 'hammer': return buildHammerProp(forVm);
         case 'scythe': return buildScytheProp(46); // a touch longer in-hand to convey Nyx's reach, but foreshortened for the viewmodel
         case 'punch': return buildFistProp(f.color);
         case 'bolt': return buildStaffProp();
@@ -8351,6 +8384,36 @@ function propForAtkType(f) {
 const VM_ARM_ROLL = -0.34;
 const VM_PROP_YAW = 0.99, VM_PROP_PITCH = -0.34, VM_PROP_ROLL = 0.62;
 
+// ...and PER WEAPON, because one angle cannot serve them all. The general
+// values were tuned against a sword, whose silhouette is a long flat blade;
+// applied to a hammer - one big head at the end of a stick - the same angle
+// shows that head end-on, and it reads as "a flat disc or washer on a thin
+// stick" (reported). Overrides are partial: anything omitted takes the value
+// above.
+const VM_PROP_TUNE = {
+    // A hammer is turned so its FACE is across the view, not pointing down it,
+    // and dropped slightly so the head is not level with the crosshair.
+    hammer: { yaw: 0.34, pitch: -0.12, roll: 1.35 },
+    // A scythe is mostly haft with the blade far out; less yaw keeps the blade
+    // in frame rather than swinging it off the left edge.
+    scythe: { yaw: 0.72, pitch: -0.22, roll: 0.45 },
+    // A whip hangs; rolling it does nothing but hide the coil.
+    whip: { yaw: 0.80, pitch: -0.10, roll: 0.10 },
+    // An orb or a staff head reads from any angle, so they keep it simple and
+    // sit where a caster would actually hold them: up and inboard.
+    orb: { yaw: 0.75, pitch: -0.45, roll: 0.0 },
+    shard: { yaw: 0.75, pitch: -0.45, roll: 0.0 },
+    bolt: { yaw: 0.55, pitch: -0.30, roll: 0.25 },
+};
+function vmPropAngles(atkType) {
+    const t = VM_PROP_TUNE[atkType] || {};
+    return {
+        yaw: t.yaw != null ? t.yaw : VM_PROP_YAW,
+        pitch: t.pitch != null ? t.pitch : VM_PROP_PITCH,
+        roll: t.roll != null ? t.roll : VM_PROP_ROLL,
+    };
+}
+
 const ARM_CHAIN = ['UpperArm', 'LowerArm', 'Hand'];
 
 // How long the extracted arm should be in camera space, and where its centre
@@ -8362,7 +8425,12 @@ const ARM_CHAIN = ['UpperArm', 'LowerArm', 'Hand'];
 // reach in from the lower right, which at this camera's field of view means an
 // arm about 30 units long with its centre 16 units out.
 const VM_ARM_LENGTH = 30;
-const VM_ARM_ANCHOR = new THREE.Vector3(7.0, -6.4, -13.6);
+// Pushed further right than the arm needs, so the SEALED SHOULDER CUT leaves
+// the frame. The seal draws the limb's interior rather than the sky (Batch 42),
+// but a dark interior sitting in shot still reads as a hole - and the game's
+// canvas is wider (1170/650) than the preview it was tuned in, so it shows
+// MORE of that side, not less.
+const VM_ARM_ANCHOR = new THREE.Vector3(10.6, -6.8, -13.6);
 
 // Which bones count as "the arm". Bone names arrive sanitised by three.js
 // (PropertyBinding.sanitizeNodeName strips '.'), so 'UpperArm.L' may be
@@ -9085,7 +9153,7 @@ function buildViewmodel(f, layer) {
         finishViewmodel(holder, f, layer);
         return holder;
     }
-    const prop = propForAtkType(f);
+    const prop = propForAtkType(f, true);
     // A weapon's geometry extends from its grip along local +X, so Ry(+90)
     // aims it into the screen (-Z) - and then it is turned across the view,
     // because a weapon pointing exactly where the camera looks is seen
@@ -9097,9 +9165,10 @@ function buildViewmodel(f, layer) {
     // tilt was enough to swing the blade across the frame. With the arm the
     // right way round the hand is 16 units downrange and a small tilt leaves
     // the blade pointing away into nothing.
-    prop.rotation.y = Math.PI / 2 + VM_PROP_YAW;
-    prop.rotation.x = VM_PROP_PITCH;
-    prop.rotation.z = VM_PROP_ROLL;
+    const vmAng = vmPropAngles(f.atkType);
+    prop.rotation.y = Math.PI / 2 + vmAng.yaw;
+    prop.rotation.x = vmAng.pitch;
+    prop.rotation.z = vmAng.roll;
     if (holder.userData.handPoint) {
         // Put it IN the hand, at the angle the hand is actually holding it.
         // The literal in the else-branch is the PROCEDURAL arm's wrist; a real
@@ -9171,6 +9240,23 @@ function finishViewmodel(holder, f, layer) {
     holder.traverse(n => { if (n.isLight) n.parent.remove(n); }); // strip any point lights from props (Seraphine glow etc.) — viewmodel shouldn't light the world
 }
 let vmP1 = null, vmP2 = null;
+// Rebuilds both viewmodels once a character's GLB has landed.
+//
+// Without this, a viewmodel built during the load window keeps the PROCEDURAL
+// arm for the whole match: a primitive forearm tinted by the arena's light,
+// holding a fist prop that the real arm does not want. Reported as Gorgonok's
+// "large yellow/gold hexagonal block" and an arm that changed colour between
+// arenas - neither of which was his arm at all.
+//
+// Guarded on actually needing it, so a match that started with both models
+// ready never rebuilds.
+function upgradeViewmodelsIfPlaceholder() {
+    if (gameState === 'MENU') return;
+    const stale = [[vmP1, player1], [vmP2, player2]].some(([vm, f]) =>
+        vm && f && !vm.userData.armFromModel && charModels[f.name]);
+    if (stale) rebuildViewmodels();
+}
+
 function rebuildViewmodels() {
     if (vmP1) { camP1.remove(vmP1); disposeObject3D(vmP1); vmP1 = null; }
     if (vmP2) { camP2.remove(vmP2); disposeObject3D(vmP2); vmP2 = null; }
@@ -9651,6 +9737,9 @@ function ensureCharModel(name) {
     const loader = _charLoader || (_charLoader = new THREE.GLTFLoader());
     _charModelPromises[name] = new Promise(resolve => {
         loader.load(url, gltf => {
+            // A viewmodel built while this was still downloading is holding a
+            // placeholder; see upgradeViewmodelsIfPlaceholder.
+            setTimeout(upgradeViewmodelsIfPlaceholder, 0);
             const box = new THREE.Box3().setFromObject(gltf.scene);
             charModels[name] = {
                 scene: gltf.scene,
@@ -10811,7 +10900,7 @@ function buildShop() {
     djCard.style.setProperty('--accent', '#22d3ee');
     const djOwned = isDoubleJumpUnlocked(side);
     djCard.innerHTML = `<div class="shop-card-head">
-            <div><span class="shop-name">Double Jump</span> <span class="shop-title">— all of ${side === 'p1' ? 'P1' : 'P2'}'s fighters</span></div>
+            <div><span class="shop-name">Double Jump</span> <span class="shop-title">— all of your fighters</span></div>
             <button class="shop-buy${djOwned ? ' maxed' : ''}" ${djOwned ? 'disabled' : ''} data-dj="1">${djOwned ? 'Owned' : DOUBLE_JUMP_COST + ' coins'}</button>
         </div>
         <div class="upg-row"><span>Jump a second time in mid-air — reaches the highest platforms.</span></div>`;
@@ -12612,7 +12701,7 @@ function drawRoundStatus() {
         });
         hudCtx.font = hudFont(11);
         hudCtx.fillStyle = zoneHolder ? '#e2e8f0' : '#64748b';
-        hudCtx.fillText(zoneHolder ? `${zoneHolder === 'p1' ? 'P1' : 'P2'} holds the zone` : 'Zone contested', VIRTUAL_W / 2, MODE_Y - 4);
+        hudCtx.fillText(zoneHolder ? `${playerLabelShort(zoneHolder)} holds the zone` : 'Zone contested', VIRTUAL_W / 2, MODE_Y - 4);
         hudCtx.fillStyle = '#94a3b8';
         hudCtx.fillText(`${Math.floor(zoneScore.p1)}s`, leftX - 16, MODE_Y + BH);
         hudCtx.fillText(`${Math.floor(zoneScore.p2)}s`, rightX + BW + 16, MODE_Y + BH);
@@ -12757,9 +12846,31 @@ function drawIntroOverlay() {
     hudCtx.restore();
 }
 
+// Wraps the HUD draw so the shadow state set inside it cannot leak, whichever
+// path it returns on.
 function drawHUD() {
+    drawHUDInner();
+    hudCtx.restore();
+}
+
+function drawHUDInner() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+    // save() before the early return as well, so the wrapper's restore() is
+    // always balanced whichever way this returns.
+    hudCtx.save();
     if (gameState === "INTRO") { drawIntroOverlay(); return; } // cinematic — no combat HUD/crosshairs
+    // A DARK HALO UNDER EVERYTHING, set once.
+    //
+    // The HUD is small white text over whatever the arena happens to be, and on
+    // the pale ones - Voltaic Nexus, The Colosseum Ring, The Shattered Bridge -
+    // it disappeared entirely. Canvas shadows apply to every subsequent fill,
+    // so this reaches every string and bar in one place; a stroke-then-fill
+    // helper would have been forty edits and a forty-first call site that
+    // forgot. Reset at the end so nothing outside the HUD inherits it.
+    hudCtx.shadowColor = 'rgba(4, 6, 12, 0.92)';
+    hudCtx.shadowBlur = 5;
+    hudCtx.shadowOffsetY = 1;
+
     // Batch 31: one view, so one crosshair and the shared centred elements are
     // drawn once at true centre. `twoHumans` is retained as a constant false so
     // the layout branches below read explicitly rather than silently.
@@ -12779,8 +12890,10 @@ function drawHUD() {
     // having your own health jump to the right-hand slot would be a needless
     // difference between the two clients.
     const mine = localFighter(), theirs = remoteFighter();
-    drawPlayerHUD(mine, 30, LOCAL_SIDE === 'p1' ? 'P1' : 'P2');
-    drawPlayerHUD(theirs, VIRTUAL_W - 30 - 420, LOCAL_SIDE === 'p1' ? 'P2' : 'P1');
+    // Names, not slots. playerLabelShort falls back to P1/P2 for anyone who
+    // has not typed one, so an unnamed match reads exactly as it did.
+    drawPlayerHUD(mine, 30, playerLabelShort(LOCAL_SIDE));
+    drawPlayerHUD(theirs, VIRTUAL_W - 30 - 420, playerLabelShort(otherSide(LOCAL_SIDE)));
     // Batch 16: the co-op challenger gets a wide bar across the top centre —
     // the conventional boss-bar placement, and the one region the two
     // side panels leave free in both split and full-screen layouts.
@@ -12788,7 +12901,9 @@ function drawHUD() {
     else if (matchMode === 'survival' && waveBreakTimer > 0) drawWaveBreakHUD();
     if (isCoopMode()) drawCoopDownHUD();
 
-    const botNote = [player1.isBot ? 'P1 Bot' : null, player2.isBot ? 'P2 Bot' : null].filter(Boolean).join(' / ');
+    // The bot note is dead text online (bots cannot exist in a netgame) but it
+    // is also where drawHUD's tail begins, so the shadow is released here.
+    const botNote = '';
     const drawShared = () => {
         if (currentMap) {
             hudCtx.fillStyle = "#64748b"; hudCtx.font = hudFont(15); hudCtx.textAlign = "center";
@@ -12976,8 +13091,8 @@ function endMatch() {
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} coins &nbsp;·&nbsp; P2 +${earnedP2} coins</div>`;
     document.getElementById('match-summary').innerHTML =
-        `<div><b>${player1.name} (P1)</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
-        `<div><b>${player2.name} (P2)</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
+        `<div><b>${player1.name} (${playerLabelShort('p1')})</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
+        `<div><b>${player2.name} (${playerLabelShort('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
         `<div>Round times: ${roundTimesStr}</div>` +
         coinLine;
 
@@ -13050,8 +13165,8 @@ function endCoopMatch(won, detail) {
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">Each player +${earned} coins</div>`;
     document.getElementById('match-summary').innerHTML =
         `<div>${coopResultText}</div>` +
-        `<div><b>${player1.name} (P1)</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
-        `<div><b>${player2.name} (P2)</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
+        `<div><b>${player1.name} (${playerLabelShort('p1')})</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
+        `<div><b>${player2.name} (${playerLabelShort('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
         coinLine;
     showScreen('gameover');
     refreshGameOverUI();   // the guest gets no rematch buttons

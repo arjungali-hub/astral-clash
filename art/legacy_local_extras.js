@@ -9,6 +9,12 @@
 // function embedded in a Python literal is where escaping mistakes come from,
 // and this file can be syntax-checked on its own.
 
+// HOISTED, because the load-time menu build reads them: the tutorial
+// auto-opens for a first-time visitor and reaches displayName() through
+// buildTutorialControls, while the originals sat 7000 lines below. The
+// port removes that declaration - see 'bot flags hoisted'.
+let p1IsBot = false, p2IsBot = false;
+
 // ---------------------------------------------------------------- names
 // "there should also be a naming/renaming feature in local so it doesn't just
 // say player 1 and player 2".
@@ -54,6 +60,22 @@ try {
 const DEFAULT_LOCAL_NAMES = { p1: 'Player 1', p2: 'Player 2' };
 function playerName(side) {
     return localNames[side] || DEFAULT_LOCAL_NAMES[side] || String(side);
+}
+
+// What to PRINT for a side, which is not the same question.
+//
+// A BOT SIDE IS CALLED "Bot", whatever is in the name field: reported as "Bot
+// sides render as 'Krish [BOT]'", and the name belongs to the person rather
+// than to the slot the AI is driving.
+//
+// Separate from playerName() because of LOAD ORDER, not taste. playerName runs
+// while the menu paints itself - before p1IsBot is declared - and reading a
+// `let` in its temporal dead zone throws even through `typeof`. This one is
+// only ever called from a match or a menu repaint, both of which happen after
+// the flags exist. Eighth instance of that trap in this file.
+function displayName(side) {
+    const isBot = side === 'p1' ? p1IsBot : p2IsBot;
+    return isBot ? 'Bot' : playerName(side);
 }
 
 function setLocalName(side, value) {

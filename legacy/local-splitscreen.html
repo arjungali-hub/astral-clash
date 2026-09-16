@@ -1118,6 +1118,7 @@
                     <div class="settings-list">
                         <button id="btn-open-rebind">Rebind Keys</button>
                         <button id="btn-hud-scale">HUD Text: Normal</button>
+                        <button id="btn-bloom">Glow: On</button>
                         <button id="btn-open-audio">Audio Settings</button>
                         <!-- Added after archiving: the only edit to this file's
                              behaviour, so switching builds is not a one-way
@@ -1727,6 +1728,14 @@ let progression = (() => {
 // function embedded in a Python literal is where escaping mistakes come from,
 // and this file can be syntax-checked on its own.
 
+// HOISTED, because the load-time menu build reads them. The tutorial
+// auto-opens for a first-time visitor, which reaches displayName() through
+// buildTutorialControls - and these were declared 7000 lines below, so the
+// page died with "Cannot access 'p1IsBot' before initialization". This
+// file's own rule: anything the load-time menu build touches is declared
+// above it.
+let p1IsBot = false, p2IsBot = false;
+
 // ---------------------------------------------------------------- names
 // "there should also be a naming/renaming feature in local so it doesn't just
 // say player 1 and player 2".
@@ -1772,6 +1781,21 @@ try {
 const DEFAULT_LOCAL_NAMES = { p1: 'Player 1', p2: 'Player 2' };
 function playerName(side) {
     return localNames[side] || DEFAULT_LOCAL_NAMES[side] || String(side);
+}
+
+// What to PRINT for a side, which is not the same question.
+//
+// A BOT SIDE IS CALLED "Bot", whatever is in the name field: reported as "Bot
+// sides render as 'Krish [BOT]'", and the name belongs to the person rather
+// than to the slot the AI is driving.
+//
+// Separate from playerName() because of load order, not taste. playerName runs
+// while the menu paints itself - before p1IsBot is declared - and reading a
+// `let` in its temporal dead zone throws even through `typeof`. This one is
+// only ever called from a match or a menu repaint, both after the flags exist.
+function displayName(side) {
+    const isBot = side === 'p1' ? p1IsBot : p2IsBot;
+    return isBot ? 'Bot' : playerName(side);
 }
 
 function setLocalName(side, value) {
@@ -1971,6 +1995,14 @@ function prog(side) { return progression[side] || progression.p1; }
 const MATCH_MODES = [
     { id: 'classic', name: 'Classic Versus', blurb: 'Best of 3 rounds. Knock your opponent out to win a round.' },
     { id: 'zone', name: 'Zone Control', blurb: 'Hold the glowing ring at the center. First to 45 seconds of control wins — knock them out of it.' },
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
     // Batch 38: "Time Attack" named the one thing this mode does not involve.
     // It is first to three knockouts with no clock at all - the name was
     // borrowed from racing, where the timer IS the score. "Takedown Race" says
@@ -2285,6 +2317,25 @@ function cycleHudScale() {
     safeLSSet('astralClashHudScale', HUD_TEXT_SCALE);
     document.getElementById('btn-hud-scale').textContent = `HUD Text: ${HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal'}`;
 }
+// The archived build has no EffectComposer (one viewport is what made that
+// practical online), so "Glow" here drives the EMISSIVE strength of the accent
+// materials rather than a bloom pass - the same setting from the player's side:
+// how much the glowing trim glows.
+let bloomEnabled = safeLSGet('astralClashBloom') !== '0';
+function refreshBloomUI() {
+    const b = document.getElementById('btn-bloom');
+    if (b) b.textContent = `Glow: ${bloomEnabled ? 'On' : 'Off'}`;
+}
+function toggleBloom() {
+    bloomEnabled = !bloomEnabled;
+    safeLSSet('astralClashBloom', bloomEnabled ? '1' : '0');
+    refreshBloomUI();
+    // Repaint the arena so the change is visible immediately rather than on
+    // the next map load.
+    if (currentMap) loadMap(currentMap);
+}
+document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
+refreshBloomUI();
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
 document.getElementById('btn-hud-scale').textContent = `HUD Text: ${HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal'}`;
 
@@ -2435,8 +2486,8 @@ syncDebugUnlockUI(); // reflect a persisted override on load
 // too instead of drifting out of sync with a hardcoded control list.
 function buildTutorialControls() {
     document.getElementById('tutorial-controls').innerHTML =
-        `<div class="tutorial-controls-row"><b>P1:</b> ${controlsSummary('p1')}</div>` +
-        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>P2:</b> ${controlsSummary('p2')}</div>` +
+        `<div class="tutorial-controls-row"><b>${displayName('p1')}:</b> ${controlsSummary('p1')}</div>` +
+        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>${displayName('p2')}:</b> ${controlsSummary('p2')}</div>` +
         `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> stick move/turn, A jump, B attack, X special, Y dash</div>`;
 }
 // Batch 37: the "don't show automatically" checkbox is hidden when you
@@ -3438,6 +3489,28 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
 // Rises up to this are walkable on foot; taller is a wall you must jump - see
 // resolveTallTerrain(), which reverts the move when the rise is too great.
 //
@@ -6621,7 +6694,7 @@ class Fighter {
         // rather than P1/P2 — it belongs to neither side.
         group.add(this.isBossEntity
             ? makeNameSprite(this.name, '#f59e0b')
-            : makeNameSprite(this.isPlayerOne ? 'P1' : 'P2', this.isPlayerOne ? '#00f3ff' : '#f472b6'));
+            : makeNameSprite(displayName(this.isPlayerOne ? 'p1' : 'p2'), this.isPlayerOne ? '#00f3ff' : '#f472b6'));
 
         const flashLight = new THREE.PointLight(0xffffff, 0, 70);
         flashLight.position.y = 16;
@@ -9370,7 +9443,9 @@ const STAT_MAX = { hp: 560, dmg: 75, special: 120, speed: 4.5 };
 
 let p1Stage = 'pick', p2Stage = 'pick'; // 'pick' | 'preview' | 'confirmed'
 let p1Preview = null, p2Preview = null;
-let p1IsBot = false, p2IsBot = false;
+// p1IsBot/p2IsBot are declared with the other early state, above the local
+// extras - displayName() reads them and the tutorial auto-opens at load.
+// See the note there.
 
 // Batch 6: difficulty tiers built on the existing think-timer/probability
 // model rather than a separate system — easy reacts slowly and whiffs
@@ -9658,14 +9733,14 @@ function headingHTML(num, stage) {
     const isBotSide = num === 1 ? p1IsBot : p2IsBot;
     const botTag = isBotSide ? ' <span style="color:#f59e0b">[BOT]</span>' : '';
     const padTag = padSlots[side] != null ? ` <span class="pad-badge" title="Gamepad connected"><svg viewBox="0 0 24 16" width="1.1em" height="0.73em" fill="currentColor" aria-hidden="true" style="vertical-align:middle"><rect x="1" y="3" width="22" height="10" rx="5"/><circle cx="7" cy="8" r="1.5" fill="#0d0f18"/><circle cx="17" cy="8" r="1.5" fill="#0d0f18"/></svg></span>` : '';
-    if (stage === 'pick') return `${playerName(side)}${botTag}${padTag} <span class="key-hint">(keys on cards)</span>`;
+    if (stage === 'pick') return `${displayName(side)}${botTag}${padTag} <span class="key-hint">(keys on cards)</span>`;
     if (stage === 'preview') {
         // Labels come from the live bindings, so a rebound confirm/back key
         // shows the real key instead of a stale "F"/"G" literal.
         const hint = `${keyLabel(b.attack)} confirm / ${keyLabel(b.special)} back`;
-        return `${playerName(side)}${botTag}${padTag} <span class="key-hint">(${hint})</span>`;
+        return `${displayName(side)}${botTag}${padTag} <span class="key-hint">(${hint})</span>`;
     }
-    return `${playerName(side)}${botTag}${padTag} <span class="key-hint" style="color:#4ade80">READY</span>`;
+    return `${displayName(side)}${botTag}${padTag} <span class="key-hint" style="color:#4ade80">READY</span>`;
 }
 
 function refreshMenuUI() {
@@ -9686,8 +9761,8 @@ function refreshMenuUI() {
     const p1Ready = sideReady('p1'), p2Ready = sideReady('p2');
     const bothReady = p1Ready && p2Ready;
     if (bothReady) status.textContent = coop ? 'Ready — good luck!' : 'Ready to fight!';
-    else if (p1Ready) status.textContent = 'Waiting for P2...';
-    else if (p2Ready) status.textContent = 'Waiting for P1...';
+    else if (p1Ready) status.textContent = `Waiting for ${displayName('p2')}...`;
+    else if (p2Ready) status.textContent = `Waiting for ${displayName('p1')}...`;
     else status.textContent = coop ? 'Choose your team' : 'Choose your fighters';
     if (mirrorMatch) status.textContent += ' (Mirror match!)';
     status.classList.toggle('ready', bothReady); // pulsing cyan payoff the instant both sides lock in
@@ -9803,7 +9878,7 @@ function buildShop(only) {
     djCard.style.setProperty('--accent', '#22d3ee');
     const djOwned = isDoubleJumpUnlocked(side);
     djCard.innerHTML = `<div class="shop-card-head">
-            <div><span class="shop-name">Double Jump</span> <span class="shop-title">— all of ${side === 'p1' ? 'P1' : 'P2'}'s fighters</span></div>
+            <div><span class="shop-name">Double Jump</span> <span class="shop-title">— all of ${displayName(side)}'s fighters</span></div>
             <button class="shop-buy${djOwned ? ' maxed' : ''}" ${djOwned ? 'disabled' : ''} data-dj="1">${djOwned ? 'Owned' : DOUBLE_JUMP_COST + ' coins'}</button>
         </div>
         <div class="upg-row"><span>Jump a second time in mid-air — reaches the highest platforms.</span></div>`;
@@ -10271,7 +10346,7 @@ function togglePause() {
         cameraShakeMag = 0; // don't leave a frozen shake running under the pause overlay
         gameState = 'PAUSED';
         document.getElementById('pause-controls-reminder').innerHTML =
-            `P1: ${controlsSummary('p1')}<br>P2: ${controlsSummary('p2')}`;
+            `${displayName('p1')}: ${controlsSummary('p1')}<br>${displayName('p2')}: ${controlsSummary('p2')}`;
         showScreen('pause');
     }
 }
@@ -10402,9 +10477,34 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 //
 // See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
 // 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
 const GRACE_PERIOD = 40;        // seconds the arena stays full-size before the first collapse tick
 const SHRINK_INTERVAL = 18;     // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
 // Once the collapse fraction passes this, snap fully shut and start crushing.
 //
 // WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
@@ -10889,7 +10989,7 @@ function drawRoundStatus() {
         });
         hudCtx.font = hudFont(11);
         hudCtx.fillStyle = zoneHolder ? '#e2e8f0' : '#64748b';
-        hudCtx.fillText(zoneHolder ? `${zoneHolder === 'p1' ? 'P1' : 'P2'} holds the zone` : 'Zone contested', VIRTUAL_W / 2, MODE_Y - 4);
+        hudCtx.fillText(zoneHolder ? `${displayName(zoneHolder)} holds the zone` : 'Zone contested', VIRTUAL_W / 2, MODE_Y - 4);
         hudCtx.fillStyle = '#94a3b8';
         hudCtx.fillText(`${Math.floor(zoneScore.p1)}s`, leftX - 16, MODE_Y + BH);
         hudCtx.fillText(`${Math.floor(zoneScore.p2)}s`, rightX + BW + 16, MODE_Y + BH);
@@ -11004,6 +11104,16 @@ function drawIntroOverlay() {
         hudCtx.font = announceFont(W * 0.02, 500);
         hudCtx.fillStyle = '#cbd5e1';
         hudCtx.fillText(`${player1.name}`, W * 0.5 - W * 0.10, H * 0.235 + W * 0.045);
+        // ...and whose fighter it is, under the name. Only when somebody has
+        // actually typed a name: "Player 1" under "Kaelen" is noise.
+        if (localNames.p1 || localNames.p2) {
+            hudCtx.save();
+            hudCtx.font = announceFont(W * 0.0125, 500);
+            hudCtx.fillStyle = '#8aa0b8';
+            hudCtx.fillText(displayName('p1'), W * 0.5 - W * 0.10, H * 0.235 + W * 0.045 + W * 0.019);
+            hudCtx.fillText(displayName('p2'), W * 0.5 + W * 0.10, H * 0.235 + W * 0.045 + W * 0.019);
+            hudCtx.restore();
+        }
         hudCtx.fillStyle = accent; hudCtx.font = announceFont(W * 0.02, 800);
         hudCtx.fillText('VS', W / 2, H * 0.235 + W * 0.045);
         hudCtx.fillStyle = '#cbd5e1'; hudCtx.font = announceFont(W * 0.02, 500);
@@ -11048,8 +11158,8 @@ function drawHUD() {
     hudCtx.save();
     hudCtx.scale(hudCanvas.width / VIRTUAL_W, hudCanvas.height / VIRTUAL_H);
 
-    drawPlayerHUD(player1, 30, 'P1');
-    drawPlayerHUD(player2, VIRTUAL_W - 30 - 420, 'P2');
+    drawPlayerHUD(player1, 30, displayName('p1'));
+    drawPlayerHUD(player2, VIRTUAL_W - 30 - 420, displayName('p2'));
     // Batch 16: the co-op challenger gets a wide bar across the top centre —
     // the conventional boss-bar placement, and the one region the two
     // side panels leave free in both split and full-screen layouts.
@@ -11223,8 +11333,8 @@ function endMatch() {
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} coins &nbsp;·&nbsp; P2 +${earnedP2} coins</div>`;
     document.getElementById('match-summary').innerHTML =
-        `<div><b>${player1.name} (P1)</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
-        `<div><b>${player2.name} (P2)</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
+        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
+        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
         `<div>Round times: ${roundTimesStr}</div>` +
         coinLine;
 
@@ -11296,8 +11406,8 @@ function endCoopMatch(won, detail) {
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">Each player +${earned} coins</div>`;
     document.getElementById('match-summary').innerHTML =
         `<div>${coopResultText}</div>` +
-        `<div><b>${player1.name} (P1)</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
-        `<div><b>${player2.name} (P2)</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
+        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
+        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
         coinLine;
     showScreen('gameover');
 }
