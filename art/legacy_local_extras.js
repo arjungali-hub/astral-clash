@@ -162,16 +162,96 @@ function botsOnly() { return p1IsBot && p2IsBot; }
 
 const watchCam = new THREE.PerspectiveCamera(46, 1, 1, 6000);
 watchCam.layers.enableAll();
+// Batch 52: IT FRAMES THE FIGHT, not the building.
+//
+// Reported: from above the fighters are "tiny and pale". They are ~40 units
+// across in a 1635x855 arena, so a camera that holds the whole arena makes
+// each of them about 2% of the frame - a view that is technically complete and
+// practically useless. It frames the two fighters instead: a minimum span so a
+// clinch cannot push the camera into their heads, and a maximum of the arena
+// so it never shows the void outside.
+//
+// The framing EASES toward its target. A camera that jumps every time somebody
+// dashes is the same complaint as a fighter that teleports - "there should
+// always be a smooth animation" - and this is the one view where the whole
+// frame moves at once.
+const WATCH_SPAN_MIN = 640;   // closest the camera will ever get
+const WATCH_SPAN_PAD = 360;   // breathing room around the pair
+const WATCH_EASE = 0.06;
+// Not initialised from ARENA_CX: this fragment is injected ABOVE those
+// constants, so reading one here would be a load-time TDZ throw. The first
+// frame seeds them instead (see `seed` below), which is also what a new match
+// in a different arena needs.
+let watchSpan = 0, watchCx = 0, watchCy = 0;
+
 function positionWatchCamera(aspect) {
-    // Framed to hold the arena's longer axis with a margin, from directly
-    // above and tilted a few degrees so the fighters' own height reads.
-    const w = ARENA_RIGHT - ARENA_LEFT, h = ARENA_BOTTOM - ARENA_TOP;
-    const span = Math.max(w / Math.max(0.6, aspect), h) * 1.12;
-    const dist = span / (2 * Math.tan((watchCam.fov * Math.PI / 180) / 2));
+    const arenaW = ARENA_RIGHT - ARENA_LEFT, arenaH = ARENA_BOTTOM - ARENA_TOP;
+    const wide = Math.max(arenaW / Math.max(0.6, aspect), arenaH) * 1.12;
+    const pair = [player1, player2].filter(f => f && f.hp > 0);
+    let tx = ARENA_CX, ty = ARENA_CY, want = wide;
+    if (pair.length) {
+        const xs = pair.map(f => f.x + f.width / 2), ys = pair.map(f => f.y + f.height / 2);
+        const x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+        const y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+        tx = (x0 + x1) / 2; ty = (y0 + y1) / 2;
+        want = Math.max(WATCH_SPAN_MIN,
+                        (x1 - x0 + WATCH_SPAN_PAD) / Math.max(0.6, aspect),
+                        y1 - y0 + WATCH_SPAN_PAD);
+        want = Math.min(want, wide);   // never wider than the arena itself
+    }
+    // Seed on the first frame, and again whenever the target is a whole arena
+    // away - a new match, or a different map. Easing across that would be a
+    // long slow drift from somewhere that no longer exists.
+    const seed = !watchSpan || Math.hypot(tx - watchCx, ty - watchCy) > arenaW * 0.5;
+    if (seed) { watchSpan = want; watchCx = tx; watchCy = ty; }
+    else {
+        watchSpan += (want - watchSpan) * WATCH_EASE;
+        watchCx += (tx - watchCx) * WATCH_EASE;
+        watchCy += (ty - watchCy) * WATCH_EASE;
+    }
+    const dist = watchSpan / (2 * Math.tan((watchCam.fov * Math.PI / 180) / 2));
     watchCam.aspect = aspect;
-    watchCam.position.set(worldX(ARENA_CX), dist, worldZ(ARENA_CY) + dist * 0.22);
-    watchCam.lookAt(worldX(ARENA_CX), 0, worldZ(ARENA_CY));
+    watchCam.position.set(worldX(watchCx), dist, worldZ(watchCy) + dist * 0.22);
+    watchCam.lookAt(worldX(watchCx), 0, worldZ(watchCy));
     watchCam.updateProjectionMatrix();
+}
+
+// A ring on the ground under each fighter, in that fighter's own colour. The
+// other half of "tiny and pale": from overhead a fighter is a few dozen pixels
+// of mostly-dark mesh against a lit floor, and which one is which is the first
+// thing a spectator needs. Built on demand (a spectator match is the only
+// thing that ever needs them) and hidden the moment the view is not the watch
+// view, which is why renderViews calls this every frame rather than only
+// inside its watch branch.
+const WATCH_RING_INNER = 26, WATCH_RING_OUTER = 34;
+let watchRings = null;
+function syncWatchRings(on) {
+    if (!watchRings) {
+        if (!on) return;                       // nothing built, nothing to hide
+        const mk = () => {
+            const m = new THREE.Mesh(
+                new THREE.RingGeometry(WATCH_RING_INNER, WATCH_RING_OUTER, 40),
+                new THREE.MeshBasicMaterial({
+                    color: 0xffffff, transparent: true, opacity: 0.9,
+                    side: THREE.DoubleSide, depthWrite: false,
+                }));
+            m.rotation.x = -Math.PI / 2;       // flat on the floor
+            m.layers.enableAll();
+            m.visible = false;
+            scene.add(m);
+            return m;
+        };
+        watchRings = [mk(), mk()];
+    }
+    const pair = [player1, player2];
+    for (let i = 0; i < watchRings.length; i++) {
+        const f = pair[i], ring = watchRings[i];
+        ring.visible = !!(on && f && f.hp > 0);
+        if (!ring.visible) continue;
+        // Just above the floor: coplanar with it would z-fight.
+        ring.position.set(worldX(f.x + f.width / 2), 1.5, worldZ(f.y + f.height / 2));
+        ring.material.color.set(f.color);
+    }
 }
 
 // ------------------------------------------- the solo human's controls

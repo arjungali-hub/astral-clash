@@ -1388,7 +1388,7 @@
                 <div class="lobby-or">or</div>
 
                 <div class="lobby-block">
-                    <input id="lobby-join-input" class="lobby-code" placeholder="Paste a room code" autocomplete="off" spellcheck="false">
+                    <input id="lobby-join-input" class="lobby-code" placeholder="Enter a room code" autocomplete="off" spellcheck="false" maxlength="48" autocapitalize="characters">
                     <button id="btn-net-join">Join Game</button>
                 </div>
 
@@ -11336,37 +11336,90 @@ function netBindConnection(conn) {
     });
 }
 
+// --- ROOM CODES -----------------------------------------------------------
+// Six characters, no ambiguous glyphs: 0/O, 1/I/L and U (which people hear as
+// "you") are all out, so a code read down a phone line arrives intact.
+const ROOM_CODE_CHARS = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
+const ROOM_CODE_LEN = 6;
+// The PeerJS broker is public and shared with every other app using it, so the
+// id registered there is namespaced. Only the six characters are ever shown.
+const ROOM_ID_PREFIX = 'astralclash-v1-';
+const ROOM_CODE_TRIES = 6;   // fresh codes to try before admitting defeat
+
+function newRoomCode() {
+    let out = '';
+    for (let i = 0; i < ROOM_CODE_LEN; i++) {
+        out += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
+    }
+    return out;
+}
+// The one place a code becomes a peer id. Anything that already looks like a
+// peer id - a full PeerJS UUID from an older link, or a prefixed id pasted
+// whole - is passed through untouched.
+function roomIdFor(code) {
+    const c = String(code || '').trim();
+    if (!c) return '';
+    if (c.indexOf(ROOM_ID_PREFIX) === 0) return c;
+    const bare = c.replace(/[^0-9a-zA-Z]/g, '').toUpperCase();
+    if (bare.length > ROOM_CODE_LEN + 2) return c;   // a UUID, not a room code
+    return ROOM_ID_PREFIX + bare;
+}
+// What to SHOW for a peer id: the six characters, never the plumbing.
+function roomCodeOf(peerId) {
+    const id = String(peerId || '');
+    return id.indexOf(ROOM_ID_PREFIX) === 0 ? id.slice(ROOM_ID_PREFIX.length) : id;
+}
+
 function netHost() {
     if (typeof Peer !== 'function') { netSetStatus('error', 'PeerJS failed to load'); return; }
     netTeardown();
     net.role = 'host';
     LOCAL_SIDE = 'p1';               // host always drives Player 1
     netSetStatus('starting', 'Creating room...');
-    net.peer = new Peer();
-    net.peer.on('open', id => {
-        // The status word already says "Waiting for an opponent..."; the detail
-        // should add something, not repeat it.
-        netSetStatus('waiting', 'Send them the room code');
-        const box = document.getElementById('lobby-code');
-        if (box) box.value = id;
-        const row = document.getElementById('lobby-code-row');
-        if (row) row.style.display = 'flex';
-    });
-    net.peer.on('connection', conn => {
-        if (netActive()) { try { conn.close(); } catch (e) {} return; } // one opponent only
-        netBindConnection(conn);
-    });
-    net.peer.on('error', err => netSetStatus('error', (err && err.type) || 'peer error'));
+    // The host CHOOSES its id, so the code can be six characters instead of a
+    // UUID. A code already in use comes back as `unavailable-id`, which is a
+    // retry with a fresh code - not something to show the player.
+    let triesLeft = ROOM_CODE_TRIES;
+    const openRoom = () => {
+        const code = newRoomCode();
+        net.peer = new Peer(roomIdFor(code));
+        net.peer.on('open', () => {
+            // The status word already says "Waiting for an opponent..."; the
+            // detail should add something, not repeat it.
+            netSetStatus('waiting', 'Send them the room code');
+            const box = document.getElementById('lobby-code');
+            if (box) box.value = code;
+            const row = document.getElementById('lobby-code-row');
+            if (row) row.style.display = 'flex';
+        });
+        net.peer.on('connection', conn => {
+            if (netActive()) { try { conn.close(); } catch (e) {} return; } // one opponent only
+            netBindConnection(conn);
+        });
+        net.peer.on('error', err => {
+            const type = (err && err.type) || 'peer error';
+            if (type === 'unavailable-id' && triesLeft-- > 0) {
+                try { net.peer.destroy(); } catch (e) {}
+                openRoom();
+                return;
+            }
+            netSetStatus('error', type);
+        });
+    };
+    openRoom();
 }
 
 function netJoin(hostId) {
     if (typeof Peer !== 'function') { netSetStatus('error', 'PeerJS failed to load'); return; }
-    const id = (hostId || '').trim();
-    if (!id) { netSetStatus('error', 'Enter a room code first'); return; }
+    const typed = (hostId || '').trim();
+    if (!typed) { netSetStatus('error', 'Enter a room code first'); return; }
+    // Forgiving about how it was typed: case, spaces and dashes all survive a
+    // code being read out, written down and typed back in.
+    const id = roomIdFor(typed);
     netTeardown();
     net.role = 'joiner';
     LOCAL_SIDE = 'p2';               // joiner always drives Player 2
-    netSetStatus('connecting', 'Connecting to ' + id.slice(0, 8) + '...');
+    netSetStatus('connecting', 'Connecting to ' + roomCodeOf(id) + '...');
     net.peer = new Peer();
     net.peer.on('open', () => netBindConnection(net.peer.connect(id, { reliable: true })));
     net.peer.on('error', err => netSetStatus('error', (err && err.type) || 'peer error'));
@@ -11807,7 +11860,7 @@ function refreshLobbyUI() {
     // joiner already typed it, so showing it back to them is noise.
     const chip = document.getElementById('room-code-chip');
     const codeBox = document.getElementById('room-code-text');
-    const myCode = (net.peer && net.peer.id) || '';
+    const myCode = roomCodeOf((net.peer && net.peer.id) || '');
     const showCode = !!myCode && netIsHost();
     if (chip) chip.style.display = showCode ? '' : 'none';
     if (codeBox && showCode && codeBox.value !== myCode) codeBox.value = myCode;
@@ -13991,6 +14044,7 @@ if (DEBUG) {
         get remoteAway() { return remoteAway; },
         get awayPaused() { return awayPaused; },
         sideReady,
+        newRoomCode, roomIdFor, roomCodeOf, ROOM_CODE_LEN, ROOM_CODE_CHARS, ROOM_ID_PREFIX,
         get myPlayerName() { return myPlayerName; },
         buildModeSelect, onNetLost, refreshGameOverUI, refreshLobbyUI,
         onlineModes: () => onlineModes().map(m => m.id),

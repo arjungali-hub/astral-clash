@@ -1027,6 +1027,35 @@ if (location.protocol === 'https:'
                           "    mat.normalMap = mk(entry.n, 'n');\n    mat.roughnessMap = mk(entry.r, 'r');")
         print('  %-34s ok' % 'attachSurfaceMaps texture cache')
 
+    # --------------------------------- the spectator camera follows the fight
+    # The extras fragment is injected once, guarded on `function playerName(`,
+    # so a change inside it never reaches a build that already has it. Rather
+    # than keep a second copy of the new code here, the block is LIFTED OUT of
+    # the fragment and swapped in - one source of truth, and idempotent.
+    if 'function syncWatchRings(' not in dst:
+        extras_src = io.open(os.path.join(HERE, 'legacy_local_extras.js'), encoding='utf-8').read()
+        END = chr(10) + "// ------------------------------------------- the solo human's controls"
+        new_cam = block(extras_src, '// Batch 52: IT FRAMES THE FIGHT', END, 'watch camera (new)')
+        old_cam = block(dst, 'function positionWatchCamera(aspect) {', END, 'watch camera (old)')
+        dst = dst.replace(old_cam, new_cam, 1)
+        # One call, at the top of renderViews rather than inside its watch
+        # branch: the rings have to be HIDDEN when the view is not the watch
+        # view, and a call that only runs in that branch can never do that.
+        dst = rep(dst, """    renderer.getSize(_rendSize);
+    const W = _rendSize.x, H = _rendSize.y;
+    // Nobody is playing: one camera, from above.""",
+                  """    syncWatchRings(botsOnly());
+    renderer.getSize(_rendSize);
+    const W = _rendSize.x, H = _rendSize.y;
+    // Nobody is playing: one camera, from above.""",
+                  'watch ring sync')
+        dst = rep(dst, '        botsOnly, soloHumanSide, positionWatchCamera,',
+                  '        botsOnly, soloHumanSide, positionWatchCamera, syncWatchRings,' + chr(10)
+                  + '        get watchSpan() { return watchSpan; },' + chr(10)
+                  + '        get watchRings() { return watchRings; },',
+                  'watch debug surface')
+        print('  %-34s ok' % 'spectator camera follows the fight')
+
     # ------------------------------------------- the HUD is not stretched
     # Batch 51 in the main build, and the same bug here: the HUD is authored in
     # a fixed 1.8:1 virtual space and was scaled onto the canvas one axis at a

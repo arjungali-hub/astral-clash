@@ -476,6 +476,48 @@ const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
         leak.online.unlocked === false && leak.online.upgrades === 0
         && leak.online.sandbox === false, JSON.stringify(leak.online));
 
+    // ------------------------------------------------- a readable room code
+    // Reported: the room code is a 36-character UUID, "awkward to read out or
+    // type". It is six characters now, and the thing shown and the thing
+    // connected to must stay the same thing - which is the part worth
+    // asserting, since they are no longer literally equal.
+    section('The room code is short, unambiguous and round-trips:');
+    const code = await page.evaluate(() => {
+        const D = window.ACDebug;
+        const made = [];
+        for (let i = 0; i < 200; i++) made.push(D.newRoomCode());
+        const uuid = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+        return {
+            len: D.ROOM_CODE_LEN,
+            allRightLength: made.every(c => c.length === D.ROOM_CODE_LEN),
+            onlySafeChars: made.every(c => c.split('').every(ch => D.ROOM_CODE_CHARS.includes(ch))),
+            noAmbiguous: /[01OILU]/.test(D.ROOM_CODE_CHARS),
+            distinct: new Set(made).size,
+            // Typed back in however it survived being read out.
+            roundTrip: made.slice(0, 20).every(c =>
+                D.roomCodeOf(D.roomIdFor(c)) === c
+                && D.roomCodeOf(D.roomIdFor(c.toLowerCase())) === c
+                && D.roomCodeOf(D.roomIdFor(' ' + c.slice(0, 3) + '-' + c.slice(3) + ' ')) === c),
+            prefixed: D.roomIdFor(made[0]).startsWith(D.ROOM_ID_PREFIX),
+            // An old full-length peer id still connects, untouched.
+            uuidPassthrough: D.roomIdFor(uuid) === uuid,
+            alreadyPrefixed: D.roomIdFor(D.ROOM_ID_PREFIX + 'ABC234') === D.ROOM_ID_PREFIX + 'ABC234',
+            empty: D.roomIdFor('  ') === '',
+        };
+    });
+    check('a code is 6 characters', code.len === 6 && code.allRightLength, JSON.stringify(code));
+    check('drawn only from the safe alphabet', code.onlySafeChars === true, JSON.stringify(code));
+    check('which contains no 0/O, 1/I/L or U', code.noAmbiguous === false, String(code.noAmbiguous));
+    check('200 codes are not all the same', code.distinct > 190, String(code.distinct));
+    check('a code round-trips through lowercase, spaces and a dash',
+        code.roundTrip === true, String(code.roundTrip));
+    check('the peer id is namespaced, so the shared broker is not fought over',
+        code.prefixed === true, String(code.prefixed));
+    check('a full-length peer id from an older link still passes through',
+        code.uuidPassthrough === true && code.alreadyPrefixed === true, JSON.stringify(code));
+    check('and an empty input stays empty rather than becoming a bare prefix',
+        code.empty === true, String(code.empty));
+
     // ------------------------------------------- no HUD left behind on the menu
     // Reported against the archived build - "after Return to Menu, the previous
     // match's HUD bars stay faintly visible behind the menu" - and true here
