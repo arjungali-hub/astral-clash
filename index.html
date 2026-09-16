@@ -1174,6 +1174,7 @@
                     <div class="settings-list">
                         <button id="btn-open-rebind">Rebind Keys</button>
                         <button id="btn-hud-scale">HUD Text: Normal</button>
+                        <button id="btn-bloom">Glow: On</button>
                         <button id="btn-open-audio">Audio Settings</button>
                     </div>
                 <!-- Batch 34: the "unlock everything" sandbox switch is gone.
@@ -1400,6 +1401,23 @@ function startGame() {
     loadScriptsThen([
         'vendor/GLTFLoader.js',
         'vendor/SkeletonUtils.js',
+        // Batch 45: the bloom chain. Vendored, and entirely optional -
+        // ensureComposer() checks for THREE.EffectComposer and the renderer
+        // falls back to a plain render if any of these failed to load.
+        //
+        // THE ORDER IS LOAD-BEARING and not the obvious one. EffectComposer.js
+        // is what DEFINES THREE.Pass (at its bottom), and every other pass is
+        // `class X extends THREE.Pass` - so listing CopyShader/ShaderPass
+        // first, as a dependency order would suggest, throws "Class extends
+        // value undefined is not a constructor" and takes the whole page with
+        // it. EffectComposer only NEEDS ShaderPass when a composer is
+        // constructed, which happens long after all of these have run.
+        'vendor/EffectComposer.js',
+        'vendor/CopyShader.js',
+        'vendor/ShaderPass.js',
+        'vendor/RenderPass.js',
+        'vendor/LuminosityHighPassShader.js',
+        'vendor/UnrealBloomPass.js',
         'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js',
     ], function () { bootGame(); });
 }
@@ -2291,6 +2309,7 @@ function cycleHudScale() {
     document.getElementById('btn-hud-scale').textContent = `HUD Text: ${HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal'}`;
 }
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
+document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
 document.getElementById('btn-hud-scale').textContent = `HUD Text: ${HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal'}`;
 
 function keyLabel(k) {
@@ -2725,12 +2744,100 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // over 1 for a sunny daytime feel.
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+// Batch 45: 1.1 -> 0.92. The exposure was set for a scene lit by a flat
+// environment and four fill sources; with a directional environment and a
+// stronger key it blew the pale arenas out - Voltaic Nexus' walls and the
+// Colosseum's marble rendered as near-white, which flattens every bevel and
+// leaves bloom nothing but surfaces to grab. Slightly under 1 also gives the
+// emissive accents somewhere to be brighter THAN.
+renderer.toneMappingExposure = 0.92;
+
+// BLOOM. See docs/arena-art-plan.md item 3 - and note this reverses the
+// earlier "no EffectComposer" decision on purpose, now that there is one
+// viewport instead of two.
+//
+// BLOOM_THRESHOLD is the whole tuning. At 0.86 only things that are already
+// nearly white on screen bloom: the emissive accent rails and cores, brazier
+// flames, the sun sprite, a lightning bolt. The sky, the marble arena and the
+// sand floor are bright but not that bright, and a lower threshold makes them
+// glow, which reads as fog rather than as light.
+// Tuned against screenshots, not guessed. At 0.86 the pale arenas - Voltaic
+// Nexus' white walls, the Colosseum's marble - sat above the threshold and the
+// entire frame glowed, which is bloom doing the one thing it must not do:
+// making a bright SURFACE look like a light SOURCE. 0.95 keeps it to things
+// that are genuinely near-white: emissive rails and cores, brazier flame, the
+// sun sprite, a lightning bolt.
+const BLOOM_STRENGTH = 0.55, BLOOM_RADIUS = 0.38, BLOOM_THRESHOLD = 0.9;
+let composer = null, bloomRenderPass = null, bloomPass = null, bloomFailed = false;
+// Declared HERE, not next to its toggle further down: renderWithBloom reads it,
+// and a `let` below that function would be in its temporal dead zone for any
+// render that happened during load. Seventh instance of that trap in this file.
+let bloomEnabled = safeLSGet('astralClashBloom') !== '0';
+
+function ensureComposer() {
+    if (composer || bloomFailed) return composer;
+    // Any missing script means no bloom, not a broken game.
+    if (typeof THREE.EffectComposer !== 'function' || typeof THREE.RenderPass !== 'function'
+        || typeof THREE.UnrealBloomPass !== 'function') {
+        bloomFailed = true;
+        return null;
+    }
+    try {
+        const size = renderer.getSize(new THREE.Vector2());
+        // sRGB render targets: see the encoding trap in this batch's notes.
+        // Without this the final raw-shader pass writes linear values straight
+        // to the canvas and the entire game renders pale.
+        const rt = new THREE.WebGLRenderTarget(
+            size.x * PIXEL_RATIO, size.y * PIXEL_RATIO,
+            { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+              format: THREE.RGBAFormat, encoding: THREE.sRGBEncoding });
+        rt.texture.encoding = THREE.sRGBEncoding;
+        composer = new THREE.EffectComposer(renderer, rt);
+        composer.setPixelRatio(PIXEL_RATIO);
+        composer.setSize(size.x, size.y);
+        bloomRenderPass = new THREE.RenderPass(scene, camP1);
+        composer.addPass(bloomRenderPass);
+        bloomPass = new THREE.UnrealBloomPass(
+            new THREE.Vector2(size.x, size.y), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
+        composer.addPass(bloomPass);
+        return composer;
+    } catch (e) {
+        console.warn('[astral] bloom unavailable:', e && e.message);
+        bloomFailed = true;
+        composer = null;
+        return null;
+    }
+}
+
+// Renders `scn` from `cam` through the bloom chain, or directly if bloom is
+// unavailable. Every full-scene render in this file goes through here so the
+// crush cinematic gets the same treatment as the arena.
+function renderWithBloom(scn, cam, dt) {
+    const c = bloomEnabled ? ensureComposer() : null;
+    if (!c) { renderer.render(scn, cam); return; }
+    bloomRenderPass.scene = scn;
+    bloomRenderPass.camera = cam;
+    c.render(dt || 0.016);
+}
 
 // The game's own coordinate system (arena bounds, maps, HUD layout) stays
 // a fixed 900x500 virtual space (see VIRTUAL_W/VIRTUAL_H) — only the
 // canvas's actual pixel resolution and the camera's aspect ratio change
 // here, so resizing can't shift hitboxes, map layouts, or HUD positions.
+// A real setting, because bloom is the one effect here with a per-frame cost
+// that scales with resolution: five extra full-screen-ish passes. Follows the
+// HUD-scale button's idiom - a button that states its own current value -
+// rather than introducing a checkbox the settings panel has no other use for.
+function refreshBloomUI() {
+    const b = document.getElementById('btn-bloom');
+    if (b) b.textContent = `Glow: ${bloomEnabled ? 'On' : 'Off'}`;
+}
+function toggleBloom() {
+    bloomEnabled = !bloomEnabled;
+    safeLSSet('astralClashBloom', bloomEnabled ? '1' : '0');
+    refreshBloomUI();
+}
+
 function onWindowResize() {
     const rect = canvas.getBoundingClientRect();
     const w = Math.max(1, Math.round(rect.width));
@@ -2746,6 +2853,7 @@ function onWindowResize() {
     hudCanvas.width = Math.round(w * PIXEL_RATIO);
     hudCanvas.height = Math.round(h * PIXEL_RATIO);
     renderer.setSize(w, h, false);
+    if (composer) composer.setSize(w, h);
     // The two FPS cameras get their aspect set per-viewport each frame in
     // renderOneView (split-screen halves have a different aspect than the
     // full window), so nothing to update here.
@@ -2778,8 +2886,12 @@ let skyDome = null, sunSprite = null, skyTexCanvas = null;
 function buildSkyDome() {
     // Gradient sky texture is redrawn per map by applySky(); build the mesh
     // and sun sprite once here.
+    // 256x128 equirectangular, not a 16-pixel-wide strip. The width is what
+    // makes the environment DIRECTIONAL: with one column of pixels there is no
+    // such thing as a sun azimuth, so every horizontal direction reflects the
+    // same colour and the PMREM lights all four walls identically.
     skyTexCanvas = document.createElement('canvas');
-    skyTexCanvas.width = 16; skyTexCanvas.height = 256;
+    skyTexCanvas.width = 256; skyTexCanvas.height = 128;
     const tex = new THREE.CanvasTexture(skyTexCanvas);
     tex.encoding = THREE.sRGBEncoding;
     skyDome = new THREE.Mesh(
@@ -2847,11 +2959,53 @@ function updateEnvironment() {
 }
 
 function applySky(theme) {
+    const W = skyTexCanvas.width, H = skyTexCanvas.height;
     const g = skyTexCanvas.getContext('2d');
-    const grad = g.createLinearGradient(0, 0, 0, 256);
+    // The vertical gradient still defines the sky, and the dome still shows
+    // exactly it - so every arena looks like itself.
+    const grad = g.createLinearGradient(0, 0, 0, H);
     grad.addColorStop(0.0, theme.sky[0]); grad.addColorStop(0.4, theme.sky[1]);
     grad.addColorStop(0.74, theme.sky[2]); grad.addColorStop(1.0, theme.sky[3]);
-    g.fillStyle = grad; g.fillRect(0, 0, 16, 256);
+    g.fillStyle = grad; g.fillRect(0, 0, W, H);
+
+    // THE GROUND HALF. An equirect's lower half is what a downward-facing
+    // surface reflects, and a sky gradient there means the underside of every
+    // ledge is lit by sky - which is half of why nothing had a dark side. The
+    // map's own floor colour is the honest answer to "what is below".
+    // Theme colours are hex NUMBERS (0xaecbe6), and a canvas gradient throws on
+    // one - "The value provided ('16767136') could not be parsed as a color".
+    // theme.sky[] is already a CSS string; floorColor and sun.color are not.
+    const cssHex = (c) => (typeof c === 'number'
+        ? '#' + ('000000' + c.toString(16)).slice(-6) : c);
+    const floor = cssHex(theme.floorColor != null ? theme.floorColor : 0x3a3a3a);
+    const gg = g.createLinearGradient(0, H * 0.5, 0, H);
+    gg.addColorStop(0, theme.sky[3]);
+    gg.addColorStop(0.35, floor);
+    gg.addColorStop(1, '#0c0d11');       // straight down is nearly unlit
+    g.fillStyle = gg; g.fillRect(0, Math.floor(H * 0.5), W, Math.ceil(H * 0.5));
+
+    // THE SUN, at the azimuth the key light actually comes from, so a
+    // specular highlight lands on the same side as the shadows fall away
+    // from. theme.sun.pos is a direction in world space; the equirect u axis
+    // is the angle around Y.
+    const sp = theme.sun.pos;
+    const u = (Math.atan2(sp[0], sp[2]) / (Math.PI * 2) + 0.75) % 1;
+    const elev = Math.atan2(sp[1], Math.hypot(sp[0], sp[2]));   // 0 = horizon
+    const sy = H * 0.5 * (1 - elev / (Math.PI / 2));
+    const sunR = Math.max(10, H * 0.17);
+    const sg2 = g.createRadialGradient(u * W, sy, 0, u * W, sy, sunR);
+    sg2.addColorStop(0, '#ffffff');
+    sg2.addColorStop(0.18, cssHex(theme.sun.color));
+    sg2.addColorStop(1, 'rgba(255,255,255,0)');
+    g.globalCompositeOperation = 'lighter';
+    g.fillStyle = sg2;
+    g.fillRect(0, 0, W, H);
+    // ...and again wrapped, since a sun near u=0 is cut in half by the seam.
+    g.save();
+    g.translate(u < 0.5 ? W : -W, 0);
+    g.fillStyle = sg2; g.fillRect(-W, 0, W * 3, H);
+    g.restore();
+    g.globalCompositeOperation = 'source-over';
     skyDome.material.map.needsUpdate = true;
     scene.background.set(theme.sky[3]);
     sunSprite.position.set(theme.sun.pos[0], theme.sun.pos[1], theme.sun.pos[2]);
@@ -3071,7 +3225,7 @@ function renderCrushCinematic(dt, W, HGT) {
 
     renderer.setScissorTest(false);
     renderer.setViewport(0, 0, W, HGT);
-    renderer.render(crushScene, crushCam);
+    renderWithBloom(crushScene, crushCam, dt);
     return true;
 }
 
@@ -3443,7 +3597,7 @@ function renderOneView(cam, viewer, x, y, vw, vh, dt) {
     cam.aspect = vw / vh;
     cam.updateProjectionMatrix();
     positionFpsCamera(cam, viewer, dt);
-    renderer.render(scene, cam);
+    renderWithBloom(scene, cam, dt);
 }
 
 // Lighting for the enclosed first-person arena. Every light has all render
@@ -3455,15 +3609,21 @@ function renderOneView(cam, viewer, x, y, vw, vh, dt) {
 // (layers.enableAll) because the fighters live on their own body layers
 // (1/2) so cameras can hide the viewer's own body — a light only
 // illuminates objects sharing an enabled layer with it.
-const ambientLight = new THREE.AmbientLight(0xbfd6f5, 0.55); // soft sky-tinted fill
+// Batch 45: the ambient/hemi/fill trio came DOWN when the environment map
+// became directional. They were tuned against a PMREM of a vertical gradient -
+// four sources of nearly directionless light (ambient 0.55 + hemi 0.95 + fill
+// 0.85 + a 1.8x env) against a single directional key of 1.75, which is why
+// screenshots of every arena showed even, shadowless cardboard. The env does
+// that job for real now; keeping the fakes as well just double-counts it.
+const ambientLight = new THREE.AmbientLight(0xbfd6f5, 0.18); // a floor under the shadows, nothing more
 ambientLight.layers.enableAll();
 scene.add(ambientLight);
-const hemiLight = new THREE.HemisphereLight(0xdcefff, 0x6b5a45, 0.95); // bright sky above, warm sunlit ground bounce
+const hemiLight = new THREE.HemisphereLight(0xdcefff, 0x6b5a45, 0.42); // sky/ground bounce, now that the env map also carries it
 hemiLight.layers.enableAll();
 scene.add(hemiLight);
 // The sun — a strong warm-white directional aimed to match the sun sprite
 // in the sky dome, casting crisp shadows across the arena.
-const keyLight = new THREE.DirectionalLight(0xfff4e0, 1.75);
+const keyLight = new THREE.DirectionalLight(0xfff4e0, 2.1);   // the only light that should read as a DIRECTION
 keyLight.position.set(-1400, 2600, 1600);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(2048, 2048);
@@ -3476,7 +3636,7 @@ keyLight.layers.enableAll();
 scene.add(keyLight);
 // A cool sky-bounce fill from the opposite side to keep shadows from going
 // muddy — subtle, just lifts the shadowed faces toward the sky color.
-const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.85);
+const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.4);
 // Batch 34: raised and steepened. It sat low at (900, 500, -700), which lit
 // two of the four perimeter walls and left the other two dark; a higher,
 // more central position rakes all four inward faces.
@@ -3539,8 +3699,15 @@ function fitKeyShadow() {
 // times/moods). keyLight is placed at the sun's sky position so shadows fall
 // the right way; fillLight is tinted toward the sky for coherent bounce.
 function applyLighting(theme) {
-    ambientLight.color.set(theme.ambient.color); ambientLight.intensity = theme.ambient.int;
-    hemiLight.color.set(theme.hemi.sky); hemiLight.groundColor.set(theme.hemi.ground); hemiLight.intensity = theme.hemi.int;
+    ambientLight.color.set(theme.ambient.color);
+    ambientLight.intensity = theme.ambient.int * 0.33;   // see the Batch 45 rebalance
+    // Batch 45: the per-map hemi/ambient values are SCALED, not replaced. Each
+    // map authored its own (0.9-1.0 hemi, 0.5-0.6 ambient) against the old flat
+    // environment, and applyLighting runs on every map load - so rebalancing
+    // only the declarations above would have been undone a frame later, which
+    // is exactly how the fill light's Batch 34 override went unnoticed.
+    hemiLight.color.set(theme.hemi.sky); hemiLight.groundColor.set(theme.hemi.ground);
+    hemiLight.intensity = theme.hemi.int * 0.45;
     keyLight.color.set(theme.sun.color); keyLight.intensity = theme.sun.int;
     keyLight.position.set(theme.sun.pos[0], theme.sun.pos[1], theme.sun.pos[2]);
     fillLight.color.set(theme.hemi.sky);
@@ -3554,7 +3721,7 @@ function applyLighting(theme) {
     // is considerably darker and the same fill left them nearly black while
     // the sunlit floor looked correct. Lighting, not albedo, decides how this
     // scene reads - that lesson is in CHECKLIST.md twice already.
-    fillLight.intensity = (theme.fill != null) ? theme.fill : 0.85;
+    fillLight.intensity = (theme.fill != null) ? theme.fill * 0.5 : 0.4;   // see the Batch 45 rebalance
     fitKeyShadow();   // the sun moved; the shadow frustum must follow it
 }
 
@@ -4052,7 +4219,7 @@ const PHOTO_SETS = {
     },
 };
 
-const PHOTO_BASE = 'assets/tex/';
+const PHOTO_BASE = AC_ASSET_BASE + 'tex/';   // see shared/roster.js
 let _photoLoader = null;
 const _photoSetPromises = {};    // setId -> Promise<{map, nor, orm} | null>
 const _photoTiled = {};          // "setId:slot:rx x ry" -> THREE.Texture
@@ -4162,11 +4329,17 @@ function attachPhotoSurface(mat, kind, texId, rx, ry, opts) {
             // as metal, grime does not) while leaving enough diffuse for the
             // key light to actually light the surface. Less physical, far more
             // legible - and legibility is the point in a fighting game.
-            mat.metalness = opts.metalness != null ? opts.metalness : 0.45;
+            // Batch 45: 0.45 -> 0.7. The cap existed because the environment
+            // was a dim vertical ramp with no sun, so a metallic surface had
+            // nothing to reflect and rendered black. It now has a sun, a
+            // horizon and a dark ground, so metal can be metal.
+            mat.metalness = opts.metalness != null ? opts.metalness : 0.7;
             mat.aoMapIntensity = opts.ao != null ? opts.ao : 0.85;
             // Lift the environment contribution to compensate for the sky
             // PMREM being much dimmer than a real HDRI.
-            mat.envMapIntensity = opts.envMapIntensity != null ? opts.envMapIntensity : 1.8;
+            // ...and the 1.8x lift that compensated for that dimness comes
+            // back to 1.0, or the new environment blows the surfaces out.
+            mat.envMapIntensity = opts.envMapIntensity != null ? opts.envMapIntensity : 1.0;
         }
         // Soften the theme tint. `color` multiplies the albedo, and the
         // procedural canvases were near-grey by design so a strong tint WAS
@@ -4450,6 +4623,31 @@ function photoColumn(mat, theme, radius, height, opts) {
     return attachPhotoSurface(mat, 'wall', theme.wallTex, rx, ry, o);
 }
 
+// ARCHITECTURAL EDGES. A plinth at the base, a coping at the top, and
+// optionally a band partway up - each a slim box that OVERHANGS the face it
+// sits on, which is how masonry gets its edge and why a real building never
+// reads as an extruded rectangle.
+//
+// An overhanging lip is used instead of a chamfered box on purpose: see the
+// note at the top of this batch about ExtrudeGeometry's UVs. It also costs one
+// mesh instead of a geometry rebuild, and it is the same trick the outer walls
+// already used for their cap, generalised.
+function edgeBand(w, d, h, y, overhang, mat) {
+    const m = new THREE.Mesh(
+        new THREE.BoxGeometry(w + overhang * 2, h, d + overhang * 2), mat);
+    m.position.y = y;
+    m.castShadow = true; m.receiveShadow = true;
+    return m;
+}
+
+// A turned profile, revolved around Y - the honest way to make an urn, a bowl
+// or a barrel, and the reason those three stop looking like cylinders.
+// `pts` is [[radius, height], ...] from the bottom up.
+function lathe(pts, segments) {
+    const v = pts.map(pt => new THREE.Vector2(Math.max(0.001, pt[0]), pt[1]));
+    return new THREE.LatheGeometry(v, segments || 16);
+}
+
 function buildPillarMesh(ob, theme) {
     const group = new THREE.Group();
     const colH = ob.h || 165;
@@ -4465,6 +4663,10 @@ function buildPillarMesh(ob, theme) {
         for (let i = 1; i <= 4; i++) { const ring = new THREE.Mesh(new THREE.TorusGeometry(ob.r * 0.95, 2.4, 6, 16), ringMat); ring.rotation.x = Math.PI / 2; ring.position.y = colH * (i / 5); group.add(ring); }
         const tip = new THREE.Mesh(new THREE.OctahedronGeometry(ob.r * 0.6, 0), ringMat); tip.position.y = colH + ob.r * 0.5; group.add(tip);
         const l = new THREE.PointLight(theme.accent, 0.6, 260); l.position.y = colH * 0.6; l.layers.enableAll(); group.add(l);
+        // A base flange, so the pylon is bolted to the floor rather than
+        // resting on it. Same light count - this is geometry only.
+        const flange = new THREE.Mesh(new THREE.CylinderGeometry(ob.r * 1.25, ob.r * 1.45, 7, 12), shaftMat);
+        flange.position.y = 3.5; flange.castShadow = flange.receiveShadow = true; group.add(flange);
     } else if (style === 'redspire') {
         // stacked tapering rough rock chunks (hoodoo)
         const rockMat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: 0.95, metalness: 0.0 });
@@ -4493,6 +4695,22 @@ function buildPillarMesh(ob, theme) {
         const plinth = new THREE.Mesh(plinthGeo, baseMat); plinth.position.y = 9; plinth.castShadow = plinth.receiveShadow = true; group.add(plinth);
         const capitalGeo = new THREE.BoxGeometry(ob.r * 2.7, 16, ob.r * 2.7); ensureUV2(capitalGeo);
         const capital = new THREE.Mesh(capitalGeo, baseMat); capital.position.y = colH - 8; capital.castShadow = true; group.add(capital);
+        // A REAL COLUMN PROFILE, which is what the plan asked for. The order
+        // bottom-to-top is plinth, torus, shaft, torus, capital, abacus - the
+        // two collars are what stop the shaft from looking like a pipe pushed
+        // through two crates, and the abacus is the flat slab that actually
+        // takes the load in every classical order.
+        const collarMat = baseMat;
+        for (const cy of [20, colH - 18]) {
+            const collar = new THREE.Mesh(new THREE.TorusGeometry(ob.r * 1.04, ob.r * 0.16, 8, isMarble ? 20 : 14), collarMat);
+            collar.rotation.x = Math.PI / 2; collar.position.y = cy;
+            collar.castShadow = true; group.add(collar);
+        }
+        group.add(edgeBand(ob.r * 2.7, ob.r * 2.7, 5, colH + 2.5, 2.5, collarMat));
+        // Flat shading on the marble shaft reads as FLUTES: a 20-sided
+        // cylinder lit facet by facet is exactly the vertical ribbing of a
+        // fluted column, for the cost of one material flag.
+        if (isMarble) shaftMat.flatShading = true;
         if (!isMarble) { // glowing accent orb crowns non-marble stone columns
             const orb = new THREE.Mesh(new THREE.SphereGeometry(ob.r * 0.55, 12, 12), new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.9 }));
             orb.position.y = colH + ob.r * 0.5; group.add(orb);
@@ -4535,6 +4753,18 @@ function buildPlatformMesh(p, theme) {
     slab.castShadow = true; slab.receiveShadow = true;
     group.add(slab);
 
+    // A PLINTH and a COPING, in the wall's own material. The platform stops
+    // being a box: the base flares into the floor, and the top overhangs by 4
+    // units, which throws a shadow line along every edge and gives the accent
+    // trim something to sit on rather than float above.
+    const capMat = getCachedMaterial('platCap:' + theme.id, () => new THREE.MeshStandardMaterial({
+        color: theme.capColor, roughness: 0.82, metalness: metalish ? 0.35 : 0.03,
+    }));
+    if (p.height > 18) {   // a kerb-height platform has no room for both
+        group.add(edgeBand(p.hw * 2, p.hd * 2, 7, 3.5, 5, capMat));
+    }
+    group.add(edgeBand(p.hw * 2, p.hd * 2, 6, p.height - 3, 4, capMat));
+
     const trim = new THREE.Mesh(
         new THREE.BoxGeometry(p.hw * 2 + 3, 3, p.hd * 2 + 3),
         new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.7 })
@@ -4557,6 +4787,15 @@ function buildStepMesh(t, theme) {
     slab.position.y = t.height / 2;
     slab.castShadow = true; slab.receiveShadow = true;
     group.add(slab);
+
+    // A NOSING - the overhanging lip on the front of a real stair tread. On a
+    // step this is the whole difference between "a block" and "a stair": the
+    // lip catches the light while the riser below it falls into shadow, which
+    // is also what makes the step READABLE as something you can walk up.
+    group.add(edgeBand(t.hw * 2, t.hd * 2, 3, Math.max(6, t.height) - 1.5, 2.5,
+        getCachedMaterial('stepNose:' + theme.id, () => new THREE.MeshStandardMaterial({
+            color: theme.capColor, roughness: 0.8,
+        }))));
 
     const trim = new THREE.Mesh(
         new THREE.BoxGeometry(t.hw * 2 + 1.5, 1.5, t.hd * 2 + 1.5),
@@ -4669,6 +4908,21 @@ function buildOuterWall(side, theme) {
     const cap = new THREE.Mesh(new THREE.BoxGeometry(along, 12, thick + 8), capMat);
     cap.position.y = WALL_HEIGHT + 6; cap.castShadow = true;
     group.add(cap);
+    // A PLINTH at the floor and a STRINGCOURSE two thirds up. Both are
+    // children of the wall group, so `group.scale.x` shrinks their run with
+    // everything else when the arena collapses - which is why they are built
+    // at the full base length like the body is, and not positioned in world
+    // space.
+    //
+    // The stringcourse does real work beyond decoration: a 260-unit wall with
+    // one texture and no horizontal break has no sense of scale, and a band at
+    // eye-ish height is what tells you how tall it is.
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(along, 26, thick + 12), capMat);
+    plinth.position.y = 13; plinth.castShadow = plinth.receiveShadow = true;
+    group.add(plinth);
+    const course = new THREE.Mesh(new THREE.BoxGeometry(along, 9, thick + 9), capMat);
+    course.position.y = WALL_HEIGHT * 0.62; course.castShadow = true;
+    group.add(course);
     const topY = WALL_HEIGHT + 12;
     const N = Math.max(4, Math.round(along / 90));
     const seg = along / N;
@@ -4837,6 +5091,10 @@ function buildCrate(accent) {
     const box = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), woodMat);
     box.position.y = size / 2; box.castShadow = true; box.receiveShadow = true;
     g.add(box);
+    // A lid rim, overhanging like every other edge in this pass. It is what
+    // makes the crate look assembled rather than solid.
+    g.add(edgeBand(size, size, 3.5, size - 1.75, 1.6,
+        getCachedMaterial('crateLid', () => new THREE.MeshStandardMaterial({ color: 0x84562f, roughness: 0.85 }))));
     const frameMat = getCachedMaterial('crateFrame', () => new THREE.MeshStandardMaterial({ color: 0x6b4522, roughness: 0.8 }));
     for (const sy of [size * 0.5]) { // corner battens
         for (const [ex, ez] of [[0.5, 0.5], [-0.5, 0.5], [0.5, -0.5], [-0.5, -0.5]]) {
@@ -4849,9 +5107,15 @@ function buildCrate(accent) {
 function buildBarrel(accent) {
     const g = new THREE.Group();
     const h = 36, r = 15;
-    const woodMat = getCachedMaterial('barrelWood', () => new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 0.82 }));
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.85, h, 14), woodMat);
-    body.position.y = h / 2; body.castShadow = true; body.receiveShadow = true; g.add(body);
+    // A TURNED profile rather than a tapered cylinder: a barrel bulges at the
+    // middle and closes at both ends, and that silhouette is the whole reason
+    // you read it as a barrel. Flat-shaded so the 14 facets are staves.
+    const woodMat = getCachedMaterial('barrelWood', () => new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 0.82, flatShading: true }));
+    const body = new THREE.Mesh(lathe([
+        [r * 0.78, 0], [r * 0.95, h * 0.16], [r, h * 0.5],
+        [r * 0.95, h * 0.84], [r * 0.78, h], [0, h],
+    ], 14), woodMat);
+    body.castShadow = true; body.receiveShadow = true; g.add(body);
     const bandMat = getCachedMaterial('barrelBand', () => new THREE.MeshStandardMaterial({ color: 0x3f3a33, metalness: 0.6, roughness: 0.4 }));
     for (const by of [h * 0.22, h * 0.78]) {
         const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.02, r * 1.02, 3, 14), bandMat);
@@ -4862,10 +5126,14 @@ function buildBarrel(accent) {
 function buildUrn(accent) {
     const g = new THREE.Group();
     const mat = getCachedMaterial(`urnMat:${accent}`, () => new THREE.MeshStandardMaterial({ color: 0xcdbb95, roughness: 0.7, metalness: 0.05 }));
-    const body = new THREE.Mesh(new THREE.SphereGeometry(15, 14, 12), mat);
-    body.scale.y = 1.5; body.position.y = 20; body.castShadow = true; g.add(body);
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(7, 10, 8, 12), mat);
-    neck.position.y = 40; g.add(neck);
+    // One turned profile for the whole amphora - foot, belly, shoulder, neck
+    // and lip - instead of a squashed sphere with a cone stuck on top. A single
+    // surface also means no seam where the neck used to meet the body.
+    const body = new THREE.Mesh(lathe([
+        [7, 0], [9, 3], [6, 7], [13, 16], [15.5, 26], [13, 36],
+        [8, 41], [7.2, 44], [9.5, 46], [8.6, 47.5], [0, 47.5],
+    ], 18), mat);
+    body.castShadow = true; body.receiveShadow = true; g.add(body);
     const accMat = getCachedMaterial(`urnAcc:${accent}`, () => new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.4 }));
     const ring = new THREE.Mesh(new THREE.TorusGeometry(11, 1.6, 6, 14), accMat);
     ring.rotation.x = Math.PI / 2; ring.position.y = 26; g.add(ring);
@@ -4876,8 +5144,12 @@ function buildBrazier(accent) {
     const stoneMat = getCachedMaterial('brazierStone', () => new THREE.MeshStandardMaterial({ color: 0x8a7c60, roughness: 0.9 }));
     const stand = new THREE.Mesh(new THREE.CylinderGeometry(6, 10, 40, 10), stoneMat);
     stand.position.y = 20; stand.castShadow = true; g.add(stand);
-    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(15, 9, 12, 12), stoneMat);
-    bowl.position.y = 44; bowl.castShadow = true; g.add(bowl);
+    // A turned bowl with a rim and a hollow, so the flame sits IN it rather
+    // than on top of a tapered disc.
+    const bowl = new THREE.Mesh(lathe([
+        [8, 38], [15, 46], [16.5, 50], [14.5, 50], [13, 46.5], [7, 40], [0, 40],
+    ], 14), stoneMat);
+    bowl.castShadow = true; g.add(bowl);
     const flameMat = new THREE.MeshBasicMaterial({ color: 0xffa53c, transparent: true, opacity: 0.95, fog: false });
     const flame = new THREE.Mesh(new THREE.ConeGeometry(9, 26, 10), flameMat);
     flame.position.y = 60; g.add(flame);
@@ -9096,30 +9368,10 @@ function buildHollowkinMesh(color) {
 // a file:// origin where XHR is blocked, a missing asset - charModels stays
 // empty, buildRiggedCharacter() returns null, and initMesh() falls back to the
 // primitive builder. The game must never fail to start over art.
-const CHAR_MODEL_URLS = {
-    // Batch 35: the whole roster, generated with Hyper3D Rodin and rigged by
-    // art/pipeline.py (see art/generate_chars.py and art/build_headless.py).
-    // These are fetched ON DEMAND, not at boot - fourteen models is ~29 MB
-    // and a match needs two of them. See ensureCharModel.
-    Kaelen: 'assets/chars/kaelen.glb',
-    Lyra: 'assets/chars/lyra.glb',
-    Gorgonok: 'assets/chars/gorgonok.glb',
-    Voss: 'assets/chars/voss.glb',
-    Draven: 'assets/chars/draven.glb',
-    Seraphine: 'assets/chars/seraphine.glb',
-    Nyx: 'assets/chars/nyx.glb',
-    Ignis: 'assets/chars/ignis.glb',
-    Aurelia: 'assets/chars/aurelia.glb',
-    Thorne: 'assets/chars/thorne.glb',
-    Grint: 'assets/chars/grint.glb',
-    Slagling: 'assets/chars/slagling.glb',
-    Hollowkin: 'assets/chars/hollowkin.glb',
-    Karrigos: 'assets/chars/karrigos.glb',
-};
+
 // Total height in world units that a loaded model is scaled to. The procedural
 // rig stands about this tall (hipY 15 + torsoH 20 + head ~13) and EYE_HEIGHT is
 // 46, so matching it keeps cameras, muzzle heights and hitboxes valid.
-const RIG_TARGET_HEIGHT = 50;
 // Batch 34: per-character size, so a rigged Karrigos is not the same height as
 // a rigged Grint.
 //
@@ -9147,13 +9399,7 @@ const RIG_TARGET_HEIGHT = 50;
 // back toward the hand.
 const PROP_OFFSET_MAX = 6;
 
-const RIG_HEIGHT_MULT = {
-    Karrigos: 1.5,
-    Grint: 0.72,
-    Slagling: 0.86,
-    Hollowkin: 1.08,
-};
-function rigHeightFor(name) { return RIG_TARGET_HEIGHT * (RIG_HEIGHT_MULT[name] || 1); }
+
 const charModels = {};        // name -> { scene, animations, height }
 let charModelsLoaded = 0, charModelsFailed = 0;
 let modelsReady = null;       // Promise, resolved once every load has settled
@@ -9965,7 +10211,7 @@ function pickKeyHint() {
 // The accent colour stays as the border and glow - it is how a fighter is
 // identified everywhere else - and stays as the FALLBACK fill, so a missing
 // portrait file degrades to exactly the old behaviour instead of a blank hole.
-function faceUrl(name) { return 'assets/faces/' + String(name).toLowerCase() + '.png'; }
+function faceUrl(name) { return AC_ASSET_BASE + 'faces/' + String(name).toLowerCase() + '.png'; }
 
 function paintSlotPortrait(el, name) {
     if (!el) return;
@@ -12939,6 +13185,13 @@ if (DEBUG) {
         get crushScene() { return crushScene; },
         get crushCam() { return crushCam; },
         PROC_MESH_BUILDERS, buildRiggedCharacter,
+        // Batch 45: the environment and bloom, for artcheck.
+        get skyTexCanvas() { return skyTexCanvas; },
+        get sceneEnvironment() { return scene.environment; },
+        get bloomEnabled() { return bloomEnabled; },
+        get bloomPass() { return bloomPass; },
+        toggleBloom, ensureComposer,
+        BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD,
         setShrinkTimer(v) { shrinkTimer = v; },
         get shrinkFrac() { return shrinkFrac; },
         get crushing() { return crushing; },

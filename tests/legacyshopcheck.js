@@ -139,6 +139,40 @@ const H = require('./harness');
         legacyFp.chars.length > 200 && /Tectonic Brute/.test(legacyFp.chars),
         legacyFp.chars.slice(0, 120));
 
+    // Paths, not just values: AC_ASSET_BASE is resolved from the shared file's
+    // own script URL, and the two builds are served from different depths. A
+    // fingerprint comparison would pass with both of them pointing at nothing,
+    // so both pages are asked to actually FETCH an asset.
+    section('Both builds can fetch their assets from the shared base:');
+    const reach = (p) => p.evaluate(async () => {
+        const out = { base: AC_ASSET_BASE, results: {} };
+        for (const [label, url] of [
+            ['model', CHAR_MODEL_URLS.Kaelen],
+            // faceUrl lives inside bootGame() in both builds, so it is not a
+            // global to call from here - the base is what this is testing.
+            ['face', AC_ASSET_BASE + 'faces/kaelen.png'],
+        ]) {
+            try {
+                const r = await fetch(url, { method: 'GET' });
+                out.results[label] = r.status + ' ' + (r.ok ? 'ok' : 'FAIL') + ' ' + url;
+            } catch (e) {
+                out.results[label] = 'threw: ' + e.message + ' ' + url;
+            }
+        }
+        return out;
+    });
+    const legacyReach = await reach(page);
+    const onlineReach = await reach(onlinePage);
+    for (const [label, r] of [['archived', legacyReach], ['online', onlineReach]]) {
+        check(`${label}: the character model is reachable`,
+            /200 ok/.test(r.results.model), JSON.stringify(r));
+        check(`${label}: so is the portrait`,
+            /200 ok/.test(r.results.face), JSON.stringify(r.results.face));
+    }
+    check('and both resolved the SAME absolute base',
+        legacyReach.base === onlineReach.base,
+        JSON.stringify({ archived: legacyReach.base, online: onlineReach.base }));
+
     section('The canonical-URL redirect does not fire on a local host:');
     const url = page.url();
     check('still on the legacy path, not sent to a /local that is not served here',

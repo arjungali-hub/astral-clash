@@ -480,11 +480,9 @@ def main():
                  lambda m: "hudCtx.font = announceFont(%s, 500);" % m.group(1), dst)
     print('  %-34s %d -> %d' % ('canvas announcement fonts', n, dst.count('px sans-serif')))
 
-    # ------------------------------------------------------ character roster
-    roster = block(src, "const CHAR_MODEL_URLS = {", "const charModels = {}", 'roster')
-    roster = roster.replace("'assets/chars/", "'../assets/chars/")
-    old_roster = block(dst, "const CHAR_MODEL_URLS = {", "const charModels = {}", 'legacy roster')
-    dst = rep(dst, old_roster, roster, 'CHAR_MODEL_URLS + RIG_HEIGHT_MULT', required=False)
+    # The CHAR_MODEL_URLS step is GONE: the table and its paths are shared now
+    # (see AC_ASSET_BASE in shared/roster.js). It was the last thing ported for
+    # data reasons.
 
     # The rig scale is per character now.
     dst = rep(dst, "    inner.scale.setScalar(RIG_TARGET_HEIGHT / m.height);",
@@ -526,6 +524,15 @@ def main():
             # further down the file.
             ("// --- Batch 17: Karrigos, the Hollow Titan (co-op boss).", "\n});", True),
             ("const FRAME_DATA = {", "\nconst DODGE_DIST", False),
+            # Asset paths too, now that AC_ASSET_BASE resolves them from the
+            # shared file's own URL. This was the LAST table ported for data
+            # reasons, and it only existed because the two builds sit at
+            # different depths.
+            ("const CHAR_MODEL_URLS = {", "\n};", True),
+            ("const RIG_TARGET_HEIGHT = 50;", "\n", True),
+            ("const RIG_HEIGHT_MULT = {",
+             "function rigHeightFor(name) { return RIG_TARGET_HEIGHT * (RIG_HEIGHT_MULT[name] || 1); }",
+             True),
         ]
         for start, end, keep_end in regions:
             assert dst.count(start) == 1, 'shared cut %r: %d' % (start[:50], dst.count(start))
@@ -543,7 +550,17 @@ def main():
                       '<script src="../shared/roster.js"></script>\n'
                       '<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"',
                       'shared roster script tag (cdn anchor)')
-        print('  %-34s ok' % 'shared/roster.js replaces 4 steps')
+        # The two remaining '../assets/' literals become base-relative, so the
+        # archived build stops caring what directory it is served from - which
+        # matters because /local is a rewrite and its document URL is not in
+        # legacy/ at all.
+        dst = rep(dst, "const PHOTO_BASE = '../assets/tex/';",
+                  "const PHOTO_BASE = AC_ASSET_BASE + 'tex/';   // see shared/roster.js",
+                  'photo base from AC_ASSET_BASE', required=False)
+        dst = rep(dst, "function faceUrl(name) { return '../assets/faces/' + String(name).toLowerCase() + '.png'; }",
+                  "function faceUrl(name) { return AC_ASSET_BASE + 'faces/' + String(name).toLowerCase() + '.png'; }",
+                  'face url from AC_ASSET_BASE', required=False)
+        print('  %-34s ok' % 'shared/roster.js replaces 5 steps')
 
     # ------------------------------------------------ photographic surfaces
     photo = block(src, "// ===========================================================================\n"
@@ -772,7 +789,7 @@ if (location.protocol === 'https:'
         'const MAX_WALK_STEP_UP = 12;', 'const GRACE_PERIOD = 40;',
         # ...and the shared module itself, which replaced every step that used
         # to copy the roster and the economy across.
-        'shared/roster.js',
+        'shared/roster.js', 'AC_ASSET_BASE',
         # Gameplay + visuals, widened scope.
         'id="desktop-only"', 'This version needs a computer',
         'function buildViewmodelArmFromModel(', 'function _skelBone(',
@@ -786,7 +803,10 @@ if (location.protocol === 'https:'
         'function ensureUV2(', 'function loadPhotoSet(',
         'function tiledPhotoTexture(', 'function accentEmissiveTexture(',
         'function fitKeyShadow(', 'const HUD_FAMILY', 'function announceFont(',
-        'const RIG_HEIGHT_MULT', 'function rigHeightFor(',
+        # RIG_HEIGHT_MULT and rigHeightFor moved to shared/roster.js, where
+        # SHARED_REQUIRED below checks them instead - a definition that is
+        # supposed to be shared must NOT be found in this file, or it is
+        # shadowing the shared one.
         'const derivedTextureCache',
         # Co-op down and respawn, the two-sided shop, the canonical URL.
         'const COOP_RESPAWN_FRAMES', 'function coopDown(', 'function coopRevive(',
@@ -795,22 +815,39 @@ if (location.protocol === 'https:'
         'function syncShopPanels(', "const CANONICAL_PATH = '/local';",
     ]
     CALLED = ['getTiledWallTexture', 'attachPhotoSurface', 'attachAccentGlow',
-              'ensureUV2', 'fitKeyShadow', 'announceFont', 'rigHeightFor',
+              'ensureUV2', 'fitKeyShadow', 'announceFont',
               'loadPhotoSet', 'tiledPhotoTexture', 'accentEmissiveTexture',
               'coopDown', 'coopRevive', 'drawCoopDownHUD', 'syncShopPanels',
               'closeShopSide']
+    # What must live in shared/roster.js, and must NOT be re-declared here. A
+    # local copy would shadow the shared binding and silently restore exactly
+    # the drift this file stopped porting around.
+    SHARED_REQUIRED = [
+        'const CHARACTERS = [', 'const FRAME_DATA = {', 'const BOSS_MAP = {}',
+        'const CHAR_MODEL_URLS = {', 'const RIG_HEIGHT_MULT', 'function rigHeightFor(',
+        'const AC_ASSET_BASE', 'const UNLOCK_COST', 'const COIN_AWARDS',
+    ]
+    shared_src = io.open(os.path.join(ROOT, 'shared', 'roster.js'), encoding='utf-8').read()
+    shared_missing = [d for d in SHARED_REQUIRED if d not in shared_src]
+    shadowed = [d for d in SHARED_REQUIRED if d in dst]
+
     missing = [d for d in REQUIRED if d not in dst]
     undefined = [c for c in CALLED
                  if ('function %s(' % c) not in dst and ('const %s' % c) not in dst]
-    if missing or undefined:
+    if missing or undefined or shared_missing or shadowed:
         print('')
         print('PORT INCOMPLETE - refusing to write:')
         for m in missing:
             print('   missing definition: ' + m)
         for u in undefined:
             print('   called but never defined: ' + u)
+        for m in shared_missing:
+            print('   missing from shared/roster.js: ' + m)
+        for d in shadowed:
+            print('   SHADOWS the shared definition (must be removed here): ' + d)
         return 1
-    print('  %-34s %d definitions, %d calls resolved' % ('verified', len(REQUIRED), len(CALLED)))
+    print('  %-34s %d local, %d shared, %d calls resolved'
+          % ('verified', len(REQUIRED), len(SHARED_REQUIRED), len(CALLED)))
 
     io.open(DST, 'w', encoding='utf-8', newline='').write(dst)
     print('\nlegacy build: %d -> %d bytes' % (before, len(dst)))

@@ -93,14 +93,47 @@ const H = require('./harness');
     check('normal and ORM are Linear, never sRGB',
         big.every(x => x.normalEncoding === LINEAR && x.ormEncoding === LINEAR),
         JSON.stringify(big.map(x => [x.normalEncoding, x.ormEncoding]).slice(0, 4)));
-    // A fully metallic surface has no diffuse term, so with only a dim sky
-    // PMREM for an environment it renders near-black. This bit twice.
-    check('metalness is capped so the key light can still light a wall',
-        big.every(x => x.metalness <= 0.6),
+    // A fully metallic surface has no diffuse term, so what it looks like is
+    // entirely decided by the environment. These two assertions are a PAIR, and
+    // Batch 45 moved both of them deliberately.
+    //
+    // They used to read "metalness <= 0.6" and "envMapIntensity >= 1.2",
+    // encoding a compensation: the environment was a PMREM of a 16-pixel-wide
+    // vertical gradient - no sun, no ground, one hue - so metals had nothing to
+    // reflect and had to be faked with extra diffuse and a 1.8x env lift. The
+    // sky canvas is a real 256x128 equirectangular now, so the compensation is
+    // gone and the values it produced would be wrong to keep asserting.
+    check('metalness is still capped short of fully metallic',
+        big.every(x => x.metalness <= 0.8),
         JSON.stringify(big.map(x => x.metalness).slice(0, 4)));
-    check('the environment contribution is lifted above 1',
-        big.every(x => x.envIntensity >= 1.2),
+    check('and the environment is no longer being ARTIFICIALLY lifted',
+        big.every(x => x.envIntensity > 0 && x.envIntensity <= 1.2),
         JSON.stringify(big.map(x => x.envIntensity).slice(0, 4)));
+
+    section('The environment map is directional, which is what lets metal be metal:');
+    const env = await page.evaluate(() => {
+        const cv = window.ACDebug.skyTexCanvas;
+        if (!cv) return { missing: true };
+        const g = cv.getContext('2d');
+        // Sample a band at the sun's own elevation. A vertical gradient is the
+        // SAME at every x; an equirect with a sun in it is not, and that
+        // difference IS the directionality.
+        const y = Math.round(cv.height * 0.32);
+        const row = g.getImageData(0, y, cv.width, 1).data;
+        let min = 999, max = -1;
+        for (let x = 0; x < cv.width; x++) {
+            const l = row[x * 4] + row[x * 4 + 1] + row[x * 4 + 2];
+            if (l < min) min = l;
+            if (l > max) max = l;
+        }
+        return { w: cv.width, h: cv.height, min, max, spread: max - min,
+                 hasEnv: !!window.ACDebug.sceneEnvironment };
+    });
+    check('the sky texture is equirectangular, not a one-pixel-wide strip',
+        env.w >= 128 && env.w > env.h, JSON.stringify(env));
+    check('and it varies along the horizon - there is a sun in it',
+        env.spread > 30, JSON.stringify(env));
+    check('scene.environment is built from it', env.hasEnv === true, JSON.stringify(env));
 
     section('Every arena keeps its own identity:');
     check('the accent glow survives as an emissive overlay',

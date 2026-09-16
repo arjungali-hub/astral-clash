@@ -58,7 +58,17 @@ const H = require('./harness');
         // a broken mode: the match arrived correctly, just after the wait gave
         // up. Attributing it to the mode would have been wrong.
         const extraModels = mode === 'survival' ? 4 : mode === 'boss' ? 1 : 0;
-        const budget = 30000 + extraModels * 20000;
+        // Batch 45: +20s across the board, because BLOOM made every frame more
+        // expensive and this harness renders through swiftshader. The failure
+        // it caused was honest and worth recording: classic and timeattack
+        // reported `state: "INTRO"` - the match started fine, but the drop
+        // cinematic is frame-paced, so a slower renderer stretches it in
+        // wall-clock time and the wait expired mid-intro.
+        //
+        // Not a reason to turn bloom off: five extra full-screen passes on a
+        // software rasteriser is not evidence about a real GPU. It IS a reason
+        // the effect has a settings toggle.
+        const budget = 50000 + extraModels * 20000;
         const reached = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", budget);
         const st = await page.evaluate(() => {
             const D = window.ACDebug;

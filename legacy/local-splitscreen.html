@@ -3527,7 +3527,7 @@ const PHOTO_SETS = {
     },
 };
 
-const PHOTO_BASE = '../assets/tex/';
+const PHOTO_BASE = AC_ASSET_BASE + 'tex/';   // see shared/roster.js
 let _photoLoader = null;
 const _photoSetPromises = {};    // setId -> Promise<{map, nor, orm} | null>
 const _photoTiled = {};          // "setId:slot:rx x ry" -> THREE.Texture
@@ -8355,30 +8355,10 @@ function buildHollowkinMesh(color) {
 // a file:// origin where XHR is blocked, a missing asset - charModels stays
 // empty, buildRiggedCharacter() returns null, and initMesh() falls back to the
 // primitive builder. The game must never fail to start over art.
-const CHAR_MODEL_URLS = {
-    // Batch 35: the whole roster, generated with Hyper3D Rodin and rigged by
-    // art/pipeline.py (see art/generate_chars.py and art/build_headless.py).
-    // These are fetched ON DEMAND, not at boot - fourteen models is ~29 MB
-    // and a match needs two of them. See ensureCharModel.
-    Kaelen: '../assets/chars/kaelen.glb',
-    Lyra: '../assets/chars/lyra.glb',
-    Gorgonok: '../assets/chars/gorgonok.glb',
-    Voss: '../assets/chars/voss.glb',
-    Draven: '../assets/chars/draven.glb',
-    Seraphine: '../assets/chars/seraphine.glb',
-    Nyx: '../assets/chars/nyx.glb',
-    Ignis: '../assets/chars/ignis.glb',
-    Aurelia: '../assets/chars/aurelia.glb',
-    Thorne: '../assets/chars/thorne.glb',
-    Grint: '../assets/chars/grint.glb',
-    Slagling: '../assets/chars/slagling.glb',
-    Hollowkin: '../assets/chars/hollowkin.glb',
-    Karrigos: '../assets/chars/karrigos.glb',
-};
+
 // Total height in world units that a loaded model is scaled to. The procedural
 // rig stands about this tall (hipY 15 + torsoH 20 + head ~13) and EYE_HEIGHT is
 // 46, so matching it keeps cameras, muzzle heights and hitboxes valid.
-const RIG_TARGET_HEIGHT = 50;
 // Batch 34: per-character size, so a rigged Karrigos is not the same height as
 // a rigged Grint.
 //
@@ -8406,13 +8386,7 @@ const RIG_TARGET_HEIGHT = 50;
 // back toward the hand.
 const PROP_OFFSET_MAX = 6;
 
-const RIG_HEIGHT_MULT = {
-    Karrigos: 1.5,
-    Grint: 0.72,
-    Slagling: 0.86,
-    Hollowkin: 1.08,
-};
-function rigHeightFor(name) { return RIG_TARGET_HEIGHT * (RIG_HEIGHT_MULT[name] || 1); }
+
 const charModels = {};        // name -> { scene, animations, height }
 let charModelsLoaded = 0, charModelsFailed = 0;
 let modelsReady = null;       // Promise, resolved once every load has settled
@@ -8973,7 +8947,7 @@ refreshBotUI('p1'); refreshBotUI('p2');
 // The accent colour stays as the border and glow - it is how a fighter is
 // identified everywhere else - and stays as the FALLBACK fill, so a missing
 // portrait file degrades to exactly the old behaviour instead of a blank hole.
-function faceUrl(name) { return '../assets/faces/' + String(name).toLowerCase() + '.png'; }
+function faceUrl(name) { return AC_ASSET_BASE + 'faces/' + String(name).toLowerCase() + '.png'; }
 
 function buildGrid(gridId, keyList, side) {
     const grid = document.getElementById(gridId);

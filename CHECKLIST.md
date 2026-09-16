@@ -2142,3 +2142,143 @@ working page into a 404.
 
 **Still pending**: the arena GEOMETRY redesign from `docs/arena-art-plan.md`,
 and the next slice of sharing (asset paths, then the pure-function art helpers).
+
+---
+
+## Batch 45 - The arena geometry pass, a real environment, and bloom
+
+Everything docs/arena-art-plan.md still listed as "still to do", plus the next
+slice of shared code.
+
+### Asset paths are shared, by having the shared file locate itself
+
+The last table `art/port_to_legacy.py` copied for data reasons was
+`CHAR_MODEL_URLS`, and only because the two builds sit at different depths:
+`assets/chars/...` from the repo root, `../assets/chars/...` from `legacy/`.
+
+`document.currentScript.src` tells a classic script where it was loaded from,
+and `assets/` is a sibling of `shared/`, so:
+
+```js
+const AC_ASSET_BASE = new URL('../assets/', document.currentScript.src).href;
+```
+
+One absolute base, resolved once, correct for both builds. That also removes an
+accident: the archived build's `../assets/x` is written for its own directory,
+but `/local` is a Vercel **rewrite**, so that path climbs above the root and
+only worked because browsers clamp it.
+
+`legacyshopcheck` now makes both pages **fetch** a model and a portrait, because
+a fingerprint comparison passes just as happily with both builds pointing at
+nothing.
+
+### Arena geometry: edges, column profiles, turned props
+
+Batches 34-35 re-*surfaced* the arenas and left them as the primitives they
+started as - every wall, platform and step a `BoxGeometry`, so every edge is a
+hard 90 degrees that catches the key light identically. That is most of what
+still read as programmer art under photographic textures.
+
+**Not a chamfered box, and the reason is UVs.** r128 can bevel via
+`ExtrudeGeometry`, but its `WorldUVGenerator` emits UVs in *shape units* - a
+200-unit platform carrying a texture at repeat 4 would tile it 800 times. The
+tuned tiling density is the best-looking thing in the game. So the profile is
+built the way masonry actually is, with an **overhanging plinth and coping**:
+the same shadow line a chamfer implies, no UV work, one extra mesh.
+
+- **Platforms** get a plinth and a coping; the emissive accent trim now sits on
+  something instead of floating above it.
+- **Steps** get a **nosing** - the overhanging lip on a real stair tread, which
+  is also what makes a step read as walkable rather than as a block.
+- **Outer walls** get a plinth and a **stringcourse** two thirds up. Both are
+  children of the wall group, so `group.scale.x` still shrinks them during the
+  collapse. The band does real work: a 260-unit wall with one texture and no
+  horizontal break has no sense of scale.
+- **Columns** get the full classical profile - plinth, torus collar, shaft,
+  collar, capital, **abacus**. Marble shafts get `flatShading`, which on a
+  20-sided cylinder reads as **flutes** for the cost of one material flag.
+- **Props** are turned on a lathe instead of stacked: the barrel bulges and
+  closes (flat-shaded, so the facets are staves), the urn is one amphora
+  profile from foot to lip with no seam where a cone used to meet a sphere, and
+  the brazier bowl has a rim and a hollow so the flame sits *in* it.
+
+Collision is untouched - `OBSTACLES`, `PLATFORMS` and `TERRAIN` are the same
+data, so the rotational symmetry and reachability `mapscheck` verified in Batch
+26 are unchanged, and no new lights exist (Batch 30: changing the light count
+recompiles every material).
+
+**Props stay procedural rather than downloaded, deliberately.** The plan
+suggested PolyHaven models; PolyHaven's model library is small, the props would
+need per-theme variants (a wooden crate in a glacier), and every one is asset
+weight on a page that already fetches 2 MB per fighter. Lathe profiles got the
+silhouette improvement that was the actual goal.
+
+### A real environment, which is what the HDRI item was really asking for
+
+The plan asked for a 1k `.hdr` because the PMREM is "dim and mostly one hue".
+The cause was more specific than the format: the sky canvas was **16x256** - a
+vertical gradient - so the environment had no sun and no azimuth, and lit every
+surface facing any horizontal direction identically. That is the flat look, and
+it is why Batch 34 had to cap metalness at 0.45 and lift `envMapIntensity` to
+1.8 to compensate.
+
+The canvas is a **256x128 equirectangular** now, with the three things that make
+an environment directional: a **sun disc** at the theme's own sun azimuth
+(computed from `theme.sun.pos`, so the specular highlight lands on the side the
+shadows fall away from), a **ground half** tinted by the map's floor, and a
+horizon. Drawn rather than downloaded, which keeps two things a single shared
+`.hdr` would have cost: **ten arenas keep ten skies**, and there is no 1.33 MB
+fetch that can fail or stall the first match.
+
+With that in place the compensations come off, and **the light rig was
+rebalanced** - which mattered more than any of it. Before: ambient 0.55 + hemi
+0.95 + fill 0.85 + a 1.8x env against a key of 2.1. Four nearly directionless
+sources against one directional one, which is exactly why every arena
+screenshot showed even, shadowless cardboard. Now ambient 0.18, hemi 0.42, fill
+0.4, env 1.0, metalness cap 0.7, exposure 1.1 -> 0.92.
+
+**The per-map overrides had to move too.** `applyLighting` runs on every map
+load and *assigns* `theme.hemi.int` and `theme.ambient.int`, so rebalancing only
+the declarations would have been undone a frame later - the same trap the fill
+light's Batch 34 override fell into. They are scaled, not replaced.
+
+`artcheck`'s two material assertions moved with it, deliberately: they used to
+assert `metalness <= 0.6` and `envMapIntensity >= 1.2`, which encoded the
+compensation. They now assert metalness is still short of fully metallic, that
+the env is **not** artificially lifted, and - new - that the sky texture is
+equirectangular and **varies along the horizon**, which is the property the
+whole change is about.
+
+### Bloom, reversing an earlier decision on purpose
+
+`index.html` recorded a decision *not* to add an `EffectComposer`, which is why
+`addRimOutline` uses an inverted hull. The reason was split-screen: a composer's
+full-screen quad passes ignore the outer scissor rect, so bloom needed one
+composer per half. Online play removed the second viewport.
+
+Three things that each cost a render cycle:
+
+1. **The load order is not the dependency order.** `EffectComposer.js` is what
+   *defines* `THREE.Pass`, and every other pass is `class X extends THREE.Pass`
+   - so listing `CopyShader`/`ShaderPass` first, as dependencies suggest, throws
+   "Class extends value undefined" and takes the whole page with it.
+2. **Encoding.** Rendering into a `WebGLRenderTarget` applies tone mapping but
+   *not* `renderer.outputEncoding`; the composer's final pass is a raw
+   full-screen quad, so linear values would land on screen and the game would
+   render pale. The composer is built with an **sRGB render target**, so
+   `RenderPass` produces exactly the pixels the direct path produced.
+3. **Tuning, done against screenshots.** At threshold 0.86 the pale arenas -
+   Voltaic Nexus' white walls, the Colosseum's marble - sat above it and the
+   whole frame glowed, which is bloom doing the one thing it must not: making a
+   bright *surface* look like a light *source*. 0.9, strength 0.55, with
+   exposure at 0.92, keeps it to the emissive rails, cores, flames and the sun.
+
+It is optional at every level: any missing vendor script falls back to
+`renderer.render`, and there is a **Glow: On/Off** setting following the
+HUD-scale button's idiom.
+
+`smoke`'s budget went up 20s, and that failure was worth recording: classic and
+timeattack reported `state: "INTRO"`, because the drop cinematic is frame-paced
+and five extra full-screen passes on a **software rasteriser** stretch it in
+wall-clock time. Not evidence about a real GPU - but it is why the toggle
+exists.

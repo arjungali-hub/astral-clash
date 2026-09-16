@@ -23,6 +23,27 @@
 //      The renderer, input model, HUD layout and netcode are genuinely
 //      different and stay forked - see the Batch 25 note in port_to_legacy.py.
 
+// WHERE THE ASSETS ARE, resolved from where THIS FILE is.
+//
+// The two builds sit at different depths - index.html at the repo root,
+// legacy/local-splitscreen.html one directory down - so every asset path used
+// to be written twice and rewritten by the port script. A script knows its own
+// URL, and assets/ is a sibling of shared/, so one absolute base serves both
+// and neither build needs to be told anything.
+//
+// It also removes an accident. The archived build's `../assets/x` is written
+// for its own directory, but /local is a Vercel REWRITE: the document URL is
+// `/local`, so that path climbs above the root and only works because browsers
+// clamp it. An absolute base is correct at every path a rewrite can invent.
+const AC_ASSET_BASE = (function () {
+    var self = document.currentScript && document.currentScript.src;
+    // No currentScript means this was not loaded as a normal script tag (an
+    // eval, a bundler, a test harness): fall back to a root-relative path,
+    // which is right for the online build and the served archive alike.
+    if (!self) return '/assets/';
+    return new URL('../assets/', self).href;
+})();
+
 // Three starters spanning the three archetypes a new player needs to feel
 // out the game: a balanced melee duelist, a ranged caster, and a tank.
 const STARTER_CHARS = ['Kaelen', 'Lyra', 'Draven'];
@@ -296,3 +317,34 @@ const FRAME_DATA = {
 // hitstun stretch this to roughly a 5-15s band. That's why Arena Collapse
 // was retuned to first-crush ~56s (see its constants block): it only ever
 // bites a genuinely stalled round. Reasoned, not playtested.
+
+const RIG_TARGET_HEIGHT = 50;
+
+const CHAR_MODEL_URLS = {
+    // Batch 35: the whole roster, generated with Hyper3D Rodin and rigged by
+    // art/pipeline.py (see art/generate_chars.py and art/build_headless.py).
+    // These are fetched ON DEMAND, not at boot - fourteen models is ~29 MB
+    // and a match needs two of them. See ensureCharModel.
+    Kaelen: AC_ASSET_BASE + 'chars/kaelen.glb',
+    Lyra: AC_ASSET_BASE + 'chars/lyra.glb',
+    Gorgonok: AC_ASSET_BASE + 'chars/gorgonok.glb',
+    Voss: AC_ASSET_BASE + 'chars/voss.glb',
+    Draven: AC_ASSET_BASE + 'chars/draven.glb',
+    Seraphine: AC_ASSET_BASE + 'chars/seraphine.glb',
+    Nyx: AC_ASSET_BASE + 'chars/nyx.glb',
+    Ignis: AC_ASSET_BASE + 'chars/ignis.glb',
+    Aurelia: AC_ASSET_BASE + 'chars/aurelia.glb',
+    Thorne: AC_ASSET_BASE + 'chars/thorne.glb',
+    Grint: AC_ASSET_BASE + 'chars/grint.glb',
+    Slagling: AC_ASSET_BASE + 'chars/slagling.glb',
+    Hollowkin: AC_ASSET_BASE + 'chars/hollowkin.glb',
+    Karrigos: AC_ASSET_BASE + 'chars/karrigos.glb',
+};
+
+const RIG_HEIGHT_MULT = {
+    Karrigos: 1.5,
+    Grint: 0.72,
+    Slagling: 0.86,
+    Hollowkin: 1.08,
+};
+function rigHeightFor(name) { return RIG_TARGET_HEIGHT * (RIG_HEIGHT_MULT[name] || 1); }
