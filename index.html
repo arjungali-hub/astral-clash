@@ -358,8 +358,7 @@
         }
         .picker-panel h3 { margin: 0 0 10px; font-size: 1rem; }
         .sandbox-banner {
-            width: min(880px, 94vw); margin: 0 auto 10px; padding: 7px 10px;
-            box-sizing: border-box; text-align: center; border-radius: 8px;
+            padding: 5px 10px; border-radius: 999px; white-space: nowrap;
             background: rgba(168, 85, 247, 0.14); border: 1px solid #a855f7;
             color: #d8b4fe; font-size: 0.74rem; font-weight: bold;
             letter-spacing: 0.04em; text-transform: uppercase;
@@ -1095,6 +1094,12 @@
                             <input id="room-code-text" class="room-code-text" readonly>
                             <button id="btn-room-copy" class="lobby-copy">Copy</button>
                         </span>
+                        <!-- With the room code rather than between the lobby
+                             cards and the picker: it is a property of THIS
+                             room, and both players read this bar. -->
+                        <span id="sandbox-banner" class="sandbox-banner" style="display:none;">
+                            Sandbox &mdash; all unlocked, no coins
+                        </span>
                     </div>
                     <button id="btn-room-leave" class="btn-back">Leave Room</button>
                 </div>
@@ -1120,12 +1125,6 @@
                         <div class="pslot-name" id="slot-foe-name">Waiting...</div>
                         <div class="pslot-state" id="slot-foe-state">Not connected</div>
                     </div>
-                </div>
-                <!-- Visible to BOTH players, which is the point: a sandbox that
-                     only the host can see is just a host secretly not paying
-                     out. -->
-                <div id="sandbox-banner" class="sandbox-banner" style="display:none;">
-                    Sandbox match &mdash; every fighter unlocked, fully upgraded, no coins earned
                 </div>
                 <div class="room-main">
                     <div class="menu-section picker-panel">
@@ -1495,6 +1494,12 @@ function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
     const canvas = document.getElementById('gameCanvas');
 const hudCanvas = document.getElementById('hudCanvas');
+// Whether the HUD canvas currently holds a match frame. A canvas KEEPS its
+// pixels, and drawHUD's clearRect is the only thing that clears this one - so
+// leaving a match left the last HUD on screen under the menu's 96%-opaque
+// background, i.e. "the previous match's HUD bars stay faintly visible behind
+// the menu". Cleared once on the way out (see gameLoop), not every frame.
+let hudPainted = false;
 const hudCtx = hudCanvas.getContext('2d');
 
 let gameState = "MENU"; // MENU, INTRO, FIGHT, DEATH, ROUND_END, PAUSED, GAMEOVER
@@ -3425,7 +3430,7 @@ function buildCrushRigs() {
         // arena got real PBR sets in Batch 34 and this was missed.
         // The stage floor is 300 square, so ~6.5 lands near 45 units a tile.
         if (theme) attachPhotoSurface(stageMat, 'floor', theme.floorTex, 6.5, 6.5,
-            { normalScale: 1.0, ao: 0.9 });
+            { normalScale: 1.0, ao: 0.9, tintFade: themeTintFade(theme) });
         const stage = new THREE.Mesh(stageGeo, stageMat);
         stage.position.y = -5;
         stage.receiveShadow = true;
@@ -3447,7 +3452,7 @@ function buildCrushRigs() {
             // anywhere: this is the one surface the camera gets within a metre
             // of. ~45 units per tile is the target, so 260/45 is about 5.5.
             if (theme) attachPhotoSurface(m, 'wall', theme.wallTex, 5.5, 5.5,
-                { normalScale: 1.25, ao: 0.85, tintFade: 0.62 });
+                { normalScale: 1.25, ao: 0.85, tintFade: themeTintFade(theme) });
             return m;
         };
         for (const sign of [-1, 1]) {
@@ -3918,6 +3923,10 @@ const MAP_THEMES = {
     },
     // Volcanic foundry — black basalt with glowing lava seams, smoky warm daylight.
     'Molten Foundry': {
+        // Its whole identity is being nearly black, and both of its texture
+        // sets are tan rock - so this is the one theme that needs its own
+        // colour to actually apply. See themeTintFade.
+        tintFade: 0.10,
         id: 'volcanic', wallStyle: 'jagged', wallTex: 'basalt', wallColor: 0x2e2a33, capColor: 0x1a1720,
         floorTex: 'lava', floorColor: 0x403a46, column: 'redspire', stoneColor: 0x2a2530, stepColor: 0x241f28,
         sky: ['#5f5560', '#9a6a55', '#c88a5a', '#e0b487'],
@@ -3953,6 +3962,21 @@ const MAP_THEMES = {
         fog: { color: 0xd6f0ee, near: 1700, far: 5400 }, scenery: 'coral'
     }
 };
+// How much of a theme's COLOUR survives onto the photographic albedo.
+//
+// 0.62 means "mostly faded", which Batch 34 chose because a real photograph
+// carries its own colour and multiplying medieval blocks by a courtyard's
+// grey-green turned them to mud. That reasoning holds for every theme whose
+// identity is its architecture - and fails completely for one whose identity is
+// being nearly black: Molten Foundry's basalt and lava both map to a TAN rock
+// photograph, and at 38% tint strength a tan photograph stays tan. It rendered
+// as "a bright tan sandstone canyon", which is the opposite of a foundry.
+//
+// So a theme may ask for its tint back.
+function themeTintFade(theme) {
+    return (theme && theme.tintFade != null) ? theme.tintFade : 0.62;
+}
+
 function themeFor(map) {
     const base = MAP_THEMES[map.name] || MAP_THEMES['Twin Ramparts'];
     return Object.assign({}, base, { accent: hexNum(map.accent), mapName: map.name });
@@ -4324,7 +4348,7 @@ const PHOTO_SETS = {
         // glowing accent rails be the thing your eye goes to. Both other sets
         // stay in assets/tex - metal_plate is still the techgrid FLOOR, where
         // being diamond plate is exactly right.
-        metal:       { set: 'concrete_wall_003',  tile: 1.7 },
+        metal:       { set: 'concrete_wall_003',  tile: 1.15 },  // 1.7 read as noise at arena scale
         ashlar:      { set: 'medieval_blocks_03', tile: 1.5 },   // block courses read best large-ish
         sandstone:   { set: 'medieval_blocks_03', tile: 1.4 },
         mossstone:   { set: 'medieval_blocks_03', tile: 1.5 },
@@ -4338,7 +4362,11 @@ const PHOTO_SETS = {
     // floors, keyed by theme.floorTex. Base repeat is ~190 units/tile, so
     // ~3.8x lands near 50.
     floor: {
-        techgrid:  { set: 'metal_plate',          tile: 4.2 },   // plate tread is small in reality
+        // Batch 49: 4.2 -> 2.3. Physically, plate tread IS small - but at ~45
+        // units per tile across a 1600-unit arena it reads as "a busy brown
+        // carpet-like pattern" (reported), because the eye sees the repeat
+        // rather than the metal. Bigger tiles read as plate.
+        techgrid:  { set: 'metal_plate',          tile: 2.3 },
         flagstone: { set: 'cobblestone_floor_04', tile: 3.6 },
         sand:      { set: 'sand_01',              tile: 4.6 },   // fine grain, tiles invisibly
         redsand:   { set: 'sand_01',              tile: 4.6 },
@@ -4878,7 +4906,7 @@ function buildPlatformMesh(p, theme) {
     attachAccentGlow(slabMat, tex, theme, 'wall:' + theme.id, tex.repeat.x, tex.repeat.y,
         0.7 * (theme.exposure || 1));   // see the note in buildOuterWall
     attachPhotoSurface(slabMat, 'wall', theme.wallTex, tex.repeat.x, tex.repeat.y,
-        { normalScale: 1.0, ao: 0.8, tintFade: 0.62 });
+        { normalScale: 1.0, ao: 0.8, tintFade: themeTintFade(theme) });
     const slabGeo = new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2);
     ensureUV2(slabGeo);   // the packed ORM's AO channel samples vUv2 in r128
     const slab = new THREE.Mesh(slabGeo, slabMat);
@@ -5035,7 +5063,7 @@ function buildOuterWall(side, theme) {
     attachAccentGlow(bodyMat, wtex, theme, 'wall:' + theme.id, wtex.repeat.x, wtex.repeat.y,
         0.8 * (theme.exposure || 1));
     attachPhotoSurface(bodyMat, 'wall', theme.wallTex, wtex.repeat.x, wtex.repeat.y,
-        { normalScale: 1.15, ao: 0.85, tintFade: 0.62 });
+        { normalScale: 1.15, ao: 0.85, tintFade: themeTintFade(theme) });
     const capMat = new THREE.MeshStandardMaterial({ color: theme.capColor, roughness: 0.85, metalness: metalish ? 0.4 : 0.03 });
     const bodyGeo = new THREE.BoxGeometry(along, WALL_HEIGHT, thick);
     ensureUV2(bodyGeo);
@@ -5133,8 +5161,12 @@ function loadMap(map) {
     // the three, and it is captured before the photographic albedo lands.
     attachAccentGlow(floorMat, floorTex, theme, 'floor:' + theme.id,
         floorTex.repeat.x, floorTex.repeat.y, theme.floorTex === 'lava' ? 1.5 : 0.95);
+    // tintFade, which this call site never passed - so it silently took the
+    // default 0.62 while the walls honoured the theme's own value, and Molten
+    // Foundry came out with basalt walls on a tan sandstone floor.
     attachPhotoSurface(floorMat, 'floor', theme.floorTex, floorTex.repeat.x, floorTex.repeat.y,
-        shinyFloor ? { normalScale: 0.55, ao: 0.6 } : { normalScale: 1.0, ao: 0.9 });
+        shinyFloor ? { normalScale: 0.55, ao: 0.6, tintFade: themeTintFade(theme) }
+                   : { normalScale: 1.0, ao: 0.9, tintFade: themeTintFade(theme) });
     const floorGeo = new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d);
     ensureUV2(floorGeo);
     floorMesh = new THREE.Mesh(floorGeo, floorMat);
@@ -10496,8 +10528,18 @@ function refreshGridLocks() {
         });
     }
 }
+// BOTH grids get P1_KEYS online, which is not a typo.
+//
+// The two key sets exist because the archived build seats two people at one
+// keyboard. Online each player has their own, and only their own side's grid is
+// ever shown (showLocalPickerOnly) - so a guest was being told to press Z/X/C
+// for no reason other than which slot the lobby handed them. Reported as "the
+// guest's cards show Z/X/C (P2 keys)... show the same keys as the host".
+//
+// The keyboard dispatcher still resolves BOTH sets (see P2_KEYS.indexOf), so a
+// guest who does press Z still selects - nothing is taken away.
 buildGrid('p1-grid', P1_KEYS, 'p1');
-buildGrid('p2-grid', P2_KEYS, 'p2');
+buildGrid('p2-grid', P1_KEYS, 'p2');
 
 function statRow(label, value, max, lvl, text) {
     const pct = Math.round((value / max) * 100);
@@ -11150,6 +11192,20 @@ function netSend(msg) {
 }
 
 // --- Connection lifecycle -------------------------------------------------
+// Clears the room code and its Copy chip. A dropped connection left the old
+// code on screen next to an enabled "Host Game" button - reported - and that
+// code is dead the moment the peer is gone.
+function clearRoomCodeUI() {
+    for (const id of ['lobby-code', 'room-code-text']) {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    }
+    for (const id of ['lobby-code-row', 'room-code-chip']) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    }
+}
+
 function netTeardown(reason) {
     // Stop the heartbeat first. A surviving interval would keep pinging a dead
     // connection, and a later reconnect would end up with two of them.
@@ -11170,6 +11226,13 @@ function netTeardown(reason) {
     // waiting on a peer who is no longer there.
     remoteAway = false;
     awayPaused = false;
+    // The room code dies with the peer that owned it. Left on screen it sits
+    // next to an enabled "Host Game" button, inviting someone to share a code
+    // that cannot be joined.
+    clearRoomCodeUI();
+    // And a sandbox is a property of a match that no longer exists.
+    sandboxMatch = false;
+    refreshSandboxUI();
     netSetStatus(reason ? 'dropped' : 'offline', reason || '');
 }
 
@@ -11205,7 +11268,9 @@ function netHost() {
     netSetStatus('starting', 'Creating room...');
     net.peer = new Peer();
     net.peer.on('open', id => {
-        netSetStatus('waiting', 'Share the code and wait for your opponent');
+        // The status word already says "Waiting for an opponent..."; the detail
+        // should add something, not repeat it.
+        netSetStatus('waiting', 'Send them the room code');
         const box = document.getElementById('lobby-code');
         if (box) box.value = id;
         const row = document.getElementById('lobby-code-row');
@@ -13654,7 +13719,13 @@ function gameLoop() {
     updateHitFeedback(dt);
 
     const step = STATE_STEPS[gameState];
-    if (step) step(dt);
+    if (step) { step(dt); hudPainted = true; }   // every step() draws the HUD
+    else if (hudPainted) {
+        // Not a match state (MENU, or a state with no step) - wipe the stale
+        // HUD exactly once. See hudPainted.
+        hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+        hudPainted = false;
+    }
 
     if (netActive()) {
         netApplyRemote(dt);            // ease the opponent toward their last report

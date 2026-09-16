@@ -476,5 +476,54 @@ const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
         leak.online.unlocked === false && leak.online.upgrades === 0
         && leak.online.sandbox === false, JSON.stringify(leak.online));
 
+    // ------------------------------------------- no HUD left behind on the menu
+    // Reported against the archived build - "after Return to Menu, the previous
+    // match's HUD bars stay faintly visible behind the menu" - and true here
+    // too: STATE_STEPS has no MENU entry, so nothing calls drawHUD on the menu,
+    // and drawHUD's clearRect is the only thing that ever clears that canvas.
+    // Asserted by reading the pixels, because at 4% through a 96%-opaque menu
+    // background this is invisible to anything that only checks state.
+    section('The HUD canvas is empty once the match is over:');
+    await H.boot(page);
+    await page.evaluate(() => {
+        const D = window.ACDebug;
+        D.setDebugUnlockAll(true);
+        D.setMatchMode('classic');
+        const pick = (grid, detail, n) => {
+            const cards = Array.from(document.querySelectorAll(grid + ' .fighter-btn'));
+            (cards.find(c => c.textContent.includes(n)) || cards[0]).click();
+            document.querySelector(detail + ' .btn-confirm').click();
+        };
+        pick('#p1-grid', '#p1-detail', 'Kaelen');
+        pick('#p2-grid', '#p2-detail', 'Lyra');
+    });
+    await H.sleep(350);
+    await page.evaluate(() => document.querySelectorAll('#mapselect-grid .map-card')[0].click());
+    const inFight = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 70000);
+    check('reached a fight to leave', inFight);
+    if (inFight) {
+        await H.sleep(500);
+        const ghost = await page.evaluate(async () => {
+            const cv = document.getElementById('hudCanvas');
+            const g = cv.getContext('2d');
+            const painted = () => {
+                const d = g.getImageData(0, 0, cv.width, cv.height).data;
+                let n = 0;
+                for (let i = 3; i < d.length; i += 4) if (d[i] > 8) n++;
+                return n;
+            };
+            const during = painted();
+            // The real button, not a debug hook: the menu is reached by
+            // clicking this, and the clearing has to happen on that path.
+            document.getElementById('btn-quit-to-menu').click();
+            const frame = () => new Promise(r => requestAnimationFrame(() => r()));
+            for (let i = 0; i < 4; i++) await frame();
+            return { during, after: painted(), state: window.ACDebug.gameState };
+        });
+        check('the HUD is drawn during the match', ghost.during > 500, JSON.stringify(ghost));
+        check('and nothing of it survives onto the menu',
+            ghost.state !== 'MENU' || ghost.after === 0, JSON.stringify(ghost));
+    }
+
     await finish(b, page);
 })();

@@ -422,7 +422,16 @@
             border-radius: 3px;
             margin-right: 7px;
         }
-        .fighter-btn .fname { font-weight: bold; color: var(--accent, #00f3ff); font-size: 0.95rem; }
+        /* Batch 49: a floor under the accent's brightness. Draven's identity
+           colour is #6b7280, a mid grey - which as a card NAME is exactly what
+           a disabled control looks like, so an unlocked fighter read as locked.
+           The accent still tints it; it just cannot go dim. */
+        .fighter-btn .fname {
+            font-weight: bold; font-size: 0.95rem;
+            color: var(--accent, #00f3ff);
+            filter: brightness(1.45) saturate(1.15);
+        }
+        .fighter-btn.locked .fname { filter: none; }   /* locked SHOULD look dim */
         .fighter-btn .ftitle { font-size: 0.7rem; color: #94a3b8; font-weight: normal; }
         .fighter-btn:hover { background: var(--accent, #00f3ff); box-shadow: 0 0 15px rgba(0, 243, 255, 0.4); }
         .fighter-btn:hover .fname, .fighter-btn:hover .ftitle, .fighter-btn:hover .fkey { color: #0d0f18; }
@@ -1829,12 +1838,25 @@ function refreshLocalNames() {
 // two keyboards, where a modal browser prompt is a worse interruption than an
 // inline one.
 let resetArmed = 0;
+// Cancels an armed reset. Called when anything else in Settings is used: an
+// armed destructive button that stays armed while you go and toggle something
+// else is a trap.
+function disarmReset() {
+    if (!resetArmed) return;
+    resetArmed = 0;
+    const btn = document.getElementById('btn-reset-progress');
+    if (btn) btn.textContent = 'Reset Progress';
+}
+
 function resetProgressClicked() {
     const btn = document.getElementById('btn-reset-progress');
     const now = performance.now();
     if (!resetArmed || now - resetArmed > 5000) {
         resetArmed = now;
-        if (btn) btn.textContent = 'Erase everything? Click again';
+        // Short enough not to wrap - a two-line label makes the button grow,
+        // which moves everything under it at the moment you are about to click
+        // again.
+        if (btn) btn.textContent = 'Click again to erase';
         setTimeout(() => {
             if (resetArmed && performance.now() - resetArmed > 4900) {
                 resetArmed = 0;
@@ -1995,6 +2017,14 @@ function prog(side) { return progression[side] || progression.p1; }
 const MATCH_MODES = [
     { id: 'classic', name: 'Classic Versus', blurb: 'Best of 3 rounds. Knock your opponent out to win a round.' },
     { id: 'zone', name: 'Zone Control', blurb: 'Hold the glowing ring at the center. First to 45 seconds of control wins — knock them out of it.' },
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
     // Batch 38: "Time Attack" named the one thing this mode does not involve.
     // It is first to three knockouts with no clock at all - the name was
     // borrowed from racing, where the timer IS the score. "Takedown Race" says
@@ -3489,6 +3519,28 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
 // Rises up to this are walkable on foot; taller is a wall you must jump - see
 // resolveTallTerrain(), which reverts the move when the rise is too great.
 //
@@ -9529,10 +9581,26 @@ document.getElementById('btn-toggle-bot-p1').addEventListener('click', () => {
     refreshBotUI('p1');
 });
 
-document.getElementById('btn-difficulty').addEventListener('click', () => {
-    const i = DIFFICULTY_ORDER.indexOf(botDifficulty);
-    botDifficulty = DIFFICULTY_ORDER[(i + 1) % DIFFICULTY_ORDER.length];
-    document.getElementById('btn-difficulty').textContent = `Difficulty: ‹ ${botDifficulty[0].toUpperCase()}${botDifficulty.slice(1)} ›`;
+// THE ARROWS GO THE WAY THEY POINT. Reported: "it shows '< Normal >', but
+// clicking the left arrow went Normal -> Hard -> Insane -> Easy" - because the
+// arrows were decoration on a button that always cycled forward. They are real
+// now: the click position decides the direction.
+function cycleDifficulty(step) {
+    const order = DIFFICULTY_ORDER;
+    const i = order.indexOf(botDifficulty);
+    botDifficulty = order[(i + step + order.length) % order.length];
+    refreshDifficultyLabel();
+}
+function refreshDifficultyLabel() {
+    const b = document.getElementById('btn-difficulty');
+    if (b) b.textContent = `Difficulty: \u2039 ${botDifficulty[0].toUpperCase()}${botDifficulty.slice(1)} \u203a`;
+}
+document.getElementById('btn-difficulty').addEventListener('click', (e) => {
+    // Which third of the button was clicked: left arrow, right arrow, or the
+    // label in the middle (which keeps the old behaviour of stepping forward).
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - r.left) / Math.max(1, r.width);
+    cycleDifficulty(x < 0.28 ? -1 : 1);
 });
 document.getElementById('btn-difficulty').style.display = 'none'; // hidden until a bot is enabled
 // Batch 24: reflect bot state into the panels on FIRST paint too. This used to
@@ -9733,7 +9801,12 @@ function headingHTML(num, stage) {
     const isBotSide = num === 1 ? p1IsBot : p2IsBot;
     const botTag = isBotSide ? ' <span style="color:#f59e0b">[BOT]</span>' : '';
     const padTag = padSlots[side] != null ? ` <span class="pad-badge" title="Gamepad connected"><svg viewBox="0 0 24 16" width="1.1em" height="0.73em" fill="currentColor" aria-hidden="true" style="vertical-align:middle"><rect x="1" y="3" width="22" height="10" rx="5"/><circle cx="7" cy="8" r="1.5" fill="#0d0f18"/><circle cx="17" cy="8" r="1.5" fill="#0d0f18"/></svg></span>` : '';
-    if (stage === 'pick') return `${displayName(side)}${botTag}${padTag} <span class="key-hint">(keys on cards)</span>`;
+    // A bot side has no cards to press keys on, so the hint is dropped there
+    // rather than shown and ignored.
+    if (stage === 'pick') {
+        const hint = isBotSide ? '' : ' <span class="key-hint">(keys on cards)</span>';
+        return `${displayName(side)}${botTag}${padTag}${hint}`;
+    }
     if (stage === 'preview') {
         // Labels come from the live bindings, so a rebound confirm/back key
         // shows the real key instead of a stale "F"/"G" literal.
@@ -10488,9 +10561,34 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 //
 // See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
 // 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
 const GRACE_PERIOD = 40;        // seconds the arena stays full-size before the first collapse tick
 const SHRINK_INTERVAL = 18;     // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
 // Once the collapse fraction passes this, snap fully shut and start crushing.
 //
 // WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
@@ -11144,11 +11242,31 @@ function drawIntroOverlay() {
     hudCtx.restore();
 }
 
+// Wrapped so the shadow state set inside cannot leak on an early return.
 function drawHUD() {
+    drawHUDInner();
+    try { hudCtx.restore(); } catch (e) {}
+}
+
+function drawHUDInner() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+    // NOTHING while there is no match. Reported as "after Return to Menu, the
+    // previous match's HUD bars stay faintly visible behind the menu" - the
+    // last frame's HUD was simply never cleared again once the loop stopped
+    // calling this with a live match.
+    if (gameState === 'MENU' || !player1 || !player2) return;
     if (gameState === "INTRO") { drawIntroOverlay(); return; } // cinematic — no combat HUD/crosshairs
+    // A DARK HALO UNDER EVERYTHING - see the same change in the online build.
+    // The HUD is small white text over whatever the arena is, and on the pale
+    // ones it disappeared.
+    hudCtx.save();
+    hudCtx.shadowColor = 'rgba(4, 6, 12, 0.92)';
+    hudCtx.shadowBlur = 5;
+    hudCtx.shadowOffsetY = 1;
     const twoHumans = player1 && player2 && !player1.isBot && !player2.isBot;
-    drawCrosshairs(twoHumans);
+    // No crosshair in the two-bot spectator view: nobody is aiming, and a
+    // reticle in the middle of a top-down shot invites you to try.
+    if (!botsOnly()) drawCrosshairs(twoHumans);
 
     // Everything below is written in the fixed virtual space and scaled to
     // fill the canvas. The per-player HP/meter panels sit left and right; the
