@@ -2231,6 +2231,22 @@ const MATCH_MODES = [
     // The ID stays `timeattack`. It is a localStorage progression key and a
     // value on the wire in SETUP/START packets, so renaming it would reset
     // players' records and desync a mixed-version match for a cosmetic gain.
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
     { id: 'timeattack', name: 'Takedown Race', blurb: 'Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse - the race is the pressure.' },
     { id: 'boss', name: 'Boss Fight (Co-op)', blurb: 'Both players team up against Karrigos, the Hollow Titan. Its attacks are slow and telegraphed — punish the wind-up. If either of you falls, the run is over.', coop: true },
     { id: 'survival', name: 'Survival Waves (Co-op)', blurb: 'Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.', coop: true },
@@ -2489,8 +2505,17 @@ if (document.fonts && document.fonts.load) {
 // that is then scaled to the window, so an unrounded size lands on fractional
 // pixels with no hinting to rescue it and 9px text turns to mush. `bold` maps
 // to 700 on the variable weight axis.
+const HUD_MIN_PX = 11;
+const HUD_MAX_BOOST = 1.6;
+
 function hudFont(px, bold) {
-    return `${bold ? 700 : 500} ${Math.max(9, Math.round(px * HUD_TEXT_SCALE))}px ${HUD_FAMILY}`;
+    const want = px * HUD_TEXT_SCALE;
+    const s = hudUnitScale();
+    // How large this would have to be, in virtual units, to land at HUD_MIN_PX
+    // on the actual canvas.
+    const needed = s > 0 ? HUD_MIN_PX / s : want;
+    const size = Math.min(Math.max(want, needed), want * HUD_MAX_BOOST);
+    return `${bold ? 700 : 500} ${Math.max(9, Math.round(size))}px ${HUD_FAMILY}`;
 }
 function cycleHudScale() {
     HUD_TEXT_SCALE = HUD_TEXT_SCALE >= 1.3 ? 1 : 1.3;
@@ -3670,6 +3695,50 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
 // Rises up to this are walkable on foot; taller is a wall you must jump - see
 // resolveTallTerrain(), which reverts the move when the rise is too great.
 //
@@ -11068,9 +11137,59 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 //
 // See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
 // 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
 const GRACE_PERIOD = 40;        // seconds the arena stays full-size before the first collapse tick
 const SHRINK_INTERVAL = 18;     // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
 // Once the collapse fraction passes this, snap fully shut and start crushing.
 //
 // WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
@@ -11604,6 +11723,30 @@ function drawWaveBreakHUD() {
     hudCtx.textAlign = 'left';
 }
 
+// A dark plate behind a centred string, sized to the text. For anything drawn
+// over the ARENA rather than over the HUD's own panels: the sky is bright, the
+// pale arenas are brighter, and a drop shadow cannot rescue dark text on a
+// light background - it only makes a darker smudge in the same place. Reported
+// twice as "the arena name at the top center is unreadable".
+function hudPlate(text, cx, y, padX, padY) {
+    const w = hudCtx.measureText(text).width;
+    const px = padX != null ? padX : 10, py = padY != null ? padY : 5;
+    const h = py * 2 + 14;
+    hudCtx.save();
+    hudCtx.shadowColor = 'transparent';   // the plate IS the separation
+    hudCtx.fillStyle = 'rgba(8, 11, 20, 0.62)';
+    const x = cx - w / 2 - px, top = y - 13 - py;
+    const r = 6;
+    hudCtx.beginPath();
+    hudCtx.moveTo(x + r, top);
+    hudCtx.arcTo(x + w + px * 2, top, x + w + px * 2, top + h, r);
+    hudCtx.arcTo(x + w + px * 2, top + h, x, top + h, r);
+    hudCtx.arcTo(x, top + h, x, top, r);
+    hudCtx.arcTo(x, top, x + w + px * 2, top, r);
+    hudCtx.closePath();
+    hudCtx.fill();
+    hudCtx.restore();
+}
 function drawRoundStatus() {
     hudCtx.textAlign = "center";
     hudCtx.font = hudFont(14, true);
@@ -11854,7 +11997,9 @@ function drawHUDInner() {
     const botNote = [player1.isBot ? 'P1 Bot' : null, player2.isBot ? 'P2 Bot' : null].filter(Boolean).join(' / ');
     const drawShared = () => {
         if (currentMap) {
-            hudCtx.fillStyle = "#64748b"; hudCtx.font = hudFont(15); hudCtx.textAlign = "center";
+            hudCtx.font = hudFont(15); hudCtx.textAlign = "center";
+            hudPlate(currentMap.name, hudW() / 2, 24);
+            hudCtx.fillStyle = "#dbe6f5";
             hudCtx.fillText(currentMap.name, hudW() / 2, 24); hudCtx.textAlign = "left";
         }
         drawRoundStatus();

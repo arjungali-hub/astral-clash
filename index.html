@@ -394,6 +394,11 @@
         .setup-panel h3 { margin: 0 0 10px; font-size: 1rem; }
         .setup-panel .btn-mode { width: 100%; margin: 0 0 8px; font-size: 0.76rem; padding: 8px 10px; text-align: left; }
         .setup-note { color: #94a3b8; font-size: 0.75rem; line-height: 1.5; margin: 10px 0; }
+        /* Reads as a state, not as a control - it replaces a button. */
+        .detail-locked {
+            color: #4ade80; font-weight: bold; font-size: 0.8rem;
+            align-self: center; padding: 0 8px; white-space: nowrap;
+        }
         .setup-note.ready { color: #4ade80; }
         .guest-setup { margin-bottom: 6px; }
         .guest-row {
@@ -623,6 +628,16 @@
         }
         /* ...and the field it sits beside, so the two line up exactly. */
         .room-code-text, #lobby-code { height: 26px; box-sizing: border-box; padding: 0 7px; }
+        /* SIX CHARACTERS DESERVE THE ROOM. Reported at "about 12.5px in a
+           297px-wide field" - a code that is read aloud to someone else should
+           be the biggest thing in its own row, not the smallest. Tabular
+           figures and wide tracking so 4 and 7, or M and N, cannot be confused
+           at a glance. */
+        .room-code-text, #lobby-code {
+            font-size: 1.05rem; font-weight: bold; letter-spacing: 0.18em;
+            text-align: center; font-variant-numeric: tabular-nums;
+            color: #e2f6ff;
+        }
         .lobby-copy:hover,
         .menu-section .lobby-copy:hover { background: rgba(74, 222, 128, 0.14); box-shadow: none; }
         /* Batch 32: the online entry point sits with the branding, beside the
@@ -1063,13 +1078,25 @@
            a match that wants the mouse should say so without interrupting
            itself. It hides the instant the lock is taken. */
         #lock-hint {
-            position: absolute; left: 50%; bottom: 14%;
+            /* 14% -> 22%: at 14% it sat over the weapon in the lower centre of
+               the frame, which is both the busiest part of the picture and the
+               part you are trying to look at. */
+            position: absolute; left: 50%; bottom: 22%;
             transform: translateX(-50%);
             padding: 8px 16px; border-radius: 999px;
             background: rgba(10, 13, 20, 0.82); border: 1px solid #00f3ff;
             color: #e2e8f0; font-size: 0.82rem; letter-spacing: 0.03em;
             pointer-events: none; z-index: 12; display: none;
             box-shadow: 0 0 18px rgba(0, 243, 255, 0.25);
+            transition: opacity 600ms ease, transform 600ms ease;
+        }
+        /* AFTER A FEW SECONDS it steps back. The hint has to stay - it is the
+           only thing saying why the mouse does nothing - but it has said its
+           piece by then, and a permanent full-strength pill in the middle of
+           the frame is its own problem. */
+        #lock-hint.faded {
+            opacity: 0.4;
+            transform: translateX(-50%) scale(0.82);
         }
     </style>
 </head>
@@ -2487,8 +2514,26 @@ if (document.fonts && document.fonts.load) {
 // that is then scaled to the window, so an unrounded size lands on fractional
 // pixels with no hinting to rescue it and 9px text turns to mush. `bold` maps
 // to 700 on the variable weight axis.
+// The smallest the HUD is allowed to render on a real screen, and how far a
+// size may be stretched to reach it. Reported: "the HUD is tiny at 640x530,
+// name labels are about 7px tall" - true and arithmetic: the HUD is authored in
+// a 1755x975 space and drawn at min(w/1755, h/975), which is 0.35 in a 614px
+// frame, so an 18-unit label lands at 6.3 real pixels.
+//
+// The cap matters as much as the floor. Without it, a small window would get a
+// HUD scaled up by 3x, the two player panels would meet in the middle, and the
+// fix would be worse than the bug.
+const HUD_MIN_PX = 11;
+const HUD_MAX_BOOST = 1.6;
+
 function hudFont(px, bold) {
-    return `${bold ? 700 : 500} ${Math.max(9, Math.round(px * HUD_TEXT_SCALE))}px ${HUD_FAMILY}`;
+    const want = px * HUD_TEXT_SCALE;
+    const s = hudUnitScale();
+    // How large this would have to be, in virtual units, to land at HUD_MIN_PX
+    // on the actual canvas.
+    const needed = s > 0 ? HUD_MIN_PX / s : want;
+    const size = Math.min(Math.max(want, needed), want * HUD_MAX_BOOST);
+    return `${bold ? 700 : 500} ${Math.max(9, Math.round(size))}px ${HUD_FAMILY}`;
 }
 function cycleHudScale() {
     HUD_TEXT_SCALE = HUD_TEXT_SCALE >= 1.3 ? 1 : 1.3;
@@ -10750,18 +10795,26 @@ function characterInfoHTML(side, c) {
         <div class="detail-ability"><span class="ability-label">Special &mdash; ${c.specialName}</span><p>${c.specialDesc}</p></div>`;
 }
 
-function buildDetailHTML(side, c, confirmKey, backKey) {
+function buildDetailHTML(side, c, confirmKey, backKey, confirmed) {
     // Batch 24: the write-up is wrapped in its own bounded scroll box and the
     // Confirm/Back buttons sit OUTSIDE it. The richer descriptions plus a fourth
     // stat row and a second ability block grew this panel past the viewport, and
     // since #ui-overlay is the only scroll container, Confirm ended up below the
     // fold — nothing was clipped, but you had to scroll to finish picking. The
     // full text stays; the buttons stay put.
+    // A LOCKED-IN PICK DOES NOT OFFER "Confirm". Reported: "Confirm (Left
+    // Click) and Back (Right Click) stay visible after the host is Ready" -
+    // this panel already knew (it toggles .confirmed on itself) and went on
+    // showing the button that got you here anyway. Back stays, renamed to what
+    // it now does, because changing your mind before the match starts is
+    // allowed.
+    const actions = confirmed
+        ? `<span class="detail-locked">\u2713 Locked in</span>
+           <button class="btn-back">Change Fighter (${backKey})</button>`
+        : `<button class="btn-confirm">Confirm (${confirmKey})</button>
+           <button class="btn-back">Back (${backKey})</button>`;
     return `<div class="detail-scroll">${characterInfoHTML(side, c)}</div>` + `
-        <div class="detail-actions">
-            <button class="btn-confirm">Confirm (${confirmKey})</button>
-            <button class="btn-back">Back (${backKey})</button>
-        </div>`;
+        <div class="detail-actions">${actions}</div>`;
 }
 
 // B13: highlight the chosen card in the grid (clearing any previous). Passing
@@ -10799,9 +10852,12 @@ function showDetail(side, name, confirmed) {
     const backKey = keyLabel(BINDINGS.special);
     const detail = document.getElementById(`${side}-detail`);
     detail.style.setProperty('--accent', c.color);
-    detail.innerHTML = buildDetailHTML(side, c, confirmKey, backKey);
+    detail.innerHTML = buildDetailHTML(side, c, confirmKey, backKey, confirmed);
     detail.classList.toggle('confirmed', confirmed);
-    detail.querySelector('.btn-confirm').addEventListener('click', () => confirmPick(side));
+    // Confirm is absent once the pick is locked in, so this is a lookup rather
+    // than an assumption.
+    const confirmBtn = detail.querySelector('.btn-confirm');
+    if (confirmBtn) confirmBtn.addEventListener('click', () => confirmPick(side));
     detail.querySelector('.btn-back').addEventListener('click', () => backToPick(side));
     // B13: keep the roster grid visible beside the detail instead of replacing
     // it; mark the chosen card, and lock (dim) the grid once the pick is
@@ -10976,7 +11032,12 @@ function refreshRoomUI() {
     } else if (!foeReady) {
         text = 'Waiting for your opponent to lock in\u2026';
     } else if (host) {
-        text = 'Both ready. Choose an arena and start the match.';
+        // Reported: this still said "Choose an arena" after an arena had been
+        // chosen. The arena is right there in `selectedMap`; the line just was
+        // not looking at it.
+        text = selectedMap
+            ? `Both ready on ${selectedMap.name}. Start when you are.`
+            : 'Both ready. Choose an arena and start the match.';
         canStart = true;
     } else {
         text = 'Both ready. Waiting for the host to start\u2026';
@@ -11363,7 +11424,13 @@ function clearRoomCodeUI() {
     }
 }
 
+// Why the last connection ended, kept until a new one starts. The pause screen
+// reads it: a match whose opponent has gone cannot be resumed, and a Resume
+// button that looks ready is what makes someone press it and wonder.
+let netLostReason = '';
+
 function netTeardown(reason) {
+    if (reason) netLostReason = reason;
     // Stop the heartbeat first. A surviving interval would keep pinging a dead
     // connection, and a later reconnect would end up with two of them.
     if (net.pingTimer) { clearInterval(net.pingTimer); net.pingTimer = null; }
@@ -11394,6 +11461,7 @@ function netTeardown(reason) {
 }
 
 function netBindConnection(conn) {
+    netLostReason = '';   // a live connection is not a lost one
     net.conn = conn;
     conn.on('open', () => {
         net.lastRecvAt = performance.now();
@@ -11420,12 +11488,34 @@ function netBindConnection(conn) {
 // --- ROOM CODES -----------------------------------------------------------
 // Six characters, no ambiguous glyphs: 0/O, 1/I/L and U (which people hear as
 // "you") are all out, so a code read down a phone line arrives intact.
-const ROOM_CODE_CHARS = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
+// No look-alikes and no sound-alikes, because a room code's whole job is to
+// survive being read out loud and typed back in. Out: 0/O, 1/I/L and U (looked
+// or sounded wrong already), then 5/S, 2/Z and 8/B (reported as look-alikes),
+// then B, C, D, E, G, P, T and V (the "bee, cee, dee" family, reported as
+// sound-alikes). What is left is 20 characters - 64 million six-character
+// codes, against at most a few hundred rooms open at any moment. Entropy is not
+// the scarce thing here; legibility is.
+const ROOM_CODE_CHARS = '23456789AFHJKMNQRWXY';
 const ROOM_CODE_LEN = 6;
 // The PeerJS broker is public and shared with every other app using it, so the
 // id registered there is namespaced. Only the six characters are ever shown.
 const ROOM_ID_PREFIX = 'astralclash-v1-';
 const ROOM_CODE_TRIES = 6;   // fresh codes to try before admitting defeat
+// How many times to re-open a dropped SIGNALLING link before giving up. Three is
+// enough for a throttled background tab to come back; beyond that the broker is
+// down, which is not something waiting fixes.
+const ROOM_RECONNECTS = 3;
+// PeerJS error types that kill the peer. Anything else - 'peer-unavailable' for
+// a room code that does not exist, say - leaves a working peer behind and must
+// NOT tear the room down.
+const NET_FATAL_ERRORS = ['network', 'server-error', 'socket-error',
+                          'socket-closed', 'ssl-unavailable', 'browser-incompatible',
+                          'invalid-id'];
+function netErrorText(type) {
+    if (type === 'network') return 'Lost the connection to the lobby server';
+    if (type === 'browser-incompatible') return 'This browser cannot host a game';
+    return 'Connection problem (' + type + ')';
+}
 
 function newRoomCode() {
     let out = '';
@@ -11461,6 +11551,7 @@ function netHost() {
     // UUID. A code already in use comes back as `unavailable-id`, which is a
     // retry with a fresh code - not something to show the player.
     let triesLeft = ROOM_CODE_TRIES;
+    let reconnectsLeft = ROOM_RECONNECTS;
     const openRoom = () => {
         const code = newRoomCode();
         net.peer = new Peer(roomIdFor(code));
@@ -11484,7 +11575,31 @@ function netHost() {
                 openRoom();
                 return;
             }
-            netSetStatus('error', type);
+            // A FATAL error takes the room with it. Reported: "the host lobby
+            // showed 'Connection problem - network', but the stale code and its
+            // Copy chip stayed visible and usable" - because this handler only
+            // wrote a status line, and netTeardown (which clears the code) was
+            // never called. A code whose peer is dead cannot be joined.
+            if (NET_FATAL_ERRORS.indexOf(type) >= 0) netTeardown(netErrorText(type));
+            else netSetStatus('error', type);
+        });
+        // THE SIGNALLING LINK, not the data channel. A hidden tab has its
+        // timers throttled to roughly once a minute, so PeerJS's keepalive
+        // stops arriving and the broker closes the socket - which is exactly
+        // the reported "after a few minutes hidden". reconnect() re-opens it
+        // with the SAME id, so the room code stays valid.
+        net.peer.on('disconnected', () => {
+            if (!net.peer || net.peer.destroyed) return;
+            if (reconnectsLeft-- <= 0) {
+                netTeardown('Lost the connection to the lobby server');
+                return;
+            }
+            netSetStatus('starting', 'Reconnecting to the lobby...');
+            // Backoff, so a broker that is genuinely down is not hammered.
+            setTimeout(() => {
+                if (!net.peer || net.peer.destroyed) return;
+                try { net.peer.reconnect(); } catch (e) {}
+            }, (ROOM_RECONNECTS - reconnectsLeft) * 1200);
         });
     };
     openRoom();
@@ -11513,6 +11628,7 @@ function onNetLost() {
         exitPointerLock();
         if (gameState !== 'PAUSED') togglePause();
         refreshMenuUI();
+        refreshPauseUI();   // ...and SAY why the match stopped
         return;
     }
     // Batch 34: on a menu there is nothing to preserve, and a room with no
@@ -12355,6 +12471,21 @@ function refreshPauseUI() {
     const btn = document.getElementById('btn-resume');
     const note = document.getElementById('pause-away-note');
     if (!btn) return;
+    // THE OPPONENT IS GONE, which is not the same as "away" and used to look
+    // identical: this function only wrote its note for awayPaused, so a host
+    // whose opponent left mid-match got an ordinary pause screen with a working
+    // Resume button. Reported as "the host gets no notice when the opponent
+    // leaves mid-match".
+    if (netLostReason && !netActive() && player1 && player2) {
+        btn.disabled = true;
+        btn.textContent = 'Resume';
+        if (note) {
+            note.textContent = netLostReason
+                + '. This match cannot continue \u2014 return to the menu to play again.';
+            note.style.display = '';
+        }
+        return;
+    }
     if (!awayPaused) {
         btn.disabled = false;
         btn.textContent = 'Resume (Esc)';
@@ -12927,6 +13058,31 @@ function drawCoopDownHUD() {
     hudCtx.textAlign = 'left';
 }
 
+// A dark plate behind a centred string, sized to the text. For anything drawn
+// over the ARENA rather than over the HUD's own panels: the sky is bright, the
+// pale arenas are brighter, and a drop shadow cannot rescue dark text on a
+// light background - it only makes a darker smudge in the same place. Reported
+// twice as "the arena name at the top center is unreadable".
+function hudPlate(text, cx, y, padX, padY) {
+    const w = hudCtx.measureText(text).width;
+    const px = padX != null ? padX : 10, py = padY != null ? padY : 5;
+    const h = py * 2 + 14;
+    hudCtx.save();
+    hudCtx.shadowColor = 'transparent';   // the plate IS the separation
+    hudCtx.fillStyle = 'rgba(8, 11, 20, 0.62)';
+    const x = cx - w / 2 - px, top = y - 13 - py;
+    const r = 6;
+    hudCtx.beginPath();
+    hudCtx.moveTo(x + r, top);
+    hudCtx.arcTo(x + w + px * 2, top, x + w + px * 2, top + h, r);
+    hudCtx.arcTo(x + w + px * 2, top + h, x, top + h, r);
+    hudCtx.arcTo(x, top + h, x, top, r);
+    hudCtx.arcTo(x, top, x + w + px * 2, top, r);
+    hudCtx.closePath();
+    hudCtx.fill();
+    hudCtx.restore();
+}
+
 function drawRoundStatus() {
     hudCtx.textAlign = "center";
     hudCtx.font = hudFont(14, true);
@@ -12944,8 +13100,13 @@ function drawRoundStatus() {
         if (collapsed || shrinkTimer <= 15) {
             hudCtx.save();
             hudCtx.globalAlpha = collapsed ? 1 : Math.max(0, Math.min(1, (15 - shrinkTimer) / 5));
-            hudCtx.fillStyle = shrinkTimer <= 3 ? "#ef4444" : "#e2e8f0";
-            hudCtx.fillText(`${collapsed ? 'Arena closing — next' : 'Arena collapses in'} ${Math.max(0, Math.ceil(shrinkTimer))}s`, hudW() / 2, 44);
+            const collapseText = `${collapsed ? 'Arena closing — next' : 'Arena collapses in'} ${Math.max(0, Math.ceil(shrinkTimer))}s`;
+            // Reported as "red on blue, also hard to read". The urgency stays -
+            // it is the one line that means hurry - but it gets something to be
+            // red AGAINST.
+            hudPlate(collapseText, hudW() / 2, 44);
+            hudCtx.fillStyle = shrinkTimer <= 3 ? "#ff7a7a" : "#e2e8f0";
+            hudCtx.fillText(collapseText, hudW() / 2, 44);
             hudCtx.restore();
         }
     }
@@ -13003,7 +13164,7 @@ function drawRoundStatus() {
     hudCtx.textAlign = "left";
 }
 
-function drawPlayerHUD(f, x, label) {
+function drawPlayerHUD(f, x, label, isMine) {
     const BW = 420; // bar width, scaled up for the bigger virtual space
     hudCtx.fillStyle = "#ffffff";
     hudCtx.font = hudFont(18, true);
@@ -13041,6 +13202,27 @@ function drawPlayerHUD(f, x, label) {
     hudCtx.fillStyle = "#94a3b8";
     hudCtx.font = hudFont(11);
     hudCtx.fillText(meterReady ? 'SPECIAL READY' : `Special ${Math.floor(f.specialMeter)}%`, x, 108);
+
+    // THE DASH COOLDOWN. Reported: "pressing Shift again soon after a dash did
+    // nothing, with no feedback" - the dash is on a 90-frame cooldown and the
+    // HUD never said so, which reads as an input that was dropped. Four pips
+    // rather than a bar: a dash is a discrete thing you either have or do not,
+    // and a bar suggests a resource that is partly spendable.
+    // YOUR dash, not theirs. Your own cooldown is the thing you are about to
+    // press; an opponent's is information the game has never given and should
+    // not start giving as a side effect of a readability fix.
+    if (!isMine) return;
+    const cd = Math.max(0, f.dodgeCooldown || 0);
+    const ready = 1 - Math.min(1, cd / DODGE_COOLDOWN);
+    // Clear of the "Special nn%" string to its left, which runs to about 200.
+    const PIPS = 4, pipW = 13, pipGap = 4, pipX = x + 206;
+    for (let i = 0; i < PIPS; i++) {
+        const lit = ready >= (i + 1) / PIPS;
+        hudCtx.fillStyle = lit ? (ready >= 1 ? '#67e8f9' : '#3f6b78') : '#1e293b';
+        hudCtx.fillRect(pipX + i * (pipW + pipGap), 100, pipW, 7);
+    }
+    hudCtx.fillStyle = ready >= 1 ? '#67e8f9' : '#64748b';
+    hudCtx.fillText('DASH', pipX + PIPS * (pipW + pipGap) + 6, 108);
 }
 
 // First-person crosshair(s): one centered in each active viewport (both
@@ -13167,8 +13349,8 @@ function drawHUDInner() {
     const mine = localFighter(), theirs = remoteFighter();
     // Names, not slots. playerLabelShort falls back to P1/P2 for anyone who
     // has not typed one, so an unnamed match reads exactly as it did.
-    drawPlayerHUD(mine, 30, playerLabelShort(LOCAL_SIDE));
-    drawPlayerHUD(theirs, hudW() - 30 - 420, playerLabelShort(otherSide(LOCAL_SIDE)));
+    drawPlayerHUD(mine, 30, playerLabelShort(LOCAL_SIDE), true);
+    drawPlayerHUD(theirs, hudW() - 30 - 420, playerLabelShort(otherSide(LOCAL_SIDE)), false);
     // Batch 16: the co-op challenger gets a wide bar across the top centre —
     // the conventional boss-bar placement, and the one region the two
     // side panels leave free in both split and full-screen layouts.
@@ -13181,7 +13363,11 @@ function drawHUDInner() {
     const botNote = '';
     const drawShared = () => {
         if (currentMap) {
-            hudCtx.fillStyle = "#64748b"; hudCtx.font = hudFont(15); hudCtx.textAlign = "center";
+            // A PLATE AND LIGHT TEXT, not dark text with a dark shadow. #64748b
+            // on a bright sky is what "unreadable at the top center" was.
+            hudCtx.font = hudFont(15); hudCtx.textAlign = "center";
+            hudPlate(currentMap.name, hudW() / 2, 24);
+            hudCtx.fillStyle = "#dbe6f5";
             hudCtx.fillText(currentMap.name, hudW() / 2, 24); hudCtx.textAlign = "left";
         }
         drawRoundStatus();
@@ -13896,12 +14082,21 @@ const STATE_STEPS = {
 // Shows the prompt whenever this match wants the mouse and does not have it.
 // Called from the game loop, so it follows the lock being lost (Escape, a
 // tab-switch) as well as never being taken.
+// How long the pointer-lock hint stays at full strength.
+const LOCK_HINT_FADE_MS = 4500;
+let lockHintShownAt = 0;
+
 function syncLockHint() {
     const el = document.getElementById('lock-hint');
     if (!el) return;
     const wantIt = wantsPointerLock() && !pointerLocked
         && (gameState === 'FIGHT' || gameState === 'INTRO');
     el.style.display = wantIt ? 'block' : 'none';
+    // The clock starts when it appears and resets when it goes away, so the
+    // hint is loud again next time it is genuinely news.
+    if (!wantIt) { lockHintShownAt = 0; el.classList.remove('faded'); return; }
+    if (!lockHintShownAt) lockHintShownAt = performance.now();
+    el.classList.toggle('faded', performance.now() - lockHintShownAt > LOCK_HINT_FADE_MS);
 }
 
 function gameLoop() {
@@ -14126,6 +14321,7 @@ if (DEBUG) {
         get awayPaused() { return awayPaused; },
         sideReady,
         newRoomCode, roomIdFor, roomCodeOf, ROOM_CODE_LEN, ROOM_CODE_CHARS, ROOM_ID_PREFIX,
+        NET_FATAL_ERRORS, netErrorText, refreshPauseUI,   // netTeardown/onNetLost are already above
         get myPlayerName() { return myPlayerName; },
         buildModeSelect, onNetLost, refreshGameOverUI, refreshLobbyUI,
         onlineModes: () => onlineModes().map(m => m.id),

@@ -52,6 +52,31 @@ const SIZES = [
                 const el = document.querySelector('.room-bar');
                 return el ? { over: el.scrollWidth - el.clientWidth } : null;
             })();
+            // THE FULLEST ROOM BAR, which is the one that was reported: status
+            // pill + room code chip + sandbox pill + Leave Room, all at once.
+            // A bar holding only a status pill fits anywhere and proves nothing.
+            const chip = document.getElementById('room-code-chip');
+            if (chip) chip.style.display = '';
+            const codeBox = document.getElementById('room-code-text');
+            if (codeBox) codeBox.value = 'WPWVDM';
+            const banner = document.getElementById('sandbox-banner');
+            if (banner) banner.style.display = '';
+            out.roomBarFull = (() => {
+                const el = document.querySelector('.room-bar');
+                if (!el) return null;
+                const b = el.getBoundingClientRect();
+                const kids = Array.from(el.querySelectorAll(':scope > *, .room-bar-left > *'))
+                    .filter(k => k.offsetParent !== null)
+                    .map(k => { const r = k.getBoundingClientRect();
+                                return { id: k.id || k.className,
+                                         right: Math.round(r.right), top: Math.round(r.top) }; });
+                return { over: el.scrollWidth - el.clientWidth,
+                         width: Math.round(b.width),
+                         widest: kids.reduce((a, k) => Math.max(a, k.right - b.left), 0),
+                         rows: new Set(kids.map(k => k.top)).size, kids };
+            })();
+            out.overlayOverflowXFull = ov.scrollWidth - ov.clientWidth;
+            out.bodyOverflowXFull = document.body.scrollWidth - document.body.clientWidth;
             D.netTeardown();
             // The picker, in the state a player first sees it.
             D.setDebugUnlockAll(true);
@@ -79,12 +104,51 @@ const SIZES = [
         check('the page does not scroll horizontally', m.bodyOverflowX <= 0, String(m.bodyOverflowX));
         check('nor does the overlay', m.overlayOverflowX <= 0, String(m.overlayOverflowX));
         check('nor the room bar', !m.roomBar || m.roomBar.over <= 0, JSON.stringify(m.roomBar));
+        // ...and none of that changes with the bar full.
+        check('nor a FULL room bar (code + sandbox pill + Leave Room)',
+            !!m.roomBarFull && m.roomBarFull.over <= 0
+            && m.roomBarFull.widest <= m.roomBarFull.width,
+            JSON.stringify(m.roomBarFull));
+        check('nor the page, with the room bar full',
+            m.bodyOverflowXFull <= 0 && m.overlayOverflowXFull <= 0,
+            JSON.stringify({ body: m.bodyOverflowXFull, overlay: m.overlayOverflowXFull }));
 
         // 4. THE ROSTER FILLS ITS COLUMN. It was 307px inside a 552px column at
         //    640px wide - "the picker fills only the left half".
         check('the roster grid fills its column',
             !!m.grid && !!m.pickerSide && m.grid.w >= m.pickerSide.w - 2,
             JSON.stringify({ grid: m.grid, side: m.pickerSide }));
+
+        // 4b. NO MODAL SCROLLS INSIDE THE PAGE'S SCROLL. #ui-overlay is the one
+        //     scroll container; a panel with its own scrollbar hides content
+        //     with nothing on screen to say so.
+        const inner = await page.evaluate(() => {
+            const out = [];
+            const open = ['lobby', 'settings', 'tutorial', 'modeselect', 'mapselect'];
+            const ids = { lobby: 'btn-open-online', settings: 'btn-open-settings',
+                          tutorial: 'btn-open-tutorial', modeselect: 'btn-open-modeselect',
+                          mapselect: 'btn-open-mapselect' };
+            for (const name of open) {
+                const opener = document.getElementById(ids[name]);
+                if (!opener || opener.offsetParent === null) continue;
+                opener.click();
+                const screen = document.getElementById(name + '-screen');
+                if (!screen) continue;
+                for (const el of [screen, ...screen.querySelectorAll('*')]) {
+                    const over = el.scrollHeight - el.clientHeight;
+                    const style = getComputedStyle(el);
+                    const scrolls = /(auto|scroll)/.test(style.overflowY) && over > 2;
+                    if (scrolls && el.id !== 'ui-overlay') {
+                        out.push({ modal: name, el: el.id || el.className, over });
+                    }
+                }
+                document.querySelectorAll('#' + name + '-screen .btn-back, #' + name + '-screen .btn-close')
+                    .forEach(b => b.click());
+            }
+            return out;
+        });
+        check('no modal panel scrolls inside the page scroll',
+            inner.length === 0, JSON.stringify(inner));
 
         // 5. MODAL CONTENT STAYS ON ITS PANEL. A panel with a max-height and
         //    content that ignores it renders text over the arena behind it.

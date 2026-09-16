@@ -476,6 +476,80 @@ const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
         leak.online.unlocked === false && leak.online.upgrades === 0
         && leak.online.sandbox === false, JSON.stringify(leak.online));
 
+    // ------------------------------------------- a dropped connection cleans up
+    // Two P0 reports, both about what is left on screen after a connection
+    // ends. Driven through the real teardown rather than by waiting out a
+    // three-minute background tab.
+    section('A dropped connection takes its room code and says what happened:');
+    const drop = await page.evaluate(() => {
+        const D = window.ACDebug;
+        const shown = () => {
+            const chip = document.getElementById('room-code-chip');
+            const row = document.getElementById('lobby-code-row');
+            const box = document.getElementById('lobby-code');
+            return { chip: !!chip && getComputedStyle(chip).display !== 'none',
+                     row: !!row && getComputedStyle(row).display !== 'none',
+                     code: box ? box.value : null };
+        };
+        D.netFakeConnect('host');
+        const lobbyBox = document.getElementById('lobby-code');
+        if (lobbyBox) lobbyBox.value = 'WPWVDM';
+        const row = document.getElementById('lobby-code-row');
+        if (row) row.style.display = 'flex';
+        const before = shown();
+        D.netTeardown('Lost the connection to the lobby server');
+        return { before, after: shown(), fatal: D.NET_FATAL_ERRORS,
+                 nonFatalKept: D.NET_FATAL_ERRORS.indexOf('peer-unavailable') < 0 };
+    });
+    check('the code is on screen while the room is live',
+        drop.before.code === 'WPWVDM' && drop.before.row === true, JSON.stringify(drop.before));
+    check('and is gone once the connection drops',
+        !drop.after.code && drop.after.row === false && drop.after.chip === false,
+        JSON.stringify(drop.after));
+    check('a bad room code is NOT treated as fatal - it leaves a working peer',
+        drop.nonFatalKept === true, JSON.stringify(drop.fatal));
+
+    // The other half: the host is told, rather than being handed an ordinary
+    // pause menu with a Resume button that resumes a match with nobody in it.
+    section('The pause screen says the opponent is gone:');
+    await H.boot(page);
+    await page.evaluate(() => {
+        const D = window.ACDebug;
+        D.setDebugUnlockAll(true);
+        D.setMatchMode('classic');
+        const pick = (grid, detail, n) => {
+            const cards = Array.from(document.querySelectorAll(grid + ' .fighter-btn'));
+            (cards.find(c => c.textContent.includes(n)) || cards[0]).click();
+            document.querySelector(detail + ' .btn-confirm').click();
+        };
+        pick('#p1-grid', '#p1-detail', 'Kaelen');
+        pick('#p2-grid', '#p2-detail', 'Lyra');
+    });
+    await H.sleep(350);
+    await page.evaluate(() => document.querySelectorAll('#mapselect-grid .map-card')[0].click());
+    const fighting = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 70000);
+    check('reached a fight to be disconnected from', fighting);
+    if (fighting) {
+        const lost = await page.evaluate(() => {
+            const D = window.ACDebug;
+            D.netFakeConnect('host');
+            // Exactly what conn.on('close') does when the opponent leaves.
+            D.netTeardown('Opponent disconnected');
+            D.onNetLost();
+            const btn = document.getElementById('btn-resume');
+            const note = document.getElementById('pause-away-note');
+            return { state: D.gameState,
+                     resumeDisabled: !!btn && btn.disabled,
+                     noteShown: !!note && getComputedStyle(note).display !== 'none',
+                     note: note ? note.textContent : null };
+        });
+        check('the match pauses', lost.state === 'PAUSED', JSON.stringify(lost));
+        check('the note says the opponent is gone',
+            lost.noteShown === true && /disconnect/i.test(lost.note || ''), JSON.stringify(lost));
+        check('and Resume is disabled, because there is nothing to resume',
+            lost.resumeDisabled === true, JSON.stringify(lost));
+    }
+
     // ------------------------------------------------- a readable room code
     // Reported: the room code is a 36-character UUID, "awkward to read out or
     // type". It is six characters now, and the thing shown and the thing

@@ -1130,6 +1130,36 @@ if (location.protocol === 'https:'
                   'watch debug surface')
         print('  %-34s ok' % 'spectator camera follows the fight')
 
+    # ------------------------------------------------- the HUD is readable
+    # Same strings, same skies, same window sizes as the online build, so the
+    # same two fixes: a floor under the rendered pixel size (the HUD is authored
+    # in a 1755x975 space and drawn at min(w/1755, h/975), which is 0.35 in a
+    # 614px frame - an 18-unit label lands at 6 real pixels), and a plate behind
+    # anything drawn over the ARENA rather than over the HUD's own panels.
+    #
+    # The dash pips are deliberately NOT ported: they are drawn on "your" panel,
+    # and split screen has two of those.
+    if 'function hudPlate(' not in dst:
+        dst = rep(dst, """function hudFont(px, bold) {
+    return `${bold ? 700 : 500} ${Math.max(9, Math.round(px * HUD_TEXT_SCALE))}px ${HUD_FAMILY}`;
+}""",
+                  block(src, 'const HUD_MIN_PX = 11;', chr(10) + 'function cycleHudScale(',
+                        'hud font floor').rstrip(chr(10)),
+                  'hud font floor')
+        dst = rep(dst, 'function drawRoundStatus() {',
+                  block(src, '// A dark plate behind a centred string',
+                        chr(10) + 'function drawRoundStatus() {', 'hud plate')
+                  + 'function drawRoundStatus() {',
+                  'hud plate')
+        dst = rep(dst, """            hudCtx.fillStyle = "#64748b"; hudCtx.font = hudFont(15); hudCtx.textAlign = "center";
+            hudCtx.fillText(currentMap.name, hudW() / 2, 24); hudCtx.textAlign = "left";""",
+                  """            hudCtx.font = hudFont(15); hudCtx.textAlign = "center";
+            hudPlate(currentMap.name, hudW() / 2, 24);
+            hudCtx.fillStyle = "#dbe6f5";
+            hudCtx.fillText(currentMap.name, hudW() / 2, 24); hudCtx.textAlign = "left";""",
+                  'arena name plate')
+        print('  %-34s ok' % 'readable HUD')
+
     # ------------------------------------------- the HUD is not stretched
     # Batch 51 in the main build, and the same bug here: the HUD is authored in
     # a fixed 1.8:1 virtual space and was scaled onto the canvas one axis at a
