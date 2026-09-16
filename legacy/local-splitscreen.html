@@ -1666,6 +1666,14 @@ const MATCH_MODES = [
     // The ID stays `timeattack`. It is a localStorage progression key and a
     // value on the wire in SETUP/START packets, so renaming it would reset
     // players' records and desync a mixed-version match for a cosmetic gain.
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
     { id: 'timeattack', name: 'Takedown Race', blurb: 'Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse - the race is the pressure.' },
     { id: 'boss', name: 'Boss Fight (Co-op)', blurb: 'Both players team up against Karrigos, the Hollow Titan. Its attacks are slow and telegraphed — punish the wind-up. If either of you falls, the run is over.', coop: true },
     { id: 'survival', name: 'Survival Waves (Co-op)', blurb: 'Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.', coop: true },
@@ -3070,6 +3078,28 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
+// Rises up to this are walkable on foot; taller is a wall you must jump - see
+// resolveTallTerrain(), which reverts the move when the rise is too great.
+//
+// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
+// those short platforms, instead of hitting it and it blocking you, which it
+// should do, you snap up onto it."
+//
+// That was exactly what the old value did. At 30, a 26-unit `step` - the long
+// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
+// counted as walkable, so walking into its side instantly raised you 26 units
+// with no jump, no animation and no cost. It read as a free elevator, because
+// that is what it was.
+//
+// 12 is not arbitrary: the step heights actually present in MAPS are
+// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
+// or ramp lip you would not notice" and "block you would put a hand on to
+// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
+// waist-high block now has to be jumped.
+//
+// Reachability is the thing this could break, and it is asserted -
+// tests/mapscheck.js walks every map and checks that all standable ground can
+// still be reached, jumps included.
 // Rises up to this are walkable on foot; taller is a wall you must jump - see
 // resolveTallTerrain(), which reverts the move when the rise is too great.
 //
@@ -7241,6 +7271,12 @@ function propForAtkType(f) {
 // Losing the pauldron costs nothing: in first person the shoulder is behind the
 // camera. ARM_POSE_CHAIN is what gets posed; ARM_CHAIN is what gets kept, and
 // they are now the same set for exactly this reason.
+// HOW THE WEAPON IS HELD, in the hand the arm actually ends in. Yaw turns the
+// blade inboard across the frame, pitch lifts the tip, roll tilts the flat of
+// the blade toward the light so it reads as a blade rather than a line.
+// How far the whole limb is tipped toward the bottom-right corner.
+const VM_ARM_ROLL = -0.34;
+const VM_PROP_YAW = 0.99, VM_PROP_PITCH = -0.34, VM_PROP_ROLL = 0.62;
 const ARM_CHAIN = ['UpperArm', 'LowerArm', 'Hand'];
 
 // How long the extracted arm should be in camera space, and where its centre
@@ -7805,7 +7841,23 @@ function buildViewmodelArmFromModel(f) {
     // arm is now POSED forward rather than sticking out sideways, this is the
     // only rotation needed - and it is a fact about the model's convention, not
     // a number to tune.
-    holder.rotation.y = -Math.PI / 2;
+    // The model faces local +X (buildRiggedCharacter rotates it so render3D can
+    // map a 2D facing straight onto rotation.y). A camera looks down -Z, so
+    // turn the arm a quarter turn to face the way the camera does.
+    //
+    // THE SIGN WAS WRONG, and it is why "the arms are backwards" kept being
+    // reported. Ry(theta) maps x -> (cos t, 0, -sin t), so Ry(-90) sends the
+    // model's forward axis to (0, 0, +1) - straight AT the camera. The whole
+    // limb extended out of the screen: the shoulder cut ended up deep in the
+    // frame with the hand nearest the viewer, which is precisely an arm on
+    // backwards. Ry(+90) sends forward to -Z, into the screen, where it
+    // belongs.
+    //
+    // It also means the VM_AIM constants were right all along - measured in
+    // the character's own basis, they map to (-X, +Y, -Z) in camera space
+    // under this rotation: forward, up, and inboard. Fixing the sign is what
+    // finally made them mean what they say.
+    holder.rotation.y = Math.PI / 2;
 
     holder.userData.mats = Array.isArray(skinned.material) ? skinned.material.slice() : [skinned.material];
     holder.userData.fromModel = true;
@@ -8606,6 +8658,25 @@ function actionPhase(f, fd) {
     else elapsed = fd.startup + fd.active + (fd.recovery - f.atkStateTimer);
     return total > 0 ? Math.max(0, Math.min(1, elapsed / total)) : 0;
 }
+// How many jabs will actually READ inside an attack's active window.
+//
+// "ignis's attack is a snap that doesn't have a smooth animation" - and his
+// data asks for FOUR jabs inside a six-frame active window. That is four full
+// sine cycles in a tenth of a second: at 60fps each jab gets one and a half
+// frames, so the arm never draws an intermediate position and the whole thing
+// renders as a vibration. Voss is the same shape of problem (five jabs, four
+// active frames).
+//
+// A jab needs about five frames to be seen out and back, so the count is
+// clamped to what the window can show. The DATA is left alone deliberately -
+// `jabs: 4` still says "this is a flurry character" and still drives the sound
+// and the hit count; it just stops promising motion the frame budget cannot
+// deliver.
+const JAB_MIN_FRAMES = 5;
+function readableJabs(want, activeFrames) {
+    return Math.max(1, Math.min(want || 1, Math.floor((activeFrames || 1) / JAB_MIN_FRAMES)));
+}
+
 function armsOf(f) {
     return Array.isArray(f.mesh.userData.weaponArm) ? f.mesh.userData.weaponArm : [f.mesh.userData.weaponArm];
 }
@@ -8623,17 +8694,76 @@ const SPECIAL_ANIMS = {
     thunder: { type: 'skybolt' },                        // Aurelia — call the bolt from the sky
     bramble: { type: 'whipsweep' }                       // Thorne — huge sweeping lash
 };
-// Batch 25: `axis` lets one animation path drive both rigs. A procedural arm is
-// a Group hanging down, swung about Z. A skeleton's arm bone swings about its
-// local X, and with the opposite sign (measured in Blender: negative local-X is
-// forward). Everything else - all thirteen anim types, their timings, the
-// special overrides - is untouched.
-function _applyArms(arms, deg) {
+// The usable range of a shoulder swing, in degrees. See the clamp in _swingArm.
+const SWING_MAX_FWD = 95, SWING_MAX_BACK = 80;
+// How far back a wind-up may go, as a fraction of the strike it precedes.
+const SWING_BACK_FRAC = 0.5;
+const _swingAxis = new THREE.Vector3(), _swingQ = new THREE.Quaternion(), _swingInv = new THREE.Matrix4();
+
+// Swings one arm `deg` degrees forward, about the axis that actually points
+// sideways out of this fighter's body.
+//
+// NOT about the bone's local X, which is what this did until Batch 46. That
+// came from a real measurement - Batch 25 checked that local Z was world +Y on
+// both sides, making local X the fore/aft axis - but it was a measurement of
+// the OLD rig, whose arm bones all ran along world X. Batch 43 re-rigged every
+// character with bones that follow the traced arm: angled down and out, with
+// whatever roll Blender derived from that direction. A local-X rotation then
+// sweeps a tilted plane, which on Gorgonok's wide shoulders put his fist
+// BEHIND him - reported twice.
+//
+// A direction cannot drift like that. The body's own lateral axis is local +Z
+// of the fighter's mesh group (local +X is forward by this file's convention),
+// and transforming it into the bone's parent space gives an axis that means
+// "swing forward" for any bone, any roll, any character.
+function _swingArm(a, deg, f) {
+    const b = a.pivot;
+    if (!b.userData.swingRest) b.userData.swingRest = b.quaternion.clone();
+    if (!deg) { b.quaternion.copy(b.userData.swingRest); return; }
+    const body = (f && f.mesh) ? f.mesh : (b.parent || b);
+    body.updateWorldMatrix(true, false);
+    b.parent.updateWorldMatrix(true, false);
+    _swingInv.copy(b.parent.matrixWorld).invert();
+    _swingAxis.set(0, 0, 1)
+        .transformDirection(body.matrixWorld)
+        .transformDirection(_swingInv)
+        .normalize();
+    // Clamped, because past about 95 degrees a forward swing stops reaching:
+    // the hand passes its highest point and comes back toward the body, so
+    // `fwdDeg: 105` measured LESS forward travel than a 60-degree wind-up
+    // measured backward - which is Nyx, and reads exactly like the swing going
+    // the wrong way. Authoring beyond this range asks the shoulder for motion
+    // it cannot express.
+    deg = Math.max(-SWING_MAX_BACK, Math.min(SWING_MAX_FWD, deg));
+    // POSITIVE = FORWARD, which is what every caller means: `fwdDeg: 115`,
+    // `reachDeg: 95`, `+150 * strike`. Measured rather than assumed, and the
+    // first version had it backwards - +60 degrees put Gorgonok's fist 16
+    // units BEHIND his shoulder and -60 put it 17 in front. That sign is the
+    // whole of "gorgonok's attack swings behind him", and it was not his
+    // animation: every character on the roster struck backwards.
+    _swingQ.setFromAxisAngle(_swingAxis, deg * DEG);
+    b.quaternion.copy(b.userData.swingRest).premultiply(_swingQ);
+}
+
+function _applyArms(arms, deg, f) {
     for (const a of arms) {
         if (!a || !a.pivot) continue;
-        if (a.axis === 'x') a.pivot.rotation.x = (a.pivot.userData.restRotX || 0) - deg * DEG;
+        if (a.axis === 'x') _swingArm(a, deg, f);
         else a.pivot.rotation.z = a.pivot.userData.restRotZ + deg * DEG;
     }
+}
+
+// The fast jab/reach loops used to assign pivot.rotation.z directly, which is
+// the swing axis for a procedural arm (a Group hanging from a shoulder) and
+// NOT for a skeleton - so on a rigged character the smooth sine below came out
+// as a sideways twitch. That is the "snap that doesn't have a smooth
+// animation" reported for Ignis, whose whole kit is this animation.
+function _reachArms(arms, degs, f) {
+    arms.forEach((a, i) => {
+        if (!a || !a.pivot) return;
+        if (a.axis === 'x') _swingArm(a, degs(i), f);
+        else a.pivot.rotation.z = a.pivot.userData.restRotZ + degs(i) * DEG;
+    });
 }
 function animateWeapon(f) {
     const acting = f.atkState !== 'idle' && f.atkKind;
@@ -8660,40 +8790,80 @@ function animateWeapon(f) {
     // ---- Basic attack motions ----
     if (anim.type === 'swing') {
         const t = acting ? swingT(f, fd) : 0;
-        const deg = t >= 0 ? t * anim.backDeg : -t * anim.fwdDeg;
-        _applyArms(arms, deg);
+        // The WIND-UP IS CAPPED AGAINST THE STRIKE, because an attack that
+        // travels further backward than forward reads as a swing behind the
+        // fighter however correct its axis is. Nyx is the case that found it:
+        // -60 back against a 105 forward that the shoulder clamp cuts to 95,
+        // and her arm rests further forward than anyone else's (a scythe
+        // carry), so she measured 20 units back against 10 forward.
+        //
+        // Capped rather than re-authored per character: the rule is what
+        // matters, and it holds for whatever the data says next.
+        const fwd = Math.min(SWING_MAX_FWD, anim.fwdDeg);
+        const back = Math.max(anim.backDeg, -SWING_BACK_FRAC * fwd);
+        const deg = t >= 0 ? t * back : -t * fwd;
+        _applyArms(arms, deg, f);
         if (anim.twistDeg) f.mesh.rotation.y += t * anim.twistDeg * DEG;
     } else if (anim.type === 'stab') {
         let reach = 0;
         if (acting) {
-            if (f.atkState === 'active') { const p = 1 - f.atkStateTimer / Math.max(1, fd.active); reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 2 * anim.jabs); }
+            if (f.atkState === 'active') { const p = 1 - f.atkStateTimer / Math.max(1, fd.active); reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 2 * readableJabs(anim.jabs, fd.active)); }
             else if (f.atkState === 'startup') reach = -0.3 * wind;
             else reach = 0.15 * poseGain;
         }
-        _applyArms(arms, reach * anim.reachDeg);
+        _applyArms(arms, reach * anim.reachDeg, f);
     } else if (anim.type === 'flurry') {
-        let phase = 0, on = acting && f.atkState === 'active';
-        if (on) phase = (1 - f.atkStateTimer / Math.max(1, fd.active)) * Math.PI * 2 * anim.jabs;
-        arms.forEach((arm, i) => { const s = on ? Math.max(0, Math.sin(phase + i * Math.PI)) : 0; arm.pivot.rotation.z = arm.pivot.userData.restRotZ + s * anim.reachDeg * DEG; });
+        // A FLURRY THAT IS ACTUALLY DRAWN, which the old one was not.
+        //
+        // "ignis's attack is a snap that doesn't have a smooth animation": his
+        // active window is SIX FRAMES, and the old envelope spent half of each
+        // cycle clamped at zero (max(0, sin) parks an arm for its negative
+        // half) and reset to rest the instant the window ended. Net effect at
+        // 60fps: the arm appeared forward for two frames and was at rest for
+        // every other frame of the attack.
+        //
+        // Now the motion spans the WHOLE action - it leans in through startup,
+        // alternates arms with a half-sine each (no dead half, so every frame
+        // draws a different position), and eases back out through recovery.
+        // Same jab count, same timing data; it is just continuous.
+        // fd is null whenever the fighter is NOT mid-attack, and this branch
+        // runs every frame - reading fd.active unguarded threw on the very
+        // first idle frame and took the whole animation path down with it,
+        // which then made every later measurement in swingcheck a stale value.
+        const jabs = readableJabs(anim.jabs, fd ? fd.active : 1);
+        const halves = Math.max(1, jabs * arms.length);
+        let env = i => 0;
+        if (acting && f.atkState === 'active') {
+            const p = 1 - f.atkStateTimer / Math.max(1, fd.active);
+            const cyc = p * halves;                    // half-cycles elapsed
+            const owner = Math.floor(cyc) % Math.max(1, arms.length);
+            const frac = cyc - Math.floor(cyc);
+            env = i => (i === owner ? Math.sin(Math.PI * frac) : 0.12);
+        } else if (acting && f.atkState === 'startup') {
+            env = () => -0.22 * wind;                  // a small draw back
+        } else if (acting) {
+            env = () => 0.3 * poseGain;                // settle out of the last jab
+        }
+        _reachArms(arms, i => env(i) * anim.reachDeg, f);
     } else if (anim.type === 'cast') {
         let raise = 0;
         if (acting) { if (f.atkState === 'startup') raise = wind; else if (f.atkState === 'active') raise = 1; else raise = poseGain; }
-        _applyArms(arms, raise * (anim.raiseDeg || 90));
+        _applyArms(arms, raise * (anim.raiseDeg || 90), f);
         if (ws) ws.scale.setScalar(1 + raise * ((anim.peakScale || 1.6) - 1));
         _castCharge(chargeOrb, f, wind, strike, poseGain);
     // ---- Special motions ----
     } else if (anim.type === 'dash') {
-        _applyArms(arms, (-40 * wind + 120 * strike) * poseGain); // draw back, then drive the blade forward
+        _applyArms(arms, (-40 * wind + 120 * strike) * poseGain, f); // draw back, then drive the blade forward
         const lunge = strike * strike * 26 * poseGain;
         f.mesh.position.x += f.fx * lunge; f.mesh.position.z += f.fy * lunge;
         f.mesh.position.y += Math.sin(strike * Math.PI) * 2 * poseGain;
     } else if (anim.type === 'slam') {
         const big = anim.big ? 1.25 : 1;
-        _applyArms(arms, (-95 * wind + 150 * strike) * big * poseGain); // hoist overhead, crash down
+        _applyArms(arms, (-95 * wind + 150 * strike) * big * poseGain, f); // hoist overhead, crash down
         f.mesh.position.y += (wind * 5 - strike * strike * 9 * big) * poseGain;
         if (ws) ws.scale.setScalar(1 + (0.25 * wind + 0.45 * strike) * big);
     } else if (anim.type === 'reap') {
-        _applyArms(arms, (-60 * wind + 70 * strike) * poseGain);
+        _applyArms(arms, (-60 * wind + 70 * strike) * poseGain, f);
         f.mesh.rotation.y += -Math.PI * 2 * strike * poseGain; // full spinning reap
         f.mesh.position.y += Math.sin(strike * Math.PI) * 5 * poseGain;
         if (ws) ws.scale.setScalar(1 + 0.2 * Math.sin(strike * Math.PI));
@@ -8705,30 +8875,30 @@ function animateWeapon(f) {
         if (on) { const blink = Math.max(0, 1 - strike * 3); f.mesh.position.x += f.fx * 10 * blink; f.mesh.position.z += f.fy * 10 * blink; } // quick blink-in
     } else if (anim.type === 'skybolt') {
         const armDeg = (f.atkState === 'active') ? (-150 + 230 * strike) : -150 * wind; // point to sky, then snap down-forward
-        _applyArms(arms, armDeg * poseGain);
+        _applyArms(arms, armDeg * poseGain, f);
         f.mesh.position.y += wind * 2 * poseGain;
         if (ws) ws.scale.setScalar(1 + wind * 0.7 + Math.sin(strike * Math.PI) * 1.1);
         _castCharge(chargeOrb, f, wind, strike, poseGain);
     } else if (anim.type === 'flameburst') {
-        if (f.atkState === 'startup') { _applyArms(arms, -50 * wind); f.mesh.position.y -= 4 * wind; }
-        else { _applyArms(arms, (-50 + 160 * strike) * poseGain); f.mesh.position.y += (-4 + strike * 7) * poseGain; }
+        if (f.atkState === 'startup') { _applyArms(arms, -50 * wind, f); f.mesh.position.y -= 4 * wind; }
+        else { _applyArms(arms, (-50 + 160 * strike) * poseGain, f); f.mesh.position.y += (-4 + strike * 7) * poseGain; }
         if (ws) ws.scale.setScalar(1 + strike * 0.7);
     } else if (anim.type === 'volley') {
         const raise = (f.atkState === 'recovery') ? poseGain : (f.atkState === 'startup' ? wind : 1);
-        _applyArms(arms, raise * 95);
+        _applyArms(arms, raise * 95, f);
         if (f.atkState === 'active') f.mesh.rotation.y += (-0.35 + 0.7 * strike) * poseGain; // sweep the fan across
         if (ws) ws.scale.setScalar(1 + 0.5 * Math.abs(Math.sin(strike * Math.PI * 5)) + raise * 0.3);
         _castCharge(chargeOrb, f, wind, strike, poseGain);
     } else if (anim.type === 'ward') {
         const raise = (f.atkState === 'recovery') ? poseGain : (f.atkState === 'startup' ? wind : 1);
-        _applyArms(arms, raise * 82);
+        _applyArms(arms, raise * 82, f);
         if (ws) { ws.scale.setScalar(1 + raise * 0.9); ws.rotation.y += 0.06 * raise; }
         f.mesh.position.y += Math.sin(arenaTime * 0.12) * 0.6 * raise;
         _castCharge(chargeOrb, f, wind, strike, poseGain);
     } else if (anim.type === 'whipsweep') {
         const t = acting ? swingT(f, fd) : 0;
         const deg = t >= 0 ? t * -70 : -t * 130;
-        _applyArms(arms, deg);
+        _applyArms(arms, deg, f);
         f.mesh.rotation.y += t * 80 * DEG; // big body twist for the wide lash
         f.mesh.position.y += Math.abs(t) * 2;
     }
@@ -9837,9 +10007,34 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 //
 // See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
 // 40s and the walls slam shut at 130s.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
 const GRACE_PERIOD = 40;        // seconds the arena stays full-size before the first collapse tick
 const SHRINK_INTERVAL = 18;     // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
 // Once the collapse fraction passes this, snap fully shut and start crushing.
 //
 // WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and

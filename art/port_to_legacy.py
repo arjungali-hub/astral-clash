@@ -562,6 +562,55 @@ def main():
                   'face url from AC_ASSET_BASE', required=False)
         print('  %-34s ok' % 'shared/roster.js replaces 5 steps')
 
+    # ---------------------------------------------- Batch 46: arm animation
+    # The swing axis, the jab rate and the first-person arm's facing. Whole
+    # blocks, not lines: _applyArms went from four lines to a helper with a new
+    # signature, and every call site changed with it.
+    if 'function _swingArm(' not in dst:
+        swing = block(src, "// The usable range of a shoulder swing, in degrees.",
+                      "\nfunction animateWeapon(", 'swing helpers')
+        old_apply = block(dst, "// Batch 25: `axis` lets one animation path drive both rigs.",
+                          "\nfunction animateWeapon(", 'legacy _applyArms')
+        dst = dst.replace(old_apply, swing, 1)
+        print('  %-34s ok' % 'swing axis + jab helpers')
+
+        # readableJabs sits above armsOf in index.html; the archived build needs
+        # it before animateWeapon runs.
+        jabs = block(src, "// How many jabs will actually READ inside an attack's active window.",
+                     "\nfunction armsOf(", 'readableJabs')
+        dst = rep(dst, "function armsOf(f) {", jabs + "\nfunction armsOf(f) {", 'readable jab count')
+
+        # The three animation branches that changed.
+        dst = rep(dst, "        const deg = t >= 0 ? t * anim.backDeg : -t * anim.fwdDeg;\n        _applyArms(arms, deg);",
+                  block(src, "        // The WIND-UP IS CAPPED AGAINST THE STRIKE",
+                        "\n        if (anim.twistDeg)", 'swing branch'),
+                  'wind-up cap')
+        dst = rep(dst, "reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 2 * anim.jabs);",
+                  "reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 2 * readableJabs(anim.jabs, fd.active));",
+                  'stab jab rate')
+        old_flurry = block(dst, "    } else if (anim.type === 'flurry') {",
+                           "\n    } else if (anim.type === 'cast') {", 'legacy flurry')
+        new_flurry = block(src, "    } else if (anim.type === 'flurry') {",
+                           "\n    } else if (anim.type === 'cast') {", 'flurry')
+        dst = dst.replace(old_flurry, new_flurry, 1)
+        print('  %-34s ok' % 'flurry spans the whole action')
+
+        # Every remaining _applyArms call has to pass the fighter, or the axis
+        # cannot be derived from the body.
+        n = dst.count("_applyArms(arms, ")
+        dst = re.sub(r"_applyArms\(arms, ([^;]+?)\);", r"_applyArms(arms, \1, f);", dst)
+        dst = dst.replace("_applyArms(arms, deg, f, f);", "_applyArms(arms, deg, f);")
+        print('  %-34s %d call sites' % ('fighter passed to _applyArms', n))
+
+    # The first-person arm's facing, and the weapon it holds.
+    if 'VM_PROP_YAW' not in dst:
+        dst = rep(dst, "const ARM_CHAIN = ['UpperArm', 'LowerArm', 'Hand'];",
+                  block(src, "// HOW THE WEAPON IS HELD", "\nconst ARM_CHAIN")
+                  + "const ARM_CHAIN = ['UpperArm', 'LowerArm', 'Hand'];", 'viewmodel prop constants')
+        dst = rep(dst, "    holder.rotation.y = -Math.PI / 2;",
+                  block(src, "    // The model faces local +X (buildRiggedCharacter rotates it so render3D can",
+                        "\n\n    holder.userData.mats", 'arm facing'), 'first-person arm faces away')
+
     # ------------------------------------------------ photographic surfaces
     photo = block(src, "// ===========================================================================\n"
                        "// Batch 34: PHOTOGRAPHIC ARENA SURFACES",
