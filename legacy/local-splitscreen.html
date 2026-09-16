@@ -1834,7 +1834,12 @@ function playerName(side) {
 // only ever called from a match or a menu repaint, both after the flags exist.
 function displayName(side) {
     const isBot = side === 'p1' ? p1IsBot : p2IsBot;
-    return isBot ? 'Bot' : playerName(side);
+    if (!isBot) return playerName(side);
+    // TWO BOTS NEED TWO NAMES. Reported from a mirror match: "both have
+    // identical red rings and identical red health bars labeled 'Ignis (Bot)'"
+    // - with one bot, "Bot" is unambiguous; with two it is the same label
+    // twice, on the only two things on screen.
+    return (p1IsBot && p2IsBot) ? (side === 'p1' ? 'Bot 1' : 'Bot 2') : 'Bot';
 }
 
 function setLocalName(side, value) {
@@ -2025,7 +2030,11 @@ function syncWatchRings(on) {
         if (!ring.visible) continue;
         // Just above the floor: coplanar with it would z-fight.
         ring.position.set(worldX(f.x + f.width / 2), 1.5, worldZ(f.y + f.height / 2));
-        ring.material.color.set(f.color);
+        // BY SIDE, not by fighter. A mirror match gave both fighters the same
+        // ring colour and the same HUD colour, so from overhead there was
+        // nothing to tell them apart - reported for Ignis vs Ignis. A side
+        // colour is the one thing that is always different.
+        ring.material.color.set(WATCH_RING_SIDE[i === 0 ? 'p1' : 'p2']);
     }
 }
 
@@ -2127,118 +2136,6 @@ function prog(side) { return progression[side] || progression.p1; }
 const MATCH_MODES = [
     { id: 'classic', name: 'Classic Versus', blurb: 'Best of 3 rounds. Knock your opponent out to win a round.' },
     { id: 'zone', name: 'Zone Control', blurb: 'Hold the glowing ring at the center. First to 45 seconds of control wins — knock them out of it.' },
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
-    // Batch 38: "Time Attack" named the one thing this mode does not involve.
-    // It is first to three knockouts with no clock at all - the name was
-    // borrowed from racing, where the timer IS the score. "Takedown Race" says
-    // what it is: a race, scored in takedowns.
-    //
-    // The ID stays `timeattack`. It is a localStorage progression key and a
-    // value on the wire in SETUP/START packets, so renaming it would reset
-    // players' records and desync a mixed-version match for a cosmetic gain.
     // Batch 38: "Time Attack" named the one thing this mode does not involve.
     // It is first to three knockouts with no clock at all - the name was
     // borrowed from racing, where the timer IS the score. "Takedown Race" says
@@ -2959,7 +2856,11 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // over 1 for a sunny daytime feel.
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+// The base, which applyLighting() then scales per theme (see theme.exposure).
+// 1.1 was this build's flat value; the online build settled on 0.92 after the
+// pale arenas were reported as "almost entirely white".
+const BASE_EXPOSURE = 0.92;
+renderer.toneMappingExposure = BASE_EXPOSURE;
 
 // The game's own coordinate system (arena bounds, maps, HUD layout) stays
 // a fixed 900x500 virtual space (see VIRTUAL_W/VIRTUAL_H) — only the
@@ -3571,6 +3472,10 @@ function fitKeyShadow() {
 // times/moods). keyLight is placed at the sun's sky position so shadows fall
 // the right way; fillLight is tinted toward the sky for coherent bounce.
 function applyLighting(theme) {
+    // PER-THEME EXPOSURE. One global value cannot serve a glacier and a
+    // foundry: a near-white albedo clips under it and a near-black one washes
+    // out. See theme.exposure.
+    renderer.toneMappingExposure = BASE_EXPOSURE * (theme.exposure || 1);
     ambientLight.color.set(theme.ambient.color); ambientLight.intensity = theme.ambient.int;
     hemiLight.color.set(theme.hemi.sky); hemiLight.groundColor.set(theme.hemi.ground); hemiLight.intensity = theme.hemi.int;
     keyLight.color.set(theme.sun.color); keyLight.intensity = theme.sun.int;
@@ -3587,6 +3492,8 @@ function applyLighting(theme) {
 const MAP_THEMES = {
     // Cyan energy arena — dark steel + glowing seams, clear cool midday.
     'Voltaic Nexus': {
+        // white blocks whose tops read as flat pure white
+        exposure: 0.84,
         id: 'astral', wallStyle: 'techrail', wallTex: 'metal', wallColor: 0x3a557e, capColor: 0x22314c,
         floorTex: 'techgrid', floorColor: 0xaecbe6, column: 'pylon', stoneColor: 0x3a557e, stepColor: 0x2a3a58,
         sky: ['#1a4fd0', '#3f86e6', '#87bff2', '#cfeaff'],
@@ -3614,6 +3521,8 @@ const MAP_THEMES = {
     },
     // Cream marble + grass colosseum — smooth ivy-topped walls, bright midday.
     'The Colosseum Ring': {
+        // marble and pale sandstone, reported as "very washed-out"
+        exposure: 0.8,
         id: 'colosseum', wallStyle: 'ivy', wallTex: 'marble', wallColor: 0xe6ddc9, capColor: 0xd2c8b0,
         floorTex: 'grass', floorColor: 0x8fbf6f, column: 'marble', stoneColor: 0xe6ddc9, stepColor: 0xcfc6b0,
         sky: ['#2f8fe0', '#66b6f2', '#a6d8fb', '#e0f4ff'],
@@ -3632,6 +3541,8 @@ const MAP_THEMES = {
     },
     // Frozen glacier — pale cracked-ice walls, crisp cold clear light.
     'The Shattered Bridge': {
+        // ice walls, ice floor and a white sun: the palest arena there is
+        exposure: 0.72,
         id: 'glacier', wallStyle: 'crystal', wallTex: 'ice', wallColor: 0xbfe4f2, capColor: 0x9fd0e8,
         floorTex: 'ice', floorColor: 0xd6eef8, column: 'icecrystal', stoneColor: 0xbfe4f2, stepColor: 0x9fd0e8,
         sky: ['#3f96de', '#79c2ef', '#aadcf5', '#e2f5ff'],
@@ -3641,6 +3552,16 @@ const MAP_THEMES = {
     },
     // Volcanic foundry — black basalt with glowing lava seams, smoky warm daylight.
     'Molten Foundry': {
+        // Its whole identity is being nearly black, so this is the one theme
+        // that needs its own colour to actually apply (see themeTintFade) AND
+        // its own exposure, the same lever the three pale arenas use in the
+        // other direction. A foundry should be the darkest room in the game.
+        tintFade: 0.10,
+        // 0.62 was a genuinely dark foundry and unplayable with it - the far
+        // wall went to near-black and an opponent standing against it was
+        // invisible. 0.75 keeps the plate dark and the lava seams glowing while
+        // leaving enough range to see someone coming.
+        exposure: 0.75,
         id: 'volcanic', wallStyle: 'jagged', wallTex: 'basalt', wallColor: 0x2e2a33, capColor: 0x1a1720,
         floorTex: 'lava', floorColor: 0x403a46, column: 'redspire', stoneColor: 0x2a2530, stepColor: 0x241f28,
         sky: ['#5f5560', '#9a6a55', '#c88a5a', '#e0b487'],
@@ -3676,6 +3597,31 @@ const MAP_THEMES = {
         fog: { color: 0xd6f0ee, near: 1700, far: 5400 }, scenery: 'coral'
     }
 };
+// How much of a theme's COLOUR survives onto the photographic albedo.
+//
+// 0.62 means "mostly faded", which Batch 34 chose because a real photograph
+// carries its own colour and multiplying medieval blocks by a courtyard's
+// grey-green turned them to mud. That reasoning holds for every theme whose
+// identity is its architecture - and fails completely for one whose identity is
+// being nearly black: Molten Foundry's basalt and lava both map to a TAN rock
+// photograph, and at 38% tint strength a tan photograph stays tan. It rendered
+// as "a bright tan sandstone canyon", which is the opposite of a foundry.
+//
+// So a theme may ask for its tint back.
+// How much of a theme's COLOUR survives onto the photographic albedo.
+//
+// 0.62 means "mostly faded", which Batch 34 chose because a real photograph
+// carries its own colour and multiplying medieval blocks by a courtyard's
+// grey-green turned them to mud. That reasoning holds for every theme whose
+// identity is its architecture - and fails completely for one whose identity is
+// being nearly black: Molten Foundry's basalt and lava both map to a TAN rock
+// photograph, and at 38% tint strength a tan photograph stays tan. It rendered
+// as "a bright tan sandstone canyon", which is the opposite of a foundry.
+//
+// So a theme may ask for its tint back.
+function themeTintFade(theme) {
+    return (theme && theme.tintFade != null) ? theme.tintFade : 0.62;
+}
 function themeFor(map) {
     const base = MAP_THEMES[map.name] || MAP_THEMES['Twin Ramparts'];
     return Object.assign({}, base, { accent: hexNum(map.accent), mapName: map.name });
@@ -3695,314 +3641,6 @@ function themeFor(map) {
 const PILLAR_CLEAR_HEIGHT = 45;
 const JUMP_VZ = 9, GRAVITY = 0.42;
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
 // Rises up to this are walkable on foot; taller is a wall you must jump - see
 // resolveTallTerrain(), which reverts the move when the rise is too great.
 //
@@ -4345,28 +3983,39 @@ const PHOTO_SETS = {
         // glowing accent rails be the thing your eye goes to. Both other sets
         // stay in assets/tex - metal_plate is still the techgrid FLOOR, where
         // being diamond plate is exactly right.
-        metal:       { set: 'concrete_wall_003',  tile: 1.7 },
+        metal:       { set: 'concrete_wall_003',  tile: 1.15 },  // 1.7 read as noise at arena scale
         ashlar:      { set: 'medieval_blocks_03', tile: 1.5 },   // block courses read best large-ish
         sandstone:   { set: 'medieval_blocks_03', tile: 1.4 },
         mossstone:   { set: 'medieval_blocks_03', tile: 1.5 },
         marble:      { set: 'marble_01',          tile: 1.6 },
         cloudmarble: { set: 'marble_01',          tile: 1.5 },
         redrock:     { set: 'rock_face_03',       tile: 1.9 },
-        basalt:      { set: 'rock_face_03',       tile: 2.1 },
+        // NOT rock_face_03, which is tan sandstone. Measured three times as
+        // "Molten Foundry loads a bright tan canyon": the theme tint is applied
+        // correctly (#2e2a33 -> #423f47) and a 26% multiply still cannot make a
+        // bright tan photograph read as basalt. metal_plate is the only dark
+        // industrial set in assets/tex, and for a FOUNDRY dark plate is the
+        // right material rather than a substitute. Tiled coarsely - plate tread
+        // at arena scale reads as fabric otherwise (see the techgrid note).
+        basalt:      { set: 'metal_plate',        tile: 1.0 },
         coralstone:  { set: 'rock_face_03',       tile: 1.8 },
         ice:         { set: 'snow_02',            tile: 1.7 },
     },
     // floors, keyed by theme.floorTex. Base repeat is ~190 units/tile, so
     // ~3.8x lands near 50.
     floor: {
-        techgrid:  { set: 'metal_plate',          tile: 4.2 },   // plate tread is small in reality
+        // Batch 49: 4.2 -> 2.3. Physically, plate tread IS small - but at ~45
+        // units per tile across a 1600-unit arena it reads as "a busy brown
+        // carpet-like pattern" (reported), because the eye sees the repeat
+        // rather than the metal. Bigger tiles read as plate.
+        techgrid:  { set: 'metal_plate',          tile: 2.3 },
         flagstone: { set: 'cobblestone_floor_04', tile: 3.6 },
         sand:      { set: 'sand_01',              tile: 4.6 },   // fine grain, tiles invisibly
         redsand:   { set: 'sand_01',              tile: 4.6 },
         coralsand: { set: 'sand_01',              tile: 4.4 },
         grass:     { set: 'aerial_grass_rock',    tile: 3.4 },
         jungle:    { set: 'forest_ground_04',     tile: 3.4 },
-        lava:      { set: 'rock_face_03',         tile: 3.8 },
+        lava:      { set: 'metal_plate',          tile: 2.0 },   // see the basalt note above
         ice:       { set: 'snow_02',              tile: 4.0 },
         cloud:     { set: 'marble_01',            tile: 3.0 },
     },
@@ -4808,7 +4457,7 @@ function buildPlatformMesh(p, theme) {
     slabMat.userData.keepMap = true;
     attachAccentGlow(slabMat, tex, theme, 'wall:' + theme.id, tex.repeat.x, tex.repeat.y, 0.7);
     attachPhotoSurface(slabMat, 'wall', theme.wallTex, tex.repeat.x, tex.repeat.y,
-        { normalScale: 1.0, ao: 0.8, tintFade: 0.62 });
+        { normalScale: 1.0, ao: 0.8, tintFade: themeTintFade(theme) });
     const slab = new THREE.Mesh(new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2), slabMat);
     slab.position.y = p.height / 2;
     slab.castShadow = true; slab.receiveShadow = true;
@@ -4936,7 +4585,7 @@ function buildOuterWall(side, theme) {
     bodyMat.userData.keepMap = true; // maps wrap canvases shared across rounds
     attachAccentGlow(bodyMat, wtex, theme, 'wall:' + theme.id, wtex.repeat.x, wtex.repeat.y, 0.8);
     attachPhotoSurface(bodyMat, 'wall', theme.wallTex, wtex.repeat.x, wtex.repeat.y,
-        { normalScale: 1.15, ao: 0.85, tintFade: 0.62 });
+        { normalScale: 1.15, ao: 0.85, tintFade: themeTintFade(theme) });
     const capMat = new THREE.MeshStandardMaterial({ color: theme.capColor, roughness: 0.85, metalness: metalish ? 0.4 : 0.03 });
     const body = new THREE.Mesh(new THREE.BoxGeometry(along, WALL_HEIGHT, thick), bodyMat);
     body.position.y = WALL_HEIGHT / 2; body.receiveShadow = true; body.castShadow = true;
@@ -10309,7 +9958,10 @@ function showDetail(side, name, confirmed) {
 function headingHTML(num, stage) {
     const side = num === 1 ? 'p1' : 'p2', b = BINDINGS[side];
     const isBotSide = num === 1 ? p1IsBot : p2IsBot;
-    const botTag = isBotSide ? ' <span style="color:#f59e0b">[BOT]</span>' : '';
+    // NOT a [BOT] tag on top of displayName's 'Bot'. Reported as "the header
+    // reads 'Bot [BOT]', which says the same thing twice" - the tag colours the
+    // name instead.
+    const botTag = '';
     const padTag = padSlots[side] != null ? ` <span class="pad-badge" title="Gamepad connected"><svg viewBox="0 0 24 16" width="1.1em" height="0.73em" fill="currentColor" aria-hidden="true" style="vertical-align:middle"><rect x="1" y="3" width="22" height="10" rx="5"/><circle cx="7" cy="8" r="1.5" fill="#0d0f18"/><circle cx="17" cy="8" r="1.5" fill="#0d0f18"/></svg></span>` : '';
     // A bot side has no cards to press keys on, so the hint is dropped there
     // rather than shown and ignored.
@@ -10970,184 +10622,6 @@ const ROUNDS_TO_WIN = 2;
 const MAX_ROUNDS = 5; // hard cap so repeated double-KO draws (which advance no one) can't run best-of-3 forever
 const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress can skip it
 
-// --- Arena Collapse: replaces the old flat round timer. There's no clock
-// counting down to a timeout draw anymore — instead there's a timer to the
-// *next* collapse tick. The arena holds at full size for a grace period
-// (GRACE_PERIOD) so players get to use the whole map early, THEN starts
-// pulling inward on ALL FOUR sides proportionally (X and Y together, so it
-// keeps its shape) every SHRINK_INTERVAL seconds, squeezing the fight so
-// two fighters just avoiding each other run out of room. As the bounds
-// close, the map geometry left outside them literally falls away into the
-// void beneath the (also-shrinking) floor — "as if it never existed" — so
-// the arena visibly disappears from the edges in rather than being hidden
-// behind wall props. Once the collapse passes CRUSH_AT_FRAC, it snaps the
-// rest of the way shut and both fighters take flat, equal, maxHP-independent
-// damage per second (CRUSH_DPS) until one dies — reusing the existing
-// hp<=0 -> DEATH flow so "whoever dies first loses" falls out of logic that
-// already existed, and the map stays fully visible (no obscuring props)
-// while each fighter is crushed in place on their own side.
-//
-// Timing: retuned for the current (much higher) damage. After the 5x damage
-// pass a decisive round resolves in well under a minute, so the old 2¾-minute
-// window meant collapse essentially never fired. Now GRACE_PERIOD 20s of full
-// arena, then a tick every SHRINK_INTERVAL (6s) closing SHRINK_FRAC_STEP (0.13)
-// each. Crush (frac >= 0.8) lands on the 7th tick, ~20 + 6·6 ≈ 56s into a
-// fully-stalled round — real pressure on a staller, but it won't interrupt a
-// decisive fight.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
-// Batch 38: the collapse is much less hurried.
-//
-// Requested as "make the amount of time before the first time the wall closes
-// in 2x more, and the intervals between the walls closing in 3 times as much".
-// At 20s + 6s the arena was already visibly shrinking while players were still
-// learning the map, and a Classic Versus round was effectively on a ~55 second
-// clock. The collapse is meant to be a backstop against two players refusing
-// to engage, not the primary pressure.
-//
-// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
-// 40s and the walls slam shut at 130s.
 // Batch 38: the collapse is much less hurried.
 //
 // Requested as "make the amount of time before the first time the wall closes
@@ -11162,202 +10636,6 @@ const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress
 const GRACE_PERIOD = 40;        // seconds the arena stays full-size before the first collapse tick
 const SHRINK_INTERVAL = 18;     // seconds between each collapse tick after the grace period
 const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
-// Once the collapse fraction passes this, snap fully shut and start crushing.
-//
-// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
-// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
-//
-//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
-//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
-//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
-//                                                     NEXT step, so tick 7 at
-//                                                     148s snaps shut
-//
-// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
-// at 148 seconds - two minutes and twenty-eight seconds of full match before
-// the walls close, against 55 seconds before this change.
 // Once the collapse fraction passes this, snap fully shut and start crushing.
 //
 // WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
@@ -12126,12 +11404,19 @@ function endMatch() {
     if (isDraw) {
         winnerText = "Draw!";
     } else {
-        const winnerLabel = winner === player1 ? playerName('p1') : playerName('p2');
+        // displayName, not playerName: the summary below uses displayName, and
+        // the two disagreed - reported as "the title says 'Gorgonok (Arjun)
+        // Wins' while the stats line says 'Gorgonok (Bot)'".
+        const winnerSide = winner === player1 ? 'p1' : 'p2';
+        const loserSide = winnerSide === 'p1' ? 'p2' : 'p1';
+        const winnerLabel = displayName(winnerSide);
         // Batch 19: each mode reports its own score, not round pips it never used.
         let score;
-        if (matchMode === 'zone') score = `${Math.floor(zoneScore.p1)}s-${Math.floor(zoneScore.p2)}s held`;
-        else if (matchMode === 'timeattack') score = `${koTally.p1}-${koTally.p2} KOs`;
-        else score = `${roundWins.p1}-${roundWins.p2}`;
+        // FROM THE WINNER'S SIDE. Fixed P1-P2 order meant a P2 win was announced
+        // as "(0-2)", which reads as a loss - reported.
+        if (matchMode === 'zone') score = `${Math.floor(zoneScore[winnerSide])}s-${Math.floor(zoneScore[loserSide])}s held`;
+        else if (matchMode === 'timeattack') score = `${koTally[winnerSide]}-${koTally[loserSide]} KOs`;
+        else score = `${roundWins[winnerSide]}-${roundWins[loserSide]}`;
         winnerText = `${winner.name} (${winnerLabel}) Wins ${modeInfo().name}! (${score})`;
     }
     document.getElementById('winner-title').innerText = winnerText;

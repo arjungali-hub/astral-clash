@@ -32,6 +32,27 @@ SRC = os.path.join(ROOT, 'index.html')
 DST = os.path.join(ROOT, 'legacy', 'local-splitscreen.html')
 
 
+def comment_start(text, i):
+    """Index of the start of the run of `//` comment lines directly above the
+    line containing `i` - or the start of that line if there is none.
+
+    The steps below insert a comment block above the line they replace. Without
+    this they replace only the line, so the PREVIOUS run's comment survives and
+    a second copy lands above it: running this script twice from a clean
+    checkout grew the archived build by 3,164 bytes, and every run after that
+    by the same again.
+    """
+    start = text.rfind(chr(10), 0, i) + 1
+    while start > 0:
+        prev_end = start - 1
+        prev_start = text.rfind(chr(10), 0, prev_end) + 1
+        line = text[prev_start:prev_end].strip()
+        if not line.startswith('//'):
+            break
+        start = prev_start
+    return start
+
+
 def block(text, start_marker, end_marker, name='block'):
     """The text from start_marker up to (not including) end_marker."""
     i = text.index(start_marker)
@@ -463,27 +484,27 @@ def main():
     # depends on the online refactor is still excluded on purpose.
     # MAX_WALK_STEP_UP: 30 -> 12. The one the report actually named.
     step = block(src, "// Rises up to this are walkable on foot", "\nconst MAX_WALK_STEP_UP = 12;") + "\nconst MAX_WALK_STEP_UP = 12;"
-    i = dst.index("const MAX_WALK_STEP_UP = ")
-    j = dst.index("\n", i)
+    i = comment_start(dst, dst.index("const MAX_WALK_STEP_UP = "))
+    j = dst.index("\n", dst.index("const MAX_WALK_STEP_UP = "))
     dst = dst[:i] + step.lstrip("\n") + dst[j:]
     print('  %-34s ok' % 'MAX_WALK_STEP_UP')
 
     # The retimed arena collapse.
     grace = block(src, "// Batch 38: the collapse is much less hurried.", "const SHRINK_FRAC_STEP", 'grace')
-    i = dst.index("const GRACE_PERIOD = ")
+    i = comment_start(dst, dst.index("const GRACE_PERIOD = "))
     j = dst.index("const SHRINK_FRAC_STEP", i)
     dst = dst[:i] + grace + dst[j:]
     print('  %-34s ok' % 'GRACE_PERIOD + SHRINK_INTERVAL')
 
     crushfrac = block(src, "// Once the collapse fraction passes this", "const CRUSH_DPS", 'crush frac')
-    i = dst.index("const CRUSH_AT_FRAC = ")
+    i = comment_start(dst, dst.index("const CRUSH_AT_FRAC = "))
     j = dst.index("const CRUSH_DPS", i)
     dst = dst[:i] + crushfrac + dst[j:]
     print('  %-34s ok' % 'CRUSH_AT_FRAC + arithmetic')
 
     # The mode rename. The ID stays `timeattack` in both builds.
     mode = block(src, "    // Batch 38: \"Time Attack\" named the one thing", "\n    { id: 'boss'")
-    i = dst.index("    { id: 'timeattack',")
+    i = comment_start(dst, dst.index("    { id: 'timeattack',"))
     j = dst.index("\n    { id: 'boss'", i)
     dst = dst[:i] + mode.lstrip("\n") + dst[j:]
     print('  %-34s ok' % 'Takedown Race rename')
@@ -1101,6 +1122,77 @@ if (location.protocol === 'https:'
                 dst = rep(dst, after, decl + chr(10) + after, decl.split(' ')[1])
         print('  %-34s ok' % 'first-person rig')
 
+    # --------------------------------------- the archived build's own UI items
+    # Each of these is local-only: they are about two players at one keyboard,
+    # which the online build does not have.
+
+    # "With Bot on, the header reads 'Bot [BOT]', which says the same thing
+    # twice." displayName() already returns 'Bot' for a bot side - a deliberate
+    # earlier decision, since the name belongs to the person and not to the slot
+    # the AI is driving - and the heading appended the tag on top of it. One
+    # marker, kept in the tag's colour so it still reads at a glance.
+    dst = rep(dst, """    const botTag = isBotSide ? ' <span style="color:#f59e0b">[BOT]</span>' : '';""",
+              """    // NOT a [BOT] tag on top of displayName's 'Bot'. Reported as "the header
+    // reads 'Bot [BOT]', which says the same thing twice" - the tag colours the
+    // name instead.
+    const botTag = '';""",
+              'bot tag says it once', required=False)
+
+    dst = rep(dst, """function displayName(side) {
+    const isBot = side === 'p1' ? p1IsBot : p2IsBot;
+    return isBot ? 'Bot' : playerName(side);
+}""",
+              """function displayName(side) {
+    const isBot = side === 'p1' ? p1IsBot : p2IsBot;
+    if (!isBot) return playerName(side);
+    // TWO BOTS NEED TWO NAMES. Reported from a mirror match: "both have
+    // identical red rings and identical red health bars labeled 'Ignis (Bot)'"
+    // - with one bot, "Bot" is unambiguous; with two it is the same label
+    // twice, on the only two things on screen.
+    return (p1IsBot && p2IsBot) ? (side === 'p1' ? 'Bot 1' : 'Bot 2') : 'Bot';
+}""", 'two bots, two names', required=False)
+
+    # The results screen agrees with itself, and reads from the winner's side.
+    dst = rep(dst, """        const winnerLabel = winner === player1 ? playerName('p1') : playerName('p2');""",
+              """        // displayName, not playerName: the summary below uses displayName, and
+        // the two disagreed - reported as "the title says 'Gorgonok (Arjun)
+        // Wins' while the stats line says 'Gorgonok (Bot)'".
+        const winnerSide = winner === player1 ? 'p1' : 'p2';
+        const loserSide = winnerSide === 'p1' ? 'p2' : 'p1';
+        const winnerLabel = displayName(winnerSide);""",
+              'results label agrees', required=False)
+
+    dst = rep(dst, """        if (matchMode === 'zone') score = `${Math.floor(zoneScore.p1)}s-${Math.floor(zoneScore.p2)}s held`;
+        else if (matchMode === 'timeattack') score = `${koTally.p1}-${koTally.p2} KOs`;
+        else score = `${roundWins.p1}-${roundWins.p2}`;""",
+              """        // FROM THE WINNER'S SIDE. Fixed P1-P2 order meant a P2 win was announced
+        // as "(0-2)", which reads as a loss - reported.
+        if (matchMode === 'zone') score = `${Math.floor(zoneScore[winnerSide])}s-${Math.floor(zoneScore[loserSide])}s held`;
+        else if (matchMode === 'timeattack') score = `${koTally[winnerSide]}-${koTally[loserSide]} KOs`;
+        else score = `${roundWins[winnerSide]}-${roundWins[loserSide]}`;""",
+              'score reads from the winner', required=False)
+
+    # Rings that identify the SIDE, not the fighter.
+    dst = rep(dst, """        ring.material.color.set(f.color);""",
+              """        // BY SIDE, not by fighter. A mirror match gave both fighters the same
+        // ring colour and the same HUD colour, so from overhead there was
+        // nothing to tell them apart - reported for Ignis vs Ignis. A side
+        // colour is the one thing that is always different.
+        ring.material.color.set(WATCH_RING_SIDE[i === 0 ? 'p1' : 'p2']);""",
+              'rings identify the side', required=False)
+
+    # GUARDED, because this step's anchor survives inside its own replacement -
+    # without the guard a second run of this script declares WATCH_RING_SIDE
+    # twice, which is a SyntaxError that blanks the page.
+    if 'WATCH_RING_SIDE' not in dst:
+      dst = rep(dst, """const WATCH_RING_INNER = 26, WATCH_RING_OUTER = 34;""",
+              """const WATCH_RING_INNER = 26, WATCH_RING_OUTER = 34;
+// Deliberately NOT the fighter's colour: see the note where these are applied.
+// Blue and orange, which no character on the roster uses as its identity and
+// which stay distinguishable against every arena floor.
+const WATCH_RING_SIDE = { p1: '#38bdf8', p2: '#fb923c' };""",
+                'side ring colours', required=False)
+
     # --------------------------------- the spectator camera follows the fight
     # The extras fragment is injected once, guarded on `function playerName(`,
     # so a change inside it never reaches a build that already has it. Rather
@@ -1129,6 +1221,55 @@ if (location.protocol === 'https:'
                   + '        get watchRings() { return watchRings; },',
                   'watch debug surface')
         print('  %-34s ok' % 'spectator camera follows the fight')
+
+    # ----------------------------------------------- how each arena is lit
+    # Same story as PHOTO_SETS below, found the same way: this build's Molten
+    # Foundry is still the bright arena reported three times, because every
+    # per-theme fix landed in the online build only. MAP_THEMES is pure art
+    # direction, so it ports whole, along with the two things that read its new
+    # fields.
+    new_themes = block(src, 'const MAP_THEMES = {', chr(10) + 'function themeTintFade(', 'map themes')
+    old_themes = block(dst, 'const MAP_THEMES = {', chr(10) + 'function themeFor(', 'map themes (old)')
+    if 'themeTintFade' not in dst:
+        dst = dst.replace(old_themes, new_themes, 1)
+        # The reader for theme.tintFade, and the per-theme exposure base.
+        dst = rep(dst, 'function themeFor(map) {',
+                  block(src, '// How much of a theme\'s COLOUR survives',
+                        chr(10) + 'function themeFor(map) {', 'tint fade helper')
+                  + 'function themeFor(map) {', 'tint fade helper')
+        dst = rep(dst, 'renderer.toneMappingExposure = 1.1;',
+                  """// The base, which applyLighting() then scales per theme (see theme.exposure).
+// 1.1 was this build's flat value; the online build settled on 0.92 after the
+// pale arenas were reported as "almost entirely white".
+const BASE_EXPOSURE = 0.92;
+renderer.toneMappingExposure = BASE_EXPOSURE;""", 'base exposure')
+        dst = rep(dst, """function applyLighting(theme) {
+    ambientLight.color.set(theme.ambient.color);""",
+                  """function applyLighting(theme) {
+    // PER-THEME EXPOSURE. One global value cannot serve a glacier and a
+    // foundry: a near-white albedo clips under it and a near-black one washes
+    // out. See theme.exposure.
+    renderer.toneMappingExposure = BASE_EXPOSURE * (theme.exposure || 1);
+    ambientLight.color.set(theme.ambient.color);""", 'per-theme exposure')
+        # ...and the tint strength actually reaching the surfaces.
+        for old_tint in ('tintFade: 0.62 }', 'tintFade: 0.62 });'):
+            while old_tint in dst:
+                dst = dst.replace(old_tint, old_tint.replace('0.62', 'themeTintFade(theme)'), 1)
+        print('  %-34s ok' % 'map themes + exposure')
+
+    # ------------------------------------------- which photograph, and how big
+    # PHOTO_SETS is pure art direction - which photograph maps to which surface,
+    # and the tile scale - with nothing build-specific in it, so it is ported
+    # whole every time rather than as individual tile numbers. Ported per-line
+    # is exactly how it drifted: "the Voltaic Nexus floor is still the brown
+    # carpet texture from above" was this build still holding techgrid at 4.2
+    # after Batch 49 fixed it online, and its Molten Foundry was still tan rock
+    # after Batch 53 moved basalt and lava onto metal_plate.
+    new_sets = block(src, 'const PHOTO_SETS = {', chr(10) + 'const PHOTO_BASE', 'photo sets')
+    old_sets = block(dst, 'const PHOTO_SETS = {', chr(10) + 'const PHOTO_BASE', 'photo sets (old)')
+    if old_sets != new_sets:
+        dst = dst.replace(old_sets, new_sets, 1)
+        print('  %-34s ok' % 'photo sets')
 
     # ------------------------------------------------- the HUD is readable
     # Same strings, same skies, same window sizes as the online build, so the
