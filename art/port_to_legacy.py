@@ -1350,6 +1350,20 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
             dst = dst.replace(old_word, new_word)
     print('  %-34s ok' % 'store is the Armory')
 
+    # ------------------------------------------- the same debug surface
+    # Not cosmetic: the checkers that found the online build's bugs could not be
+    # pointed at this one, because ACDebug here is missing the handles they use.
+    # "Local mode is behind in everything" is partly this - it was behind in
+    # what could be MEASURED about it.
+    if 'get scene()' not in dst:
+        dst = rep(dst, '        rendererInfo() {',
+                  """        get scene() { return scene; },
+        get renderer() { return renderer; },
+        get mapGroup() { return mapGroup; },
+        get currentMap() { return currentMap; },
+        rendererInfo() {""", 'debug surface parity')
+        print('  %-34s ok' % 'debug surface parity')
+
     # ------------------------------- a muzzle flash must not change the light count
     # The same freeze, in this build: each pool entry's PointLight was a CHILD
     # of the flash mesh, and hiding the mesh when the flash expired took the
@@ -1362,6 +1376,7 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
         old_pool = block(dst, 'const muzzleFlashes = [];',
                          chr(10) + 'function spawnMuzzleFlash(', 'muzzle pool (old)')
         dst = dst.replace(old_pool, 'const muzzleFlashes = [];' + chr(10) + new_pool, 1)
+
         dst = rep(dst, """    if (!mf) {
         const core = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8),
             new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1 }));
@@ -1379,6 +1394,42 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
     mf.light.position.copy(mf.mesh.position);   // no longer parented to it
     mf.mesh.material.color.set(hexNum(colorHex));""", 'muzzle light follows')
         print('  %-34s ok' % 'muzzle flash light count')
+
+    # The cap the pool is built to. Checked on its own rather than inside the
+    # pool's guard: the committed build already had the pool and still lacked
+    # the cap, so a guard keyed on the pool skipped the one thing missing -
+    # "MUZZLE_FLASH_MAX is not defined" on every frame of a ranged attack, which
+    # is another frozen screen. Same half-port shape as the swing constants.
+    if 'const MUZZLE_FLASH_MAX' not in dst:
+        dst = rep(dst, 'const muzzleFlashes = [];',
+                  'const muzzleFlashes = [];' + chr(10)
+                  + block(src, '// Batch 30: HARD CAP.', chr(10) + "// ONE PROJECTILE'S VISUALS.",
+                          'muzzle cap').rstrip(chr(10)), 'muzzle cap')
+        print('  %-34s ok' % 'muzzle flash cap')
+
+    # ...and the pool is BUILT before the fight, here as well. Measured in this
+    # build after the light fix landed: Lyra's first shot still cost a 4,304ms
+    # frame with the live light count going 17 -> 18, because the first pool
+    # entry was still being created lazily, mid-fight. The warm-up was an
+    # index.html edit and this file needs it just as much.
+    if 'warmCombatShaders' not in dst:
+        dst = rep(dst, "// EVERY SHADER A FIGHT WILL NEED", "// EVERY SHADER A FIGHT WILL NEED",
+                  'warm probe', required=False)
+        warm = block(src, '// BUILD THE POOL BEFORE THE FIGHT, not during it.',
+                     chr(10) + 'function spawnMuzzleFlash(', 'warm block')
+        dst = rep(dst, 'function spawnMuzzleFlash(', warm + 'function spawnMuzzleFlash(', 'warm block')
+        print('  %-34s ok' % 'shader warm-up')
+
+    # The CALL gets its own guard. Guarding it on the function's existence meant
+    # that once the function had been ported, the call never was - a definition
+    # with no caller, which is the same half-port shape as the two above.
+    if 'warmCombatShaders([' not in dst:
+        dst = rep(dst, '    loadMap(matchMap);',
+                  '''    loadMap(matchMap);
+    // Before anyone can fire: a light added mid-fight recompiles every material
+    // in the scene. See warmCombatShaders.
+    warmCombatShaders([p1Choice && p1Choice.color, p2Choice && p2Choice.color]);''',
+                  'warm call')
 
     # ------------------------------------ how a swing travels, and what it holds
     # Pure animation: the shape of the arc, where the strike begins, how long
@@ -1402,17 +1453,35 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
         if old_blk != new_blk:
             dst = dst.replace(old_blk, new_blk, 1)
             print('  %-34s ok' % label)
-    # The swing constants live ABOVE swingT in the online build and do not exist
-    # here at all, so they are inserted once rather than swapped.
-    if 'SWING_TRAVEL_FRAMES' not in dst:
+    # THE SWING CONSTANTS, AS ONE REGION. Not insert-if-missing: that guard was
+    # keyed on SWING_TRAVEL_FRAMES, the first constant of the set, so when the
+    # pre-strike constants were added above swingT later in the same batch the
+    # guard saw the name already present and skipped them - leaving this build
+    # with a swingT referring to two constants it did not have, and throwing
+    # "SWING_WINDUP_FRAC is not defined" on every frame of every swing. An
+    # exception in the animation path takes the frame down with it, which is
+    # what "the attack freezes the screen" was.
+    #
+    # Replace-if-different, spanning from the first constant's comment to
+    # swingT, so adding another constant tomorrow cannot half-port itself.
+    SWING_HEAD = '// How much of the active window a swing spends TRAVELLING'
+    new_consts = block(src, SWING_HEAD, chr(10) + 'function swingT(f, fd) {', 'swing constants')
+    if SWING_HEAD in dst:
+        old_consts = block(dst, SWING_HEAD, chr(10) + 'function swingT(f, fd) {', 'swing constants (old)')
+        if old_consts != new_consts:
+            dst = dst.replace(old_consts, new_consts, 1)
+            print('  %-34s ok' % 'swing constants')
+    else:
         dst = rep(dst, 'function swingT(f, fd) {',
-                  block(src, "// ...and how much of RECOVERY is spent",
-                        chr(10) + 'function swingT(f, fd) {', 'swing constants')
-                  + 'function swingT(f, fd) {', 'swing constants')
-        dst = rep(dst, 'const SWING_MAX_FWD = 95',
-                  block(src, '// How much of the active window a swing spends TRAVELLING',
-                        chr(10) + '// ...and how much of RECOVERY is spent', 'travel frac')
-                  + 'const SWING_MAX_FWD = 95', 'travel frac')
+                  new_consts + 'function swingT(f, fd) {', 'swing constants')
+
+    # ...and a blunt check that the two halves agree, because this exact failure
+    # is invisible until something swings.
+    import re as _re
+    for name in sorted(set(_re.findall(r'SWING_[A-Z_]+', new_consts + block(
+            dst, 'function swingT(f, fd) {', chr(10) + 'function actionPhase(', 'swingT (check)')))):
+        if ('const %s' % name) not in dst and ('%s = ' % name) not in dst:
+            raise AssertionError('swingT uses %s and nothing here declares it' % name)
 
     # ----------------------------------------------- how each arena is lit
     # Same story as PHOTO_SETS below, found the same way: this build's Molten

@@ -4984,6 +4984,13 @@ function updateScenery(dt) {
 // same convention every call site and every other object uses; the game->world
 // conversion (worldX/worldZ, ground at Y=0) happens here. ---
 const muzzleFlashes = [];
+// Batch 30: HARD CAP. Every pool entry carries a PointLight, and changing the
+// number of lights in the scene makes three.js recompile every material's
+// shader - a multi-hundred-millisecond stall. An unbounded pool therefore turned
+// any sustained stream of flashes into a series of frame spikes. Measured during
+// the crush: shader programs went 11 -> 27 and one frame took 2.2 seconds.
+// Beyond the cap, recycle the flash closest to expiring instead of allocating.
+const MUZZLE_FLASH_MAX = 6;
 // ONE PROJECTILE'S VISUALS. Lifted out of syncProjectiles, which is a loop and
 // was no place for a builder - and, more to the point, so that a round can
 // build one of these per colour BEFORE the fight and compile it. See
@@ -9479,6 +9486,58 @@ const PROC_MESH_BUILDERS = {
 //   'cast'   — raise/point the casting arm(s) and hold through the active
 //              window while the held focus flares (Lyra forward, Seraphine
 //              overhead, Aurelia forward two-handed).
+// How much of the active window a swing spends TRAVELLING; the rest is spent
+// held at full extension. See swingT.
+// A swing's travel is measured in FRAMES, not as a fraction of the window -
+// the same reasoning as readableJabs. A fraction means a character with a
+// six-frame active window (Gorgonok) gets three frames of movement and the arm
+// never draws an intermediate position, which swingcheck caught directly: one
+// sample in the middle of the travel out of forty. Five frames is what it takes
+// to see a limb move; a window shorter than that spends all of itself
+// travelling, which is the best it can do.
+const SWING_TRAVEL_FRAMES = 5;
+// THE STRIKE STARTS BEFORE THE ACTIVE WINDOW DOES, which is how a real swing
+// works: the arm is already travelling when the blow becomes dangerous, not
+// standing still until the frame it does.
+//
+// Forced by measurement. Gorgonok's active window is six frames; a travel that
+// lives entirely inside it crosses the whole arc in five steps, and swingcheck
+// found one sampled position in the middle 40% of the travel out of forty
+// samples - a snap, not a swing. His STARTUP is sixteen frames, all of it spent
+// holding a wind-up pose. Spending the last 30% of it accelerating into the
+// blow gives the travel eleven frames instead of five and costs the fight
+// nothing: hitboxes key off atkState, which is untouched.
+const SWING_WINDUP_FRAC = 0.7;      // of startup spent winding up
+// Where the arm has got to by the time the active window opens, on swingT's own
+// scale: 0 is rest, -1 is full extension.
+//
+// It has to be expressed on that scale rather than as "80% of the way", because
+// the scale is NOT linear in angle. For Gorgonok, t from +1 to 0 is the wind-up
+// and covers backDeg = 12 degrees; t from 0 to -1 is the strike and covers
+// fwdDeg = 115. A pre-strike that ran from t=1 to t=0.2 therefore moved the arm
+// about two degrees and the measurement said so: the strike still crossed its
+// whole arc in three sampled frames. Starting the active window already a third
+// of the way down splits the 115 degrees across about ten frames.
+const SWING_PRESTRIKE_T = -0.35;
+// ...and how much of RECOVERY is spent still at full extension before the arm
+// starts coming back.
+//
+// Measured against the report: "the hold is only about 50-100ms. For the most
+// committal attack on the roster, consider about 150ms." Gorgonok's basic is
+// startup 16 / active 6 / recovery 24, so the active window is 100ms and the
+// 45% of it left after the travel is 45ms of hold. The remaining 105ms has to
+// come from somewhere that is not the frame data - changing that would change
+// the fight - so it comes from the first quarter of recovery, which is animation
+// only: 0.26 * 24 frames is 104ms, for a total of ~149ms.
+//
+// A FRACTION, not a frame count, so every swing keeps its own weight: Voss's
+// 14-frame recovery buys him 61ms of hold, which is right for a dagger.
+// 0.34, not 0.26. With the travel now taking five of Gorgonok's six active
+// frames there is almost nothing left of that window to hold, so the hold comes
+// almost entirely from recovery: 0.34 * 24 frames = 136ms, plus the ~17ms left
+// in the active window, for the ~150ms the report asked for.
+const SWING_HOLD_RECOVERY_FRAC = 0.34;
+
 function swingT(f, fd) {
     // 0 at rest -> 1 wind-up extreme -> -1 full extension (HELD) -> back to 0.
     if (f.atkState === 'startup') {
@@ -11087,6 +11146,9 @@ function startRound(intro) {
     if (player1) player1.disposeMesh();
     if (player2) player2.disposeMesh();
     loadMap(matchMap);
+    // Before anyone can fire: a light added mid-fight recompiles every material
+    // in the scene. See warmCombatShaders.
+    warmCombatShaders([p1Choice && p1Choice.color, p2Choice && p2Choice.color]);
     player1 = new Fighter(p1Choice, matchMap.spawn1.x, matchMap.spawn1.y, true, p1IsBot);
     player2 = new Fighter(p2Choice, matchMap.spawn2.x, matchMap.spawn2.y, false, p2IsBot);
     player1.initMesh();
@@ -12314,6 +12376,10 @@ if (DEBUG) {
         // Batch 27 crush cinematic
         get crushTime() { return crushTime; },
         get crushRigs() { return crushRigs; },
+        get scene() { return scene; },
+        get renderer() { return renderer; },
+        get mapGroup() { return mapGroup; },
+        get currentMap() { return currentMap; },
         rendererInfo() { const i = renderer.info; return { programs: i.programs ? i.programs.length : 0, calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures }; },
         get muzzleFlashPool() { return muzzleFlashes.length; },
         get vmP1() { return vmP1; },

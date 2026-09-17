@@ -2436,7 +2436,52 @@ what was reported, in the reporter's own terms.
       Worth a checker - symmetry is a property that can be asserted from map
       data rather than eyeballed.
 
+### The two builds become one (requested 2026-09-16)
+
+> "Make it so that they rely on the exact same code for everything that they
+> overlap in and sync them." ... "Like literally do a COMPLETE redesign so that
+> the only differences in the code local and online rely on is the controls and
+> split screen and match starting framework and anything else that is necessary.
+> EVERYTHING else should be the exact same code relied on."
+
+This supersedes the port-script approach. `art/port_to_legacy.py` has been
+carrying fixes across one guarded edit at a time, and this run alone found three
+HALF-PORTS that each froze the game: `swingT` without `SWING_WINDUP_FRAC`, the
+muzzle-flash pool without `MUZZLE_FLASH_MAX`, and `warmCombatShaders` defined
+but never called. Each guard was keyed on something that was already present, so
+it skipped the part that was missing. A porting script cannot be made safe by
+adding more guards; the answer is for there to be nothing to port.
+
+- [ ] Move everything that is not controls / split screen / match-start into
+      shared modules both builds load, the way `shared/roster.js` already works.
+      Candidates, roughly in dependency order: constants and tuning, the Fighter
+      class and combat, meshes and props and the viewmodel rig, arenas and
+      lighting, the HUD, the menus and modals, the Armory, audio.
+- [ ] What legitimately stays forked: the input scheme (one keyboard with two
+      binding sets vs. mouse-look plus net input), `renderViews` (two viewports
+      vs. one), the lobby/netcode vs. the local start flow, and the spectator
+      camera.
+- [ ] Until then, every port step must be replace-if-different, never
+      insert-if-missing. Three crashes in one run came from that distinction.
+
+- [ ] **All UI must match**, e.g. the dash-cooldown pips exist online only.
+
 ### New work
+
+- [ ] **The loading animation belongs on EVERYTHING** - "even something as small
+      as when your name is loading". Not just match start: any transition where
+      the screen would otherwise sit and wait.
+- [ ] **The loading screen is not in the local build at all.**
+- [ ] **The loading mark does not animate** - it stays on the first bar instead
+      of cycling through the four.
+- [ ] **There is no tableau.** The middle of the loading screen is lighting and
+      nothing else; the design's painted scene is an empty image-slot. It needs
+      real art - most plausibly rendered from the game itself, which is the one
+      way to get a battle that actually looks like this game.
+- [ ] **Arena preview cards do not look like the arenas.** They should be
+      literal top-down renders of each arena.
+
+
 
 - [ ] **A loading screen.** A static scene from the game (a battle tableau)
       with a small loading animation in a corner, shown whenever the game is
