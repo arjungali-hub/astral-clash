@@ -1205,6 +1205,102 @@
         /* Batch 48: the pointer-lock prompt. Over the canvas, not a modal -
            a match that wants the mouse should say so without interrupting
            itself. It hides the instant the lock is taken. */
+        /* ================= LOADING SCREEN ==================================
+           Implemented from the design canvas ("Astral Clash Loading.dc.html",
+           artboards 1a and 1c) and kept to its numbers: the environment is that
+           artboard's layer stack, the mark is four segments at -12deg with a
+           170ms stagger over a 1.5s loop, and there is no percentage.
+
+           It covers every load in the game. A shader compiles the first time it
+           is DRAWN, so the first of everything used to land mid-fight - one
+           measured frame took 9,858ms - and this is what that now happens
+           behind. */
+        #loading-screen {
+            position: absolute; inset: 0; z-index: 60;
+            display: none; overflow: hidden;
+            background: #0d0f18;
+            font-family: var(--font-ui);
+        }
+        #loading-screen.on { display: block; }
+        /* --- the foundry, in layers, exactly as the artboard stacks them --- */
+        .ld-l { position: absolute; pointer-events: none; }
+        .ld-sky   { inset: 0; background: radial-gradient(120% 92% at 50% 64%, #1b2440 0%, #141b2d 40%, #0d0f18 80%); }
+        .ld-walls { left: 0; right: 0; top: 0; height: 66%; opacity: .9;
+                    background: repeating-linear-gradient(90deg, rgba(22,29,47,.92) 0 92px, rgba(11,13,21,.92) 92px 100px); }
+        .ld-seams { left: 0; right: 0; top: 6%; height: 54%; opacity: .45; filter: blur(8px);
+                    background: repeating-linear-gradient(90deg, transparent 0 268px, rgba(245,158,11,.6) 268px 271px, transparent 271px 536px); }
+        .ld-heat  { left: 0; right: 0; top: 50%; height: 16%; filter: blur(16px);
+                    background: linear-gradient(180deg, transparent, rgba(245,158,11,.2), transparent); }
+        .ld-cat   { left: 0; right: 0; top: 33%; height: 30px; background: linear-gradient(180deg,#0b0d15,#05060a); }
+        .ld-rail  { left: 0; right: 0; top: 33%; height: 1px; opacity: .85;
+                    background: #00f3ff; box-shadow: 0 0 10px #00f3ff, 0 0 32px rgba(0,243,255,.45); }
+        .ld-rail2 { left: 0; right: 0; top: 74%; height: 1px; opacity: .5;
+                    background: rgba(0,243,255,.55); box-shadow: 0 0 12px rgba(0,243,255,.6); }
+        .ld-edgeL { left: -40px; top: 0; width: 190px; height: 78%; filter: blur(3px); opacity: .95;
+                    background: linear-gradient(90deg,#05060a,#0b0e17); }
+        .ld-edgeR { right: -40px; top: 0; width: 220px; height: 78%; filter: blur(3px); opacity: .95;
+                    background: linear-gradient(270deg,#05060a,#0b0e17); }
+        .ld-floor { left: 0; right: 0; bottom: 0; height: 28%; background: linear-gradient(180deg,#0a0c13,#141b2d 55%,#0d0f18); }
+        .ld-lava  { left: 0; right: 0; bottom: 0; height: 26%; filter: blur(9px); opacity: .4;
+                    background: repeating-linear-gradient(102deg, transparent 0 180px, rgba(245,158,11,.5) 180px 184px, transparent 184px 360px); }
+        /* The painted tableau, when there is one. Absent, the frame stands on
+           its own - which is why the environment is real geometry-of-light and
+           not part of the painting. */
+        .ld-art   { left: 14%; right: 14%; top: 9%; bottom: 3%;
+                    background-position: center; background-size: cover; background-repeat: no-repeat; }
+        /* The two fighters' light, implied. */
+        .ld-glowA { left: 18%; top: 26%; width: 36%; height: 54%; filter: blur(26px);
+                    background: radial-gradient(closest-side, rgba(0,243,255,.28), transparent 72%); }
+        .ld-glowB { right: 16%; top: 32%; width: 34%; height: 50%; filter: blur(30px);
+                    background: radial-gradient(closest-side, rgba(245,158,11,.26), transparent 72%); }
+        .ld-clash { left: 47%; top: 38%; width: 9%; height: 16%; filter: blur(14px);
+                    background: radial-gradient(closest-side, rgba(232,250,255,.55), rgba(0,243,255,.25) 55%, transparent 76%); }
+        .ld-vig   { inset: 0; background: radial-gradient(112% 86% at 50% 58%, transparent 44%, rgba(13,15,24,.82) 100%); }
+        .ld-fadeL { left: 0; top: 0; bottom: 0; width: 22%; background: linear-gradient(90deg,#0d0f18,rgba(13,15,24,0)); }
+        .ld-fadeR { right: 0; top: 0; bottom: 0; width: 22%; background: linear-gradient(270deg,#0d0f18,rgba(13,15,24,0)); }
+        .ld-fadeT { left: 0; right: 0; top: 0; height: 16%; background: linear-gradient(180deg,#0d0f18,rgba(13,15,24,0)); }
+        .ld-fadeB { left: 0; right: 0; bottom: 0; height: 22%; background: linear-gradient(0deg,rgba(13,15,24,.92),rgba(13,15,24,0)); }
+        /* --- the furniture ------------------------------------------------ */
+        .ld-brand {
+            position: absolute; left: 4.2%; top: 5%;
+            font-size: 0.78rem; letter-spacing: 0.5em; color: #94a3b8; opacity: .85;
+        }
+        .ld-arena {
+            position: absolute; left: 4.2%; bottom: 6%; opacity: .8;
+            display: flex; align-items: center; gap: 12px;
+            font-size: 0.72rem; letter-spacing: 0.2em; color: #94a3b8;
+        }
+        .ld-arena::before { content: ""; width: 2px; height: 22px; background: #00f3ff; box-shadow: 0 0 10px #00f3ff; }
+        .ld-corner {
+            position: absolute; right: 4.2%; bottom: 6%;
+            width: min(260px, 34%); display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
+        }
+        .ld-markrow { display: flex; align-items: center; gap: 14px; }
+        .ld-word {
+            font-size: 0.86rem; letter-spacing: 0.34em; color: #e8f6ff;
+            text-shadow: 0 0 18px rgba(0,243,255,.45);
+        }
+        .ld-tip { font-size: 0.72rem; line-height: 1.5; color: #94a3b8; }
+        /* --- the mark: four segments, -12deg, 4px apart -------------------- */
+        .ld-mark { display: flex; gap: 4px; }
+        .ld-seg {
+            width: 7px; height: 26px; border-radius: 1px;
+            transform: skewX(-12deg);
+            background: rgba(0,243,255,.12);
+            animation: ld-seg 1.5s linear infinite;
+        }
+        .ld-seg:nth-child(2) { animation-delay: .17s; }
+        .ld-seg:nth-child(3) { animation-delay: .34s; }
+        .ld-seg:nth-child(4) { animation-delay: .51s; }
+        /* Ramp to full in 180ms of the 1.5s cycle (12%), decay to 34% by 46%. */
+        @keyframes ld-seg {
+            0%, 100% { background: rgba(0,243,255,.12); box-shadow: none; }
+            12% { background: #00f3ff; box-shadow: 0 0 14px #00f3ff, 0 0 34px rgba(0,243,255,.45); }
+            46% { background: rgba(0,243,255,.34); box-shadow: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .ld-seg { animation-duration: 3s; }
+        }
         #lock-hint {
             /* 14% -> 22%: at 14% it sat over the weapon in the lower centre of
                the frame, which is both the busiest part of the picture and the
@@ -1234,6 +1330,43 @@
         <canvas id="gameCanvas" width="1170" height="650"></canvas>
         <canvas id="hudCanvas" width="1170" height="650"></canvas>
 
+    <!-- The loading screen. Implemented from the design canvas; see the CSS
+         above for which artboard each layer comes from. It is a sibling of
+         #ui-overlay and sits above it, because it covers everything - menu,
+         arena and HUD alike. -->
+    <div id="loading-screen">
+        <div class="ld-l ld-sky"></div>
+        <div class="ld-l ld-walls"></div>
+        <div class="ld-l ld-seams"></div>
+        <div class="ld-l ld-heat"></div>
+        <div class="ld-l ld-cat"></div>
+        <div class="ld-l ld-rail"></div>
+        <div class="ld-l ld-rail2"></div>
+        <div class="ld-l ld-edgeL"></div>
+        <div class="ld-l ld-edgeR"></div>
+        <div class="ld-l ld-floor"></div>
+        <div class="ld-l ld-lava"></div>
+        <div class="ld-l ld-art" id="ld-art"></div>
+        <div class="ld-l ld-glowA"></div>
+        <div class="ld-l ld-glowB"></div>
+        <div class="ld-l ld-clash"></div>
+        <div class="ld-l ld-vig"></div>
+        <div class="ld-l ld-fadeL"></div>
+        <div class="ld-l ld-fadeR"></div>
+        <div class="ld-l ld-fadeT"></div>
+        <div class="ld-l ld-fadeB"></div>
+        <div class="ld-brand">ASTRAL CLASH</div>
+        <div class="ld-arena" id="ld-arena">ARENA // FOUNDRY OF ASH</div>
+        <div class="ld-corner">
+            <div class="ld-markrow">
+                <div class="ld-mark" aria-hidden="true">
+                    <span class="ld-seg"></span><span class="ld-seg"></span><span class="ld-seg"></span><span class="ld-seg"></span>
+                </div>
+                <div class="ld-word" role="status" aria-live="polite">LOADING</div>
+            </div>
+            <div class="ld-tip" id="ld-tip"></div>
+        </div>
+    </div>
     <div id="lock-hint">Click to capture the mouse</div>
         <div id="ui-overlay">
             <!-- Batch 34: the front page. This build plays exactly one way -
@@ -1905,6 +2038,89 @@ function computeDt() {
 // state because the menu build and renderViews both read it during load.
 let LOCAL_SIDE = 'p1';
 const isLocalSide = side => side === LOCAL_SIDE;
+
+// ---- THE LOADING SCREEN --------------------------------------------------
+// Implemented from the design canvas; the markup and styles are above. What
+// matters here is the ORDER: show, let the browser actually paint, and only
+// then do the work that stalls.
+//
+// A shader compiles the first time its material is drawn, with the scene's
+// light count and shadow setup baked in - so the first of everything landed
+// mid-fight and froze the frame. Measured at 9,858ms for a first projectile.
+// Nothing about that cost changes; it simply happens here now, where a pause is
+// what the player expects.
+const LOADING_TIPS = [
+    'Dash has invulnerability frames \u2014 time it through an attack, not away from one.',
+    'Your Special meter fills from damage dealt AND taken.',
+    'The arena closes in. Stalling is not a plan.',
+    'Heavy attacks hold at full extension \u2014 that pause is your window.',
+    'Jump has a cooldown. Double Jump is bought in the Armory.',
+    'Every fighter\u2019s reach differs. Check the detail panel before you commit.',
+];
+let loadingDepth = 0;
+
+function showLoading(arenaName) {
+    const el = document.getElementById('loading-screen');
+    if (!el) return;
+    loadingDepth++;
+    const label = document.getElementById('ld-arena');
+    if (label) label.textContent = 'ARENA // ' + String(arenaName || 'ASTRAL CLASH').toUpperCase();
+    const tip = document.getElementById('ld-tip');
+    if (tip) tip.textContent = LOADING_TIPS[Math.floor(Math.random() * LOADING_TIPS.length)];
+    el.classList.add('on');
+}
+
+function hideLoading() {
+    loadingDepth = Math.max(0, loadingDepth - 1);
+    if (loadingDepth > 0) return;   // something else is still loading
+    const el = document.getElementById('loading-screen');
+    if (el) el.classList.remove('on');
+}
+
+// Two frames, because showing an element does not paint it: the first lays out,
+// the second paints, and the caller's work runs in the third. One frame is not
+// enough - the paint has not been committed yet - and that is the difference
+// between a loading screen and a loading screen nobody sees.
+function afterPaint(fn) {
+    requestAnimationFrame(() => requestAnimationFrame(() => fn()));
+}
+
+// Run `work` with the loading screen up, whatever happens to `work` - and if
+// `work` returns a promise, hold the screen until it settles.
+//
+// The promise half is the point of "the new art should already be loaded when
+// the loading animation is exited". loadMap builds the arena immediately with
+// procedural textures and swaps in the photographs when they arrive, which is
+// the right trade with nothing in front of it and the wrong one with a loading
+// screen: the swap is visible as the arena changing under you.
+function withLoading(arenaName, work) {
+    showLoading(arenaName);
+    afterPaint(() => {
+        let result;
+        try { result = work(); }
+        catch (e) { hideLoading(); throw e; }
+        if (result && typeof result.then === 'function') {
+            // One more painted frame AFTER the work settles, so the first frame
+            // the player sees is the finished arena rather than the moment it
+            // finished.
+            result.then(() => afterPaint(hideLoading), () => afterPaint(hideLoading));
+        } else {
+            hideLoading();
+        }
+    });
+}
+
+// Every texture set this theme will use, settled. Resolves immediately when they
+// are already cached, which is every arena after the first visit.
+function themeTexturesReady(theme) {
+    if (!theme) return Promise.resolve();
+    const sets = [];
+    const wall = PHOTO_SETS.wall[theme.wallTex];
+    const floor = PHOTO_SETS.floor[theme.floorTex];
+    if (wall) sets.push(wall.set);
+    if (floor) sets.push(floor.set);
+    return Promise.all(sets.map(id => loadPhotoSet(id).catch(() => null)));
+}
 
 // ---- Batch 36: player names ----------------------------------------------
 // You name yourself, and that is what everyone sees. "Player 1" / "Player 2"
@@ -5835,22 +6051,151 @@ const muzzleFlashes = [];
 // the crush: shader programs went 11 -> 27 and one frame took 2.2 seconds.
 // Beyond the cap, recycle the flash closest to expiring instead of allocating.
 const MUZZLE_FLASH_MAX = 6;
+// ONE PROJECTILE'S VISUALS. Lifted out of syncProjectiles, which is a loop and
+// was no place for a builder - and, more to the point, so that a round can
+// build one of these per colour BEFORE the fight and compile it. See
+// warmCombatShaders.
+function buildProjectileVisual(p) {
+    // An actual energy bolt, not a dot: a stretched crystalline
+    // core (elongated along travel via a scaled octahedron) with
+    // a soft trailing tail and a faint glow halo, oriented to
+    // point the way it's flying.
+    // Batch 37: a lit 3D bolt, and NOTHING allocated per shot.
+    //
+    // Two reports, one cause each. "Lyra's attack animation is
+    // still 2d" was literally true: the glow was a RingGeometry -
+    // a flat annulus - so from first person it read as a paper
+    // disc stuck in the air. It is a SPHERE now, shaded, with a
+    // second additive sphere for the glow.
+    //
+    // "Lyra's attack lags a lot" was the other half: three
+    // MeshStandardMaterial/MeshBasicMaterial objects were built
+    // and later disposed FOR EVERY PROJECTILE. Lyra fires on a
+    // 16-frame cooldown and her special is a five-shard volley, so
+    // that is a constant churn of GPU objects - the same shape of
+    // problem as the Batch 30 crush stutter. Materials are cached
+    // per colour now: a projectile allocates one Group and three
+    // Meshes, and no GPU resources at all.
+    const key = (p.color || '#00f3ff');
+    const c = new THREE.Color(key);
+    const grp = new THREE.Group();
+    const scale = p.big ? 1.7 : 1;
+    const coreMat = getCachedMaterial('projCore:' + key, () =>
+        new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 1.1, roughness: 0.25, metalness: 0.0 }));
+    const core = new THREE.Mesh(
+        getCachedGeometry('projCoreSphere', () => new THREE.SphereGeometry(4, 16, 12)), coreMat);
+    core.scale.set(1.9 * scale, 0.95 * scale, 0.95 * scale); // stretched along travel, still a solid
+    const tailMat = getCachedMaterial('projTail:' + key, () =>
+        new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.5 }));
+    const tail = new THREE.Mesh(getCachedGeometry('projTail', () => new THREE.ConeGeometry(2.6, 14, 6)), tailMat);
+    tail.rotation.z = Math.PI / 2; tail.position.x = -9; // points backward
+    tail.scale.setScalar(scale);
+    // The glow: a real sphere, additively blended and depth-write
+    // off so it reads as light around the core rather than as a
+    // second solid object. DoubleSide is deliberate - you see the
+    // inside of the far hemisphere through the near one.
+    const haloMat = getCachedMaterial('projHalo:' + key, () =>
+        new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.28,
+            blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    const halo = new THREE.Mesh(
+        getCachedGeometry('projHaloSphere', () => new THREE.SphereGeometry(6.6, 12, 10)), haloMat);
+    halo.scale.setScalar(scale);
+    grp.add(core, tail, halo);
+    // NO shadow from a projectile. Every shadow caster costs a
+    // pass over the shadow map, and Lyra fires on a 16-frame
+    // cooldown with a five-shard volley - so at any moment there
+    // can be six bolts each re-rendering the map for a 4-unit
+    // glowing sphere whose shadow nobody can see against a lit
+    // floor. This is the other half of "Lyra's attack lags a lot";
+    // the first half was the per-projectile material churn above.
+    core.castShadow = false;
+    return { grp, halo };
+}
+
+// One pool entry: a small sphere and the PointLight that makes it light the
+// world. Split out of spawnMuzzleFlash so the pool can be built before a fight
+// instead of during one.
+function makeMuzzleFlash() {
+    const core = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1 }));
+    const light = new THREE.PointLight(0xffffff, 0, 140);
+    light.layers.enableAll();
+    // THE LIGHT IS NOT A CHILD OF THE MESH, and that is the whole fix for a
+    // reported freeze. three.js bakes the number of lights into every
+    // material's shader, and visibility INHERITS - so hiding the flash mesh
+    // when it expired took its light out of the scene's light list, changed the
+    // lights hash, and recompiled every material in the arena. Then showing it
+    // again did the same. Measured: eight programs compiling at once and a
+    // single frame taking 9,858ms, on the first shot of a match.
+    //
+    // At the scene root and never hidden, it costs a zero-intensity light's
+    // worth of shader work and keeps the hash constant. The MESH still hides;
+    // a mesh's visibility is free.
+    core.visible = false;
+    scene.add(core);
+    scene.add(light);
+    const mf = { mesh: core, light, life: 0, maxLife: 8, active: false };
+    muzzleFlashes.push(mf);
+    return mf;
+}
+
+// BUILD THE POOL BEFORE THE FIGHT, not during it.
+//
+// three.js bakes the number of lights into every material's shader, so adding
+// one invalidates and recompiles ALL of them. Batch 30 capped this pool at six
+// because of that - but a cap does not stop the six from being created one at a
+// time, mid-fight, as they are first needed. Measured: a single frame taking
+// 8,185ms with the shader-program count jumping 27 -> 35, which is precisely
+// "the screen freezes and then you can't continue".
+//
+// Called from startRound, so the cost lands while the arena is loading and the
+// intro is playing - somewhere a pause is expected.
+function warmMuzzleFlashPool() {
+    while (muzzleFlashes.length < MUZZLE_FLASH_MAX) makeMuzzleFlash();
+}
+
+// EVERY SHADER A FIGHT WILL NEED, COMPILED BEFORE THE FIGHT.
+//
+// Measured: Lyra's first shot cost a single 9,858ms frame and took the scene's
+// shader-program count from 27 to 35. A material compiles the first time it is
+// DRAWN, with the scene's light count and shadow setup baked in, so the first
+// of everything lands mid-fight - which is what "the screen freezes and then
+// you can't continue" is. It is not the melee characters' own attacks; their
+// opponent is an AI that fires constantly, so the stall lands on top of
+// whatever the player happened to be doing.
+//
+// renderer.compile() is exactly the tool for this. The projectile visuals are
+// built per colour, compiled, and taken out again: the MATERIALS stay in the
+// cache, already compiled, and the real shots pick them up for free.
+function warmCombatShaders(colors) {
+    warmMuzzleFlashPool();
+    const temp = [];
+    for (const color of colors) {
+        if (!color) continue;
+        for (const big of [false, true]) {
+            const v = buildProjectileVisual({ color, big });
+            v.grp.position.set(0, -4000, 0);   // out of shot, still in the scene
+            scene.add(v.grp);
+            temp.push(v.grp);
+        }
+    }
+    try {
+        const cam = (typeof localCamera === 'function' && localCamera()) || null;
+        if (cam) renderer.compile(scene, cam);
+    } catch (e) { /* a warm-up must never be the thing that breaks a match */ }
+    for (const g of temp) scene.remove(g);
+}
+
 function spawnMuzzleFlash(gameX, gameY, height, colorHex) {
     let mf = muzzleFlashes.find(m => !m.active);
     if (!mf && muzzleFlashes.length >= MUZZLE_FLASH_MAX) {
         mf = muzzleFlashes.reduce((a, b) => (a.life <= b.life ? a : b));
     }
-    if (!mf) {
-        const core = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8),
-            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1 }));
-        const light = new THREE.PointLight(0xffffff, 0, 140);
-        light.layers.enableAll();
-        core.add(light);
-        scene.add(core);
-        mf = { mesh: core, light, life: 0, maxLife: 8, active: false };
-        muzzleFlashes.push(mf);
-    }
+    // Normally already built by warmMuzzleFlashPool; this is the safety net for
+    // any path that fires before a round has started.
+    if (!mf) mf = makeMuzzleFlash();
     mf.mesh.position.set(worldX(gameX), height, worldZ(gameY));
+    mf.light.position.copy(mf.mesh.position);   // no longer parented to it
     mf.mesh.material.color.set(hexNum(colorHex));
     mf.light.color.set(hexNum(colorHex));
     mf.mesh.visible = true;
@@ -7827,62 +8172,10 @@ class Fighter {
     syncProjectiles() {
         for (const p of this.projectiles) {
             if (!p.mesh) {
-                // An actual energy bolt, not a dot: a stretched crystalline
-                // core (elongated along travel via a scaled octahedron) with
-                // a soft trailing tail and a faint glow halo, oriented to
-                // point the way it's flying.
-                // Batch 37: a lit 3D bolt, and NOTHING allocated per shot.
-                //
-                // Two reports, one cause each. "Lyra's attack animation is
-                // still 2d" was literally true: the glow was a RingGeometry -
-                // a flat annulus - so from first person it read as a paper
-                // disc stuck in the air. It is a SPHERE now, shaded, with a
-                // second additive sphere for the glow.
-                //
-                // "Lyra's attack lags a lot" was the other half: three
-                // MeshStandardMaterial/MeshBasicMaterial objects were built
-                // and later disposed FOR EVERY PROJECTILE. Lyra fires on a
-                // 16-frame cooldown and her special is a five-shard volley, so
-                // that is a constant churn of GPU objects - the same shape of
-                // problem as the Batch 30 crush stutter. Materials are cached
-                // per colour now: a projectile allocates one Group and three
-                // Meshes, and no GPU resources at all.
-                const key = (p.color || '#00f3ff');
-                const c = new THREE.Color(key);
-                const grp = new THREE.Group();
-                const scale = p.big ? 1.7 : 1;
-                const coreMat = getCachedMaterial('projCore:' + key, () =>
-                    new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 1.1, roughness: 0.25, metalness: 0.0 }));
-                const core = new THREE.Mesh(
-                    getCachedGeometry('projCoreSphere', () => new THREE.SphereGeometry(4, 16, 12)), coreMat);
-                core.scale.set(1.9 * scale, 0.95 * scale, 0.95 * scale); // stretched along travel, still a solid
-                const tailMat = getCachedMaterial('projTail:' + key, () =>
-                    new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.5 }));
-                const tail = new THREE.Mesh(getCachedGeometry('projTail', () => new THREE.ConeGeometry(2.6, 14, 6)), tailMat);
-                tail.rotation.z = Math.PI / 2; tail.position.x = -9; // points backward
-                tail.scale.setScalar(scale);
-                // The glow: a real sphere, additively blended and depth-write
-                // off so it reads as light around the core rather than as a
-                // second solid object. DoubleSide is deliberate - you see the
-                // inside of the far hemisphere through the near one.
-                const haloMat = getCachedMaterial('projHalo:' + key, () =>
-                    new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.28,
-                        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-                const halo = new THREE.Mesh(
-                    getCachedGeometry('projHaloSphere', () => new THREE.SphereGeometry(6.6, 12, 10)), haloMat);
-                halo.scale.setScalar(scale);
-                grp.add(core, tail, halo);
-                // NO shadow from a projectile. Every shadow caster costs a
-                // pass over the shadow map, and Lyra fires on a 16-frame
-                // cooldown with a five-shard volley - so at any moment there
-                // can be six bolts each re-rendering the map for a 4-unit
-                // glowing sphere whose shadow nobody can see against a lit
-                // floor. This is the other half of "Lyra's attack lags a lot";
-                // the first half was the per-projectile material churn above.
-                core.castShadow = false;
-                p.mesh = grp;
-                p.halo = halo;
-                scene.add(grp);
+                const v = buildProjectileVisual(p);
+                p.mesh = v.grp;
+                p.halo = v.halo;
+                scene.add(v.grp);
             }
             p.mesh.position.set(worldX(p.x), p.z, worldZ(p.y));
             p.mesh.rotation.y = -Math.atan2(p.vy, p.vx); // face travel direction (X→X, Y→Z world mapping)
@@ -9585,7 +9878,20 @@ function buildViewmodel(f, layer) {
     //
     // three.js flips the winding order for a negative determinant, so faces and
     // lighting stay correct.
-    armGroup.scale.x *= -1;
+    // MIRRORED ABOUT Z, NOT X. Batch 53 flipped X and the arm stayed a left
+    // arm, because X is not the lateral axis here: the arm is baked in the
+    // CHARACTER's basis, where local +X is FORWARD (see buildRiggedCharacter)
+    // and +Y is up - so the lateral axis, the one a left/right mirror needs, is
+    // Z. Flipping X reflected the limb front-to-back instead, which left the
+    // handedness exactly as it was and pointed the weapon the wrong way:
+    // reported as "the arms are still left arms" and "Draven's weapon is
+    // backwards in first person", which are one bug.
+    //
+    // Measured rather than reasoned about this time: the extracted arm's hand
+    // point sits at x=10.7 (forward of the shoulder), y=33 (up) and z=-9.9
+    // (out to the side) for Kaelen, which is what says X is depth and Z is
+    // width.
+    armGroup.scale.z *= -1;
     armGroup.updateMatrix();
     holder.userData.handPoint = armGroup.userData.handPoint
         ? armGroup.userData.handPoint.clone().applyMatrix4(armGroup.matrix)
@@ -13182,28 +13488,34 @@ const MODEL_WAIT_MS = 8000;
 let awaitingModels = false;
 
 function startMatch(mapOverride) {
-    if (!neededModelsReady(matchMode) && !awaitingModels) {
-        awaitingModels = true;
-        const names = modelsNeededFor(matchMode);
-        names.forEach(ensureCharModel);
-        const started = performance.now();
-        const note = document.getElementById('setup-note');
-        if (note) note.textContent = 'Loading fighters\u2026';
-        const waitThenStart = () => {
-            if (neededModelsReady(matchMode) || performance.now() - started > MODEL_WAIT_MS) {
-                awaitingModels = false;
-                startMatch(mapOverride);
-                return;
-            }
-            setTimeout(waitThenStart, 60);
-        };
-        setTimeout(waitThenStart, 60);
-        return;
-    }
-    awaitingModels = false;
     closeAllModals();
     hideOverlay(); // the match takes over the viewport — no menu/gameover screen behind it
     matchMap = mapOverride || MAPS[Math.floor(Math.random() * MAPS.length)];
+    // EVERYTHING WAITS HERE, behind the screen.
+    //
+    // This used to fire the model requests, poll every 60ms with "Loading
+    // fighters..." on the setup panel, give up after MODEL_WAIT_MS, and build
+    // the arena with procedural textures while the photographs arrived
+    // whenever. Three things could land late and all three showed - reported as
+    // "the old art loads and then the new art loads on top of it".
+    //
+    // Awaiting the promises the loaders already return is both simpler and
+    // exact. The timeout only existed because nothing was awaiting them.
+    withLoading(matchMap.name, () => Promise.resolve()
+        .then(() => Promise.all(modelsNeededFor(matchMode).map(
+            n => Promise.resolve(ensureCharModel(n)).catch(() => null))))
+        .then(() => themeTexturesReady(themeFor(matchMap)))
+        .then(() => {
+            startMatchNow();
+            // One rendered frame with everything in place, so the first-draw
+            // shader compiles happen here rather than mid-fight. See
+            // warmCombatShaders for what that used to cost.
+            return new Promise(r => requestAnimationFrame(() => { renderViews(0); r(); }));
+        }));
+}
+
+function startMatchNow() {
+    awaitingModels = false;
     roundWins = { p1: 0, p2: 0 };
     currentRound = 1;
     matchStats = { p1: freshStats(), p2: freshStats() };
@@ -13248,6 +13560,11 @@ function startRound(intro) {
     player1.initMesh();
     player2.initMesh();
     rebuildViewmodels(); // first-person weapon in each player's own view
+    // ...and compile everything this fight will draw, before it draws any of
+    // it. See warmCombatShaders: the first of each material used to compile
+    // mid-fight, which measured as a single 9,858ms frame.
+    warmCombatShaders([player1.color, player2.color,
+                       ...coopEnemies.map(e => e && e.color)]);
     loser = null; winner = null; deathPhase = ''; deathTimer = 0; isDraw = false; deathCandidates = [];
     hitStopFrames = 0; cameraShakeMag = 0;
     damageNumbers = []; impactSparks = [];
@@ -14662,7 +14979,7 @@ if (DEBUG) {
         get localAway() { return localAway; },
         get remoteAway() { return remoteAway; },
         get awayPaused() { return awayPaused; },
-        sideReady,
+        sideReady, showLoading, hideLoading, withLoading,
         newRoomCode, roomIdFor, roomCodeOf, ROOM_CODE_LEN, ROOM_CODE_CHARS, ROOM_ID_PREFIX,
         NET_FATAL_ERRORS, netErrorText, refreshPauseUI,   // netTeardown/onNetLost are already above
         get myPlayerName() { return myPlayerName; },

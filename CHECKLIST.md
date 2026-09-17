@@ -2391,3 +2391,54 @@ recording what that did *not* save me from: the port rewrites every
 function into `return localNames[side] || playerName(side)` and the archived
 build died at load with "Maximum call stack size exceeded". The fallback is a
 lookup table now, with a note saying why.
+
+---
+
+## Open — reported 2026-09-16, not yet done
+
+Recorded before starting so none of it gets lost in a long run. Each line is
+what was reported, in the reporter's own terms.
+
+### Broken
+
+- [ ] **Thorne's attack freezes the screen** and the match cannot continue.
+      Reported 2026-09-16. Highest priority of the set: this is a hang, not a
+      look. Thorne is the whip character, so the suspects are his attack path
+      and the whip prop's animation.
+- [ ] **Thorne's weapon needs to look better** - "the green balls aren't even
+      connected to each other". buildWhipProp lays segments along a curve with
+      gaps between them; a whip has to read as one object.
+
+### First person
+
+- [ ] **The arms are still left arms.** Batch 53 mirrored the limb and it did
+      not take. Whatever "mirrored" currently means in `buildViewmodel`, the
+      thing on screen is still a left arm, so this needs measuring rather than
+      another sign flip: establish which way is which from the geometry (thumb
+      side, palm normal) instead of from the code's intent.
+- [ ] **Lyra has no arm in first person at all.**
+- [ ] **Draven's weapon points backwards** in first person.
+- [ ] **The charge-up is a flat 2D disk** in the caster's hand - reported for
+      Lyra and then broadened: "it applies to other long-ranged characters as
+      well", so every `cast` viewmodel (shard/orb/bolt). Their projectile was
+      made a real sphere in Batch 37 for exactly this reason; the charge glow
+      was missed.
+
+### Arenas
+
+- [ ] **Arena collapse should happen in Classic Versus only.** It currently runs
+      in every mode that does not explicitly opt out.
+- [ ] **Zone Control's zone needs better art,** and to be clearly visible when
+      nobody is standing in it.
+- [ ] **Every arena needs true 180-degree rotational symmetry.** Skyward Temple
+      has a ramp on one side and stairs on the other: it does not change how the
+      match plays, but the two players should be looking at the same thing.
+      Worth a checker - symmetry is a property that can be asserted from map
+      data rather than eyeballed.
+
+### New work
+
+- [ ] **A loading screen.** A static scene from the game (a battle tableau)
+      with a small loading animation in a corner, shown whenever the game is
+      loading. Design prompt written; art to follow.
+

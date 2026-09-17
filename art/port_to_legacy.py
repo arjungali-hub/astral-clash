@@ -1350,6 +1350,36 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
             dst = dst.replace(old_word, new_word)
     print('  %-34s ok' % 'store is the Armory')
 
+    # ------------------------------- a muzzle flash must not change the light count
+    # The same freeze, in this build: each pool entry's PointLight was a CHILD
+    # of the flash mesh, and hiding the mesh when the flash expired took the
+    # light out of the scene - which changes the lights hash and recompiles
+    # every material in the arena. Measured in the online build at 9,858ms for a
+    # single frame. Ported whole, since the pool is identical here.
+    if 'scene.add(light);' not in dst:
+        new_pool = block(src, "// ONE PROJECTILE'S VISUALS.",
+                         chr(10) + 'function spawnMuzzleFlash(', 'muzzle pool')
+        old_pool = block(dst, 'const muzzleFlashes = [];',
+                         chr(10) + 'function spawnMuzzleFlash(', 'muzzle pool (old)')
+        dst = dst.replace(old_pool, 'const muzzleFlashes = [];' + chr(10) + new_pool, 1)
+        dst = rep(dst, """    if (!mf) {
+        const core = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8),
+            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1 }));
+        const light = new THREE.PointLight(0xffffff, 0, 140);
+        light.layers.enableAll();
+        core.add(light);
+        scene.add(core);
+        mf = { mesh: core, light, life: 0, maxLife: 8, active: false };
+        muzzleFlashes.push(mf);
+    }""",
+                  """    if (!mf) mf = makeMuzzleFlash();""", 'muzzle factory')
+        dst = rep(dst, """    mf.mesh.position.set(worldX(gameX), height, worldZ(gameY));
+    mf.mesh.material.color.set(hexNum(colorHex));""",
+                  """    mf.mesh.position.set(worldX(gameX), height, worldZ(gameY));
+    mf.light.position.copy(mf.mesh.position);   // no longer parented to it
+    mf.mesh.material.color.set(hexNum(colorHex));""", 'muzzle light follows')
+        print('  %-34s ok' % 'muzzle flash light count')
+
     # ------------------------------------ how a swing travels, and what it holds
     # Pure animation: the shape of the arc, where the strike begins, how long
     # the contact pose is held. Nothing in it knows which build it is in.

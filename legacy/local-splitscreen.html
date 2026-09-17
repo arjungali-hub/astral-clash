@@ -4984,29 +4984,149 @@ function updateScenery(dt) {
 // same convention every call site and every other object uses; the game->world
 // conversion (worldX/worldZ, ground at Y=0) happens here. ---
 const muzzleFlashes = [];
-// Batch 30: HARD CAP. Every pool entry carries a PointLight, and changing the
-// number of lights in the scene makes three.js recompile every material's
-// shader - a multi-hundred-millisecond stall. An unbounded pool therefore turned
-// any sustained stream of flashes into a series of frame spikes. Measured during
-// the crush: shader programs went 11 -> 27 and one frame took 2.2 seconds.
-// Beyond the cap, recycle the flash closest to expiring instead of allocating.
-const MUZZLE_FLASH_MAX = 6;
+// ONE PROJECTILE'S VISUALS. Lifted out of syncProjectiles, which is a loop and
+// was no place for a builder - and, more to the point, so that a round can
+// build one of these per colour BEFORE the fight and compile it. See
+// warmCombatShaders.
+function buildProjectileVisual(p) {
+    // An actual energy bolt, not a dot: a stretched crystalline
+    // core (elongated along travel via a scaled octahedron) with
+    // a soft trailing tail and a faint glow halo, oriented to
+    // point the way it's flying.
+    // Batch 37: a lit 3D bolt, and NOTHING allocated per shot.
+    //
+    // Two reports, one cause each. "Lyra's attack animation is
+    // still 2d" was literally true: the glow was a RingGeometry -
+    // a flat annulus - so from first person it read as a paper
+    // disc stuck in the air. It is a SPHERE now, shaded, with a
+    // second additive sphere for the glow.
+    //
+    // "Lyra's attack lags a lot" was the other half: three
+    // MeshStandardMaterial/MeshBasicMaterial objects were built
+    // and later disposed FOR EVERY PROJECTILE. Lyra fires on a
+    // 16-frame cooldown and her special is a five-shard volley, so
+    // that is a constant churn of GPU objects - the same shape of
+    // problem as the Batch 30 crush stutter. Materials are cached
+    // per colour now: a projectile allocates one Group and three
+    // Meshes, and no GPU resources at all.
+    const key = (p.color || '#00f3ff');
+    const c = new THREE.Color(key);
+    const grp = new THREE.Group();
+    const scale = p.big ? 1.7 : 1;
+    const coreMat = getCachedMaterial('projCore:' + key, () =>
+        new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 1.1, roughness: 0.25, metalness: 0.0 }));
+    const core = new THREE.Mesh(
+        getCachedGeometry('projCoreSphere', () => new THREE.SphereGeometry(4, 16, 12)), coreMat);
+    core.scale.set(1.9 * scale, 0.95 * scale, 0.95 * scale); // stretched along travel, still a solid
+    const tailMat = getCachedMaterial('projTail:' + key, () =>
+        new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.5 }));
+    const tail = new THREE.Mesh(getCachedGeometry('projTail', () => new THREE.ConeGeometry(2.6, 14, 6)), tailMat);
+    tail.rotation.z = Math.PI / 2; tail.position.x = -9; // points backward
+    tail.scale.setScalar(scale);
+    // The glow: a real sphere, additively blended and depth-write
+    // off so it reads as light around the core rather than as a
+    // second solid object. DoubleSide is deliberate - you see the
+    // inside of the far hemisphere through the near one.
+    const haloMat = getCachedMaterial('projHalo:' + key, () =>
+        new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.28,
+            blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    const halo = new THREE.Mesh(
+        getCachedGeometry('projHaloSphere', () => new THREE.SphereGeometry(6.6, 12, 10)), haloMat);
+    halo.scale.setScalar(scale);
+    grp.add(core, tail, halo);
+    // NO shadow from a projectile. Every shadow caster costs a
+    // pass over the shadow map, and Lyra fires on a 16-frame
+    // cooldown with a five-shard volley - so at any moment there
+    // can be six bolts each re-rendering the map for a 4-unit
+    // glowing sphere whose shadow nobody can see against a lit
+    // floor. This is the other half of "Lyra's attack lags a lot";
+    // the first half was the per-projectile material churn above.
+    core.castShadow = false;
+    return { grp, halo };
+}
+
+// One pool entry: a small sphere and the PointLight that makes it light the
+// world. Split out of spawnMuzzleFlash so the pool can be built before a fight
+// instead of during one.
+function makeMuzzleFlash() {
+    const core = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1 }));
+    const light = new THREE.PointLight(0xffffff, 0, 140);
+    light.layers.enableAll();
+    // THE LIGHT IS NOT A CHILD OF THE MESH, and that is the whole fix for a
+    // reported freeze. three.js bakes the number of lights into every
+    // material's shader, and visibility INHERITS - so hiding the flash mesh
+    // when it expired took its light out of the scene's light list, changed the
+    // lights hash, and recompiled every material in the arena. Then showing it
+    // again did the same. Measured: eight programs compiling at once and a
+    // single frame taking 9,858ms, on the first shot of a match.
+    //
+    // At the scene root and never hidden, it costs a zero-intensity light's
+    // worth of shader work and keeps the hash constant. The MESH still hides;
+    // a mesh's visibility is free.
+    core.visible = false;
+    scene.add(core);
+    scene.add(light);
+    const mf = { mesh: core, light, life: 0, maxLife: 8, active: false };
+    muzzleFlashes.push(mf);
+    return mf;
+}
+
+// BUILD THE POOL BEFORE THE FIGHT, not during it.
+//
+// three.js bakes the number of lights into every material's shader, so adding
+// one invalidates and recompiles ALL of them. Batch 30 capped this pool at six
+// because of that - but a cap does not stop the six from being created one at a
+// time, mid-fight, as they are first needed. Measured: a single frame taking
+// 8,185ms with the shader-program count jumping 27 -> 35, which is precisely
+// "the screen freezes and then you can't continue".
+//
+// Called from startRound, so the cost lands while the arena is loading and the
+// intro is playing - somewhere a pause is expected.
+function warmMuzzleFlashPool() {
+    while (muzzleFlashes.length < MUZZLE_FLASH_MAX) makeMuzzleFlash();
+}
+
+// EVERY SHADER A FIGHT WILL NEED, COMPILED BEFORE THE FIGHT.
+//
+// Measured: Lyra's first shot cost a single 9,858ms frame and took the scene's
+// shader-program count from 27 to 35. A material compiles the first time it is
+// DRAWN, with the scene's light count and shadow setup baked in, so the first
+// of everything lands mid-fight - which is what "the screen freezes and then
+// you can't continue" is. It is not the melee characters' own attacks; their
+// opponent is an AI that fires constantly, so the stall lands on top of
+// whatever the player happened to be doing.
+//
+// renderer.compile() is exactly the tool for this. The projectile visuals are
+// built per colour, compiled, and taken out again: the MATERIALS stay in the
+// cache, already compiled, and the real shots pick them up for free.
+function warmCombatShaders(colors) {
+    warmMuzzleFlashPool();
+    const temp = [];
+    for (const color of colors) {
+        if (!color) continue;
+        for (const big of [false, true]) {
+            const v = buildProjectileVisual({ color, big });
+            v.grp.position.set(0, -4000, 0);   // out of shot, still in the scene
+            scene.add(v.grp);
+            temp.push(v.grp);
+        }
+    }
+    try {
+        const cam = (typeof localCamera === 'function' && localCamera()) || null;
+        if (cam) renderer.compile(scene, cam);
+    } catch (e) { /* a warm-up must never be the thing that breaks a match */ }
+    for (const g of temp) scene.remove(g);
+}
+
 function spawnMuzzleFlash(gameX, gameY, height, colorHex) {
     let mf = muzzleFlashes.find(m => !m.active);
     if (!mf && muzzleFlashes.length >= MUZZLE_FLASH_MAX) {
         mf = muzzleFlashes.reduce((a, b) => (a.life <= b.life ? a : b));
     }
-    if (!mf) {
-        const core = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8),
-            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1 }));
-        const light = new THREE.PointLight(0xffffff, 0, 140);
-        light.layers.enableAll();
-        core.add(light);
-        scene.add(core);
-        mf = { mesh: core, light, life: 0, maxLife: 8, active: false };
-        muzzleFlashes.push(mf);
-    }
+    if (!mf) mf = makeMuzzleFlash();
     mf.mesh.position.set(worldX(gameX), height, worldZ(gameY));
+    mf.light.position.copy(mf.mesh.position);   // no longer parented to it
     mf.mesh.material.color.set(hexNum(colorHex));
     mf.light.color.set(hexNum(colorHex));
     mf.mesh.visible = true;

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Michroma&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>
+  body { margin: 0; background: #07080d; }
+  a { color: #00f3ff; text-decoration: none; }
+  a:hover { color: #67f9ff; }
+  @keyframes ac-seg {
+    0%, 100% { background: rgba(0,243,255,.12); }
+    12% { background: #00f3ff; }
+    46% { background: rgba(0,243,255,.34); }
+  }
+  @keyframes ac-spin { to { transform: rotate(360deg); } }
+</style>
+</helmet>
+
+<section style="display:flex;flex-direction:column;gap:64px;padding:64px;background:#07080d;font-family:'IBM Plex Mono',monospace">
+
+  <div style="display:flex;align-items:baseline;gap:24px;color:#94a3b8">
+    <div style="font-family:Michroma,sans-serif;font-size:20px;letter-spacing:.42em;color:#e8f6ff">ASTRAL CLASH</div>
+    <div style="font-size:14px;letter-spacing:.14em">LOADING SCREEN — FOUNDRY OF ASH · KAELEN vs GORGONOK</div>
+    <div style="font-size:13px;color:#64748b">turn 1 · <a href="#1a">1a</a> <a href="#1b">1b</a> <a href="#1c">1c</a> <a href="#1d">1d</a> <a href="#1e">1e</a></div>
+  </div>
+
+  <!-- 1a — 16:9 primary artboard -->
+  <div id="1a" style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="font-size:12px;letter-spacing:.2em;color:#0d0f18;background:#00f3ff;padding:4px 10px;border-radius:3px;font-weight:500">1A</div>
+      <div style="font-size:14px;letter-spacing:.16em;color:#94a3b8">PRIMARY ARTBOARD · 1920 × 1080 · 16:9</div>
+    </div>
+    <div style="position:relative;width:1920px;height:1080px;overflow:hidden;background:#0d0f18;border:1px solid #2e3a59">
+      <div style="position:absolute;inset:0;background:radial-gradient(120% 92% at 50% 64%, #1b2440 0%, #141b2d 40%, #0d0f18 80%)"></div>
+      <div style="position:absolute;left:0;right:0;top:0;height:66%;background:repeating-linear-gradient(90deg, rgba(22,29,47,.92) 0 92px, rgba(11,13,21,.92) 92px 100px);opacity:.9"></div>
+      <div style="position:absolute;left:0;right:0;top:6%;height:54%;background:repeating-linear-gradient(90deg, transparent 0 268px, rgba(245,158,11,.6) 268px 271px, transparent 271px 536px);filter:blur(8px);opacity:.45"></div>
+      <div style="position:absolute;left:0;right:0;top:50%;height:16%;background:linear-gradient(180deg, transparent, rgba(245,158,11,.2), transparent);filter:blur(16px)"></div>
+      <div style="position:absolute;left:0;right:0;top:33%;height:30px;background:linear-gradient(180deg,#0b0d15,#05060a)"></div>
+      <div style="position:absolute;left:0;right:0;top:33%;height:1px;background:#00f3ff;box-shadow:0 0 10px #00f3ff, 0 0 32px rgba(0,243,255,.45);opacity:.85"></div>
+      <div style="position:absolute;left:0;right:0;top:74%;height:1px;background:rgba(0,243,255,.55);box-shadow:0 0 12px rgba(0,243,255,.6);opacity:.5"></div>
+      <div style="position:absolute;left:-40px;top:0;width:190px;height:78%;background:linear-gradient(90deg,#05060a,#0b0e17);filter:blur(3px);opacity:.95"></div>
+      <div style="position:absolute;right:-40px;top:0;width:220px;height:78%;background:linear-gradient(270deg,#05060a,#0b0e17);filter:blur(3px);opacity:.95"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;height:28%;background:linear-gradient(180deg,#0a0c13,#141b2d 55%,#0d0f18)"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;height:26%;background:repeating-linear-gradient(102deg, transparent 0 180px, rgba(245,158,11,.5) 180px 184px, transparent 184px 360px);filter:blur(9px);opacity:.4"></div>
+
+      <div style="position:absolute;left:14%;right:14%;top:9%;bottom:3%">
+        <image-slot id="ac-tableau-169" shape="rect" fit="cover" placeholder="PAINTED TABLEAU — 16:9 · low camera, three-quarter over-shoulder from Kaelen's left, both fighters in profile-to-camera clash. LEFT/FOREGROUND: Kaelen, pale blue-white armour, cyan longsword at full overhead-to-diagonal downswing, blade trailing bloom. RIGHT: Gorgonok, huge volcanic silhouette, lava cracks glowing orange, one bare fist raised to block, head recoiling. Blade stops 20cm short of the fist — impact implied, not landed. Foundry catwalks and molten seams behind, falling into haze."></image-slot>
+      </div>
+
+      <div style="position:absolute;inset:0;pointer-events:none">
+        <div style="position:absolute;left:18%;top:26%;width:36%;height:54%;background:radial-gradient(closest-side, rgba(0,243,255,.28), transparent 72%);filter:blur(26px)"></div>
+        <div style="position:absolute;right:16%;top:32%;width:34%;height:50%;background:radial-gradient(closest-side, rgba(245,158,11,.26), transparent 72%);filter:blur(30px)"></div>
+        <div style="position:absolute;left:47%;top:38%;width:9%;height:16%;background:radial-gradient(closest-side, rgba(232,250,255,.55), rgba(0,243,255,.25) 55%, transparent 76%);filter:blur(14px)"></div>
+        <div style="position:absolute;inset:0;background:radial-gradient(112% 86% at 50% 58%, transparent 44%, rgba(13,15,24,.82) 100%)"></div>
+        <div style="position:absolute;left:0;top:0;bottom:0;width:22%;background:linear-gradient(90deg,#0d0f18,rgba(13,15,24,0))"></div>
+        <div style="position:absolute;right:0;top:0;bottom:0;width:22%;background:linear-gradient(270deg,#0d0f18,rgba(13,15,24,0))"></div>
+        <div style="position:absolute;left:0;right:0;top:0;height:16%;background:linear-gradient(180deg,#0d0f18,rgba(13,15,24,0))"></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;height:22%;background:linear-gradient(0deg,rgba(13,15,24,.92),rgba(13,15,24,0))"></div>
+      </div>
+
+      <div style="position:absolute;left:56px;top:48px;font-family:Michroma,sans-serif;font-size:15px;letter-spacing:.5em;color:#94a3b8;opacity:.85">ASTRAL CLASH</div>
+
+      <div style="position:absolute;left:56px;bottom:56px;display:flex;align-items:center;gap:12px;opacity:.8">
+        <div style="width:2px;height:22px;background:#00f3ff;box-shadow:0 0 10px #00f3ff"></div>
+        <div style="font-size:14px;letter-spacing:.2em;color:#94a3b8">ARENA // FOUNDRY OF ASH</div>
+      </div>
+
+      <div style="position:absolute;right:56px;bottom:52px;width:240px;display:flex;flex-direction:column;gap:12px;align-items:flex-start">
+        <div style="display:flex;align-items:center;gap:14px">
+          {{ markLive }}
+          <div style="font-family:Michroma,sans-serif;font-size:16px;letter-spacing:.34em;color:#e8f6ff;text-shadow:0 0 18px rgba(0,243,255,.45)">LOADING</div>
+        </div>
+        <div style="font-size:15px;line-height:1.5;color:#94a3b8;text-wrap:pretty">{{ tip }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1b — 4:3 variant -->
+  <div id="1b" style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="font-size:12px;letter-spacing:.2em;color:#0d0f18;background:#00f3ff;padding:4px 10px;border-radius:3px;font-weight:500">1B</div>
+      <div style="font-size:14px;letter-spacing:.16em;color:#94a3b8">SHORT-WINDOW VARIANT · 1440 × 1080 · 4:3 — 240px of haze trimmed each side</div>
+    </div>
+    <div style="position:relative;width:1440px;height:1080px;overflow:hidden;background:#0d0f18;border:1px solid #2e3a59">
+      <div style="position:absolute;inset:0;background:radial-gradient(130% 92% at 50% 64%, #1b2440 0%, #141b2d 40%, #0d0f18 80%)"></div>
+      <div style="position:absolute;left:0;right:0;top:0;height:66%;background:repeating-linear-gradient(90deg, rgba(22,29,47,.92) 0 92px, rgba(11,13,21,.92) 92px 100px);opacity:.9"></div>
+      <div style="position:absolute;left:0;right:0;top:6%;height:54%;background:repeating-linear-gradient(90deg, transparent 0 268px, rgba(245,158,11,.6) 268px 271px, transparent 271px 536px);filter:blur(8px);opacity:.45"></div>
+      <div style="position:absolute;left:0;right:0;top:33%;height:30px;background:linear-gradient(180deg,#0b0d15,#05060a)"></div>
+      <div style="position:absolute;left:0;right:0;top:33%;height:1px;background:#00f3ff;box-shadow:0 0 10px #00f3ff, 0 0 32px rgba(0,243,255,.45);opacity:.85"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;height:28%;background:linear-gradient(180deg,#0a0c13,#141b2d 55%,#0d0f18)"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;height:26%;background:repeating-linear-gradient(102deg, transparent 0 180px, rgba(245,158,11,.5) 180px 184px, transparent 184px 360px);filter:blur(9px);opacity:.4"></div>
+
+      <div style="position:absolute;left:8%;right:8%;top:9%;bottom:3%">
+        <image-slot id="ac-tableau-43" shape="rect" fit="cover" placeholder="SAME TABLEAU, 4:3 CROP — identical camera; the two fighters and the implied impact point stay fully inside frame, only outer arena haze is lost."></image-slot>
+      </div>
+
+      <div style="position:absolute;inset:0;pointer-events:none">
+        <div style="position:absolute;left:14%;top:26%;width:40%;height:54%;background:radial-gradient(closest-side, rgba(0,243,255,.28), transparent 72%);filter:blur(26px)"></div>
+        <div style="position:absolute;right:12%;top:32%;width:38%;height:50%;background:radial-gradient(closest-side, rgba(245,158,11,.26), transparent 72%);filter:blur(30px)"></div>
+        <div style="position:absolute;left:46%;top:38%;width:11%;height:16%;background:radial-gradient(closest-side, rgba(232,250,255,.55), rgba(0,243,255,.25) 55%, transparent 76%);filter:blur(14px)"></div>
+        <div style="position:absolute;inset:0;background:radial-gradient(112% 86% at 50% 58%, transparent 44%, rgba(13,15,24,.82) 100%)"></div>
+        <div style="position:absolute;left:0;top:0;bottom:0;width:18%;background:linear-gradient(90deg,#0d0f18,rgba(13,15,24,0))"></div>
+        <div style="position:absolute;right:0;top:0;bottom:0;width:18%;background:linear-gradient(270deg,#0d0f18,rgba(13,15,24,0))"></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;height:22%;background:linear-gradient(0deg,rgba(13,15,24,.92),rgba(13,15,24,0))"></div>
+      </div>
+
+      <sc-if value="{{ showGuides }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;inset:0;pointer-events:none">
+          <div style="position:absolute;left:12%;top:0;bottom:0;width:1px;border-left:1px dashed rgba(0,243,255,.5)"></div>
+          <div style="position:absolute;right:12%;top:0;bottom:0;width:1px;border-left:1px dashed rgba(0,243,255,.5)"></div>
+          <div style="position:absolute;left:12%;top:58px;padding:6px 10px;background:rgba(13,15,24,.8);border:1px solid #2e3a59;border-radius:8px;font-size:13px;letter-spacing:.14em;color:#94a3b8">SUBJECT SAFE ZONE — HOLDS AT 16:9 → 4:3 → 1:1</div>
+        </div>
+      </sc-if>
+
+      <div style="position:absolute;left:48px;top:48px;font-family:Michroma,sans-serif;font-size:15px;letter-spacing:.5em;color:#94a3b8;opacity:.85">ASTRAL CLASH</div>
+      <div style="position:absolute;left:48px;bottom:56px;display:flex;align-items:center;gap:12px;opacity:.8">
+        <div style="width:2px;height:22px;background:#00f3ff;box-shadow:0 0 10px #00f3ff"></div>
+        <div style="font-size:14px;letter-spacing:.2em;color:#94a3b8">ARENA // FOUNDRY OF ASH</div>
+      </div>
+      <div style="position:absolute;right:48px;bottom:52px;width:240px;display:flex;flex-direction:column;gap:12px;align-items:flex-start">
+        <div style="display:flex;align-items:center;gap:14px">
+          {{ markLive2 }}
+          <div style="font-family:Michroma,sans-serif;font-size:16px;letter-spacing:.34em;color:#e8f6ff;text-shadow:0 0 18px rgba(0,243,255,.45)">LOADING</div>
+        </div>
+        <div style="font-size:15px;line-height:1.5;color:#94a3b8;text-wrap:pretty">{{ tip }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1c — loading mark -->
+  <div id="1c" style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="font-size:12px;letter-spacing:.2em;color:#0d0f18;background:#00f3ff;padding:4px 10px;border-radius:3px;font-weight:500">1C</div>
+      <div style="font-size:14px;letter-spacing:.16em;color:#94a3b8">LOADING MARK — LIVE + KEYFRAMES · 1.5s LOOP, 0.17s STAGGER</div>
+    </div>
+    <div style="display:flex;gap:28px;align-items:stretch;flex-wrap:wrap">
+      <div style="width:520px;padding:56px;background:#0d0f18;border:1px solid #2e3a59;border-radius:8px;position:relative;display:flex;flex-direction:column;gap:40px;align-items:center;justify-content:center">
+        <div style="position:absolute;left:0;right:0;top:0;height:1px;background:#00f3ff;box-shadow:0 0 10px #00f3ff"></div>
+        {{ markBig }}
+        <div style="text-align:center;display:flex;flex-direction:column;gap:10px">
+          <div style="font-family:Michroma,sans-serif;font-size:22px;letter-spacing:.34em;color:#e8f6ff;text-shadow:0 0 20px rgba(0,243,255,.45)">LOADING</div>
+          <div style="font-size:14px;letter-spacing:.14em;color:#64748b">INDETERMINATE · NO PERCENTAGE</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:560px;padding:40px;background:#0d0f18;border:1px solid #2e3a59;border-radius:8px;position:relative;display:flex;flex-direction:column;gap:28px">
+        <div style="position:absolute;left:0;right:0;top:0;height:1px;background:#00f3ff;box-shadow:0 0 10px #00f3ff"></div>
+        <div style="font-size:14px;letter-spacing:.18em;color:#94a3b8">KEYFRAMES — SEGMENT FILL SEQUENCE</div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;gap:14px;align-items:center;padding:24px;border:1px solid #1e2740;border-radius:8px;background:#0b0d15">{{ kf0 }}<div style="font-size:13px;color:#64748b;letter-spacing:.1em">0 ms</div></div>
+          <div style="display:flex;flex-direction:column;gap:14px;align-items:center;padding:24px;border:1px solid #1e2740;border-radius:8px;background:#0b0d15">{{ kf1 }}<div style="font-size:13px;color:#64748b;letter-spacing:.1em">170 ms</div></div>
+          <div style="display:flex;flex-direction:column;gap:14px;align-items:center;padding:24px;border:1px solid #1e2740;border-radius:8px;background:#0b0d15">{{ kf2 }}<div style="font-size:13px;color:#64748b;letter-spacing:.1em">340 ms</div></div>
+          <div style="display:flex;flex-direction:column;gap:14px;align-items:center;padding:24px;border:1px solid #1e2740;border-radius:8px;background:#0b0d15">{{ kf3 }}<div style="font-size:13px;color:#64748b;letter-spacing:.1em">510 ms</div></div>
+        </div>
+        <div style="font-size:14px;line-height:1.7;color:#94a3b8;text-wrap:pretty">Each segment ramps to full #00f3ff with bloom in 180 ms, then decays to 34% over the rest of the cycle. Segments stagger 170 ms apart; the loop repeats every 1.5 s. Skew −12°, 4 px gap, 1 px radius. Bloom = 14 px tight + 34 px wide at 45% alpha.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1d — menu background -->
+  <div id="1d" style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="font-size:12px;letter-spacing:.2em;color:#0d0f18;background:#00f3ff;padding:4px 10px;border-radius:3px;font-weight:500">1D</div>
+      <div style="font-size:14px;letter-spacing:.16em;color:#94a3b8">SECOND USE — MENU BACKGROUND · blur 18px, brightness 0.42</div>
+    </div>
+    <div style="position:relative;width:1920px;height:1080px;overflow:hidden;background:#0d0f18;border:1px solid #2e3a59">
+      <div style="position:absolute;inset:-40px;filter:blur(18px) brightness(.42) saturate(.85)">
+        <div style="position:absolute;inset:0;background:radial-gradient(120% 92% at 50% 64%, #1b2440 0%, #141b2d 40%, #0d0f18 80%)"></div>
+        <div style="position:absolute;left:0;right:0;top:0;height:66%;background:repeating-linear-gradient(90deg, rgba(22,29,47,.92) 0 92px, rgba(11,13,21,.92) 92px 100px);opacity:.9"></div>
+        <div style="position:absolute;left:0;right:0;top:6%;height:54%;background:repeating-linear-gradient(90deg, transparent 0 268px, rgba(245,158,11,.6) 268px 271px, transparent 271px 536px);filter:blur(8px);opacity:.45"></div>
+        <div style="position:absolute;left:0;right:0;top:33%;height:1px;background:#00f3ff;box-shadow:0 0 12px #00f3ff;opacity:.7"></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;height:28%;background:linear-gradient(180deg,#0a0c13,#141b2d 55%,#0d0f18)"></div>
+        <div style="position:absolute;left:14%;right:14%;top:9%;bottom:3%">
+          <image-slot id="ac-tableau-menu" shape="rect" fit="cover" placeholder="SAME TABLEAU — drop the identical painting here; blur and brightness are applied by the frame, not baked into the asset."></image-slot>
+        </div>
+        <div style="position:absolute;left:18%;top:26%;width:36%;height:54%;background:radial-gradient(closest-side, rgba(0,243,255,.3), transparent 72%)"></div>
+        <div style="position:absolute;right:16%;top:32%;width:34%;height:50%;background:radial-gradient(closest-side, rgba(245,158,11,.28), transparent 72%)"></div>
+      </div>
+      <div style="position:absolute;inset:0;background:linear-gradient(90deg, rgba(13,15,24,.92) 0%, rgba(13,15,24,.6) 46%, rgba(13,15,24,.78) 100%);pointer-events:none"></div>
+
+      <div style="position:absolute;left:120px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:36px">
+        <div style="font-family:Michroma,sans-serif;font-size:44px;letter-spacing:.36em;color:#e8f6ff;text-shadow:0 0 34px rgba(0,243,255,.4)">ASTRAL CLASH</div>
+        <div style="width:420px;padding:32px;background:rgba(13,15,24,.72);border:1px solid #2e3a59;border-radius:8px;position:relative;display:flex;flex-direction:column;gap:22px">
+          <div style="position:absolute;left:0;right:0;top:0;height:1px;background:#00f3ff;box-shadow:0 0 10px #00f3ff"></div>
+          <div style="font-family:Michroma,sans-serif;font-size:18px;letter-spacing:.3em;color:#00f3ff">QUICK MATCH</div>
+          <div style="font-family:Michroma,sans-serif;font-size:18px;letter-spacing:.3em;color:#94a3b8">RANKED ARENA</div>
+          <div style="font-family:Michroma,sans-serif;font-size:18px;letter-spacing:.3em;color:#94a3b8">LOADOUT</div>
+          <div style="font-family:Michroma,sans-serif;font-size:18px;letter-spacing:.3em;color:#94a3b8">OPTIONS</div>
+        </div>
+      </div>
+      <div style="position:absolute;right:56px;bottom:52px;display:flex;align-items:center;gap:12px">
+        <div style="font-size:14px;letter-spacing:.2em;color:#f59e0b">◆ 2,480</div>
+        <div style="font-size:14px;letter-spacing:.2em;color:#94a3b8">· SEASON 4</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1e — palette -->
+  <div id="1e" style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="font-size:12px;letter-spacing:.2em;color:#0d0f18;background:#00f3ff;padding:4px 10px;border-radius:3px;font-weight:500">1E</div>
+      <div style="font-size:14px;letter-spacing:.16em;color:#94a3b8">PALETTE + TYPE</div>
+    </div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:10px"><div style="width:220px;height:120px;background:#0d0f18;border:1px solid #2e3a59;border-radius:8px"></div><div style="font-size:13px;color:#94a3b8;letter-spacing:.12em">#0D0F18 · BASE</div></div>
+      <div style="display:flex;flex-direction:column;gap:10px"><div style="width:220px;height:120px;background:#161d2f;border:1px solid #2e3a59;border-radius:8px"></div><div style="font-size:13px;color:#94a3b8;letter-spacing:.12em">#161D2F · PANEL</div></div>
+      <div style="display:flex;flex-direction:column;gap:10px"><div style="width:220px;height:120px;background:#00f3ff;border-radius:8px;box-shadow:0 0 30px rgba(0,243,255,.4)"></div><div style="font-size:13px;color:#94a3b8;letter-spacing:.12em">#00F3FF · PRIMARY</div></div>
+      <div style="display:flex;flex-direction:column;gap:10px"><div style="width:220px;height:120px;background:#a855f7;border-radius:8px;box-shadow:0 0 30px rgba(168,85,247,.35)"></div><div style="font-size:13px;color:#94a3b8;letter-spacing:.12em">#A855F7 · SECONDARY</div></div>
+      <div style="display:flex;flex-direction:column;gap:10px"><div style="width:220px;height:120px;background:#f59e0b;border-radius:8px;box-shadow:0 0 30px rgba(245,158,11,.35)"></div><div style="font-size:13px;color:#94a3b8;letter-spacing:.12em">#F59E0B · WARN / COIN</div></div>
+      <div style="display:flex;flex-direction:column;gap:10px"><div style="width:220px;height:120px;background:#94a3b8;border-radius:8px"></div><div style="font-size:13px;color:#94a3b8;letter-spacing:.12em">#94A3B8 · BODY</div></div>
+      <div style="display:flex;flex-direction:column;gap:10px"><div style="width:300px;height:120px;background:#0d0f18;border:1px solid #2e3a59;border-radius:8px;display:flex;flex-direction:column;justify-content:center;gap:10px;padding:0 20px"><div style="font-family:Michroma,sans-serif;font-size:16px;letter-spacing:.3em;color:#e8f6ff">MICHROMA</div><div style="font-size:14px;color:#94a3b8">IBM Plex Mono — HUD readouts</div></div><div style="font-size:13px;color:#94a3b8;letter-spacing:.12em">DISPLAY / HUD PAIRING</div></div>
+    </div>
+  </div>
+
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;tip&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Dash has invulnerability frames — time it through an attack.&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Loading module&quot;},&quot;showGuides&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;4:3 variant&quot;}}">
+class Component extends DCLogic {
+  mark(scale, lit) {
+    const w = 10 * scale, h = 30 * scale, gap = 4 * scale;
+    const kids = [0, 1, 2, 3].map(i => {
+      let s;
+      if (lit === undefined) {
+        s = { background: 'rgba(0,243,255,.12)', animation: `ac-seg 1.5s ${(i * 0.17).toFixed(2)}s infinite` };
+      } else if (i === lit) {
+        s = { background: '#00f3ff' };
+      } else if (i < lit) {
+        s = { background: 'rgba(0,243,255,.34)' };
+      } else {
+        s = { background: 'rgba(0,243,255,.12)' };
+      }
+      return React.createElement('div', {
+        key: i,
+        style: Object.assign({
+          width: w, height: h, borderRadius: Math.max(1, scale),
+          transform: 'skewX(-12deg)'
+        }, s)
+      });
+    });
+    return React.createElement('div', {
+      style: {
+        display: 'flex', gap, alignItems: 'flex-end',
+        filter: `drop-shadow(0 0 ${8 * scale}px rgba(0,243,255,.55)) drop-shadow(0 0 ${20 * scale}px rgba(0,243,255,.3))`
+      }
+    }, kids);
+  }
+  renderVals() {
+    return {
+      tip: this.props.tip ?? 'Dash has invulnerability frames — time it through an attack.',
+      showGuides: this.props.showGuides ?? true,
+      markLive: this.mark(1),
+      markLive2: this.mark(1),
+      markBig: this.mark(4.2),
+      kf0: this.mark(2, 0),
+      kf1: this.mark(2, 1),
+      kf2: this.mark(2, 2),
+      kf3: this.mark(2, 3)
+    };
+  }
+}
+
+</script>
+</body>
+</html>
