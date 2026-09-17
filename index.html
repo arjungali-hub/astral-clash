@@ -874,6 +874,20 @@
         }
         .rebind-row button.rebind-key:hover { background: #334155; box-shadow: none; }
         .rebind-row button.rebind-key.listening { background: #38bdf8; color: #0a0d14; }
+        /* WIDER KEYS, RIGHT-ALIGNED LABELS. Reported as "narrow and left-heavy,
+           with empty space on the right" - the label column was a fixed 64px on
+           the left and the key button hugged it, leaving the rest of a 320px
+           panel empty. */
+        .rebind-row { justify-content: space-between; }
+        .rebind-row span.rebind-action { flex: 1 1 auto; width: auto; text-align: right; }
+        .rebind-row button.rebind-key { flex: 0 0 120px; min-width: 120px; }
+        /* What just happened to a binding. Reserved space, so the panel does not
+           jump when it appears. */
+        .rebind-note {
+            min-height: 1.2em; margin: 6px 0 0; font-size: 0.74rem;
+            color: #4ade80; opacity: 0; transition: opacity 180ms ease;
+        }
+        .rebind-note.show { opacity: 1; }
         .rebind-hint { font-size: 0.68rem; color: #64748b; text-align: left; margin: 8px 0; }
         #audio-screen {
             display: none;
@@ -882,6 +896,108 @@
             align-items: center; justify-content: center; z-index: 20;
         }
         #audio-screen .menu-section { max-width: 340px; }
+        /* ---- OPTION ROWS -------------------------------------------------
+           A setting is not an action, and it had been wearing an action's
+           clothes: "HUD Text: Normal", "Glow: On" and "Mute: OFF" were solid
+           cyan, exactly like "Rebind Keys" and "Audio Settings" beside them.
+           Reported, and it is the whole reason the panel reads as a wall of
+           buttons.
+
+           The name sits left, the current state sits right in a pill, and the
+           row is slate - so solid cyan goes back to meaning "this does
+           something now". */
+        .opt {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; width: 100%; margin: 6px 0; padding: 9px 12px;
+            background: #1a2235; color: #cbd5e1; border: 1px solid #2e3a59;
+            border-radius: 6px; font-size: 0.82rem; font-weight: 600;
+            box-shadow: none; text-align: left; cursor: pointer;
+        }
+        .opt:hover { background: #232d47; color: #e2e8f0; box-shadow: none; }
+        .opt .opt-state {
+            flex: none; padding: 3px 10px; border-radius: 999px;
+            background: #0f1626; border: 1px solid #334155;
+            color: #94a3b8; font-size: 0.74rem; font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+        /* ON is the only state that gets colour, so a glance finds it. */
+        .opt.is-on .opt-state {
+            background: rgba(0, 243, 255, 0.14); border-color: #00f3ff; color: #00f3ff;
+        }
+        .menu-section .opt { width: 100%; }
+
+        /* ---- RANGE INPUTS -------------------------------------------------
+           Reported as "unstyled browser defaults (bright blue with a white
+           track), which clash with the theme". A range IS the right control
+           here - it is keyboard-accessible for free - so it is dressed rather
+           than replaced. The thumb needs both vendor pseudo-elements: it
+           inherits nothing. */
+        .audio-row input[type="range"] {
+            -webkit-appearance: none; appearance: none;
+            height: 6px; border-radius: 999px; background: #1e293b;
+            border: 1px solid #2e3a59; outline: none; padding: 0;
+        }
+        .audio-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 16px; height: 16px; border-radius: 50%;
+            background: #00f3ff; border: 2px solid #0d1420; cursor: pointer;
+            box-shadow: 0 0 8px rgba(0, 243, 255, 0.5);
+        }
+        .audio-row input[type="range"]::-moz-range-thumb {
+            width: 14px; height: 14px; border-radius: 50%;
+            background: #00f3ff; border: 2px solid #0d1420; cursor: pointer;
+        }
+        .audio-row input[type="range"]:focus-visible { outline: 3px solid #facc15; outline-offset: 3px; }
+        /* The number the slider is set to, which it never showed. */
+        .audio-row .audio-value {
+            flex: none; width: 42px; text-align: right;
+            font-size: 0.76rem; color: #cbd5e1; font-variant-numeric: tabular-nums;
+        }
+        /* ---- NATIVE CHECKBOX ----------------------------------------------
+           The sandbox row is the one native checkbox left in the game. */
+        .settings-check input[type="checkbox"] {
+            appearance: none; -webkit-appearance: none;
+            width: 38px; height: 21px; margin: 0; flex: none;
+            border-radius: 999px; background: #0f1626; border: 1px solid #334155;
+            position: relative; cursor: pointer; transition: background 140ms ease;
+        }
+        .settings-check input[type="checkbox"]::after {
+            content: ""; position: absolute; top: 2px; left: 2px;
+            width: 15px; height: 15px; border-radius: 50%;
+            background: #64748b; transition: transform 140ms ease, background 140ms ease;
+        }
+        .settings-check input[type="checkbox"]:checked { background: rgba(0, 243, 255, 0.16); border-color: #00f3ff; }
+        .settings-check input[type="checkbox"]:checked::after { transform: translateX(17px); background: #00f3ff; }
+        .settings-check input[type="checkbox"]:focus-visible { outline: 3px solid #facc15; outline-offset: 2px; }
+        /* ---- MODAL HEADER CLOSE -------------------------------------------
+           Reported: "In Settings, Close sits below the fold even on the short
+           online panel." A sticky footer is another layer to get wrong in a
+           530px-tall window; an x in the header is where people look, and it
+           costs no vertical space at all. The Close buttons at the bottom stay
+           - there was never anything wrong with them except having to scroll to
+           reach them. */
+        .menu-section { position: relative; }
+        /* SCOPED, because `.menu-section button { width: 100% }` is (0,2,0) and a
+           bare `.modal-x` is (0,1,0) - the x came out 1040px wide, spanning the
+           whole panel and hanging 8px off its left edge. layoutcheck caught it
+           by measuring, which is exactly the failure the Copy button had. */
+        .menu-section .modal-x, .shop-panel .modal-x, .tutorial-panel .modal-x {
+            position: absolute; top: 8px; right: 8px;
+            width: 30px; height: 30px; min-width: 0; padding: 0; margin: 0;
+            display: flex; align-items: center; justify-content: center;
+            background: transparent; color: #94a3b8;
+            border: 1px solid #2e3a59; border-radius: 6px;
+            font-size: 1.05rem; line-height: 1; box-shadow: none;
+        }
+        .menu-section .modal-x:hover, .shop-panel .modal-x:hover, .tutorial-panel .modal-x:hover {
+            background: #232d47; color: #e2e8f0; box-shadow: none;
+        }
+        /* An armed destructive action. Red is the only place it appears. */
+        .btn-danger {
+            background: transparent; color: #f87171; border: 1px solid #f87171;
+            box-shadow: none;
+        }
+        .btn-danger:hover { background: rgba(248, 113, 113, 0.14); box-shadow: none; }
         .audio-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
         .audio-row label { width: 55px; font-size: 0.78rem; color: #94a3b8; text-align: left; }
         .audio-row input[type="range"] { flex: 1; }
@@ -1284,8 +1400,9 @@
                 <div class="menu-section">
                     <h3>Rebind Keys</h3>
                     <div id="rebind-list"></div>
-                    <p class="rebind-hint">Click a key, then press its replacement. Esc cancels.</p>
-                    <button id="btn-rebind-reset">Reset to Defaults</button>
+                    <p class="rebind-hint">Click a key, then press its replacement. Esc cancels. Two actions cannot share a key &mdash; they swap.</p>
+                    <p id="rebind-note" class="rebind-note" aria-live="polite"></p>
+                    <button id="btn-rebind-reset" class="btn-tertiary">Reset to Defaults</button>
                     <button id="btn-rebind-close">Close</button>
                 </div>
             </div>
@@ -1296,17 +1413,20 @@
                     <div class="audio-row">
                         <label for="vol-master">Master</label>
                         <input type="range" id="vol-master" min="0" max="1" step="0.01">
+                        <span class="audio-value" id="vol-master-value">0%</span>
                     </div>
                     <div class="audio-row">
                         <label for="vol-sfx">SFX</label>
                         <input type="range" id="vol-sfx" min="0" max="1" step="0.01">
+                        <span class="audio-value" id="vol-sfx-value">0%</span>
                     </div>
                     <div class="audio-row">
                         <label for="vol-music">Music</label>
                         <input type="range" id="vol-music" min="0" max="1" step="0.01">
+                        <span class="audio-value" id="vol-music-value">0%</span>
                     </div>
-                    <button id="btn-audio-mute">Mute: OFF</button>
-                    <button id="btn-audio-close">Close</button>
+                    <button id="btn-audio-mute" class="opt">Mute<span class="opt-state">Off</span></button>
+                    <button id="btn-audio-close" class="btn-back">Back to Settings</button>
                 </div>
             </div>
 
@@ -1314,10 +1434,12 @@
                 <div class="menu-section">
                     <h3>Settings</h3>
                     <div class="settings-list">
-                        <button id="btn-open-rebind">Rebind Keys</button>
-                        <button id="btn-hud-scale">HUD Text: Normal</button>
-                        <button id="btn-bloom">Glow: On</button>
-                        <button id="btn-open-audio">Audio Settings</button>
+                        <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
+                        <button id="btn-bloom" class="opt">Glow<span class="opt-state">On</span></button>
+                        <!-- These two DO something when pressed, so they keep
+                             the primary style. See the .opt note in the CSS. -->
+                        <button id="btn-open-rebind" class="btn-secondary">Rebind Keys</button>
+                        <button id="btn-open-audio" class="btn-secondary">Audio Settings</button>
                     </div>
                 <!-- Batch 34: the "unlock everything" sandbox switch is gone.
                      It was the only way to enable a bot, and bots cannot exist
@@ -1605,6 +1727,26 @@ function showScreen(name) {
     document.getElementById('ui-overlay').style.display = name ? 'flex' : 'none';
 }
 function hideOverlay() { showScreen(null); } // no screen — used when a match takes over the viewport
+// EVERY MODAL GETS AN X, injected here rather than written into ten panels of
+// markup - ten chances to forget one, and a new modal would arrive without it.
+// Added once per panel; after that it is already there.
+//
+// Reported as "in Settings, Close sits below the fold even on the short online
+// panel". The Close buttons stay where they are; this is the one that is always
+// reachable, whatever the panel's height.
+function ensureModalClose(el) {
+    if (!el) return;
+    const panel = el.querySelector('.menu-section, .shop-panel, .tutorial-panel');
+    if (!panel || panel.querySelector('.modal-x')) return;
+    const x = document.createElement('button');
+    x.className = 'modal-x';
+    x.type = 'button';
+    x.innerHTML = '\u00d7';
+    x.setAttribute('aria-label', 'Close');
+    x.addEventListener('click', () => closeModal());
+    panel.appendChild(x);
+}
+
 function openModal(name) {
     if (!modalStack.includes(name)) modalStack.push(name);
     // The overlay is a scroll container and the modal is absolutely positioned
@@ -1613,6 +1755,7 @@ function openModal(name) {
     const ov = document.getElementById('ui-overlay');
     if (ov) { ov.scrollTop = 0; ov.style.overflowY = 'hidden'; }
     const el = document.getElementById(MODAL_EL[name]);
+    ensureModalClose(el);
     el.style.zIndex = 40 + modalStack.length; // newest modal always renders on top of any it stacked over
     el.style.display = 'flex';
 }
@@ -1961,9 +2104,21 @@ window.addEventListener('keydown', e => {
         rebindCapture = null;
         buttonEl.classList.remove('listening');
         if (e.key === 'Escape') { buttonEl.textContent = keyLabel(BINDINGS[action]); return; }
-        BINDINGS[action] = e.key.toLowerCase();
+        const want = e.key.toLowerCase();
+        // TWO ACTIONS CANNOT SHARE A KEY. Reported: "binding Forward to D left
+        // Forward = D AND Strafe R = D" - a control that did two things at
+        // once, with nothing on screen to say so. The action that held the key
+        // takes the one being vacated, which is the only outcome that leaves
+        // every action bound.
+        const previous = BINDINGS[action];
+        const clash = Object.keys(BINDINGS).find(a => a !== action && BINDINGS[a] === want);
+        BINDINGS[action] = want;
+        if (clash) BINDINGS[clash] = previous;
         saveBindings();
-        buttonEl.textContent = keyLabel(BINDINGS[action]);
+        buildRebindList();   // both rows changed, so repaint rather than one button
+        rebindNote(clash
+            ? `Swapped with ${REBIND_ACTION_LABELS[clash] || clash}`
+            : `${REBIND_ACTION_LABELS[action] || action} \u2192 ${keyLabel(want)}`);
         return;
     }
     // (0) TYPING WINS. A keystroke aimed at a text field is not a game input:
@@ -2560,15 +2715,29 @@ function hudFont(px, bold) {
     const size = Math.min(Math.max(want, needed), want * HUD_MAX_BOOST);
     return `${bold ? 700 : 500} ${Math.max(9, Math.round(size))}px ${HUD_FAMILY}`;
 }
+// Writes an option row's current state into its pill. `on` is what gives it
+// colour - the only state that gets any, so a glance finds what is enabled.
+function setOptState(id, text, on) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const pill = el.querySelector('.opt-state');
+    if (pill) pill.textContent = text;
+    else el.textContent = text;   // a build whose row is still a plain button
+    el.classList.toggle('is-on', !!on);
+}
+
 function cycleHudScale() {
     HUD_TEXT_SCALE = HUD_TEXT_SCALE >= 1.3 ? 1 : 1.3;
     safeLSSet('astralClashHudScale', HUD_TEXT_SCALE);
-    document.getElementById('btn-hud-scale').textContent = `HUD Text: ${HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal'}`;
+    refreshHudScaleUI();
+}
+function refreshHudScaleUI() {
+    setOptState('btn-hud-scale', HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal', HUD_TEXT_SCALE > 1);
 }
 document.getElementById('btn-sandbox').addEventListener('click', () => setSandboxMatch(!sandboxMatch));
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
 document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
-document.getElementById('btn-hud-scale').textContent = `HUD Text: ${HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal'}`;
+refreshHudScaleUI();
 
 function keyLabel(k) {
     if (!k) return '--';
@@ -2595,6 +2764,18 @@ const REBIND_ACTION_LABELS = {
     jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash',
 };
 let rebindCapture = null; // { side, action, buttonEl } while waiting on the next keydown
+// The one line of feedback this panel has: what just happened to a binding.
+// Reported against Reset ("acts instantly with no feedback") and needed again
+// for the swap, which changes a row you are not looking at.
+let rebindNoteTimer = 0;
+function rebindNote(text) {
+    const el = document.getElementById('rebind-note');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.add('show');
+    clearTimeout(rebindNoteTimer);
+    rebindNoteTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
 function buildRebindList() {
     const list = document.getElementById('rebind-list');
     list.innerHTML = '';
@@ -2619,7 +2800,7 @@ function buildRebindList() {
 function startCapture(side, action, btn) {
     if (rebindCapture) rebindCapture.buttonEl.classList.remove('listening'); // cancel any prior in-flight capture
     rebindCapture = { side, action, buttonEl: btn };
-    btn.textContent = '...';
+    btn.textContent = 'Press a key\u2026';   // "..." on its own said nothing
     btn.classList.add('listening');
 }
 // Rebind key capture is handled at the top of the single keyboard dispatcher
@@ -2640,10 +2821,13 @@ document.getElementById('btn-pause-settings').addEventListener('click', () => {
 });
 document.getElementById('btn-pause-rebind').addEventListener('click', openRebind);
 document.getElementById('btn-rebind-close').addEventListener('click', closeRebind);
+// Says so, rather than appearing to do nothing to a panel that was already
+// showing the defaults.
 document.getElementById('btn-rebind-reset').addEventListener('click', () => {
     BINDINGS = Object.assign({}, DEFAULT_BINDINGS);
     saveBindings();
     buildRebindList();
+    rebindNote('Reset to defaults');
 });
 
 // === Batch 10: Audio — everything synthesized with WebAudio, no sample
@@ -2692,11 +2876,24 @@ function refreshAudioUI() {
     document.getElementById('vol-master').value = audioSettings.master;
     document.getElementById('vol-sfx').value = audioSettings.sfx;
     document.getElementById('vol-music').value = audioSettings.music;
-    document.getElementById('btn-audio-mute').textContent = `Mute: ${audioSettings.muted ? 'ON' : 'OFF'}`;
+    setOptState('btn-audio-mute', audioSettings.muted ? 'On' : 'Off', audioSettings.muted);
+    // ...and the numbers the sliders never showed.
+    for (const slot of ['master', 'sfx', 'music']) {
+        const out = document.getElementById('vol-' + slot + '-value');
+        if (out) out.textContent = Math.round((audioSettings[slot] != null ? audioSettings[slot] : 1) * 100) + '%';
+    }
 }
-document.getElementById('vol-master').addEventListener('input', e => { audioSettings.master = parseFloat(e.target.value); applyAudioSettings(); saveAudioSettings(); });
-document.getElementById('vol-sfx').addEventListener('input', e => { audioSettings.sfx = parseFloat(e.target.value); applyAudioSettings(); saveAudioSettings(); });
-document.getElementById('vol-music').addEventListener('input', e => { audioSettings.music = parseFloat(e.target.value); applyAudioSettings(); saveAudioSettings(); });
+// The readout has to follow the drag, or the number is only right until you
+// touch it. refreshAudioUI writes the slider positions too, which is harmless
+// here - they are already where the drag put them.
+for (const slot of ['master', 'sfx', 'music']) {
+    document.getElementById('vol-' + slot).addEventListener('input', e => {
+        audioSettings[slot] = parseFloat(e.target.value);
+        applyAudioSettings();
+        saveAudioSettings();
+        refreshAudioUI();
+    });
+}
 document.getElementById('btn-audio-mute').addEventListener('click', () => {
     audioSettings.muted = !audioSettings.muted;
     applyAudioSettings();
@@ -3096,8 +3293,7 @@ function renderWithBloom(scn, cam, dt) {
 // HUD-scale button's idiom - a button that states its own current value -
 // rather than introducing a checkbox the settings panel has no other use for.
 function refreshBloomUI() {
-    const b = document.getElementById('btn-bloom');
-    if (b) b.textContent = `Glow: ${bloomEnabled ? 'On' : 'Off'}`;
+    setOptState('btn-bloom', bloomEnabled ? 'On' : 'Off', bloomEnabled);
 }
 function toggleBloom() {
     bloomEnabled = !bloomEnabled;
@@ -12588,6 +12784,10 @@ window.addEventListener('pagehide', () => setLocalAway(true));
 // disabled button with no explanation is the thing that makes someone reload
 // the page and lose the match.
 function refreshPauseUI() {
+    // Any repaint of this screen is a good moment to cancel a half-pressed
+    // quit: an armed destructive button that survives you doing something else
+    // is a trap. (Declared below - hoisting covers the ordering.)
+    if (typeof disarmQuit === 'function') disarmQuit();
     const btn = document.getElementById('btn-resume');
     const note = document.getElementById('pause-away-note');
     if (!btn) return;
@@ -12656,7 +12856,30 @@ function closeTopModalByEscape() {
 
 document.getElementById('btn-resume').addEventListener('click', requestResume);
 
-document.getElementById('btn-quit-to-menu').addEventListener('click', () => {
+// LEAVING A MATCH ASKS FIRST. Reported: "'Return to Menu' ends the match with
+// no confirmation." Armed in place rather than through confirm(): a native
+// dialog cannot be styled and stops the frame loop, and this is the pattern the
+// archived build's progress reset already uses. Clicking anything else disarms
+// it, and so does closing the pause menu.
+let quitArmed = 0;
+function disarmQuit() {
+    if (!quitArmed) return;
+    quitArmed = 0;
+    const b = document.getElementById('btn-quit-to-menu');
+    if (b) { b.textContent = 'Return to Menu'; b.classList.remove('btn-danger'); }
+}
+document.getElementById('btn-quit-to-menu').addEventListener('click', (e) => {
+    // Only a LIVE match needs the guard - from a menu there is nothing to lose.
+    const inMatch = gameState !== 'MENU' && player1 && player2;
+    if (inMatch && !quitArmed) {
+        quitArmed = 1;
+        const b = e.currentTarget;
+        b.textContent = 'End match? Click again';
+        b.classList.add('btn-danger');
+        return;
+    }
+    disarmQuit();
+
     pausedFromState = null;
     closeAllModals();
     p1Stage = 'pick'; p2Stage = 'pick'; p1Preview = null; p2Preview = null;
