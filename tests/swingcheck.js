@@ -70,8 +70,16 @@ const H = require('./harness');
             const rest = reach();
             // Drive the REAL action pipeline, then sample every frame of it.
             D.debugForceAttack ? D.debugForceAttack(f) : f.tryStartAction('attack');
+            // THE WHOLE ACTION, not a fixed 40 frames. Gorgonok's basic is
+            // startup 16 + active 6 + recovery 24 = 46, so a 40-frame window
+            // cut the last six frames off - and once the contact pose started
+            // holding into recovery, those were the frames where the arm came
+            // back through the middle of its arc. The check then reported a
+            // snap for a motion it had simply stopped watching.
+            const fdb = FRAME_DATA[f.name].basic;
+            const total = fdb.startup + fdb.active + fdb.recovery + 4;
             const samples = [];
-            for (let i = 0; i < 40; i++) {
+            for (let i = 0; i < total; i++) {
                 f.update(D.player2, 1);
                 D.animateWeapon(f);
                 samples.push(reach());
@@ -106,6 +114,7 @@ const H = require('./harness');
         check('and passes through the middle of its travel rather than snapping',
             span < 1 || mid.length >= 3,
             JSON.stringify({ span: +span.toFixed(2), midSamples: mid.length,
+                             all: r.samples.map(v => +v.toFixed(1)),
                              samples: r.samples.slice(0, 12) }));
     }
 

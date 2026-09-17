@@ -1222,6 +1222,40 @@ const WATCH_RING_SIDE = { p1: '#38bdf8', p2: '#fb923c' };""",
                   'watch debug surface')
         print('  %-34s ok' % 'spectator camera follows the fight')
 
+    # ------------------------------------ how a swing travels, and what it holds
+    # Pure animation: the shape of the arc, where the strike begins, how long
+    # the contact pose is held. Nothing in it knows which build it is in.
+    #
+    # Replace-if-different rather than insert-if-missing, so the two builds stay
+    # in step from here on. An insert-if-missing step is correct exactly once,
+    # which is how the archived build ended up with a swing envelope three
+    # batches behind and a sword with a seven-unit grip sticking out of frame.
+    for start, end, label in (
+        # swingT plus the constants directly above it. The start marker is
+        # this build's own line before them, so the block lands in the same
+        # place it does online.
+        ('function swingT(f, fd) {', chr(10) + 'function actionPhase(', 'swing envelope'),
+        ('function buildSwordProp(', chr(10) + 'function buildDaggerProp(', 'sword prop'),
+        ('function propForAtkType(', chr(10) + '// Batch 28: the first-person arm.',
+         'weapon props'),
+    ):
+        new_blk = block(src, start, end, label)
+        old_blk = block(dst, start, end, label + ' (old)')
+        if old_blk != new_blk:
+            dst = dst.replace(old_blk, new_blk, 1)
+            print('  %-34s ok' % label)
+    # The swing constants live ABOVE swingT in the online build and do not exist
+    # here at all, so they are inserted once rather than swapped.
+    if 'SWING_TRAVEL_FRAMES' not in dst:
+        dst = rep(dst, 'function swingT(f, fd) {',
+                  block(src, "// ...and how much of RECOVERY is spent",
+                        chr(10) + 'function swingT(f, fd) {', 'swing constants')
+                  + 'function swingT(f, fd) {', 'swing constants')
+        dst = rep(dst, 'const SWING_MAX_FWD = 95',
+                  block(src, '// How much of the active window a swing spends TRAVELLING',
+                        chr(10) + '// ...and how much of RECOVERY is spent', 'travel frac')
+                  + 'const SWING_MAX_FWD = 95', 'travel frac')
+
     # ----------------------------------------------- how each arena is lit
     # Same story as PHOTO_SETS below, found the same way: this build's Molten
     # Foundry is still the bright arena reported three times, because every
