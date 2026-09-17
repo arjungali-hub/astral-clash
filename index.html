@@ -1340,6 +1340,10 @@
                     <h3>How to Play</h3>
                     <div class="tutorial-grid">
                         <div class="tutorial-card">
+                            <h4>Controls</h4>
+                            <div id="tutorial-controls"></div>
+                        </div>
+                        <div class="tutorial-card">
                             <h4>Objective</h4>
                             <p>Best of 3 rounds. Win a round by knocking your opponent's HP to 0 — there's no clock to just run out, so see Arena Collapse below for how a round is guaranteed to end.</p>
                         </div>
@@ -1387,10 +1391,6 @@
                         <div class="tutorial-card">
                             <h4>Coins &amp; Unlocks</h4>
                             <p><b>Your coins, unlocks and upgrades are yours</b>, saved on your own machine and the same whether you host or join. You start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate and Speed, plus Double Jump. Open the <b>Armory</b> from the home screen or from the room while you're picking.</p>
-                        </div>
-                        <div class="tutorial-card">
-                            <h4>Controls</h4>
-                            <div id="tutorial-controls"></div>
                         </div>
                     </div>
                     <label class="tutorial-hide-row" id="tutorial-hide-row">
@@ -1453,7 +1453,9 @@
 
         <div id="shop-screen">
             <div class="menu-section shop-panel">
-                <h3 id="shop-title">Shop</h3>
+                <!-- Replaced with "<name>’s Armory" on open; this is what it
+                     says before anyone has opened it. -->
+                <h3 id="shop-title">Armory</h3>
                 <p class="shop-sub">Your own coins, unlocks and upgrades. Win a match to earn more.</p>
                 <div class="shop-head"><span class="coin-balance" id="shop-coin-balance">0</span></div>
                 <div id="shop-list"></div>
@@ -2230,7 +2232,7 @@ const MATCH_MODES = [
     // The ID stays `timeattack`. It is a localStorage progression key and a
     // value on the wire in SETUP/START packets, so renaming it would reset
     // players' records and desync a mixed-version match for a cosmetic gain.
-    { id: 'timeattack', name: 'Takedown Race', blurb: 'Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse - the race is the pressure.' },
+    { id: 'timeattack', name: 'Takedown Race', blurb: 'Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse — the race is the pressure.' },
     { id: 'boss', name: 'Boss Fight (Co-op)', blurb: 'Both players team up against Karrigos, the Granite Colossus. Its attacks are slow and telegraphed — punish the wind-up. Go down and you are out for 25 seconds; if your teammate falls while you are down, the run is over.', coop: true },
     { id: 'survival', name: 'Survival Waves (Co-op)', blurb: 'Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.', coop: true },
 ];
@@ -2726,7 +2728,10 @@ syncDebugUnlockUI(); // reflect a persisted override on load
 function buildTutorialControls() {
     document.getElementById('tutorial-controls').innerHTML =
         `<div class="tutorial-controls-row">${controlsSummary()}</div>` +
-        `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> left stick move/strafe, right stick look, A jump, B attack, X special, Y dash</div>`;
+        `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> left stick move/strafe, right stick look, A jump, B attack, X special, Y dash</div>` +
+        // The one key that is not in controlsSummary(), because it is not a
+        // combat binding - and the only way out of a match. Reported as missing.
+        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>Esc</b> pauses, and opens Rebind Keys and Settings. Click the arena once to capture the mouse.</div>`;
 }
 // `auto` is true only when the game opened this by itself on first load.
 //

@@ -69,7 +69,29 @@
             --font-ui: 'AstralDisplay', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             --font-hud: 'AstralHUD', 'Courier New', monospace;
         }
-        body {
+        /* EVERY piece of text, not just what inherits.
+           Reported with a screenshot of the character select still rendering in
+           the browser default. Form elements - button, input, select, textarea -
+           do NOT inherit font-family from their ancestors; the UA stylesheet
+           gives them their own, so setting the family on `body` reaches
+           paragraphs and headings and misses every control. That is most of the
+           text in this game: the roster cards are buttons, the coin counts sit
+           in buttons, the room code is an input.
+           `font: inherit` would also drag size and weight along, which those
+           elements set for themselves - so inherit only the family and the
+           OpenType features. */
+        button, input, select, textarea, optgroup {
+            font-family: inherit;
+            font-feature-settings: inherit;
+        }
+        /* Belt and braces for anything that slipped through - a bare element
+           with no rule of its own still lands on the display cut rather than
+           whatever the browser would pick. */
+        .fighter-btn, .fighter-btn *, .shop-card, .shop-card *,
+        .mode-card, .mode-card *, .map-card, .map-card *,
+        .pslot, .pslot *, .tutorial-card, .tutorial-card * {
+            font-family: inherit;
+        }        body {
             margin: 0;
             background: #0d0f18;
             color: #ffffff;
@@ -476,7 +498,7 @@
             display: inline-block; background: #0d0f18; border: 1px solid #f59e0b; color: #f59e0b;
             font-weight: bold; font-size: 0.66rem; padding: 1px 6px; border-radius: 3px; margin-right: 7px;
         }
-        /* Coin balance, shown per player on the select screen and in the Shop header. */
+        /* Coin balance, shown per player on the select screen and in the Armory header. */
         .coin-balance { color: #f59e0b; font-weight: bold; font-size: 0.9rem; letter-spacing: 0.02em; }
         .coin-balance::before { content: "\25CF"; margin-right: 5px; color: #fbbf24; }
         /* Batch 21: each side panel owns its purse + a shortcut into that
@@ -1040,7 +1062,7 @@
                             <span class="coin-balance" id="p1-coins">0</span>
                         </div>
                         <div class="side-actions">
-                            <button id="btn-shop-p1" class="btn-side-shop" data-shop-side="p1">Shop</button>
+                            <button id="btn-shop-p1" class="btn-side-shop" data-shop-side="p1">Armory</button>
                             <button id="btn-toggle-bot-p1" class="bot-toggle">Bot: OFF</button>
                             <button id="btn-random-p1" class="btn-secondary">Random (R)</button>
                         </div>
@@ -1070,7 +1092,7 @@
                             <span class="coin-balance" id="p2-coins">0</span>
                         </div>
                         <div class="side-actions">
-                            <button id="btn-shop-p2" class="btn-side-shop" data-shop-side="p2">Shop</button>
+                            <button id="btn-shop-p2" class="btn-side-shop" data-shop-side="p2">Armory</button>
                             <button id="btn-toggle-bot" class="bot-toggle">Bot: OFF</button>
                             <button id="btn-random-p2" class="btn-secondary">Random (/)</button>
                         </div>
@@ -1104,6 +1126,10 @@
                     <p id="pause-controls-reminder"></p>
                     <button id="btn-resume">Resume (Esc)</button>
                     <button id="btn-pause-rebind">Rebind Keys</button>
+                    <!-- Glow, HUD Text and Audio are only worth changing while
+                         you can see what they do. The modal stack puts this over
+                         the pause screen and Escape closes it back to here. -->
+                    <button id="btn-pause-settings" class="btn-secondary">Settings</button>
                     <button id="btn-quit-to-menu">Return to Menu</button>
                 </div>
             </div>
@@ -1169,12 +1195,16 @@
                     <h3>How to Play</h3>
                     <div class="tutorial-grid">
                         <div class="tutorial-card">
+                            <h4>Controls</h4>
+                            <div id="tutorial-controls"></div>
+                        </div>
+                        <div class="tutorial-card">
                             <h4>Objective</h4>
                             <p>Best of 3 rounds. Win a round by knocking your opponent's HP to 0 — there's no clock to just run out, so see Arena Collapse below for how a round is guaranteed to end.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>First-Person View</h4>
-                            <p>You fight through your character's own eyes, weapon in hand. Turn keys rotate your view like looking around, not an instant sidestep — walk forward/back in whatever direction you're currently facing to actually move that way. Separate <b>look up/down</b> keys aim vertically, and ranged attacks fire along that aim — so you can shoot up at someone on a high perch, or down at the floor from one. On a gamepad the right stick looks; on touch, drag anywhere in the upper half of your side. Two human players share the screen split left/right; against a bot you get the whole screen.</p>
+                            <p>You fight through your character's own eyes, weapon in hand. See <b>Controls</b> above for how you move and aim. Separate <b>look up/down</b> keys aim vertically, and ranged attacks fire along that aim — so you can shoot up at someone on a high perch, or down at the floor from one. On a gamepad the right stick looks; on touch, drag anywhere in the upper half of your side. Two human players share the screen split left/right; against a bot you get the whole screen.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Arena Collapse</h4>
@@ -1182,7 +1212,7 @@
                         </div>
                         <div class="tutorial-card">
                             <h4>Movement &amp; Jumping</h4>
-                            <p>Turn to look around, then walk forward or back in that direction — there's no strafing sideways. Jumping reaches platforms and cover, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges and walls aren't. Use columns and interior walls for cover. Buy <b>Double Jump</b> in the Shop and you can press jump again in mid-air, once per airborne stretch, to reach the tallest perches.</p>
+                            <p>Movement is covered under <b>Controls</b> above.. Jumping reaches platforms and cover, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges and walls aren't. Use columns and interior walls for cover. Buy <b>Double Jump</b> in the Armory and you can press jump again in mid-air, once per airborne stretch, to reach the tallest perches.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Basic vs. Special</h4>
@@ -1202,7 +1232,7 @@
                         </div>
                         <div class="tutorial-card">
                             <h4>Co-op: Boss &amp; Survival</h4>
-                            <p>Two co-op modes put you and Player 2 on the <b>same team</b>. <b>Boss Fight</b> pits you against <b>Karrigos, the Hollow Titan</b> — enormous, slow, and enormously strong. Every one of its attacks has a long, obvious wind-up: a shockwave Ground Slam, a Charge at whoever's closest, and an Ember Nova spread. Watch the tell, get clear, then punish the recovery.</p>
+                            <p>Two co-op modes put you and Player 2 on the <b>same team</b>. <b>Boss Fight</b> pits you against <b>Karrigos, the Granite Colossus</b> — enormous, slow, and enormously strong. Every one of its attacks has a long, obvious wind-up: a shockwave Ground Slam, a Charge at whoever's closest, and an Ember Nova spread. Watch the tell, get clear, then punish the recovery.</p>
                             <p><b>Survival Waves</b> sends <b>squads</b> of lesser creatures at you — darting <b>Grint</b>, fire-spitting <b>Slagling</b>, and heavy <b>Hollowkin</b> — with more of them each wave. Clear a wave to bank coins and recover <b>30% of your health</b>. Every <b>5th wave</b> is a Karrigos boss wave instead. In both modes the run ends the moment <b>either</b> of you falls, so keep each other alive; the Bot difficulty setting scales everything.</p>
                         </div>
                         <div class="tutorial-card">
@@ -1211,11 +1241,7 @@
                         </div>
                         <div class="tutorial-card">
                             <h4>Coins &amp; Unlocks</h4>
-                            <p><b>Each player has their own coins, unlocks and upgrades.</b> You both start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate, and Speed, plus Double Jump. Open the Shop from your own panel (or the footer) and use the Player 1 / Player 2 tabs. Progression matches are <b>two players</b>; if you want to fight a bot or try the whole roster, turn on the "Unlock everything" sandbox in Settings — it leaves both players' real progress untouched and earns no coins.</p>
-                        </div>
-                        <div class="tutorial-card">
-                            <h4>Controls</h4>
-                            <div id="tutorial-controls"></div>
+                            <p><b>Each player has their own coins, unlocks and upgrades.</b> You both start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate, and Speed, plus Double Jump. Open the Armory from your own panel (or the footer) and use the Player 1 / Player 2 tabs. Progression matches are <b>two players</b>; if you want to fight a bot or try the whole roster, turn on the "Unlock everything" sandbox in Settings — it leaves both players' real progress untouched and earns no coins.</p>
                         </div>
                     </div>
                     <label class="tutorial-hide-row" id="tutorial-hide-row">
@@ -1250,14 +1276,14 @@
              allowed to freeze the other out. -->
         <div id="shop-screen">
             <div class="menu-section shop-panel" id="shop-panel-p1" style="display:none;">
-                <h3 id="shop-title-p1">Player 1 — Shop</h3>
+                <h3 id="shop-title-p1">Player 1 — Armory</h3>
                 <p class="shop-sub">Your own coins, unlocks and upgrades. Win a match to earn more.</p>
                 <div class="shop-head"><span class="coin-balance" id="shop-coin-balance-p1">0</span></div>
                 <div id="shop-list-p1"></div>
                 <button class="btn-back" data-shop-close="p1">← Back</button>
             </div>
             <div class="menu-section shop-panel" id="shop-panel-p2" style="display:none;">
-                <h3 id="shop-title-p2">Player 2 — Shop</h3>
+                <h3 id="shop-title-p2">Player 2 — Armory</h3>
                 <p class="shop-sub">Your own coins, unlocks and upgrades. Win a match to earn more.</p>
                 <div class="shop-head"><span class="coin-balance" id="shop-coin-balance-p2">0</span></div>
                 <div id="shop-list-p2"></div>
@@ -1872,7 +1898,7 @@ function refreshLocalNames() {
         const head = document.getElementById('side-name-' + side);
         if (head) head.textContent = playerName(side);
         const title = document.getElementById('shop-title-' + side);
-        if (title) title.textContent = playerName(side) + ' — Shop';
+        if (title) title.textContent = playerName(side) + ' — Armory';
     }
 }
 
@@ -2156,8 +2182,8 @@ const MATCH_MODES = [
     // The ID stays `timeattack`. It is a localStorage progression key and a
     // value on the wire in SETUP/START packets, so renaming it would reset
     // players' records and desync a mixed-version match for a cosmetic gain.
-    { id: 'timeattack', name: 'Takedown Race', blurb: 'Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse - the race is the pressure.' },
-    { id: 'boss', name: 'Boss Fight (Co-op)', blurb: 'Both players team up against Karrigos, the Hollow Titan. Its attacks are slow and telegraphed — punish the wind-up. If either of you falls, the run is over.', coop: true },
+    { id: 'timeattack', name: 'Takedown Race', blurb: 'Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse — the race is the pressure.' },
+    { id: 'boss', name: 'Boss Fight (Co-op)', blurb: 'Both players team up against Karrigos, the Granite Colossus. Its attacks are slow and telegraphed — punish the wind-up. Go down and you are out for 25 seconds; if your teammate falls while you are down, the run is over.', coop: true },
     { id: 'survival', name: 'Survival Waves (Co-op)', blurb: 'Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.', coop: true },
 ];
 let matchMode = 'classic';
@@ -2511,6 +2537,10 @@ function closeRebind() {
     closeModal(); // returns to Settings underneath if it was opened from there
 }
 document.getElementById('btn-open-rebind').addEventListener('click', openRebind);
+document.getElementById('btn-pause-settings').addEventListener('click', () => {
+    if (typeof syncDebugUnlockUI === 'function') syncDebugUnlockUI();
+    openModal('settings');
+});
 document.getElementById('btn-pause-rebind').addEventListener('click', openRebind);
 document.getElementById('btn-rebind-close').addEventListener('click', closeRebind);
 document.getElementById('btn-rebind-reset').addEventListener('click', () => {
@@ -2602,7 +2632,10 @@ function buildTutorialControls() {
     document.getElementById('tutorial-controls').innerHTML =
         `<div class="tutorial-controls-row"><b>${displayName('p1')}:</b> ${controlsSummary('p1')}</div>` +
         `<div class="tutorial-controls-row" style="margin-top:4px;"><b>${displayName('p2')}:</b> ${controlsSummary('p2')}</div>` +
-        `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> stick move/turn, A jump, B attack, X special, Y dash</div>`;
+        `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> stick move/turn, A jump, B attack, X special, Y dash</div>` +
+        `<div class="tutorial-controls-row" style="margin-top:6px;"><b>Alone against a bot:</b> you get the whole screen and the online scheme — mouse look, <b>A/D</b> to strafe, left click to attack. Click the arena once to capture the mouse.</div>` +
+        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>Two players:</b> the screen splits and each side uses its own keys, above — turn to look, then walk in the direction you face.</div>` +
+        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>Esc</b> pauses, and opens Rebind Keys and Settings.</div>`;
 }
 // Batch 37: the "don't show automatically" checkbox is hidden when you
 // opened this deliberately - offering to stop something that is not
@@ -8942,7 +8975,7 @@ function buildThorneMesh(color) {
     return g;
 }
 
-// --- Batch 17: Karrigos, the Hollow Titan. Co-op boss.
+// --- Batch 17: Karrigos, the Granite Colossus. Co-op boss.
 // Built from the SAME buildHumanoidBase rig as the roster (scaled up and
 // re-skinned) rather than new geometry: the rig already carries shoulder
 // pivots, hand sockets and the animation hooks every attack type drives, so
@@ -9888,7 +9921,7 @@ function refreshGridLocks() {
             const unlocked = isCharUnlocked(side, name);
             btn.classList.toggle('roster-locked', !unlocked);
             const cost = UNLOCK_COST[name];
-            btn.title = unlocked ? CHAR_MAP[name].desc : `Locked — ${cost} coins in the Shop`;
+            btn.title = unlocked ? CHAR_MAP[name].desc : `Locked — ${cost} coins in the Armory`;
             // Swap the hotkey pill for a price pill while locked: the hotkey
             // does nothing on a locked character anyway (previewPick refuses),
             // so showing the price is strictly more useful there.
@@ -9906,7 +9939,7 @@ buildGrid('p2-grid', P2_KEYS, 'p2');
 function statRow(label, value, max, lvl, text) {
     const pct = Math.round((value / max) * 100);
     // Show the upgrade level inline when there is one, so the numbers on this
-    // panel visibly match what you bought in the Shop.
+    // panel visibly match what you bought in the Armory.
     const badge = lvl ? ` <span style="color:#00f3ff">+${lvl}</span>` : '';
     // `text` lets the printed value differ from the bar's number: Seraphine's
     // special reads "Shield" while filling 0%, Lyra's reads "120 (24x5)".

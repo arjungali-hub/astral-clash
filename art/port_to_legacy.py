@@ -1222,6 +1222,134 @@ const WATCH_RING_SIDE = { p1: '#38bdf8', p2: '#fb923c' };""",
                   'watch debug surface')
         print('  %-34s ok' % 'spectator camera follows the fight')
 
+    # --------------------------------------------- the same type as the main build
+    # "The local build uses Arial almost everywhere" - measured at 147 visible
+    # controls against zero online. Form elements do NOT inherit font-family
+    # from their ancestors: the UA stylesheet gives them their own, so setting
+    # it on `body` reaches paragraphs and misses every button, and in this game
+    # most of the text IS buttons.
+    if 'font-family: inherit' not in dst:
+        # The body rule inside the :root block, not the two in media queries.
+        body_anchor = "        body {" + chr(10) + "            margin: 0;"
+        dst = rep(dst, body_anchor,
+                  block(src, "        /* EVERY piece of text, not just what inherits.",
+                        chr(10) + "        h1 {", 'font inherit')
+                  + body_anchor, 'font inherit')
+        print('  %-34s ok' % 'font inherit')
+
+    # ------------------------------------------------- Settings while paused
+    # Reported as missing "in either build". It is in the online one; this file
+    # is GENERATED, so Batch 53 writing the button straight into it lasted
+    # exactly until the next run of this script. A change this build needs is a
+    # step here or it is not a change.
+    if 'btn-pause-settings' not in dst:
+        dst = rep(dst, """                    <button id="btn-pause-rebind">Rebind Keys</button>""",
+                  """                    <button id="btn-pause-rebind">Rebind Keys</button>
+                    <!-- Glow, HUD Text and Audio are only worth changing while
+                         you can see what they do. The modal stack puts this over
+                         the pause screen and Escape closes it back to here. -->
+                    <button id="btn-pause-settings" class="btn-secondary">Settings</button>""",
+                  'pause settings button')
+        dst = rep(dst, "document.getElementById('btn-pause-rebind').addEventListener('click',",
+                  """document.getElementById('btn-pause-settings').addEventListener('click', () => {
+    if (typeof syncDebugUnlockUI === 'function') syncDebugUnlockUI();
+    openModal('settings');
+});
+document.getElementById('btn-pause-rebind').addEventListener('click',""",
+                  'pause settings listener')
+        print('  %-34s ok' % 'pause settings')
+
+    # ------------------------------------------------- one name for one thing
+    # MATCH_MODES is data with prose in it, and the prose drifted: the boss is
+    # "the Granite Colossus" online and was still "the Hollow Titan" here, and
+    # Survival Waves said "one at a time" in the mode list and "squads" in How
+    # to Play. Ported whole.
+    new_modes = block(src, 'const MATCH_MODES = [', chr(10) + '];', 'match modes')
+    old_modes = block(dst, 'const MATCH_MODES = [', chr(10) + '];', 'match modes (old)')
+    if old_modes != new_modes:
+        dst = dst.replace(old_modes, new_modes, 1)
+        print('  %-34s ok' % 'match modes')
+    # ...and the same boss name in this build's own prose.
+    if 'Hollow Titan' in dst:
+        dst = dst.replace('Hollow Titan', 'Granite Colossus')
+        print('  %-34s ok' % 'boss name')
+
+    # --------------------------------------------- Controls first in How to Play
+    # Reported: "the Controls card comes LAST." It is the card this panel is
+    # opened to read. A step rather than an edit to this file, because this file
+    # is generated - see the pause-Settings note above for what happens to edits
+    # made here directly.
+    ctrl_card = ('                        <div class="tutorial-card">' + chr(10)
+                 + '                            <h4>Controls</h4>' + chr(10)
+                 + '                            <div id="tutorial-controls"></div>' + chr(10)
+                 + '                        </div>' + chr(10))
+    grid_open = '                    <div class="tutorial-grid">' + chr(10)
+    # Already first when the card follows the grid's opening tag directly.
+    already_first = (grid_open + ctrl_card) in dst
+    if ctrl_card in dst and not already_first:
+        dst = dst.replace(ctrl_card, '', 1)
+        dst = dst.replace(grid_open, grid_open + ctrl_card, 1)
+        print('  %-34s ok' % 'controls card first')
+
+    # ------------------------------------- How to Play, for the controls it has
+    # "It says 'Turn keys rotate your view... there's no strafing sideways'" -
+    # true since Batch 47 gave the solo player the online scheme. BOTH schemes
+    # are real here and which one you get depends on how many humans are
+    # playing, so the card says that instead of picking one. It also goes FIRST:
+    # it is the card this panel is opened to read.
+    if 'Movement is covered under' not in dst:
+        # NOT a new Controls card: both builds already have one (it prints the
+        # live bindings), and it has been moved to the front of the grid in the
+        # markup. This step is only the PROSE that still describes controls this
+        # build no longer has.
+        # The two paragraphs that still describe controls this build no longer
+        # has. Matched on ASCII-only fragments: the surrounding text has em
+        # dashes and curly apostrophes, and a pattern carrying those matched
+        # nothing at all on the first attempt.
+        for frag, repl, label in (
+            ('Turn to look around, then walk forward or back in that direction',
+             'Movement is covered under <b>Controls</b> above.', 'movement card'),
+            ('Turn keys rotate your view like looking around, not an instant sidestep',
+             'See <b>Controls</b> above for how you move and aim', 'first-person card'),
+        ):
+            i = dst.find(frag)
+            if i < 0:
+                print('  %-34s SKIPPED (0 matches)' % label)
+                continue
+            # ...up to the end of that sentence.
+            j = dst.index('. ', i + len(frag)) + 2
+            dst = dst[:i] + repl + '. ' + dst[j:]
+            print('  %-34s ok' % label)
+
+    # WHICH SCHEME YOU GET depends on how many humans are playing, and the
+    # Controls card described only one of them. Reported: "it says 'Turn keys
+    # rotate your view... there's no strafing sideways', but local now gives the
+    # human mouse look and A/D strafing whenever the other side is a bot."
+    # Escape was missing too - the one key that is not a combat binding, and the
+    # only way out of a match.
+    if 'Alone against a bot' not in dst:
+        dst = rep(dst, '''        `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> stick move/turn, A jump, B attack, X special, Y dash</div>`;''',
+                  '''        `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> stick move/turn, A jump, B attack, X special, Y dash</div>` +
+        `<div class="tutorial-controls-row" style="margin-top:6px;"><b>Alone against a bot:</b> you get the whole screen and the online scheme — mouse look, <b>A/D</b> to strafe, left click to attack. Click the arena once to capture the mouse.</div>` +
+        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>Two players:</b> the screen splits and each side uses its own keys, above — turn to look, then walk in the direction you face.</div>` +
+        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>Esc</b> pauses, and opens Rebind Keys and Settings.</div>`;''',
+                  'controls card copy')
+
+    # One name for the store. The online build calls it the Armory; this one
+    # called it the Shop, in a build that shares its progression.
+    # Every user-visible use, including inside How to Play's prose - the phrase
+    # "open the Shop from your own panel" survived the first pass because it was
+    # in a sentence rather than on a button.
+    for old_word, new_word in ((" + ' — Shop'", " + ' — Armory'"),
+                               ('the Shop from', 'the Armory from'),
+                               ('>Shop<', '>Armory<'), ('Shop</button>', 'Armory</button>'),
+                               ('Player 1 \u2014 Shop', 'Player 1 \u2014 Armory'),
+                               ('Player 2 \u2014 Shop', 'Player 2 \u2014 Armory'),
+                               ('in the Shop', 'in the Armory'), ('the Shop.', 'the Armory.')):
+        if old_word in dst:
+            dst = dst.replace(old_word, new_word)
+    print('  %-34s ok' % 'store is the Armory')
+
     # ------------------------------------ how a swing travels, and what it holds
     # Pure animation: the shape of the arc, where the strike begins, how long
     # the contact pose is held. Nothing in it knows which build it is in.
