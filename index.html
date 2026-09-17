@@ -517,6 +517,18 @@
            un-clickable) until you Back — the picked card keeps full brightness. */
         .fighter-grid.locked { pointer-events: none; }
         .fighter-grid.locked .fighter-btn:not(.selected) { opacity: 0.4; }
+        /* THE LOCKED-IN CARD IS MARKED. Reported as "the confirmed card has a
+           yellow outline on P2 but not on P1" - that yellow was the FOCUS ring,
+           which only one element on the page can have, so it followed whoever
+           clicked last and read as a difference between the players. A
+           confirmed card had no mark of its own at all; it was distinguished
+           only by the others dimming, which says "those are unavailable"
+           rather than "this is locked in". */
+        .fighter-grid.locked .fighter-btn.selected {
+            outline: 3px solid #4ade80;
+            outline-offset: 2px;
+            box-shadow: 0 0 18px rgba(74, 222, 128, 0.45);
+        }
         /* NOT-YET-PURCHASED cards. Deliberately a different class from the
            `.locked` grid state above (that one dims the whole grid after a
            pick is confirmed) — these two "locked" concepts are unrelated and
@@ -1776,13 +1788,24 @@ function sanitizeName(raw) {
 }
 
 let myPlayerName = '';
-try { myPlayerName = sanitizeName(localStorage.getItem(NAME_KEY) || ''); } catch (e) {}
+// PER TAB FIRST, per origin second. localStorage is shared by every tab of this
+// origin, so two tabs of the game are one player to it - reported as "when the
+// guest set their name to 'Arjun', the host tab also became 'Arjun'". A tab
+// that has chosen a name keeps it in sessionStorage, which no other tab can
+// see; localStorage stays the remembered default a NEW tab starts from.
+try {
+    myPlayerName = sanitizeName(sessionStorage.getItem(NAME_KEY)
+                                || localStorage.getItem(NAME_KEY) || '');
+} catch (e) {}
 
 function setMyName(raw) {
     const next = sanitizeName(raw);
     if (next === myPlayerName) return myPlayerName;
     myPlayerName = next;
-    try { localStorage.setItem(NAME_KEY, myPlayerName); } catch (e) {}
+    try {
+        sessionStorage.setItem(NAME_KEY, myPlayerName);   // this tab, now
+        localStorage.setItem(NAME_KEY, myPlayerName);     // the next new tab
+    } catch (e) {}
     // Tell the opponent immediately: they are rendering our name on their
     // screen, so a rename has to cross the wire like a pick does.
     if (netActive()) netSend({ t: 'NAME', name: myPlayerName });

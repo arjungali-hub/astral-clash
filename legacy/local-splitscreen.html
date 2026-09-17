@@ -449,6 +449,18 @@
            un-clickable) until you Back — the picked card keeps full brightness. */
         .fighter-grid.locked { pointer-events: none; }
         .fighter-grid.locked .fighter-btn:not(.selected) { opacity: 0.4; }
+        /* THE LOCKED-IN CARD IS MARKED. Reported as "the confirmed card has a
+           yellow outline on P2 but not on P1" - that yellow was the FOCUS ring,
+           which only one element on the page can have, so it followed whoever
+           clicked last and read as a difference between the players. A
+           confirmed card had no mark of its own at all; it was distinguished
+           only by the others dimming, which says "those are unavailable"
+           rather than "this is locked in". */
+        .fighter-grid.locked .fighter-btn.selected {
+            outline: 3px solid #4ade80;
+            outline-offset: 2px;
+            box-shadow: 0 0 18px rgba(74, 222, 128, 0.45);
+        }
         /* NOT-YET-PURCHASED cards. Deliberately a different class from the
            `.locked` grid state above (that one dims the whole grid after a
            pick is confirmed) — these two "locked" concepts are unrelated and
