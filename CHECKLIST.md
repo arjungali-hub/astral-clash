@@ -536,9 +536,9 @@ Arena Collapse used to end with both fighters squashed in place while still in f
 
 The brief: remove local 2-player and mobile (archiving both), move to online play over PeerJS, and modernise the controls - WASD+arrows with A/D strafing, pointer-lock mouse look, left-click attack. Ordered ahead of the arena/character art work at the user's direction, on the reasoning that split-screen renders the scene twice per frame and is the performance ceiling that work would hit.
 
-### Archived first (Batch 31)
+### Local first (Batch 31)
 
-`legacy/local-splitscreen.html` is a verbatim copy of the build immediately before the refactor, with its asset paths rewritten to `../` so it actually runs. Verified: served over HTTP it boots, loads `kaelen.glb` (1 model, 0 failures - which is what proves the path rewrite worked) and reaches a live FIGHT with no console errors. A working fallback, not a file that merely exists. What lives only there now: the two-viewport split-screen path, the two-panel HUD (including the trick of drawing shared centred elements twice with a +/- `VIRTUAL_W/4` translate so nothing lands on the seam), two 10-action binding sets on one keyboard, and the whole touch scheme.
+`local/index.html` is a verbatim copy of the build immediately before the refactor, with its asset paths rewritten to `../` so it actually runs. Verified: served over HTTP it boots, loads `kaelen.glb` (1 model, 0 failures - which is what proves the path rewrite worked) and reaches a live FIGHT with no console errors. A working fallback, not a file that merely exists. What lives only there now: the two-viewport split-screen path, the two-panel HUD (including the trick of drawing shared centred elements twice with a +/- `VIRTUAL_W/4` translate so nothing lands on the seam), two 10-action binding sets on one keyboard, and the whole touch scheme.
 
 ### Controls (Batch 31)
 
@@ -604,13 +604,13 @@ misreport on hybrid devices and being wrong here would lock someone out of a
 game they can play perfectly well. Getting the detection wrong must not be
 unrecoverable.
 
-### The archived build is single-player on a phone
+### The local build is single-player on a phone
 
-The notice offers the archived split-screen build, which still has full touch
+The notice offers the local split-screen build, which still has full touch
 controls - so it is a redirect, not an apology. But **split-screen on a phone is
 not playable**: each player gets a ~195pt-wide viewport with a joystick and four
 action buttons layered on top of it. Since a phone is exactly where someone
-arrives from that notice, the archived build now forces P2 to a bot on a touch
+arrives from that notice, the local build now forces P2 to a bot on a touch
 device and **hides both bot toggles** - there is nothing to choose, and a
 permanently disabled button answering a question nobody asked was the Batch 24
 complaint.
@@ -674,7 +674,7 @@ test for this fix.
 
 ### Also: settings can leave
 
-Requested separately - Settings gains a link to the archived local split-screen
+Requested separately - Settings gains a link to the local local split-screen
 build, and that build has one back, so switching modes is not a one-way trip
 through the URL bar. Both send a `BYE` and tear the peer connection down first
 rather than leaving a half-open link behind.
@@ -754,11 +754,11 @@ meaning.
   into a real match. Still reachable under `?debug=1`.
 - **Bots, and the difficulty cycler with them.** Online the opponent is a person.
   `p1IsBot`/`p2IsBot` survive because the Fighter constructor, the AI branch of
-  `update()` and `beginMatch` all read them, and the archived build uses them.
+  `update()` and `beginMatch` all read them, and the local build uses them.
 - **The two co-op modes, from the mode list.** Their enemies are AI-driven and
   the AI is not networked - each client would simulate its own boss from its own
   frame timing and they would diverge on the first hit. Shipping a mode that
-  cannot work is worse than not offering it; they stay in the archived
+  cannot work is worse than not offering it; they stay in the local
   split-screen build, which Settings links to. The mode picker now offers the
   three versus modes.
 - **17 dead CSS rules** for markup that no longer exists. Not tidying: a
@@ -1214,7 +1214,7 @@ Named here rather than quietly dropped:
 ---
 
 
-## Batch 37 - The arm was never posed, and the legacy build stops being frozen
+## Batch 37 - The arm was never posed, and the local build stops being frozen
 
 ### The first-person arms: one mistake, two symptoms
 
@@ -1272,17 +1272,17 @@ Still not perfect: the arm reads slightly small and low, and the weapon is near
 the hand rather than in the grip. But it is now genuinely the third-person arm,
 correctly posed and oriented, which is what was asked for.
 
-### The archived build is no longer frozen at the art it shipped with
+### The local build is no longer frozen at the art it shipped with
 
 Requested as "the legacy version should still receive art/font/balance updates -
-this makes the game easier to test". `legacy/local-splitscreen.html` is a fork
+this makes the game easier to test". `local/index.html` is a fork
 by deliberate design (the two builds differ in renderer, input model and HUD
 layout, and keeping both live in one file was the half-wired state the online
 refactor set out to escape) - but a fork does not have to mean frozen. It is
 still the only way to play on one machine, and it is where a phone gets
 redirected.
 
-`art/port_to_legacy.py` ports the self-contained work: both fonts, the full
+`art/sync_local.py` ports the self-contained work: both fonts, the full
 14-character roster with `RIG_HEIGHT_MULT`, the photographic arena surfaces, the
 fitted shadow frustum, the fill-light change and both texture leak fixes. Every
 block is extracted from `index.html` by its own anchors, so it cannot drift from
@@ -1373,14 +1373,14 @@ caster costs a pass over the shadow map, and six bolts re-rendering it for a
 
 ---
 
-## Batch 39 - Portraits that face you, and the legacy build actually in sync
+## Batch 39 - Portraits that face you, and the local build actually in sync
 
 ### The two builds were drifting on rules, not just art
 
 Reported as "most of the changes seem to have not landed in the legacy version -
 like the step-up, for example". Correct, and the cause was my own scoping:
-`art/port_to_legacy.py` carried **art and fonts only**, while the request had
-been "art/font/balance updates". So the archived build still called a mode Time
+`art/sync_local.py` carried **art and fonts only**, while the request had
+been "art/font/balance updates". So the local build still called a mode Time
 Attack, still let you ride a waist-high block, still gave the ranged fighters
 their old health, and still collapsed the arena on the 20s/6s clock.
 
@@ -1477,7 +1477,7 @@ model may not be ready.
 
 Widened on request from "art/font/balance" to everything gameplay- or
 art-facing. The rule applied: anything that changes how the game **looks** or
-**plays** belongs in the archived build; only machinery that is meaningless
+**plays** belongs in the local build; only machinery that is meaningless
 without a network connection stays behind.
 
 Now carried, on top of the art and balance: the teleport smear **and its camera
@@ -1520,7 +1520,7 @@ whatever is present, so it reached the game unnoticed.
   and the "I have a mouse and keyboard" override, which is self-contradictory on
   a phone. `/local` shows the same notice rather than running.
 - **Routing:** "Switch to Local Version", at `/local` via a Vercel rewrite; the
-  archived build links back to `/`. `location.search` is carried both ways so
+  local build links back to `/`. `location.search` is carried both ways so
   `?debug=1` survives the switch.
 - **The crush slabs are photographic** - the last surface still using the 256px
   procedural canvases, which is where the camera gets closest to a wall. Tiled
@@ -1614,7 +1614,7 @@ All fourteen characters then need re-rigging, which is why it is its own job.
 
 It claimed the legacy port carried "the extracted first-person arm". It did not
 — the script had prose about it and no step, and `grep` for
-`buildViewmodelArmFromModel` in the archived build returned nothing. Now
+`buildViewmodelArmFromModel` in the local build returned nothing. Now
 actually ported, along with the arm-triangle selection and the cut seal. While
 fixing it, the same duplicate-declaration trap appeared again: inserting the
 placement constants separately declared `VM_ARM_LENGTH` twice, because the
@@ -1679,8 +1679,8 @@ off them.
 
 ### Keeping the two builds in sync### Keeping the two builds in sync
 
-`art/port_to_legacy.py` now carries balance as well as art - it was art and
-fonts only, which is why the archived build still said "Time Attack", still let
+`art/sync_local.py` now carries balance as well as art - it was art and
+fonts only, which is why the local build still said "Time Attack", still let
 you ride a waist-high block and still gave the ranged fighters their old health.
 It is also idempotent now, so it can be re-run after every batch; that was not
 true at first and a second run both aborted halfway and, before that,
@@ -1735,7 +1735,7 @@ model loading, and new art direction - both landed in Batches 25-29. Online
 multiplayer is requested and still pending (see below).
 
 **Delivered in Batches 31-33** (was pending): the local split-screen and touch
-builds are archived to `legacy/local-splitscreen.html` and out of the main game,
+builds are local to `local/index.html` and out of the main game,
 which is now online peer-to-peer over PeerJS with WASD+arrows movement, A/D and
 Left/Right as strafe, pointer-lock mouse look and left-click attack.
 
@@ -1856,8 +1856,8 @@ non-square file**, because "it looked fine in the code" is how this shipped.
 ### /local 404'd, and the reason is a cleanUrls interaction
 
     /local                         -> 404
-    /legacy/local-splitscreen      -> 200
-    /legacy/local-splitscreen.html -> 308
+    /local/index      -> 200
+    /local/index.html -> 308
 
 `cleanUrls: true` serves every .html file at its extensionless path and
 308-redirects the .html one, so a rewrite *destination* ending in .html points at
@@ -1865,7 +1865,7 @@ a path that is not an output of the deployment. Locally it looks fine, because a
 plain static server has no cleanUrls. `tests/routingcheck.js` now checks every
 rewrite against both the config and the filesystem.
 
-`/legacy/local-splitscreen` also sends you to `/local` now - in the page, not as
+`/local/index` also sends you to `/local` now - in the page, not as
 a Vercel redirect, because `/local` is a REWRITE to that same path and a redirect
 sitting on a rewrite's destination risks the loop that would take `/local` down
 again. Guarded to https non-localhost: the pretty path does not exist over
@@ -1918,7 +1918,7 @@ Details that are each their own small bug avoided:
 "I have everything unlocked in the online version. This might be a result of me
 playing in the sandbox version in local" - it was. Both builds are served from
 the same origin, so they share localStorage. That is deliberate for
-**progression** and wrong for the unlock-everything override: the archived build
+**progression** and wrong for the unlock-everything override: the local build
 still offers the toggle, this one dropped it in Batch 34, so flipping it there
 unlocked the online build with no UI left here to flip it back. A one-way
 trapdoor.
@@ -1932,7 +1932,7 @@ Two fixes, because there were two problems:
   unlocked, they are flatly stronger than an opponent who earned their upgrades -
   and nothing on the wire would reveal it, because picks are synced by name.
 
-### The archived build's shop no longer freezes the other player out
+### The local build's shop no longer freezes the other player out
 
 "if the shop opens on one side of the screen in the local version currently the
 other side is useless, but the other side should still be able to select
@@ -1945,12 +1945,12 @@ clicks. Both can be open at once, they close independently, and the overlay only
 goes away once neither is open. Legacy-only: the online build has one account and
 one full-screen shop, so the problem does not exist there.
 
-It lives in `art/port_to_legacy.py`, because a hand edit to a generated file is
+It lives in `art/sync_local.py`, because a hand edit to a generated file is
 erased by the next port. The legacy co-op functions live in
-`art/legacy_coop_respawn.js` as real JavaScript rather than as a 60-line string
+`art/local_coop_respawn.js` as real JavaScript rather than as a 60-line string
 inside a Python file - that is where escaping mistakes come from. The port
 verifies **42 definitions** and 15 called identifiers or refuses to write, and
-`tests/legacyshopcheck.js` is now that build's load check too: it asks the
+`tests/localshopcheck.js` is now that build's load check too: it asks the
 browser's own hit-testing whether the other side is reachable, which a
 computed-style check cannot answer.
 
@@ -1971,7 +1971,7 @@ edit both modes for every update?"*
 They can, and this is the tranche where it pays. Every drift report so far -
 "legacy version still calls it time attack", "most of the changes seem to have
 not landed in the legacy version" - was about the same handful of tables, and
-`art/port_to_legacy.py` had been copying them across by anchor after every
+`art/sync_local.py` had been copying them across by anchor after every
 batch. **`shared/roster.js`** now holds them, and both builds load it:
 
 - the economy (`STARTER_CHARS`, `UNLOCK_COST`, `UPGRADE_*`, `DOUBLE_JUMP_COST`,
@@ -1987,7 +1987,7 @@ a separate file is a global binding: code inside `bootGame()` resolves
 `CHARACTERS` to it exactly as it resolved the local one. The one rule is that
 the local declarations must be **deleted** - a `const` inside `bootGame()` would
 shadow the shared value and turn the shared file into dead weight that still
-looks authoritative. The port script does that deletion for the archived build,
+looks authoritative. The port script does that deletion for the local build,
 so a fresh re-port reproduces it.
 
 **Four port steps were deleted**, including the Gorgonok/Draven swap added an
@@ -2000,7 +2000,7 @@ genuinely differ. `CHAR_MODEL_URLS` also stays ported, because it is asset
 *paths* (`assets/` vs `../assets/`) rather than data - sharing it wants a base
 path each build sets for itself, which is the next slice of this.
 
-`tests/legacyshopcheck.js` now boots **both** builds and compares a fingerprint
+`tests/localshopcheck.js` now boots **both** builds and compares a fingerprint
 of the roster, the boss table, the frame data and the costs. It reads them as
 bare globals rather than through each build's `ACDebug`, so the comparison is of
 the shared binding itself and not of whatever each build chose to re-export.
@@ -2135,7 +2135,7 @@ place for a half-empty bar. `COOP_RESPAWN_HP_FRAC` stays as a constant rather
 than being inlined, because it is what `respawn()`'s `hpFrac` argument exists
 for and it is the kind of number that gets retuned.
 
-`/legacy/local-splitscreen` also sends you to `/local` now, in the page and
+`/local/index` also sends you to `/local` now, in the page and
 guarded to https non-localhost - the pretty path is a Vercel rewrite that does
 not exist over `file://` or on the test server, where redirecting would turn a
 working page into a 404.
@@ -2152,7 +2152,7 @@ slice of shared code.
 
 ### Asset paths are shared, by having the shared file locate itself
 
-The last table `art/port_to_legacy.py` copied for data reasons was
+The last table `art/sync_local.py` copied for data reasons was
 `CHAR_MODEL_URLS`, and only because the two builds sit at different depths:
 `assets/chars/...` from the repo root, `../assets/chars/...` from `legacy/`.
 
@@ -2164,11 +2164,11 @@ const AC_ASSET_BASE = new URL('../assets/', document.currentScript.src).href;
 ```
 
 One absolute base, resolved once, correct for both builds. That also removes an
-accident: the archived build's `../assets/x` is written for its own directory,
+accident: the local build's `../assets/x` is written for its own directory,
 but `/local` is a Vercel **rewrite**, so that path climbs above the root and
 only worked because browsers clamp it.
 
-`legacyshopcheck` now makes both pages **fetch** a model and a portrait, because
+`localshopcheck` now makes both pages **fetch** a model and a portrait, because
 a fingerprint comparison passes just as happily with both builds pointing at
 nothing.
 
@@ -2384,11 +2384,11 @@ two people share one machine.
 | **Two bots: watch from above** | No human means no first-person view to be in, and the only view in the game that holds the whole arena. |
 | **One human: online controls** | The split-keyboard scheme exists to fit two people on one board. This build predates Batch 31, so the pointer lock, mouse deltas and strafe axis are all new - and gated on `soloHumanSide()`. |
 
-The logic lives in `art/legacy_local_extras.js` as real JavaScript. Worth
+The logic lives in `art/local_extras.js` as real JavaScript. Worth
 recording what that did *not* save me from: the port rewrites every
 `(side === 'p1' ? 'Player 1' : 'Player 2')` into `playerName(side)`, and
 `playerName`'s own fallback **was** that ternary - so the first run rewrote the
-function into `return localNames[side] || playerName(side)` and the archived
+function into `return localNames[side] || playerName(side)` and the local
 build died at load with "Maximum call stack size exceeded". The fallback is a
 lookup table now, with a note saying why.
 
@@ -2444,7 +2444,7 @@ what was reported, in the reporter's own terms.
 > split screen and match starting framework and anything else that is necessary.
 > EVERYTHING else should be the exact same code relied on."
 
-This supersedes the port-script approach. `art/port_to_legacy.py` has been
+This supersedes the port-script approach. `art/sync_local.py` has been
 carrying fixes across one guarded edit at a time, and this run alone found three
 HALF-PORTS that each froze the game: `swingT` without `SWING_WINDUP_FRAC`, the
 muzzle-flash pool without `MUZZLE_FLASH_MAX`, and `warmCombatShaders` defined

@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-r"""Ports the art, font and balance work from index.html into the archived
+r"""Ports the art, font and balance work from index.html into the local
 local split-screen build.
 
-    python art/port_to_legacy.py
+    python art/sync_local.py
 
-legacy/local-splitscreen.html is a FORK, not a shared module: it was archived
+local/index.html is a FORK, not a shared module: it was local
 verbatim before the online refactor because the two builds differ in their
 renderer, input model and HUD layout, and keeping both live in one file was
 exactly the half-wired state that refactor set out to avoid. That decision
-stands - but it should not mean the archived build is frozen at the art it
+stands - but it should not mean the local build is frozen at the art it
 happened to have on the day. It is still the only way to play on one machine,
 and it is what a phone is redirected to.
 
@@ -29,7 +29,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'index.html')
-DST = os.path.join(ROOT, 'legacy', 'local-splitscreen.html')
+DST = os.path.join(ROOT, 'local', 'index.html')
 
 
 def comment_start(text, i):
@@ -39,7 +39,7 @@ def comment_start(text, i):
     The steps below insert a comment block above the line they replace. Without
     this they replace only the line, so the PREVIOUS run's comment survives and
     a second copy lands above it: running this script twice from a clean
-    checkout grew the archived build by 3,164 bytes, and every run after that
+    checkout grew the local build by 3,164 bytes, and every run after that
     by the same again.
     """
     start = text.rfind(chr(10), 0, i) + 1
@@ -77,7 +77,7 @@ def rep(hay, old, new, label, required=True):
     return hay.replace(old, new, 1)
 
 
-# The archived build's shop markup, before and after. Two panels, one per
+# The local build's shop markup, before and after. Two panels, one per
 # player, each shown independently.
 SHOP_HTML_OLD = """        <div id="shop-screen">
             <div class="menu-section shop-panel">
@@ -176,7 +176,7 @@ CLOSE_MODAL_NEW = """function closeModal() {
     return name;
 }"""
 
-# The wipe-ending body of resolveCoopMode, for the archived build.
+# The wipe-ending body of resolveCoopMode, for the local build.
 COOP_RESOLVE_BODY = """    if (!isCoopMode()) return false;
 
     // Newly downed, both checked before the wipe test, so a double KO on one
@@ -274,7 +274,7 @@ def main():
     before = len(dst)
 
     # ------------------------------------------------------------- routing
-    # The archived build links back to the root, not to /index.html - Vercel
+    # The local build links back to the root, not to /index.html - Vercel
     # already serves index.html there, and a bare domain is the address people
     # actually use.
     dst = dst.replace("location.href = '../index.html' + location.search;",
@@ -286,7 +286,7 @@ def main():
     # Batch 33 sent mobile users HERE, on the grounds that this build still has
     # touch controls. Then someone actually played it: "when I tried it on
     # mobile it was really bad and hard to play". Offering a worse experience is
-    # not a kindness, so the archived build now shows the same single message
+    # not a kindness, so the local build now shows the same single message
     # the main one does, and nothing else.
     if 'id="desktop-only"' not in dst:
         notice = block(src, "    <!-- ONE MESSAGE, NO ESCAPE HATCHES (Batch 41).",
@@ -321,7 +321,7 @@ def main():
     # ------------------------------------------------- gameplay + visuals
     # Widened after "for the legacy sync gap widen the scope to everything you
     # think are relevant". The rule applied here: anything that changes how the
-    # game LOOKS or PLAYS belongs in the archived build; only machinery that is
+    # game LOOKS or PLAYS belongs in the local build; only machinery that is
     # meaningless without a network connection stays behind.
     #
     # Carried:   the teleport smear and its camera fix, the projectile sphere
@@ -424,7 +424,7 @@ def main():
 
     # --- the first-person arm, cut from the character mesh -----------------
     # Claimed as carried in Batch 40 and in fact never ported: the script had
-    # prose about it and no step. The archived build is first-person too, so it
+    # prose about it and no step. The local build is first-person too, so it
     # wants the real arm exactly as much as the online one does.
     if 'buildViewmodelArmFromModel' not in dst:
         arm = block(src, "// The bones whose geometry becomes the viewmodel arm.",
@@ -448,7 +448,7 @@ def main():
         # contains ARM_CHAIN, VM_ARM_LENGTH, VM_ARM_ANCHOR and VM_AIM (they
         # sit between that comment and buildViewmodelArm), and inserting
         # them again declared VM_ARM_LENGTH twice - a fatal redeclaration
-        # that took the whole archived build down at load.
+        # that took the whole local build down at load.
         # _armTriangles and _armBoneIndices are inside that block too.
 
     # --- roster faces -------------------------------------------------------
@@ -475,7 +475,7 @@ def main():
     # version - like the step-up, for example", and that was exactly right:
     # the first version of this script ported art and fonts only, while the
     # request had been "art/font/balance updates". Rules and tuning drifted
-    # immediately - the archived build still called a mode Time Attack, still
+    # immediately - the local build still called a mode Time Attack, still
     # let you ride a waist-high block, still gave the ranged fighters 100 extra
     # HP, and still collapsed the arena on the old 20s/6s clock.
     #
@@ -549,7 +549,7 @@ def main():
     # skipped this: hudFont's own body REFERENCES HUD_FAMILY, so inserting the
     # hudFont block a few lines above put the name in the file and satisfied
     # the guard. Same trap hit getTiledWallTexture, whose name appears in a
-    # comment inside the photo block. The legacy build then died at load with
+    # comment inside the photo block. The local build then died at load with
     # "getTiledWallTexture is not defined".
     if 'const HUD_FAMILY' not in dst:
         anchor = "let HUD_TEXT_SCALE = parseFloat(safeLSGet('astralClashHudScale')) || 1;"
@@ -583,14 +583,14 @@ def main():
     # report was the obvious consequence - "most of the changes seem to have not
     # landed in the legacy version".
     #
-    # So: delete the archived build's own copies, and load shared/roster.js
+    # So: delete the local build's own copies, and load shared/roster.js
     # instead. Classic scripts share one global scope, so bootGame() resolves
     # CHARACTERS, FRAME_DATA, BOSS_MAP and the economy constants to the shared
     # ones with no other change - as long as the local `const`s are GONE. A
     # local declaration would shadow the shared value and silently restore the
     # drift this removes.
     if 'shared/roster.js' not in dst:
-        # Each region is cut by its own anchors, from the archived build. The
+        # Each region is cut by its own anchors, from the local build. The
         # closing `});` of the Object.assign is included deliberately: leaving
         # it behind is exactly the off-by-one that shipped two syntax errors
         # when index.html was done the same way.
@@ -636,7 +636,7 @@ def main():
                       '<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"',
                       'shared roster script tag (cdn anchor)')
         # The two remaining '../assets/' literals become base-relative, so the
-        # archived build stops caring what directory it is served from - which
+        # local build stops caring what directory it is served from - which
         # matters because /local is a rewrite and its document URL is not in
         # legacy/ at all.
         dst = rep(dst, "const PHOTO_BASE = '../assets/tex/';",
@@ -659,7 +659,7 @@ def main():
         dst = dst.replace(old_apply, swing, 1)
         print('  %-34s ok' % 'swing axis + jab helpers')
 
-        # readableJabs sits above armsOf in index.html; the archived build needs
+        # readableJabs sits above armsOf in index.html; the local build needs
         # it before animateWeapon runs.
         jabs = block(src, "// How many jabs will actually READ inside an attack's active window.",
                      "\nfunction armsOf(", 'readableJabs')
@@ -786,7 +786,7 @@ def main():
                   "        // A downed co-op teammate is out of the fight, not a shield.\n"
                   "        if (this.downed) return;", 'downed takes no damage')
         # The legacy-side lifecycle, as real JavaScript in its own file.
-        coop_js = io.open(os.path.join(HERE, 'legacy_coop_respawn.js'), encoding='utf-8').read()
+        coop_js = io.open(os.path.join(HERE, 'local_coop_respawn.js'), encoding='utf-8').read()
         dst = rep(dst, "function resolveCoopMode() {",
                   coop_js + "\nfunction resolveCoopMode(dt) {", 'coop respawn lifecycle')
         # ...and its body: the either-down ending becomes a WIPE ending.
@@ -804,7 +804,7 @@ def main():
         dst = rep(dst, "    if (coopEnemies.length) drawBossHUD();",
                   "    if (isCoopMode()) drawCoopDownHUD();\n"
                   "    if (coopEnemies.length) drawBossHUD();", 'coop down HUD')
-        # ...and the debug handles, so legacyshopcheck can assert the rule
+        # ...and the debug handles, so localshopcheck can assert the rule
         # arrived rather than assuming the port worked.
         dst = rep(dst, "        MATCH_MODES, ZONE_RADIUS, ZONE_TARGET, TIME_ATTACK_KOS, RESPAWN_INVULN,",
                   "        MATCH_MODES, ZONE_RADIUS, ZONE_TARGET, TIME_ATTACK_KOS, RESPAWN_INVULN,\n"
@@ -878,17 +878,17 @@ const CANONICAL_PATH = '/local';
 if (location.protocol === 'https:'
     && !/^(localhost|127\\.|\\[::1\\])/.test(location.hostname)
     && location.pathname !== CANONICAL_PATH
-    && /local-splitscreen(\\.html)?$/.test(location.pathname)) {
+    && /\\/local\\/index(\\.html)?$/.test(location.pathname)) {
     location.replace(CANONICAL_PATH + location.search + location.hash);
 }
 // Three.js is the only external dependency""", 'canonical /local redirect')
 
     # ------------------------------------------- local-build requests (B47)
     # Names, a progress reset, an explicit Start Fight, no nested scrollbars,
-    # and a spectator camera when both sides are bots. Archived-build only: the
+    # and a spectator camera when both sides are bots. Local-build only: the
     # online build has one player per machine, so none of it applies there.
     if 'function playerName(' not in dst:
-        extras = io.open(os.path.join(HERE, 'legacy_local_extras.js'), encoding='utf-8').read()
+        extras = io.open(os.path.join(HERE, 'local_extras.js'), encoding='utf-8').read()
         # After freshSideProgress/progression exist, and before anything can
         # call in. watchCam is a const built at load, so it needs THREE (which
         # is present by then) and nothing from the arena.
@@ -977,7 +977,7 @@ if (location.protocol === 'https:'
         # --- two bots: watch from above -----------------------------------
         dst = rep(dst, WATCH_OLD, WATCH_NEW, 'bots-only watch view')
         dst = rep(dst, "function renderOneView(cam, viewer, x, y, vw, vh, dt) {",
-                  "// The archived build renders directly - bloom is an online-build addition,\n"
+                  "// The local build renders directly - bloom is an online-build addition,\n"
                   "// which one viewport is what made practical. Named rather than inlined so\n"
                   "// the two builds' render paths read the same shape.\n"
                   "function renderWithBloomLocal(scn, cam) { renderer.render(scn, cam); }\n\n"
@@ -1071,7 +1071,7 @@ if (location.protocol === 'https:'
         # A source end marker and a destination one, because a block does not
         # always end the same way in both files. Getting this wrong is not a
         # subtle failure: an end marker 1800 lines too late once pulled 106KB of
-        # unrelated code into the archived build, which the byte count caught.
+        # unrelated code into the local build, which the byte count caught.
         for start, src_end, dst_end, label in (
             ('function propForAtkType(',
              chr(10) + '// Batch 28: the first-person arm.',
@@ -1085,7 +1085,7 @@ if (location.protocol === 'https:'
             # A ported block can carry a TOP-LEVEL `const` this build already
             # declares further up, and a duplicate const is a SyntaxError that
             # kills the whole page - which is how the first run of this step
-            # shipped a blank archived build ("Identifier 'ARM_CHAIN' has
+            # shipped a blank local build ("Identifier 'ARM_CHAIN' has
             # already been declared"). Dropping the redeclaration is right and
             # removing the older one is not: code between the two would then
             # reference it before its declaration.
@@ -1122,7 +1122,7 @@ if (location.protocol === 'https:'
                 dst = rep(dst, after, decl + chr(10) + after, decl.split(' ')[1])
         print('  %-34s ok' % 'first-person rig')
 
-    # --------------------------------------- the archived build's own UI items
+    # --------------------------------------- the local build's own UI items
     # Each of these is local-only: they are about two players at one keyboard,
     # which the online build does not have.
 
@@ -1199,7 +1199,7 @@ const WATCH_RING_SIDE = { p1: '#38bdf8', p2: '#fb923c' };""",
     # than keep a second copy of the new code here, the block is LIFTED OUT of
     # the fragment and swapped in - one source of truth, and idempotent.
     if 'function syncWatchRings(' not in dst:
-        extras_src = io.open(os.path.join(HERE, 'legacy_local_extras.js'), encoding='utf-8').read()
+        extras_src = io.open(os.path.join(HERE, 'local_extras.js'), encoding='utf-8').read()
         END = chr(10) + "// ------------------------------------------- the solo human's controls"
         new_cam = block(extras_src, '// Batch 52: IT FRAMES THE FIGHT', END, 'watch camera (new)')
         old_cam = block(dst, 'function positionWatchCamera(aspect) {', END, 'watch camera (old)')
@@ -1438,7 +1438,7 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
     #
     # Replace-if-different rather than insert-if-missing, so the two builds stay
     # in step from here on. An insert-if-missing step is correct exactly once,
-    # which is how the archived build ended up with a swing envelope three
+    # which is how the local build ended up with a swing envelope three
     # batches behind and a sword with a seven-unit grip sticking out of frame.
     for start, end, label in (
         # swingT plus the constants directly above it. The start marker is
@@ -1681,7 +1681,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         print('  %-34s ok (%d HUD refs)' % ('uniform HUD scale', n))
 
     # The frame may use the window it is in, now that no aspect needs defending.
-    # Written out rather than lifted from the source: the archived build's
+    # Written out rather than lifted from the source: the local build's
     # container carries its own split-screen comment above these lines.
     dst = rep(dst, """            width: min(96vw, 1170px);
             aspect-ratio: 1170 / 650;
@@ -1698,7 +1698,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
 
     # VERIFY, rather than trust the guards.
     #
-    # The first run of this script shipped a legacy build that died at load
+    # The first run of this script shipped a local build that died at load
     # because a guard matched a name in a comment and skipped the definition it
     # was guarding. The guards are keyed on definitions now, but the real lesson
     # is that a porting script must check its own output: every identifier it
@@ -1776,7 +1776,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
           % ('verified', len(REQUIRED), len(SHARED_REQUIRED), len(CALLED)))
 
     io.open(DST, 'w', encoding='utf-8', newline='').write(dst)
-    print('\nlegacy build: %d -> %d bytes' % (before, len(dst)))
+    print('\nlocal build: %d -> %d bytes' % (before, len(dst)))
 
 
 if __name__ == '__main__':

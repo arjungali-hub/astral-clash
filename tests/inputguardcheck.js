@@ -21,7 +21,7 @@ const SIZES = [
 
 const BUILDS = [
     { label: 'online', path: null, nameField: null },
-    { label: 'local', path: '/legacy/local-splitscreen.html', nameField: 'name-p1' },
+    { label: 'local', path: '/local/index.html', nameField: 'name-p1' },
 ];
 
 (async () => {

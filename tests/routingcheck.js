@@ -4,8 +4,8 @@
 // there and the file was there, and /local still 404'd:
 //
 //     /local                        -> 404
-//     /legacy/local-splitscreen     -> 200
-//     /legacy/local-splitscreen.html -> 308
+//     /local/index     -> 200
+//     /local/index.html -> 308
 //
 // `cleanUrls: true` serves every .html file at its EXTENSIONLESS path and
 // 308-redirects the .html one. A rewrite destination ending in .html therefore
@@ -48,7 +48,7 @@ for (const r of rewrites) {
 
 console.log('\nThe in-game button uses the routed URL, not the file path:');
 check('it navigates to /local', /location\.href = '\/local'/.test(html));
-check('and not to the legacy file directly',
+check('and not to the file path directly',
     !/location\.href = '\/?legacy\//.test(html));
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

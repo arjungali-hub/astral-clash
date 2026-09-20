@@ -1,11 +1,11 @@
-// Local-build features, inserted into bootGame() by art/port_to_legacy.py.
+// Local-build features, inserted into bootGame() by art/sync_local.py.
 //
-// These exist only in the archived split-screen build, because they only make
+// These exist only in the local split-screen build, because they only make
 // sense there: two people share one machine, so there are two names and two
 // purses, and one of them might be a bot.
 //
 // It lives here as real JavaScript rather than as a string inside the port
-// script for the same reason art/legacy_coop_respawn.js does: a sixty-line
+// script for the same reason art/local_coop_respawn.js does: a sixty-line
 // function embedded in a Python literal is where escaping mistakes come from,
 // and this file can be syntax-checked on its own.
 
@@ -25,7 +25,7 @@ let p1IsBot = false, p2IsBot = false;
 // read "Player 1" read whatever they typed.
 const LOCAL_NAME_KEY = 'astralClashLocalNames';
 const LOCAL_NAME_MAX = 14;
-// The archived build has no sanitizeName - that is the online room's helper for
+// The local build has no sanitizeName - that is the online room's helper for
 // a name that goes over the wire. These names never leave the machine, so the
 // rules are only about fitting the UI and not being blank-but-not-empty.
 function cleanLocalName(v) {
@@ -55,7 +55,7 @@ try {
 // is load-bearing. The port replaces every `(side === 'p1' ? 'Player 1' :
 // 'Player 2')` in the build with `playerName(side)` - and the first run of it
 // rewrote this function's own body into `return localNames[side] ||
-// playerName(side)`. The archived build died at load with "Maximum call stack
+// playerName(side)`. The local build died at load with "Maximum call stack
 // size exceeded".
 const DEFAULT_LOCAL_NAMES = { p1: 'Player 1', p2: 'Player 2' };
 function playerName(side) {

@@ -1,14 +1,14 @@
 // Astral Clash - the data BOTH builds share.
 //
 // Loaded as a plain script by index.html (the online build) and by
-// legacy/local-splitscreen.html (the archived local build), before either of
+// local/index.html (the local local build), before either of
 // them defines bootGame(). Classic scripts share one global scope, so every
 // `const` here is visible inside both games with no import and no call-site
 // change - which is the whole point: this file exists so a balance or roster
 // change happens ONCE.
 //
-// Before this, art/port_to_legacy.py copied these tables from index.html into
-// the archived build by anchor after every batch, and the recurring bug report
+// Before this, art/sync_local.py copied these tables from index.html into
+// the local build by anchor after every batch, and the recurring bug report
 // was the obvious one: "most of the changes seem to have not landed in the
 // legacy version". Anything in here cannot drift, because there is only one of
 // it.
@@ -21,17 +21,17 @@
 //      looks authoritative.
 //   3. If a value differs between the two builds, it does not belong here.
 //      The renderer, input model, HUD layout and netcode are genuinely
-//      different and stay forked - see the Batch 25 note in port_to_legacy.py.
+//      different and stay forked - see the Batch 25 note in sync_local.py.
 
 // WHERE THE ASSETS ARE, resolved from where THIS FILE is.
 //
 // The two builds sit at different depths - index.html at the repo root,
-// legacy/local-splitscreen.html one directory down - so every asset path used
+// local/index.html one directory down - so every asset path used
 // to be written twice and rewritten by the port script. A script knows its own
 // URL, and assets/ is a sibling of shared/, so one absolute base serves both
 // and neither build needs to be told anything.
 //
-// It also removes an accident. The archived build's `../assets/x` is written
+// It also removes an accident. The local build's `../assets/x` is written
 // for its own directory, but /local is a Vercel REWRITE: the document URL is
 // `/local`, so that path climbs above the root and only works because browsers
 // clamp it. An absolute base is correct at every path a rewrite can invent.

@@ -2387,6 +2387,7 @@ function themeTexturesReady(theme) {
     if (floor) sets.push(floor.set);
     return Promise.all(sets.map(id => loadPhotoSet(id).catch(() => null)));
 }
+
 function saveProgression() { safeLSSet(PROGRESSION_KEY, JSON.stringify(progression)); }
 function prog(side) { return progression[side] || progression.p1; }
 // --- Batch 19: game modes. `matchMode` is deliberately ORTHOGONAL to

@@ -570,14 +570,14 @@
             box-shadow: none;
         }
         .btn-mode:hover { background: rgba(168, 85, 247, 0.14); box-shadow: 0 0 12px rgba(168, 85, 247, 0.35); }
-        /* Batch 33: the escape hatch back to the archived split-screen build.
+        /* Batch 33: the escape hatch back to the local split-screen build.
            Deliberately not styled like the other settings rows - it navigates
            away from the current build rather than changing a value here. */
-        .settings-list .btn-legacy {
+        .settings-list .btn-local {
             background: transparent; color: #a855f7; border: 1px solid #a855f7;
             box-shadow: none; font-size: 0.78rem;
         }
-        .settings-list .btn-legacy:hover { background: rgba(168, 85, 247, 0.14); box-shadow: none; }
+        .settings-list .btn-local:hover { background: rgba(168, 85, 247, 0.14); box-shadow: none; }
         #lobby-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -1606,9 +1606,14 @@
                      someone who had not. It remains available under ?debug=1
                      for development. -->
                     <div class="settings-list" style="margin-top:14px;">
-                        <button id="btn-legacy-build" class="btn-legacy">Switch to Local Version</button>
+                        <button id="btn-local-build" class="btn-local">Switch to Local Version</button>
                     </div>
-                    <p class="settings-note">The build from before online play: two players on one keyboard, split screen, and touch controls. Kept because it is the only way to play on the same machine. Your saved progress and unlocks are shared with it.</p>
+                    <!-- Not "the build from before online play... kept because":
+                         that framed the same game as an exhibit. It is the local
+                         version, it gets the same updates, and the copy says what
+                         it IS rather than where it came from. The UI review
+                         called the old wording a developer note, which it was. -->
+                    <p class="settings-note">Two players on one keyboard, split screen. Shares your progress.</p>
                     <button id="btn-settings-close" class="btn-back">Close</button>
                 </div>
             </div>
@@ -1747,7 +1752,7 @@
     <!-- ONE MESSAGE, NO ESCAPE HATCHES (Batch 41).
          Batch 31 removed the touch control scheme, so on a phone this build is
          unplayable: aiming needs a mouse and moving needs a keyboard.
-         Batch 33 softened that with a link to the archived touch build and an
+         Batch 33 softened that with a link to the local touch build and an
          "I have a mouse and keyboard" override. Both are now gone, reported
          after actually trying it:
            - the touch build "was really bad and hard to play", so pointing
@@ -1845,7 +1850,7 @@ function startGame() {
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" onerror="loadThreeFallback()"></script>
-<!-- Shared with the archived local build; see the header in that file. -->
+<!-- Shared with the local local build; see the header in that file. -->
 <script src="shared/roster.js"></script>
 <script>
 function bootGame() {
@@ -2546,7 +2551,7 @@ const RANDOM_KEYS = { p1: 'r', p2: '/' }; // fighter-select "pick a random fight
 //
 // The roster, the economy and the frame data live in shared/roster.js,
 // which BOTH builds load - see the header there. They were here until
-// Batch 44; the port script used to copy them into the archived build
+// Batch 44; the port script used to copy them into the local build
 // after every batch, and that is exactly the kind of duplication that
 // produced "most of the changes seem to have not landed in the legacy
 // version".
@@ -2586,7 +2591,7 @@ let progression = (() => {
 function saveProgression() { safeLSSet(PROGRESSION_KEY, JSON.stringify(progression)); }
 // Batch 34: online there is exactly one player at this keyboard, so there is
 // exactly one account. `progression` is still keyed p1/p2 (the save format
-// predates online play and is shared with the archived split-screen build), so
+// predates online play and is shared with the local split-screen build), so
 // the LOCAL side - whichever fighter slot the lobby handed us - always resolves
 // to the same account slot. Without this, hosting spent p1's coins and joining
 // spent p2's: your roster and upgrades changed depending on whether you clicked
@@ -2755,7 +2760,7 @@ const shopExpanded = new Set();
 // It was. Both builds are served from the same origin, so they share
 // localStorage - which is deliberate for PROGRESSION (your coins and unlocks
 // should follow you between the two) and wrong for the sandbox override. The
-// archived build still offers the unlock-everything toggle; this one dropped it
+// local build still offers the unlock-everything toggle; this one dropped it
 // in Batch 34. So flipping it there unlocked the online build too, and there
 // was no longer any UI here to flip it back: a one-way trapdoor into a
 // permanently unlocked online game.
@@ -4278,8 +4283,8 @@ function renderViews(dt) {
     renderer.getSize(_rendSize);
     const W = _rendSize.x, H = _rendSize.y;
     // Batch 31: ONE full-screen view, always, from the fighter this client
-    // controls. The two-viewport split-screen path is gone (archived in
-    // legacy/local-splitscreen.html). Beyond being what online play needs, this
+    // controls. The two-viewport split-screen path is gone (local in
+    // local/index.html). Beyond being what online play needs, this
     // halves the per-frame render cost - the scene was being drawn twice - and
     // it removes the reason post-processing was previously impractical: an
     // EffectComposer's full-screen quad passes do not honour an outer scissor
@@ -7334,7 +7339,7 @@ class Fighter {
             // keys that turn the view slowly is strictly worse and just
             // occupies two bindings and two rows of the rebind screen.
             // LOOK_SPEED stays - the gamepad right stick still uses it below,
-            // and so does the archived split-screen build.
+            // and so does the local split-screen build.
 
             // MOVEMENT. Forward/back along the facing; A/D and Left/Right
             // STRAFE, which is the whole point of pairing them with mouse look.
@@ -11288,7 +11293,7 @@ let botDifficulty = 'normal';
 // a person, and the co-op modes that needed an AI combatant are not offered
 // here (see MATCH_MODES / buildModeSelect). p1IsBot/p2IsBot remain because the
 // Fighter constructor, the AI branch of update() and beginMatch all read them,
-// and the archived split-screen build still uses them; here they are pinned
+// and the local split-screen build still uses them; here they are pinned
 // false. What is left of this function is "show the local player's roster",
 // which is why it keeps the name its callers already use.
 function refreshBotUI(side) {
@@ -11315,7 +11320,7 @@ function showLocalPickerOnly() {
 
 // Batch 34: the Difficulty cycler is gone with the bots. `botDifficulty` itself
 // stays - it is still sent in the START packet (harmless, and keeps the wire
-// format stable) and the archived split-screen build still uses it.
+// format stable) and the local split-screen build still uses it.
 // Batch 24: reflect bot state into the panels on FIRST paint too. This used to
 // run only from setDebugUnlockAll/returnToMenu, so a fresh load showed whatever
 // the static HTML said — survivable while the toggle was just greyed out there,
@@ -11377,7 +11382,7 @@ function refreshGridLocks() {
 }
 // BOTH grids get P1_KEYS online, which is not a typo.
 //
-// The two key sets exist because the archived build seats two people at one
+// The two key sets exist because the local build seats two people at one
 // keyboard. Online each player has their own, and only their own side's grid is
 // ever shown (showLocalPickerOnly) - so a guest was being told to press Z/X/C
 // for no reason other than which slot the lobby handed them. Reported as "the
@@ -12742,16 +12747,16 @@ function refreshLobbyUI() {
 }
 
 // Batch 33: a way back to the pre-online build. It is a separate HTML file
-// (see legacy/local-splitscreen.html) rather than a mode switch inside this
+// (see local/index.html) rather than a mode switch inside this
 // one, because the two differ in their renderer, input model and HUD layout -
 // keeping both live in one file was exactly the half-wired state the refactor
 // set out to avoid. Progress is shared: both read the same localStorage keys.
-document.getElementById('btn-legacy-build').addEventListener('click', () => {
+document.getElementById('btn-local-build').addEventListener('click', () => {
     if (netActive()) { netSend({ t: 'BYE' }); netTeardown(); }   // don't abandon a live opponent silently
     exitPointerLock();
     // Carry the query string across, so ?debug=1 survives the switch.
     // `/local`, not the file path. A Vercel rewrite in vercel.json maps it to
-    // legacy/local-splitscreen.html, so the URL someone might type or share is
+    // local/index.html, so the URL someone might type or share is
     // a name rather than a path into the repo layout. location.search is still
     // carried across or ?debug=1 stops surviving the switch.
     location.href = '/local' + location.search;
@@ -13219,7 +13224,7 @@ document.getElementById('btn-resume').addEventListener('click', requestResume);
 // LEAVING A MATCH ASKS FIRST. Reported: "'Return to Menu' ends the match with
 // no confirmation." Armed in place rather than through confirm(): a native
 // dialog cannot be styled and stops the frame loop, and this is the pattern the
-// archived build's progress reset already uses. Clicking anything else disarms
+// local build's progress reset already uses. Clicking anything else disarms
 // it, and so does closing the pause menu.
 let quitArmed = 0;
 function disarmQuit() {

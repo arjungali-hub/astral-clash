@@ -2,6 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/local", "destination": "/legacy/local-splitscreen" }
+    { "source": "/local", "destination": "/local/index" }
   ]
 }

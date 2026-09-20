@@ -1,4 +1,4 @@
-// The archived split-screen build's own requests, all of which are about it
+// The local split-screen build's own requests, all of which are about it
 // being the build where TWO PEOPLE SHARE ONE MACHINE:
 //
 //   "there should be an option to reset progress in local, and there should
@@ -21,7 +21,7 @@ const H = require('./harness');
     await H.startServer();
     const { check, section, finish } = H.makeChecker();
     const page = await H.newPage(browser);
-    await H.boot(page, { clearStorage: true, path: '/legacy/local-splitscreen.html' });
+    await H.boot(page, { clearStorage: true, path: '/local/index.html' });
 
     section('Two names, persisted, instead of "Player 1" and "Player 2":');
     let st = await page.evaluate(() => {
@@ -56,7 +56,7 @@ const H = require('./harness');
     check('it is persisted', /Arjun/.test(st.stored || ''), JSON.stringify(st.stored));
 
     // ...and survives a reload, which is the point of persisting it.
-    await H.boot(page, { path: '/legacy/local-splitscreen.html' });
+    await H.boot(page, { path: '/local/index.html' });
     st = await page.evaluate(() => ({
         p1: window.ACDebug.playerName('p1'),
         field: (document.getElementById('name-p1') || {}).value,

@@ -1,5 +1,5 @@
 // Co-op down-and-respawn for the ARCHIVED split-screen build, inserted by
-// art/port_to_legacy.py ahead of resolveCoopMode.
+// art/sync_local.py ahead of resolveCoopMode.
 //
 // Hand-written rather than lifted out of index.html because the online version
 // reasons about which client owns a fighter's respawn clock, and this build has

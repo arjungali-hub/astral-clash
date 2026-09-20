@@ -1,7 +1,7 @@
 // THE TWO BUILDS ARE ONE GAME, asserted rather than hoped for.
 //
 // Every round of review has found the same class of bug: a fix applied to the
-// online build, or applied directly to the GENERATED archived build, that the
+// online build, or applied directly to the GENERATED local build, that the
 // other one never got. Three examples in one review - "the local build uses
 // Arial almost everywhere", "the pause menu has no Settings, in either build"
 // (it had one online), and a boss with two different names.
@@ -10,7 +10,7 @@
 // split screen, two keyboards, the local-only spectator view - is not asserted
 // here.
 const H = require('./harness');
-const LOCAL = '/legacy/local-splitscreen.html';
+const LOCAL = '/local/index.html';
 
 (async () => {
     const browser = await H.launch();

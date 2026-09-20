@@ -1,6 +1,6 @@
 // Verifies both halves of the mobile story, on a real emulated phone:
 //   1. the desktop build tells you to switch to a computer,
-//   2. the archived build is single-player vs bot there, one full-screen view.
+//   2. the local build is single-player vs bot there, one full-screen view.
 const H = require('./harness');
 const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
 
@@ -41,7 +41,7 @@ const IPHONE = {
     check('detected as a touch device', m.detected === true, JSON.stringify(m));
     check('the notice is shown', m.shown === 'flex', m.shown);
     // Batch 41: the escape hatches are GONE, and their absence is the
-    // assertion now. Batch 33 offered the archived touch build and an "I have a
+    // assertion now. Batch 33 offered the local touch build and an "I have a
     // mouse and keyboard" override; someone then played the touch build on a
     // phone and it "was really bad and hard to play", so pointing anyone at it
     // is sending them somewhere worse, and "I have a mouse and keyboard" is
@@ -54,8 +54,8 @@ const IPHONE = {
         /needs a computer/i.test(m.heading), m.heading);
     await mob.screenshot({ path: DIR + 'b41-mobile-notice.png' });
 
-    section('The archived build refuses on a phone too:');
-    await mob.goto(H.gameUrl().replace('/index.html', '/legacy/local-splitscreen.html'), { waitUntil: 'load' });
+    section('The local build refuses on a phone too:');
+    await mob.goto(H.gameUrl().replace('/index.html', '/local/index.html'), { waitUntil: 'load' });
     await H.sleep(2000);
     const legacyMobile = await mob.evaluate(() => {
         const el = document.getElementById('desktop-only');
@@ -73,8 +73,8 @@ const IPHONE = {
     check('and no buttons offering a way past it',
         legacyMobile.buttons === 0, String(legacyMobile.buttons));
 
-    section('Archived build on a phone: single-player vs bot:');
-    await mob.goto(H.gameUrl().replace('/index.html', '/legacy/local-splitscreen.html'), { waitUntil: 'load' });
+    section('Local build on a phone: single-player vs bot:');
+    await mob.goto(H.gameUrl().replace('/index.html', '/local/index.html'), { waitUntil: 'load' });
     await H.sleep(1800);
     await mob.evaluate(() => { const c = document.querySelector('#btn-tutorial-close'); if (c) c.click(); });
     await H.sleep(300);
@@ -90,7 +90,7 @@ const IPHONE = {
             hint: (document.getElementById('touch-warning') || {}).textContent || '',
         };
     });
-    check('the archived build knows it is on a phone', solo.mobileSolo === true, JSON.stringify(solo));
+    check('the local build knows it is on a phone', solo.mobileSolo === true, JSON.stringify(solo));
     check('P2 is forced to a bot and P1 stays human',
         solo.p2IsBot === true && solo.p1IsBot === false, JSON.stringify(solo));
     check('both bot toggles are hidden - there is nothing to choose',
