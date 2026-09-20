@@ -800,7 +800,10 @@
             border: 2px solid #ffffff14; background: #0d1420; transition: transform .12s, border-color .12s, box-shadow .12s;
         }
         .map-card:hover { transform: translateY(-3px) scale(1.02); border-color: var(--mapaccent, #00f3ff); box-shadow: 0 10px 30px #00000090; }
-        .map-card canvas { display: block; width: 100%; height: auto; }
+        .map-card canvas, .map-card .map-shot {
+            display: block; width: 100%; height: auto; aspect-ratio: 16 / 9;
+            object-fit: cover; background: #0d1420;
+        }
         .map-card .map-name {
             position: absolute; left: 0; right: 0; bottom: 0; padding: 5px 8px;
             font-size: 0.78rem; font-weight: 700; color: #fff; text-align: left;
@@ -1020,7 +1023,122 @@
         /* Batch 48: the pointer-lock prompt. Over the canvas, not a modal -
            a match that wants the mouse should say so without interrupting
            itself. It hides the instant the lock is taken. */
-        #lock-hint {
+        /* ================= LOADING SCREEN ==================================
+           Implemented from the design canvas ("Astral Clash Loading.dc.html",
+           artboards 1a and 1c) and kept to its numbers: the environment is that
+           artboard's layer stack, the mark is four segments at -12deg with a
+           170ms stagger over a 1.5s loop, and there is no percentage.
+
+           It covers every load in the game. A shader compiles the first time it
+           is DRAWN, so the first of everything used to land mid-fight - one
+           measured frame took 9,858ms - and this is what that now happens
+           behind. */
+        #loading-screen {
+            position: absolute; inset: 0; z-index: 60;
+            display: none; overflow: hidden;
+            background: #0d0f18;
+            font-family: var(--font-ui);
+        }
+        #loading-screen.on { display: block; }
+        /* --- the foundry, in layers, exactly as the artboard stacks them --- */
+        .ld-l { position: absolute; pointer-events: none; }
+        .ld-sky   { inset: 0; background: radial-gradient(120% 92% at 50% 64%, #1b2440 0%, #141b2d 40%, #0d0f18 80%); }
+        .ld-walls { left: 0; right: 0; top: 0; height: 66%; opacity: .9;
+                    background: repeating-linear-gradient(90deg, rgba(22,29,47,.92) 0 92px, rgba(11,13,21,.92) 92px 100px); }
+        .ld-seams { left: 0; right: 0; top: 6%; height: 54%; opacity: .45; filter: blur(8px);
+                    background: repeating-linear-gradient(90deg, transparent 0 268px, rgba(245,158,11,.6) 268px 271px, transparent 271px 536px); }
+        .ld-heat  { left: 0; right: 0; top: 50%; height: 16%; filter: blur(16px);
+                    background: linear-gradient(180deg, transparent, rgba(245,158,11,.2), transparent); }
+        .ld-cat   { left: 0; right: 0; top: 33%; height: 30px; background: linear-gradient(180deg,#0b0d15,#05060a); }
+        .ld-rail  { left: 0; right: 0; top: 33%; height: 1px; opacity: .85;
+                    background: #00f3ff; box-shadow: 0 0 10px #00f3ff, 0 0 32px rgba(0,243,255,.45); }
+        .ld-rail2 { left: 0; right: 0; top: 74%; height: 1px; opacity: .5;
+                    background: rgba(0,243,255,.55); box-shadow: 0 0 12px rgba(0,243,255,.6); }
+        .ld-edgeL { left: -40px; top: 0; width: 190px; height: 78%; filter: blur(3px); opacity: .95;
+                    background: linear-gradient(90deg,#05060a,#0b0e17); }
+        .ld-edgeR { right: -40px; top: 0; width: 220px; height: 78%; filter: blur(3px); opacity: .95;
+                    background: linear-gradient(270deg,#05060a,#0b0e17); }
+        .ld-floor { left: 0; right: 0; bottom: 0; height: 28%; background: linear-gradient(180deg,#0a0c13,#141b2d 55%,#0d0f18); }
+        .ld-lava  { left: 0; right: 0; bottom: 0; height: 26%; filter: blur(9px); opacity: .4;
+                    background: repeating-linear-gradient(102deg, transparent 0 180px, rgba(245,158,11,.5) 180px 184px, transparent 184px 360px); }
+        /* The painted tableau, when there is one. Absent, the frame stands on
+           its own - which is why the environment is real geometry-of-light and
+           not part of the painting. */
+        /* THE TABLEAU. Rendered out of the game by art/render_tableau.js rather
+           than painted: the fighters, the arena and the lighting are already
+           here and already right, so the loading screen shows the actual thing
+           being loaded. Re-run the script and the art follows the game. */
+        .ld-art   { left: 14%; right: 14%; top: 9%; bottom: 3%;
+                    background-image: url('assets/loading-tableau.png');
+                    background-position: center; background-size: cover; background-repeat: no-repeat;
+                    /* Sits under the vignette and the two fighter glows, which
+                       is what ties it into the frame instead of looking pasted
+                       onto it. */
+                    opacity: .92; }
+        /* The two fighters' light, implied. */
+        .ld-glowA { left: 18%; top: 26%; width: 36%; height: 54%; filter: blur(26px);
+                    background: radial-gradient(closest-side, rgba(0,243,255,.28), transparent 72%); }
+        .ld-glowB { right: 16%; top: 32%; width: 34%; height: 50%; filter: blur(30px);
+                    background: radial-gradient(closest-side, rgba(245,158,11,.26), transparent 72%); }
+        .ld-clash { left: 47%; top: 38%; width: 9%; height: 16%; filter: blur(14px);
+                    background: radial-gradient(closest-side, rgba(232,250,255,.55), rgba(0,243,255,.25) 55%, transparent 76%); }
+        .ld-vig   { inset: 0; background: radial-gradient(112% 86% at 50% 58%, transparent 44%, rgba(13,15,24,.82) 100%); }
+        .ld-fadeL { left: 0; top: 0; bottom: 0; width: 22%; background: linear-gradient(90deg,#0d0f18,rgba(13,15,24,0)); }
+        .ld-fadeR { right: 0; top: 0; bottom: 0; width: 22%; background: linear-gradient(270deg,#0d0f18,rgba(13,15,24,0)); }
+        .ld-fadeT { left: 0; right: 0; top: 0; height: 16%; background: linear-gradient(180deg,#0d0f18,rgba(13,15,24,0)); }
+        .ld-fadeB { left: 0; right: 0; bottom: 0; height: 22%; background: linear-gradient(0deg,rgba(13,15,24,.92),rgba(13,15,24,0)); }
+        /* --- the furniture ------------------------------------------------ */
+        .ld-brand {
+            position: absolute; left: 4.2%; top: 5%;
+            font-size: 0.78rem; letter-spacing: 0.5em; color: #94a3b8; opacity: .85;
+        }
+        .ld-arena {
+            position: absolute; left: 4.2%; bottom: 6%; opacity: .8;
+            display: flex; align-items: center; gap: 12px;
+            font-size: 0.72rem; letter-spacing: 0.2em; color: #94a3b8;
+        }
+        .ld-arena::before { content: ""; width: 2px; height: 22px; background: #00f3ff; box-shadow: 0 0 10px #00f3ff; }
+        .ld-corner {
+            position: absolute; right: 4.2%; bottom: 6%;
+            width: min(260px, 34%); display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
+        }
+        .ld-markrow { display: flex; align-items: center; gap: 14px; }
+        .ld-word {
+            font-size: 0.86rem; letter-spacing: 0.34em; color: #e8f6ff;
+            text-shadow: 0 0 18px rgba(0,243,255,.45);
+        }
+        .ld-tip { font-size: 0.72rem; line-height: 1.5; color: #94a3b8; }
+        /* --- the mark: four segments, -12deg, 4px apart -------------------- */
+        .ld-mark { display: flex; gap: 4px; }
+        .ld-seg {
+            width: 7px; height: 26px; border-radius: 1px;
+            transform: skewX(-12deg);
+            background: rgba(0,243,255,.12);
+            animation: ld-seg 1.2s linear infinite;
+        }
+        /* A QUARTER OF THE CYCLE APART, so exactly one segment is lit at a time
+           and the highlight visibly travels.
+           The design's 1.5s/0.17s pair put all four peaks inside the first
+           700ms and left 800ms where every segment sat between 0.34 and 0.12
+           alpha - measured, and indistinguishable at a glance. Reported as "the
+           loading animation doesn't actually shift between the four bars, it
+           just stays on the first bar": the wave was there and too faint to
+           read. Same four segments, same skew, same colour; the timing is what
+           changes. */
+        .ld-seg:nth-child(2) { animation-delay: .3s; }
+        .ld-seg:nth-child(3) { animation-delay: .6s; }
+        .ld-seg:nth-child(4) { animation-delay: .9s; }
+        @keyframes ld-seg {
+            0%   { background: rgba(0,243,255,.1); box-shadow: none; transform: skewX(-12deg) scaleY(.82); }
+            10%  { background: #d8fcff; box-shadow: 0 0 14px #00f3ff, 0 0 34px rgba(0,243,255,.55);
+                   transform: skewX(-12deg) scaleY(1.08); }
+            30%  { background: rgba(0,243,255,.45); box-shadow: 0 0 8px rgba(0,243,255,.3);
+                   transform: skewX(-12deg) scaleY(1); }
+            55%, 100% { background: rgba(0,243,255,.1); box-shadow: none; transform: skewX(-12deg) scaleY(.82); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .ld-seg { animation-duration: 3s; }
+        }        #lock-hint {
             position: absolute; left: 50%; bottom: 14%;
             transform: translateX(-50%);
             padding: 8px 16px; border-radius: 999px;
@@ -1037,7 +1155,43 @@
         <canvas id="gameCanvas" width="1170" height="650"></canvas>
         <canvas id="hudCanvas" width="1170" height="650"></canvas>
 
-    <div id="lock-hint">Click to capture the mouse</div>
+    <!-- The loading screen. Implemented from the design canvas; see the CSS
+         above for which artboard each layer comes from. It is a sibling of
+         #ui-overlay and sits above it, because it covers everything - menu,
+         arena and HUD alike. -->
+    <div id="loading-screen">
+        <div class="ld-l ld-sky"></div>
+        <div class="ld-l ld-walls"></div>
+        <div class="ld-l ld-seams"></div>
+        <div class="ld-l ld-heat"></div>
+        <div class="ld-l ld-cat"></div>
+        <div class="ld-l ld-rail"></div>
+        <div class="ld-l ld-rail2"></div>
+        <div class="ld-l ld-edgeL"></div>
+        <div class="ld-l ld-edgeR"></div>
+        <div class="ld-l ld-floor"></div>
+        <div class="ld-l ld-lava"></div>
+        <div class="ld-l ld-art" id="ld-art"></div>
+        <div class="ld-l ld-glowA"></div>
+        <div class="ld-l ld-glowB"></div>
+        <div class="ld-l ld-clash"></div>
+        <div class="ld-l ld-vig"></div>
+        <div class="ld-l ld-fadeL"></div>
+        <div class="ld-l ld-fadeR"></div>
+        <div class="ld-l ld-fadeT"></div>
+        <div class="ld-l ld-fadeB"></div>
+        <div class="ld-brand">ASTRAL CLASH</div>
+        <div class="ld-arena" id="ld-arena">ARENA // FOUNDRY OF ASH</div>
+        <div class="ld-corner">
+            <div class="ld-markrow">
+                <div class="ld-mark" aria-hidden="true">
+                    <span class="ld-seg"></span><span class="ld-seg"></span><span class="ld-seg"></span><span class="ld-seg"></span>
+                </div>
+                <div class="ld-word" role="status" aria-live="polite">LOADING</div>
+            </div>
+            <div class="ld-tip" id="ld-tip"></div>
+        </div>
+    </div>    <div id="lock-hint">Click to capture the mouse</div>
         <div id="ui-overlay">
             <div id="select-screen">
                 <!-- Branding lives inside the select screen so it doesn't show
@@ -2151,6 +2305,88 @@ function applySoloControls(f, b, dt, target) {
     return out;
 }
 
+// ---- THE LOADING SCREEN --------------------------------------------------
+// Implemented from the design canvas; the markup and styles are above. What
+// matters here is the ORDER: show, let the browser actually paint, and only
+// then do the work that stalls.
+//
+// A shader compiles the first time its material is drawn, with the scene's
+// light count and shadow setup baked in - so the first of everything landed
+// mid-fight and froze the frame. Measured at 9,858ms for a first projectile.
+// Nothing about that cost changes; it simply happens here now, where a pause is
+// what the player expects.
+const LOADING_TIPS = [
+    'Dash has invulnerability frames \u2014 time it through an attack, not away from one.',
+    'Your Special meter fills from damage dealt AND taken.',
+    'The arena closes in. Stalling is not a plan.',
+    'Heavy attacks hold at full extension \u2014 that pause is your window.',
+    'Jump has a cooldown. Double Jump is bought in the Armory.',
+    'Every fighter\u2019s reach differs. Check the detail panel before you commit.',
+];
+let loadingDepth = 0;
+
+function showLoading(arenaName) {
+    const el = document.getElementById('loading-screen');
+    if (!el) return;
+    loadingDepth++;
+    const label = document.getElementById('ld-arena');
+    if (label) label.textContent = 'ARENA // ' + String(arenaName || 'ASTRAL CLASH').toUpperCase();
+    const tip = document.getElementById('ld-tip');
+    if (tip) tip.textContent = LOADING_TIPS[Math.floor(Math.random() * LOADING_TIPS.length)];
+    el.classList.add('on');
+}
+
+function hideLoading() {
+    loadingDepth = Math.max(0, loadingDepth - 1);
+    if (loadingDepth > 0) return;   // something else is still loading
+    const el = document.getElementById('loading-screen');
+    if (el) el.classList.remove('on');
+}
+
+// Two frames, because showing an element does not paint it: the first lays out,
+// the second paints, and the caller's work runs in the third. One frame is not
+// enough - the paint has not been committed yet - and that is the difference
+// between a loading screen and a loading screen nobody sees.
+function afterPaint(fn) {
+    requestAnimationFrame(() => requestAnimationFrame(() => fn()));
+}
+
+// Run `work` with the loading screen up, whatever happens to `work` - and if
+// `work` returns a promise, hold the screen until it settles.
+//
+// The promise half is the point of "the new art should already be loaded when
+// the loading animation is exited". loadMap builds the arena immediately with
+// procedural textures and swaps in the photographs when they arrive, which is
+// the right trade with nothing in front of it and the wrong one with a loading
+// screen: the swap is visible as the arena changing under you.
+function withLoading(arenaName, work) {
+    showLoading(arenaName);
+    afterPaint(() => {
+        let result;
+        try { result = work(); }
+        catch (e) { hideLoading(); throw e; }
+        if (result && typeof result.then === 'function') {
+            // One more painted frame AFTER the work settles, so the first frame
+            // the player sees is the finished arena rather than the moment it
+            // finished.
+            result.then(() => afterPaint(hideLoading), () => afterPaint(hideLoading));
+        } else {
+            hideLoading();
+        }
+    });
+}
+
+// Every texture set this theme will use, settled. Resolves immediately when they
+// are already cached, which is every arena after the first visit.
+function themeTexturesReady(theme) {
+    if (!theme) return Promise.resolve();
+    const sets = [];
+    const wall = PHOTO_SETS.wall[theme.wallTex];
+    const floor = PHOTO_SETS.floor[theme.floorTex];
+    if (wall) sets.push(wall.set);
+    if (floor) sets.push(floor.set);
+    return Promise.all(sets.map(id => loadPhotoSet(id).catch(() => null)));
+}
 function saveProgression() { safeLSSet(PROGRESSION_KEY, JSON.stringify(progression)); }
 function prog(side) { return progression[side] || progression.p1; }
 // --- Batch 19: game modes. `matchMode` is deliberately ORTHOGONAL to
@@ -10304,7 +10540,37 @@ function cssNum(n) { return '#' + (n & 0xffffff).toString(16).padStart(6, '0'); 
 // all ten. Columns = circles, platforms = rects (brightness keyed to height:
 // short cover reads lighter, tall dividing walls darker/solid), terrain =
 // lighter rects, spawns = accent dots.
+// The slug art/render_arenas.js writes its files under.
+function arenaSlug(name) {
+    return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+// THE ARENA, FROM ABOVE - a real render, not a plan view.
+//
+// Reported: "the arena previews when you are selecting one don't look like the
+// actual arenas... they should literally be the arenas from a top down view."
+// They were flat rectangles on a flat floor colour, which says where things are
+// and nothing about what the place looks like.
+//
+// art/render_arenas.js renders each one with its real textures and lighting.
+// The procedural painter stays as the fallback: a missing or not-yet-rendered
+// file gets the old plan view rather than an empty card, which also keeps the
+// picker working before those assets exist.
 function buildMapThumbnail(map) {
+    const img = document.createElement('img');
+    img.className = 'map-shot';
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.src = AC_ASSET_BASE + 'arena/' + arenaSlug(map.name) + '.png';
+    img.addEventListener('error', () => {
+        // No render for this arena: fall back to the plan view, in place.
+        const plan = buildMapPlan(map);
+        if (img.parentNode) img.parentNode.replaceChild(plan, img);
+    });
+    return img;
+}
+function buildMapPlan(map) {
     const theme = themeFor(map);
     const W = 240, H = 150, pad = 8;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -11120,7 +11386,17 @@ function startMatch(mapOverride) {
     waveNumber = 0;
     waveBreakTimer = 0;
     coopResultText = '';
-    startRound(true); // the first round of a match opens with the drop-in intro cinematic
+    // Behind the loading screen: the models, the arena's photographs and the
+    // first-draw shader compiles all happen here rather than as visible hitches
+    // once the fight has started. See withLoading.
+    withLoading(matchMap.name, () => Promise.resolve()
+        .then(() => Promise.all([p1Choice, p2Choice].map(
+            c => c && Promise.resolve(ensureCharModel(c.name)).catch(() => null))))
+        .then(() => themeTexturesReady(themeFor(matchMap)))
+        .then(() => {
+            startRound(true);
+            return new Promise(r => requestAnimationFrame(() => { renderViews(0); r(); }));
+        })); // the first round of a match opens with the drop-in intro cinematic
 }
 
 // --- Intro drop-in cinematic: at match start both fighters plummet from the
@@ -11417,6 +11693,26 @@ function drawPlayerHUD(f, x, label) {
     hudCtx.fillStyle = "#94a3b8";
     hudCtx.font = hudFont(11);
     hudCtx.fillText(meterReady ? 'SPECIAL READY' : `Special ${Math.floor(f.specialMeter)}%`, x, 108);
+
+    // THE DASH COOLDOWN. Reported: "pressing Shift again soon after a dash did
+    // nothing, with no feedback" - the dash is on a 90-frame cooldown and the
+    // HUD never said so, which reads as an input that was dropped. Four pips
+    // rather than a bar: a dash is a discrete thing you either have or do not,
+    // and a bar suggests a resource that is partly spendable.
+    // YOUR dash, not theirs. Your own cooldown is the thing you are about to
+    // press; an opponent's is information the game has never given and should
+    // not start giving as a side effect of a readability fix.
+    const cd = Math.max(0, f.dodgeCooldown || 0);
+    const ready = 1 - Math.min(1, cd / DODGE_COOLDOWN);
+    // Clear of the "Special nn%" string to its left, which runs to about 200.
+    const PIPS = 4, pipW = 13, pipGap = 4, pipX = x + 206;
+    for (let i = 0; i < PIPS; i++) {
+        const lit = ready >= (i + 1) / PIPS;
+        hudCtx.fillStyle = lit ? (ready >= 1 ? '#67e8f9' : '#3f6b78') : '#1e293b';
+        hudCtx.fillRect(pipX + i * (pipW + pipGap), 100, pipW, 7);
+    }
+    hudCtx.fillStyle = ready >= 1 ? '#67e8f9' : '#64748b';
+    hudCtx.fillText('DASH', pipX + PIPS * (pipW + pipGap) + 6, 108);
 }
 
 // First-person crosshair(s): one centered in each active viewport (both

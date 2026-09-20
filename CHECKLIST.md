@@ -2469,7 +2469,7 @@ adding more guards; the answer is for there to be nothing to port.
 ### New work
 
 - [ ] **The loading animation belongs on EVERYTHING** - "even something as small
-      as when your name is loading". Not just match start: any transition where
+      as when the page is switching and the screen freezes for less than a second". Not just match start: any transition where
       the screen would otherwise sit and wait.
 - [ ] **The loading screen is not in the local build at all.**
 - [ ] **The loading mark does not animate** - it stays on the first bar instead

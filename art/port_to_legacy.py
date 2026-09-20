@@ -1357,7 +1357,8 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
     # what could be MEASURED about it.
     if 'get scene()' not in dst:
         dst = rep(dst, '        rendererInfo() {',
-                  """        get scene() { return scene; },
+                  """        showLoading, hideLoading, withLoading, themeTexturesReady,
+        get scene() { return scene; },
         get renderer() { return renderer; },
         get mapGroup() { return mapGroup; },
         get currentMap() { return currentMap; },
@@ -1531,6 +1532,81 @@ renderer.toneMappingExposure = BASE_EXPOSURE;""", 'base exposure')
     if old_sets != new_sets:
         dst = dst.replace(old_sets, new_sets, 1)
         print('  %-34s ok' % 'photo sets')
+
+    # ------------------------------------------------- the loading screen
+    # "Loading animations are also not yet implemented in local mode." The
+    # markup, the styles and the API are all build-agnostic - the screen covers
+    # whatever is loading, and this build loads the same models, textures and
+    # shaders.
+    if 'id="loading-screen"' not in dst:
+        dst = rep(dst, '    <div id="lock-hint">',
+                  block(src, '    <!-- The loading screen.', chr(10) + '    <div id="lock-hint">',
+                        'loading markup')
+                  + '    <div id="lock-hint">', 'loading markup')
+        dst = rep(dst, '        #lock-hint {',
+                  block(src, '        /* ================= LOADING SCREEN',
+                        chr(10) + '        #lock-hint {', 'loading css')
+                  + '        #lock-hint {', 'loading css')
+        print('  %-34s ok' % 'loading screen markup')
+    # The API is replace-if-different so timing changes follow.
+    new_api = block(src, '// ---- THE LOADING SCREEN --------',
+                    chr(10) + '// ---- Batch 36: player names ----', 'loading api')
+    if 'function withLoading(' not in dst:
+        dst = rep(dst, 'function saveProgression() {', new_api + 'function saveProgression() {',
+                  'loading api')
+        print('  %-34s ok' % 'loading api')
+    else:
+        old_api = block(dst, '// ---- THE LOADING SCREEN --------',
+                        chr(10) + 'function saveProgression() {', 'loading api (old)')
+        if old_api != new_api:
+            dst = dst.replace(old_api, new_api, 1)
+            print('  %-34s ok' % 'loading api')
+
+    # ...and this build's match start goes behind it too. Its startMatch is its
+    # own (no lobby, two local fighters), so only the wrapping is ported.
+    if 'withLoading(matchMap.name' not in dst:
+        dst = rep(dst, '    startRound(true);',
+                  """    // Behind the loading screen: the models, the arena's photographs and the
+    // first-draw shader compiles all happen here rather than as visible hitches
+    // once the fight has started. See withLoading.
+    withLoading(matchMap.name, () => Promise.resolve()
+        .then(() => Promise.all([p1Choice, p2Choice].map(
+            c => c && Promise.resolve(ensureCharModel(c.name)).catch(() => null))))
+        .then(() => themeTexturesReady(themeFor(matchMap)))
+        .then(() => {
+            startRound(true);
+            return new Promise(r => requestAnimationFrame(() => { renderViews(0); r(); }));
+        }));""", 'match start behind the screen')
+        print('  %-34s ok' % 'match start behind the screen')
+
+    # ------------------------------------------- the dash cooldown, on your bar
+    # "ALL of the ui stuff should be the same in local for example the dash
+    # cooldown visual thing." Split screen has two "your" panels, so both get
+    # the pips - which is correct here: each player needs their own.
+    if "'DASH'" not in dst:
+        pips = block(src, '    // THE DASH COOLDOWN.', chr(10) + '}', 'dash pips')
+        dst = rep(dst, """    hudCtx.fillText(meterReady ? 'SPECIAL READY' : `Special ${Math.floor(f.specialMeter)}%`, x, 108);
+}""",
+                  """    hudCtx.fillText(meterReady ? 'SPECIAL READY' : `Special ${Math.floor(f.specialMeter)}%`, x, 108);
+
+""" + pips.replace('    if (!isMine) return;' + chr(10), '').rstrip() + chr(10) + '}', 'dash pips')
+        print('  %-34s ok' % 'dash cooldown pips')
+
+    # ------------------------------------------- arena previews that are arenas
+    if 'map-shot' not in dst:
+        dst = rep(dst, 'function buildMapThumbnail(map) {',
+                  block(src, '// The slug art/render_arenas.js writes its files under.',
+                        chr(10) + 'function buildMapPlan(map) {', 'arena thumbs')
+                  + 'function buildMapPlan(map) {', 'arena thumbs')
+        # ...and the old painter keeps its body under the new name.
+        dst = rep(dst, """function buildMapPlan(map) {
+function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb rename', required=False)
+        dst = rep(dst, '        .map-card canvas { display: block; width: 100%; height: auto; }',
+                  """        .map-card canvas, .map-card .map-shot {
+            display: block; width: 100%; height: auto; aspect-ratio: 16 / 9;
+            object-fit: cover; background: #0d1420;
+        }""", 'arena thumb css', required=False)
+        print('  %-34s ok' % 'arena previews')
 
     # ------------------------------------------------- the HUD is readable
     # Same strings, same skies, same window sizes as the online build, so the

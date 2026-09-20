@@ -1084,7 +1084,10 @@
             border: 2px solid #ffffff14; background: #0d1420; transition: transform .12s, border-color .12s, box-shadow .12s;
         }
         .map-card:hover { transform: translateY(-3px) scale(1.02); border-color: var(--mapaccent, #00f3ff); box-shadow: 0 10px 30px #00000090; }
-        .map-card canvas { display: block; width: 100%; height: auto; }
+        .map-card canvas, .map-card .map-shot {
+            display: block; width: 100%; height: auto; aspect-ratio: 16 / 9;
+            object-fit: cover; background: #0d1420;
+        }
         .map-card .map-name {
             position: absolute; left: 0; right: 0; bottom: 0; padding: 5px 8px;
             font-size: 0.78rem; font-weight: 700; color: #fff; text-align: left;
@@ -1246,8 +1249,17 @@
         /* The painted tableau, when there is one. Absent, the frame stands on
            its own - which is why the environment is real geometry-of-light and
            not part of the painting. */
+        /* THE TABLEAU. Rendered out of the game by art/render_tableau.js rather
+           than painted: the fighters, the arena and the lighting are already
+           here and already right, so the loading screen shows the actual thing
+           being loaded. Re-run the script and the art follows the game. */
         .ld-art   { left: 14%; right: 14%; top: 9%; bottom: 3%;
-                    background-position: center; background-size: cover; background-repeat: no-repeat; }
+                    background-image: url('assets/loading-tableau.png');
+                    background-position: center; background-size: cover; background-repeat: no-repeat;
+                    /* Sits under the vignette and the two fighter glows, which
+                       is what ties it into the frame instead of looking pasted
+                       onto it. */
+                    opacity: .92; }
         /* The two fighters' light, implied. */
         .ld-glowA { left: 18%; top: 26%; width: 36%; height: 54%; filter: blur(26px);
                     background: radial-gradient(closest-side, rgba(0,243,255,.28), transparent 72%); }
@@ -1287,16 +1299,27 @@
             width: 7px; height: 26px; border-radius: 1px;
             transform: skewX(-12deg);
             background: rgba(0,243,255,.12);
-            animation: ld-seg 1.5s linear infinite;
+            animation: ld-seg 1.2s linear infinite;
         }
-        .ld-seg:nth-child(2) { animation-delay: .17s; }
-        .ld-seg:nth-child(3) { animation-delay: .34s; }
-        .ld-seg:nth-child(4) { animation-delay: .51s; }
-        /* Ramp to full in 180ms of the 1.5s cycle (12%), decay to 34% by 46%. */
+        /* A QUARTER OF THE CYCLE APART, so exactly one segment is lit at a time
+           and the highlight visibly travels.
+           The design's 1.5s/0.17s pair put all four peaks inside the first
+           700ms and left 800ms where every segment sat between 0.34 and 0.12
+           alpha - measured, and indistinguishable at a glance. Reported as "the
+           loading animation doesn't actually shift between the four bars, it
+           just stays on the first bar": the wave was there and too faint to
+           read. Same four segments, same skew, same colour; the timing is what
+           changes. */
+        .ld-seg:nth-child(2) { animation-delay: .3s; }
+        .ld-seg:nth-child(3) { animation-delay: .6s; }
+        .ld-seg:nth-child(4) { animation-delay: .9s; }
         @keyframes ld-seg {
-            0%, 100% { background: rgba(0,243,255,.12); box-shadow: none; }
-            12% { background: #00f3ff; box-shadow: 0 0 14px #00f3ff, 0 0 34px rgba(0,243,255,.45); }
-            46% { background: rgba(0,243,255,.34); box-shadow: none; }
+            0%   { background: rgba(0,243,255,.1); box-shadow: none; transform: skewX(-12deg) scaleY(.82); }
+            10%  { background: #d8fcff; box-shadow: 0 0 14px #00f3ff, 0 0 34px rgba(0,243,255,.55);
+                   transform: skewX(-12deg) scaleY(1.08); }
+            30%  { background: rgba(0,243,255,.45); box-shadow: 0 0 8px rgba(0,243,255,.3);
+                   transform: skewX(-12deg) scaleY(1); }
+            55%, 100% { background: rgba(0,243,255,.1); box-shadow: none; transform: skewX(-12deg) scaleY(.82); }
         }
         @media (prefers-reduced-motion: reduce) {
             .ld-seg { animation-duration: 3s; }
@@ -11693,7 +11716,38 @@ function cssNum(n) { return '#' + (n & 0xffffff).toString(16).padStart(6, '0'); 
 // all ten. Columns = circles, platforms = rects (brightness keyed to height:
 // short cover reads lighter, tall dividing walls darker/solid), terrain =
 // lighter rects, spawns = accent dots.
+// The slug art/render_arenas.js writes its files under.
+function arenaSlug(name) {
+    return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+// THE ARENA, FROM ABOVE - a real render, not a plan view.
+//
+// Reported: "the arena previews when you are selecting one don't look like the
+// actual arenas... they should literally be the arenas from a top down view."
+// They were flat rectangles on a flat floor colour, which says where things are
+// and nothing about what the place looks like.
+//
+// art/render_arenas.js renders each one with its real textures and lighting.
+// The procedural painter stays as the fallback: a missing or not-yet-rendered
+// file gets the old plan view rather than an empty card, which also keeps the
+// picker working before those assets exist.
 function buildMapThumbnail(map) {
+    const img = document.createElement('img');
+    img.className = 'map-shot';
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.src = AC_ASSET_BASE + 'arena/' + arenaSlug(map.name) + '.png';
+    img.addEventListener('error', () => {
+        // No render for this arena: fall back to the plan view, in place.
+        const plan = buildMapPlan(map);
+        if (img.parentNode) img.parentNode.replaceChild(plan, img);
+    });
+    return img;
+}
+
+function buildMapPlan(map) {
     const theme = themeFor(map);
     const W = 240, H = 150, pad = 8;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -14979,7 +15033,7 @@ if (DEBUG) {
         get localAway() { return localAway; },
         get remoteAway() { return remoteAway; },
         get awayPaused() { return awayPaused; },
-        sideReady, showLoading, hideLoading, withLoading,
+        sideReady, showLoading, hideLoading, withLoading, themeTexturesReady, armsOf,
         newRoomCode, roomIdFor, roomCodeOf, ROOM_CODE_LEN, ROOM_CODE_CHARS, ROOM_ID_PREFIX,
         NET_FATAL_ERRORS, netErrorText, refreshPauseUI,   // netTeardown/onNetLost are already above
         get myPlayerName() { return myPlayerName; },
