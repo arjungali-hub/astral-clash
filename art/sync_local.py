@@ -1441,10 +1441,6 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
     # which is how the local build ended up with a swing envelope three
     # batches behind and a sword with a seven-unit grip sticking out of frame.
     for start, end, label in (
-        # swingT plus the constants directly above it. The start marker is
-        # this build's own line before them, so the block lands in the same
-        # place it does online.
-        ('function swingT(f, fd) {', chr(10) + 'function actionPhase(', 'swing envelope'),
         ('function buildSwordProp(', chr(10) + 'function buildDaggerProp(', 'sword prop'),
         ('function propForAtkType(', chr(10) + '// Batch 28: the first-person arm.',
          'weapon props'),
@@ -1454,35 +1450,13 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
         if old_blk != new_blk:
             dst = dst.replace(old_blk, new_blk, 1)
             print('  %-34s ok' % label)
-    # THE SWING CONSTANTS, AS ONE REGION. Not insert-if-missing: that guard was
-    # keyed on SWING_TRAVEL_FRAMES, the first constant of the set, so when the
-    # pre-strike constants were added above swingT later in the same batch the
-    # guard saw the name already present and skipped them - leaving this build
-    # with a swingT referring to two constants it did not have, and throwing
-    # "SWING_WINDUP_FRAC is not defined" on every frame of every swing. An
-    # exception in the animation path takes the frame down with it, which is
-    # what "the attack freezes the screen" was.
-    #
-    # Replace-if-different, spanning from the first constant's comment to
-    # swingT, so adding another constant tomorrow cannot half-port itself.
-    SWING_HEAD = '// How much of the active window a swing spends TRAVELLING'
-    new_consts = block(src, SWING_HEAD, chr(10) + 'function swingT(f, fd) {', 'swing constants')
-    if SWING_HEAD in dst:
-        old_consts = block(dst, SWING_HEAD, chr(10) + 'function swingT(f, fd) {', 'swing constants (old)')
-        if old_consts != new_consts:
-            dst = dst.replace(old_consts, new_consts, 1)
-            print('  %-34s ok' % 'swing constants')
-    else:
-        dst = rep(dst, 'function swingT(f, fd) {',
-                  new_consts + 'function swingT(f, fd) {', 'swing constants')
-
-    # ...and a blunt check that the two halves agree, because this exact failure
-    # is invisible until something swings.
-    import re as _re
-    for name in sorted(set(_re.findall(r'SWING_[A-Z_]+', new_consts + block(
-            dst, 'function swingT(f, fd) {', chr(10) + 'function actionPhase(', 'swingT (check)')))):
-        if ('const %s' % name) not in dst and ('%s = ' % name) not in dst:
-            raise AssertionError('swingT uses %s and nothing here declares it' % name)
+    # THE SWING ENVELOPE IS NOT PORTED ANY MORE. It lives in
+    # shared/animation.js, which both builds load, so there is nothing to carry
+    # and nothing to half-carry. Three crashes in one week came from this step
+    # copying swingT without all of its constants; the verification at the end
+    # now asserts the opposite - that neither build re-declares any of it,
+    # because a local `const` would shadow the shared one and bring the drift
+    # straight back.
 
     # ----------------------------------------------- how each arena is lit
     # Same story as PHOTO_SETS below, found the same way: this build's Molten
@@ -1748,14 +1722,27 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # What must live in shared/roster.js, and must NOT be re-declared here. A
     # local copy would shadow the shared binding and silently restore exactly
     # the drift this file stopped porting around.
+    # Anything moved into a shared module must NOT be re-declared in either
+    # build: a `const` inside bootGame() shadows the global and silently
+    # restores the drift the move removed. The check below is what makes that
+    # a failure rather than a mystery.
     SHARED_REQUIRED = [
         'const CHARACTERS = [', 'const FRAME_DATA = {', 'const BOSS_MAP = {}',
         'const CHAR_MODEL_URLS = {', 'const RIG_HEIGHT_MULT', 'function rigHeightFor(',
         'const AC_ASSET_BASE', 'const UNLOCK_COST', 'const COIN_AWARDS',
     ]
+    # ...and the animation module, whose half-porting caused three crashes.
+    ANIM_REQUIRED = [
+        'const SWING_TRAVEL_FRAMES', 'const SWING_WINDUP_FRAC',
+        'const SWING_PRESTRIKE_T', 'const SWING_HOLD_RECOVERY_FRAC',
+        'function swingT(', 'function actionPhase(', 'function readableJabs(',
+    ]
     shared_src = io.open(os.path.join(ROOT, 'shared', 'roster.js'), encoding='utf-8').read()
-    shared_missing = [d for d in SHARED_REQUIRED if d not in shared_src]
-    shadowed = [d for d in SHARED_REQUIRED if d in dst]
+    anim_src = io.open(os.path.join(ROOT, 'shared', 'animation.js'), encoding='utf-8').read()
+    shared_missing = ([d for d in SHARED_REQUIRED if d not in shared_src]
+                      + [d for d in ANIM_REQUIRED if d not in anim_src])
+    shadowed = ([d for d in SHARED_REQUIRED if d in dst]
+                + [d for d in ANIM_REQUIRED if d in dst])
 
     missing = [d for d in REQUIRED if d not in dst]
     undefined = [c for c in CALLED
@@ -1773,7 +1760,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
             print('   SHADOWS the shared definition (must be removed here): ' + d)
         return 1
     print('  %-34s %d local, %d shared, %d calls resolved'
-          % ('verified', len(REQUIRED), len(SHARED_REQUIRED), len(CALLED)))
+          % ('verified', len(REQUIRED), len(SHARED_REQUIRED) + len(ANIM_REQUIRED), len(CALLED)))
 
     io.open(DST, 'w', encoding='utf-8', newline='').write(dst)
     print('\nlocal build: %d -> %d bytes' % (before, len(dst)))
