@@ -2394,96 +2394,49 @@ lookup table now, with a note saying why.
 
 ---
 
-## Open — reported 2026-09-16, not yet done
+## Open — reported 2026-09-16
 
-Recorded before starting so none of it gets lost in a long run. Each line is
-what was reported, in the reporter's own terms.
+Updated 2026-09-21. Struck items are done; what is left is listed after them.
 
-### Broken
+### Done since this list was written
 
-- [ ] **Thorne's attack freezes the screen** and the match cannot continue.
-      Reported 2026-09-16. Highest priority of the set: this is a hang, not a
-      look. Thorne is the whip character, so the suspects are his attack path
-      and the whip prop's animation.
-- [ ] **Thorne's weapon needs to look better** - "the green balls aren't even
-      connected to each other". buildWhipProp lays segments along a curve with
-      gaps between them; a whip has to read as one object.
+- [x] **Thorne's attack freezes the screen** — and Gorgonok's, and Kaelen's.
+      Three half-ports of mine, each throwing on every frame of a swing.
+      Batch 61.
+- [x] **Thorne's weapon** is a tapering vine with thorns, not beads on an
+      invisible string. Batch 64.
+- [x] **The arms are in frame.** They were ~20% inside it for every character;
+      Kaelen only looked right because his sword reached in from a hand you
+      could not see. Measured in clip space, re-anchored. Batch 64.
+- [x] **Lyra has an arm** — same cause as above.
+- [x] **The charge is a sphere** for every caster, not a flat ring. Batch 64.
+- [x] **Arena collapse happens in Classic Versus only.** Batch 64.
+- [x] **Zone Control's zone** is a rim, a fill, a rotating collar, ticks and a
+      column of light, and it is brightest when nobody holds it. Batch 64.
+- [x] **Every arena has true 180° rotational symmetry**, asserted by
+      tests/symmetrycheck.js for the data AND for everything built on it.
+      Batch 65.
+- [x] **The loading mark animates**, and exists inline for small waits.
+      Batches 62 and 66.
+- [x] **There is a tableau**, rendered from the game. Batch 62.
+- [x] **Arena previews are the arenas**, rendered top-down. Batch 62.
+- [x] **The local build** has the loading screen, the dash pips, the arena
+      previews, the same fonts, the same names and Settings on its pause menu.
+      Batches 58, 62.
+- [x] **It is called the local version**, everywhere. Batch 63.
 
-### First person
+### Still open
 
-- [ ] **The arms are still left arms.** Batch 53 mirrored the limb and it did
-      not take. Whatever "mirrored" currently means in `buildViewmodel`, the
-      thing on screen is still a left arm, so this needs measuring rather than
-      another sign flip: establish which way is which from the geometry (thumb
-      side, palm normal) instead of from the code's intent.
-- [ ] **Lyra has no arm in first person at all.**
-- [ ] **Draven's weapon points backwards** in first person.
-- [ ] **The charge-up is a flat 2D disk** in the caster's hand - reported for
-      Lyra and then broadened: "it applies to other long-ranged characters as
-      well", so every `cast` viewmodel (shard/orb/bolt). Their projectile was
-      made a real sphere in Batch 37 for exactly this reason; the charge glow
-      was missed.
-
-### Arenas
-
-- [ ] **Arena collapse should happen in Classic Versus only.** It currently runs
-      in every mode that does not explicitly opt out.
-- [ ] **Zone Control's zone needs better art,** and to be clearly visible when
-      nobody is standing in it.
-- [ ] **Every arena needs true 180-degree rotational symmetry.** Skyward Temple
-      has a ramp on one side and stairs on the other: it does not change how the
-      match plays, but the two players should be looking at the same thing.
-      Worth a checker - symmetry is a property that can be asserted from map
-      data rather than eyeballed.
-
-### The two builds become one (requested 2026-09-16)
-
-> "Make it so that they rely on the exact same code for everything that they
-> overlap in and sync them." ... "Like literally do a COMPLETE redesign so that
-> the only differences in the code local and online rely on is the controls and
-> split screen and match starting framework and anything else that is necessary.
-> EVERYTHING else should be the exact same code relied on."
-
-This supersedes the port-script approach. `art/sync_local.py` has been
-carrying fixes across one guarded edit at a time, and this run alone found three
-HALF-PORTS that each froze the game: `swingT` without `SWING_WINDUP_FRAC`, the
-muzzle-flash pool without `MUZZLE_FLASH_MAX`, and `warmCombatShaders` defined
-but never called. Each guard was keyed on something that was already present, so
-it skipped the part that was missing. A porting script cannot be made safe by
-adding more guards; the answer is for there to be nothing to port.
-
-- [ ] Move everything that is not controls / split screen / match-start into
-      shared modules both builds load, the way `shared/roster.js` already works.
-      Candidates, roughly in dependency order: constants and tuning, the Fighter
-      class and combat, meshes and props and the viewmodel rig, arenas and
-      lighting, the HUD, the menus and modals, the Armory, audio.
-- [ ] What legitimately stays forked: the input scheme (one keyboard with two
-      binding sets vs. mouse-look plus net input), `renderViews` (two viewports
-      vs. one), the lobby/netcode vs. the local start flow, and the spectator
-      camera.
-- [ ] Until then, every port step must be replace-if-different, never
-      insert-if-missing. Three crashes in one run came from that distinction.
-
-- [ ] **All UI must match**, e.g. the dash-cooldown pips exist online only.
-
-### New work
-
-- [ ] **The loading animation belongs on EVERYTHING** - "even something as small
-      as when the page is switching and the screen freezes for less than a second". Not just match start: any transition where
-      the screen would otherwise sit and wait.
-- [ ] **The loading screen is not in the local build at all.**
-- [ ] **The loading mark does not animate** - it stays on the first bar instead
-      of cycling through the four.
-- [ ] **There is no tableau.** The middle of the loading screen is lighting and
-      nothing else; the design's painted scene is an empty image-slot. It needs
-      real art - most plausibly rendered from the game itself, which is the one
-      way to get a battle that actually looks like this game.
-- [ ] **Arena preview cards do not look like the arenas.** They should be
-      literal top-down renders of each arena.
-
-
-
-- [ ] **A loading screen.** A static scene from the game (a battle tableau)
-      with a small loading animation in a corner, shown whenever the game is
-      loading. Design prompt written; art to follow.
+- [ ] **Draven's weapon reads backwards in first person.** Now that the arm is
+      actually in frame this needs looking at again, with the hammer's own
+      carry angles rather than the arm's.
+- [ ] **The shared-code redesign, continued.** Two slices done:
+      `shared/animation.js` (the attack envelope) and `shared/props.js` (every
+      weapon, plus the material and geometry caches). 22 declarations verified
+      shared, and the sync script now fails if either build re-declares one.
+      Remaining candidates, roughly in dependency order: the HUD, arena and
+      lighting construction, the Fighter class and combat, the menus and
+      modals, the Armory, audio.
+- [ ] **What legitimately stays forked**: the input scheme, `renderViews`, the
+      lobby/netcode against the local start flow, and the spectator camera.
 
