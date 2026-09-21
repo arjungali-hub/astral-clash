@@ -2388,6 +2388,45 @@ function themeTexturesReady(theme) {
     return Promise.all(sets.map(id => loadPhotoSet(id).catch(() => null)));
 }
 
+// THE MARK, INLINE, wherever this interface is waiting on something.
+//
+// "Loading animation should be present in EVERYTHING... even something as small
+// as that." The full screen is right for a transition and absurd for a field
+// waiting on one small thing, so the same mark comes in a text-sized version.
+//
+// busy(el, true) swaps an element's contents for the mark and remembers what
+// was there; busy(el, false) puts it back. Nothing is shown for work that
+// finishes immediately - a mark that flashes for one frame is noise.
+function busyMarkHTML() {
+    return '<span class="ld-mark sm" aria-hidden="true">'
+         + '<span class="ld-seg"></span><span class="ld-seg"></span><span class="ld-seg"></span>'
+         + '</span>';
+}
+function busy(el, on, label) {
+    if (!el) return;
+    if (on) {
+        if (el.dataset.busyHeld == null) el.dataset.busyHeld = el.innerHTML;
+        el.innerHTML = busyMarkHTML() + (label ? ' <span class="ld-busy-label">' + label + '</span>' : '');
+        el.setAttribute('aria-busy', 'true');
+    } else {
+        if (el.dataset.busyHeld != null) {
+            el.innerHTML = el.dataset.busyHeld;
+            delete el.dataset.busyHeld;
+        }
+        el.removeAttribute('aria-busy');
+    }
+}
+// Show the mark only if the work outlasts a frame or two. Anything faster than
+// this reads as a flicker, which is worse than no feedback at all.
+const BUSY_DELAY_MS = 120;
+function busyWhile(el, promise, label) {
+    let shown = false;
+    const timer = setTimeout(() => { shown = true; busy(el, true, label); }, BUSY_DELAY_MS);
+    const done = () => { clearTimeout(timer); if (shown) busy(el, false); };
+    return Promise.resolve(promise).then(v => { done(); return v; },
+                                         e => { done(); throw e; });
+}
+
 function saveProgression() { safeLSSet(PROGRESSION_KEY, JSON.stringify(progression)); }
 function prog(side) { return progression[side] || progression.p1; }
 // --- Batch 19: game modes. `matchMode` is deliberately ORTHOGONAL to
