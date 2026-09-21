@@ -1444,8 +1444,10 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
         # The sword and the weapon table are NOT here any more: they live in
         # shared/props.js, which both builds load. This list is for things that
         # still have two copies, and it should keep getting shorter.
-        ('function propForAtkType(', chr(10) + '// Batch 28: the first-person arm.',
-         'weapon table'),
+        # Nothing is left in this list: the sword, the weapon table, the bodies
+        # and the swing envelope all live in shared/ now. It stays because the
+        # next thing that turns out to be build-agnostic goes here on its way
+        # out - and an empty list is the goal, not an oversight.
     ):
         new_blk = block(src, start, end, label)
         old_blk = block(dst, start, end, label + ' (old)')
@@ -1739,6 +1741,11 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         'function buildSwordProp(', 'function buildWhipProp(', 'function buildOrbProp(',
         'function makeMat(', 'function getCachedGeometry(', 'function hexNum(',
     ]
+    # The procedural bodies, third shared module.
+    CHARS_REQUIRED = [
+        'function buildHumanoidBase(', 'function buildKaelenMesh(',
+        'function buildKarrigosMesh(', 'const PROC_MESH_BUILDERS = {',
+    ]
     ANIM_REQUIRED = [
         'const SWING_TRAVEL_FRAMES', 'const SWING_WINDUP_FRAC',
         'const SWING_PRESTRIKE_T', 'const SWING_HOLD_RECOVERY_FRAC',
@@ -1747,12 +1754,15 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     shared_src = io.open(os.path.join(ROOT, 'shared', 'roster.js'), encoding='utf-8').read()
     anim_src = io.open(os.path.join(ROOT, 'shared', 'animation.js'), encoding='utf-8').read()
     props_src = io.open(os.path.join(ROOT, 'shared', 'props.js'), encoding='utf-8').read()
+    chars_src = io.open(os.path.join(ROOT, 'shared', 'characters.js'), encoding='utf-8').read()
     shared_missing = ([d for d in SHARED_REQUIRED if d not in shared_src]
                       + [d for d in ANIM_REQUIRED if d not in anim_src]
-                      + [d for d in PROPS_REQUIRED if d not in props_src])
+                      + [d for d in PROPS_REQUIRED if d not in props_src]
+                      + [d for d in CHARS_REQUIRED if d not in chars_src])
     shadowed = ([d for d in SHARED_REQUIRED if d in dst]
                 + [d for d in ANIM_REQUIRED if d in dst]
-                + [d for d in PROPS_REQUIRED if d in dst])
+                + [d for d in PROPS_REQUIRED if d in dst]
+                + [d for d in CHARS_REQUIRED if d in dst])
 
     missing = [d for d in REQUIRED if d not in dst]
     undefined = [c for c in CALLED
@@ -1771,7 +1781,8 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         return 1
     print('  %-34s %d local, %d shared, %d calls resolved'
           % ('verified', len(REQUIRED),
-             len(SHARED_REQUIRED) + len(ANIM_REQUIRED) + len(PROPS_REQUIRED), len(CALLED)))
+             len(SHARED_REQUIRED) + len(ANIM_REQUIRED) + len(PROPS_REQUIRED)
+             + len(CHARS_REQUIRED), len(CALLED)))
 
     io.open(DST, 'w', encoding='utf-8', newline='').write(dst)
     print('\nlocal build: %d -> %d bytes' % (before, len(dst)))

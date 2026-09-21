@@ -531,3 +531,36 @@ function buildOrbProp(coreHex, emissiveHex) {
 // and the flag exists rather than a second builder because everything else
 // about the prop - materials, cached geometry, the weapon-swing data - should
 // stay identical between the two views.
+
+// ---- which weapon a fighter carries ----------------------------------
+// The table that turns an atkType into a prop. It belongs here rather than
+// with the bodies: it is entirely about weapons, and `forVm` picks the
+// first-person variant of one.
+function propForAtkType(f, forVm) {
+    switch (f.atkType) {
+        // The blade is LONGER for the viewmodel than for the body. 17 units is
+        // right on a 40-unit-wide fighter seen from outside; in your own hand,
+        // foreshortened down the view axis and next to a full-size cross-guard,
+        // it read as "a dagger or spearhead" (reported). Third person still
+        // gets 17 - see buildWeapon.
+        // LONGER AND NARROWER for the viewmodel, not longer and wider. Length is
+        // what makes a sword read as a sword a foot from the camera; width
+        // mostly scales the furniture, and the cross-guard - sized from the
+        // blade's width - was reported as dominating the frame. Plus a short
+        // grip and a blade that keeps its own colour; see buildSwordProp's opts.
+        case 'slash': return buildSwordProp('#f2fbff', '#38bdf8',
+            forVm ? 36 : 17, forVm ? 6 : 5,
+            forVm ? { grip: 3.2, guard: 0.7, diffuse: true } : null);
+        case 'dagger': return buildDaggerProp('#99f6e4', '#14b8a6');
+        case 'hammer': return buildHammerProp(forVm);
+        case 'scythe': return buildScytheProp(46); // a touch longer in-hand to convey Nyx's reach, but foreshortened for the viewmodel
+        case 'punch': return buildFistProp(f.color);
+        case 'bolt': return buildStaffProp();
+        case 'whip': return buildWhipProp(9, 4);
+        case 'shard': return buildOrbProp('#e9d5ff', '#a855f7');
+        case 'orb': return buildOrbProp('#fff7d6', '#facc15');
+        default: return buildFistProp(f.color);
+    }
+}
+
+// ---- the roster ------------------------------------------------------
