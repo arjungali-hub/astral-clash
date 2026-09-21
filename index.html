@@ -8853,7 +8853,30 @@ const VM_PROP_YAW = 0.99, VM_PROP_PITCH = -0.34, VM_PROP_ROLL = 0.62;
 const VM_PROP_TUNE = {
     // A hammer is turned so its FACE is across the view, not pointing down it,
     // and dropped slightly so the head is not level with the crosshair.
-    hammer: { yaw: 0.34, pitch: -0.12, roll: 1.35 },
+    // yaw 0.34 -> 0.92. Reported as "Draven's weapon is backwards in first
+    // person", and measurable: the grip-to-head vector is the only one on the
+    // roster pointing OUTBOARD. Every other weapon sweeps inboard across the
+    // view - Kaelen -4.8, Nyx -7.1, Thorne -8.2, Voss -2.0, Aurelia -4.8 - and
+    // the hammer measured +4.1, off the right edge of the frame.
+    //
+    // The small yaw was a Batch 46 correction for a real problem (the head was
+    // being seen end-on, "a flat disc or washer on a thin stick") and it
+    // over-shot: turning the head into view also turned the whole weapon out of
+    // it. The roll is what keeps the face across the view, so the yaw can come
+    // back up.
+    // Measured against the rest of the roster rather than eyeballed. The
+    // weapon's own axis, in camera space, should point inboard and into the
+    // screen like everyone else's: Kaelen (0.39, 0.61), Nyx (0.38, 0.76),
+    // Thorne (0.60, 0.70), Voss (0.39, 0.61), Aurelia (0.44, 0.86). The hammer
+    // measured (-0.32, 0.25) with its axis 0.91 straight UP - held vertical and
+    // tipped out of frame, which is what "Draven's weapon is backwards in first
+    // person" was. At yaw 0.92 / roll 0.55 it measures (0.36, 0.58).
+    //
+    // The old roll of 1.35 was a real fix for a real thing - the head being
+    // seen end-on, "a flat disc or washer on a thin stick" - and it over-shot:
+    // rolling that far about the weapon's own axis swings the whole haft
+    // upright. The yaw carries the head across the view instead.
+    hammer: { yaw: 0.92, pitch: -0.12, roll: 0.55 },
     // A scythe is mostly haft with the blade far out; less yaw keeps the blade
     // in frame rather than swinging it off the left edge.
     scythe: { yaw: 0.72, pitch: -0.22, roll: 0.45 },
@@ -14734,7 +14757,7 @@ if (DEBUG) {
         // view (where your own body is hidden by design and the opponent is
         // wherever the simulation put them).
         get renderer() { return renderer; },   // for isolated model renders
-        buildViewmodelArmFromModel, buildViewmodelArm,
+        buildViewmodelArmFromModel, buildViewmodelArm, buildViewmodel, propForAtkType, vmPropAngles,
         get vmP1() { return vmP1; },
         get vmP2() { return vmP2; },
         renderOnce(cam) { renderer.setScissorTest(false); renderer.setViewport(0, 0, renderer.domElement.width, renderer.domElement.height); renderer.render(scene, cam); },
