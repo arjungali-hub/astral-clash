@@ -9014,20 +9014,54 @@ function buildStaffProp() {
 // control its length: Thorne's on-body whip is built long (it's the longest
 // reach in the roster) so the lash reaches the edge of its range; the
 // viewmodel uses a shorter version.
+// A VINE, not a string of beads.
+//
+// Reported: "Thorne's weapon needs to look better. The green balls aren't even
+// connected to each other." Literally true - it was seven spheres whose radii
+// shrank from 2.0 to 0.6, placed 3.2 apart, so the first two touched and the
+// rest were beads on an invisible string.
+//
+// One tube along the same curve the beads followed, tapering as it goes, with
+// thorns down its length and a barb at the tip. TubeGeometry takes the radius
+// as a constant, so the taper is done by scaling each of a few short tubes -
+// cheaper than a custom buffer and it reads the same.
 function buildWhipProp(n = 7, step = 3.2) {
     const g = new THREE.Group();
     const mat = makeMat('#4ade80', { emissive: 0x16a34a, emissiveIntensity: 0.4, roughness: 0.6 });
-    let px = 4, py = 0;
-    for (let i = 0; i < n; i++) {
-        const r = Math.max(0.6, 2.0 - i * (1.5 / n));
-        const seg = new THREE.Mesh(new THREE.SphereGeometry(r, 6, 6), mat);
-        seg.position.set(px, py, 0); seg.castShadow = true;
-        g.add(seg);
-        px += step; py -= 0.5 + i * (2.2 / n); // curves downward as it extends
-    }
     const thornMat = makeMat('#166534');
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(1.6, 5, 4), thornMat);
-    tip.position.set(px, py, 0); tip.rotation.z = Math.PI;
+
+    // The same path the old beads sat on, as a smooth curve.
+    const pts = [];
+    let px = 4, py = 0;
+    for (let i = 0; i <= n; i++) {
+        pts.push(new THREE.Vector3(px, py, 0));
+        px += step; py -= 0.5 + i * (2.2 / n);
+    }
+    const curve = new THREE.CatmullRomCurve3(pts);
+    // Short overlapping tubes, each thinner than the last: a continuous vine
+    // that tapers, without writing a tapered-tube geometry by hand.
+    const SEGS = 6;
+    for (let i = 0; i < SEGS; i++) {
+        const t0 = i / SEGS, t1 = (i + 1) / SEGS;
+        const sub = new THREE.CatmullRomCurve3([
+            curve.getPoint(t0), curve.getPoint((t0 + t1) / 2), curve.getPoint(t1),
+        ]);
+        const r = 1.9 - 1.35 * (i / SEGS);
+        const tube = new THREE.Mesh(new THREE.TubeGeometry(sub, 6, r, 8, false), mat);
+        tube.castShadow = true;
+        g.add(tube);
+        // A thorn on alternating sides, which is what makes it a bramble.
+        const at = curve.getPoint((t0 + t1) / 2);
+        const thorn = new THREE.Mesh(new THREE.ConeGeometry(r * 0.5, r * 2.2, 4), thornMat);
+        thorn.position.copy(at);
+        thorn.rotation.z = (i % 2 ? 1 : -1) * 1.1;
+        thorn.rotation.y = i * 0.7;
+        g.add(thorn);
+    }
+    const tipAt = curve.getPoint(1);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(1.2, 5.5, 5), thornMat);
+    tip.position.copy(tipAt);
+    tip.rotation.z = Math.PI * 0.62;
     g.add(tip);
     g.userData.mats = [mat, thornMat];
     return g;
@@ -9037,8 +9071,21 @@ function buildOrbProp(coreHex, emissiveHex) {
     const coreMat = makeMat(coreHex, { emissive: hexNum(emissiveHex), emissiveIntensity: 0.9 });
     const core = new THREE.Mesh(new THREE.OctahedronGeometry(3, 0), coreMat);
     core.castShadow = true;
-    const haloMat = new THREE.MeshBasicMaterial({ color: hexNum(emissiveHex), transparent: true, opacity: 0.35, side: THREE.DoubleSide });
-    const halo = new THREE.Mesh(new THREE.RingGeometry(3.6, 4.6, 20), haloMat);
+    // A SPHERE, not a ring. A RingGeometry is a flat annulus: head-on it is a
+    // halo and from anywhere else it is a line, which is what "the charge up
+    // animation is a 2d disk in her hand" was. Batch 37 made the projectile's
+    // halo a real sphere for exactly this reason and left the one in the hand.
+    // Additive and depth-write off so it reads as light around the core rather
+    // than as a second solid object.
+    const haloMat = new THREE.MeshBasicMaterial({
+        // 0.18, not 0.35: additive blending multiplies what is already a bright
+        // emissive core, and at the ring's old opacity the sphere read as a
+        // white blob that swallowed the hand holding it.
+        color: hexNum(emissiveHex), transparent: true, opacity: 0.18,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+        side: THREE.DoubleSide, fog: false,
+    });
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(3.7, 14, 10), haloMat);
     g.add(core, halo);
     const charge = new THREE.Mesh(new THREE.SphereGeometry(3, 10, 10),
         new THREE.MeshBasicMaterial({ color: hexNum(emissiveHex), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
@@ -9136,7 +9183,7 @@ function propForAtkType(f, forVm) {
 // blade inboard across the frame, pitch lifts the tip, roll tilts the flat of
 // the blade toward the light so it reads as a blade rather than a line.
 // How far the whole limb is tipped toward the bottom-right corner.
-const VM_ARM_ROLL = -0.34;
+const VM_ARM_ROLL = -0.52;
 const VM_PROP_YAW = 0.99, VM_PROP_PITCH = -0.34, VM_PROP_ROLL = 0.62;
 
 // ...and PER WEAPON, because one angle cannot serve them all. The general
@@ -9187,8 +9234,8 @@ const VM_ARM_LENGTH = 30;
 // MORE of that side, not less.
 // The viewmodel's overall size in camera space, and the mirror that makes the
 // model's left arm read as the player's right one (see finishViewmodel).
-const VM_SCALE = 0.30;
-const VM_ARM_ANCHOR = new THREE.Vector3(10.6, -6.8, -13.6);
+const VM_SCALE = 0.24;
+const VM_ARM_ANCHOR = new THREE.Vector3(3.6, -2.6, -13.6);
 
 // Which bones count as "the arm". Bone names arrive sanitised by three.js
 // (PropertyBinding.sanitizeNodeName strips '.'), so 'UpperArm.L' may be
@@ -9760,6 +9807,11 @@ function buildViewmodelArmFromModel(f) {
     // Normalise the length, then park the arm's centre on the group origin so
     // buildViewmodel can position it by where it should APPEAR rather than by
     // an offset from a shoulder whose location varies per character.
+    // Normalising the bounding box's longest axis was measured and kept: the
+    // limb's own length (shoulder->elbow->hand) is within 35% of it for every
+    // character on the roster, robed or plated, so the two agree and the box is
+    // the cheaper measurement. Checked when "Lyra has no arm in first person"
+    // was being chased - it was not this.
     const box = new THREE.Box3().setFromObject(holder);
     const size = box.getSize(new THREE.Vector3());
     const longest = Math.max(size.x, size.y, size.z);
@@ -13364,22 +13416,62 @@ function freshStats() {
 // the floor" test would have made the zone unreachable on those maps; ignoring
 // z instead means standing on that central platform also contests the ring,
 // which is a free bit of verticality rather than a bug.
+// THE ZONE, as a place rather than a decal.
+//
+// It was a white ring at 0.55 opacity over a 0.10 fill, and on a pale arena
+// that is almost nothing - least visible in exactly the state that matters,
+// since an empty zone is the one you are supposed to walk into. Reported as
+// "the zone should look better, and it should be more visible when no one is
+// standing on it".
+//
+// Five parts, all cheap: a bright rim, a soft inner fill, a slowly rotating
+// dashed collar that makes it read as active rather than painted on, four
+// corner ticks pointing in, and a wide column of light standing over it that
+// can be seen from across the arena and over cover. Nothing here is per-frame
+// allocation - syncZone only writes colours, opacities and one rotation.
 function buildZoneMesh() {
     disposeZoneMesh();
     const g = new THREE.Group();
-    const ring = new THREE.Mesh(
-        new THREE.RingGeometry(ZONE_RADIUS - 8, ZONE_RADIUS, 48),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false })
-    );
-    ring.rotation.x = -Math.PI / 2;
-    const fill = new THREE.Mesh(
-        new THREE.CircleGeometry(ZONE_RADIUS - 8, 48),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.10, side: THREE.DoubleSide, depthWrite: false })
-    );
-    fill.rotation.x = -Math.PI / 2;
-    g.add(ring, fill);
-    g.position.set(worldX(ARENA_CX), 1.5, worldZ(ARENA_CY)); // just above the floor to avoid z-fighting
+    const flat = (mesh) => { mesh.rotation.x = -Math.PI / 2; return mesh; };
+    const basic = (opts) => new THREE.MeshBasicMaterial(Object.assign({
+        color: 0xffffff, transparent: true, side: THREE.DoubleSide,
+        depthWrite: false, fog: false,
+    }, opts));
+
+    const ring = flat(new THREE.Mesh(
+        new THREE.RingGeometry(ZONE_RADIUS - 5, ZONE_RADIUS, 64), basic({ opacity: 0.9 })));
+    const fill = flat(new THREE.Mesh(
+        new THREE.CircleGeometry(ZONE_RADIUS - 5, 64), basic({ opacity: 0.14 })));
+    // The collar: a ring cut into eight arcs, rotating. A dashed circle reads
+    // as a live marker; a solid one reads as paint.
+    const collar = new THREE.Group();
+    for (let i = 0; i < 8; i++) {
+        const a0 = (i / 8) * Math.PI * 2;
+        const seg = flat(new THREE.Mesh(
+            new THREE.RingGeometry(ZONE_RADIUS + 4, ZONE_RADIUS + 9, 12, 1, a0, Math.PI / 8),
+            basic({ opacity: 0.75 })));
+        collar.add(seg);
+    }
+    // Four ticks aimed inward, so the zone has a direction to walk toward.
+    const ticks = new THREE.Group();
+    for (let i = 0; i < 4; i++) {
+        const t = flat(new THREE.Mesh(new THREE.PlaneGeometry(3, 18), basic({ opacity: 0.55 })));
+        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+        t.position.set(Math.cos(a) * (ZONE_RADIUS + 20), 0.2, Math.sin(a) * (ZONE_RADIUS + 20));
+        t.rotation.z = -a;
+        ticks.add(t);
+    }
+    // A column of light over the whole thing: the part you can see from the
+    // far side of the arena, and over a platform.
+    const column = new THREE.Mesh(
+        new THREE.CylinderGeometry(ZONE_RADIUS - 6, ZONE_RADIUS - 2, 150, 32, 1, true),
+        basic({ opacity: 0.10, blending: THREE.AdditiveBlending }));
+    column.position.y = 75;
+
+    g.add(ring, fill, collar, ticks, column);
+    g.position.set(worldX(ARENA_CX), 1.5, worldZ(ARENA_CY)); // just off the floor, no z-fighting
     g.userData.ring = ring; g.userData.fill = fill;
+    g.userData.collar = collar; g.userData.ticks = ticks; g.userData.column = column;
     scene.add(g);
     zoneMesh = g;
 }
@@ -13400,12 +13492,23 @@ function updateZoneControl(dt) {
     // it while it's being held, so control is readable from inside the fight
     // rather than only on the HUD.
     if (zoneMesh) {
-        const held = zoneHolder ? (zoneHolder === 'p1' ? 0x00f3ff : 0xf472b6) : 0xffffff;
-        zoneMesh.userData.ring.material.color.setHex(held);
-        zoneMesh.userData.fill.material.color.setHex(held);
-        const pulse = zoneHolder ? 0.55 + 0.25 * Math.sin(arenaTime * 0.2) : 0.4;
-        zoneMesh.userData.ring.material.opacity = pulse;
-        zoneMesh.userData.fill.material.opacity = zoneHolder ? 0.16 : 0.08;
+        const u = zoneMesh.userData;
+        // Held: the holder's colour, pulsing. EMPTY: a bright amber beacon, and
+        // MORE visible than when held - an unclaimed zone is the one asking you
+        // to come and stand in it. It used to be dimmest exactly then.
+        const held = zoneHolder ? (zoneHolder === 'p1' ? 0x00f3ff : 0xf472b6) : 0xffd166;
+        const beat = 0.5 + 0.5 * Math.sin(arenaTime * (zoneHolder ? 0.22 : 0.12));
+        for (const part of [u.ring, u.fill, u.column]) part.material.color.setHex(held);
+        for (const seg of u.collar.children) seg.material.color.setHex(held);
+        for (const t of u.ticks.children) t.material.color.setHex(held);
+        u.ring.material.opacity = zoneHolder ? 0.75 + 0.2 * beat : 0.9;
+        u.fill.material.opacity = zoneHolder ? 0.18 : 0.13 + 0.06 * beat;
+        u.column.material.opacity = zoneHolder ? 0.09 : 0.13 + 0.05 * beat;
+        for (const seg of u.collar.children) seg.material.opacity = zoneHolder ? 0.55 : 0.8;
+        for (const t of u.ticks.children) t.material.opacity = zoneHolder ? 0.3 : 0.6;
+        // Turning while empty, still while held: motion is what the eye finds,
+        // and once somebody owns it the colour says so.
+        u.collar.rotation.y += (zoneHolder ? 0.004 : 0.011) * dt;
     }
 }
 
@@ -13429,7 +13532,15 @@ function updateArenaShrink(dt) {
     //
     // Leaving the bounds at full size also keeps `crushing` false, so the
     // crush cinematic and CRUSH_DPS never fire here.
-    if (matchMode === 'timeattack') return;
+    // CLASSIC OPTS IN; nothing else does. This was a list of exclusions - not
+    // in co-op, not in Takedown Race - so Zone Control still collapsed, and any
+    // mode added later would have collapsed by default. Requested directly:
+    // "the only mode arena should close in is classic versus".
+    //
+    // The other modes each have their own pressure: a race is decided by
+    // takedowns, a zone by standing in it, co-op by the boss. Closing the walls
+    // on top of that replaces the mode's own clock with a crush.
+    if (matchMode !== 'classic') return;
     if (!crushing) {
         shrinkTimer -= dt / 60;
         if (shrinkTimer <= 0) {
