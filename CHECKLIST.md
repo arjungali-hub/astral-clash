@@ -1755,9 +1755,19 @@ now says what proves it, or why a person still has to.
       runs on swiftshader, where "GPU memory" is not the thing that would leak.
 - [ ] **Bot plays a competent match against every character on every map.**
       "Competent" is a judgement, not an assertion. A human has to watch it.
-- [ ] **Menu, pause and gameover reachable/escapable by keyboard alone.** Worth
-      automating and not yet done — it is a real accessibility claim and nothing
-      currently tests it.
+- [x] **Menu, pause and gameover reachable/escapable by keyboard alone** —
+      `tests/keyboardcheck.js`. Three separate questions, because they fail
+      separately: every interactive control is natively focusable (no click-only
+      `<div>` that Tab skips), the visible controls are actually reachable, and
+      Escape gets you back OUT of a modal and out of pause.
+
+      It reported the game as unpausable for four runs. That was the test: its
+      `send()` dispatched on `document` AND `window`, the listener is on
+      `window`, and a document event bubbles there anyway — so every "press"
+      fired the handler twice and Escape toggled pause on and straight back off.
+      Found by asking whether the handler had run at all (`keys.escape` is set
+      several lines before the Escape branch) rather than by staring at the
+      pause code, which was correct throughout.
 
 ---
 
@@ -2746,7 +2756,7 @@ store.
 ### Still open
 
 Nothing is open in the sense of "a reported bug nobody has fixed", and nothing
-is open that a checker could settle. What remains is four verification items,
+is open that a checker could settle. What remains is three verification items,
 every one of which needs a person or hardware that headless software rendering
 does not have:
 
@@ -2755,9 +2765,7 @@ does not have:
   * **Ten rematches, no GPU memory growth** — needs a GPU. Headless runs on
     swiftshader, where "GPU memory" is not the thing that would leak.
   * **The bot plays a competent match** — "competent" is a judgement.
-  * **Menus reachable by keyboard alone** — automatable in principle and not
-    written; it is a real accessibility claim, so it is left visible rather than
-    quietly ticked.
+
 
 Knockback is covered by the teleport sweep above only insofar as knockback
 routes through the same displacement path; a dedicated knockback sweep is not
