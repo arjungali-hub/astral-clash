@@ -11,3 +11,4 @@ tests/screenshots/
 # they are a few KB and they document what was generated and from which job.
 art/raw/*.glb
 art/raw/_build_log.txt
+art/__pycache__/

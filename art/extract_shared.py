@@ -21,10 +21,15 @@ WHAT IT REFUSES TO MOVE, and why:
   * The entry points (bootGame, loadScriptsThen). Everything inside bootGame
     sits at column 0 in this file, so a naive reading of "top-level" picks the
     whole game up by its first three lines.
-  * `let` and `var`. Those are mutable STATE that each build assigns during a
-    match, and state is where the two builds legitimately differ - one has two
-    fighters on one keyboard. Constants and functions are the code you would
-    otherwise have to change twice.
+  * `var`, which this file does not use anyway.
+
+`let` IS moved, after checking what it means here. These are per-match state
+declarations - `let arenaTime = 0`, `let audioSettings = {...}` - and the two
+builds declare them identically. Each build is its own page and its own
+JavaScript realm, so a shared declaration is not shared state between them; it
+is the same starting value written once. A build still assigns it freely at
+runtime. Moving them also unblocks 21 functions that could not travel while the
+state they read stayed behind.
   * Anything reaching for a name that only exists in one build. The fixed point
     above handles the chains.
 
@@ -80,17 +85,27 @@ def main():
     local_src = io.open(os.path.join(ROOT, 'local', 'index.html'), encoding='utf-8').read()
     online, local = definitions(online_src), definitions(local_src)
 
+    # EVERY shared module counts, common.js included. Excluding it made this
+    # script rewrite common.js from scratch on a second run: the definitions
+    # moved by the FIRST run were no longer in either build, so they were not
+    # candidates, and the file came back holding only the new batch. That
+    # deletes working code - caught immediately, but the lesson is that this
+    # script appends to a body of work rather than producing it fresh.
     shared_names = set()
+    existing_common = ''
     for fn in os.listdir(os.path.join(ROOT, 'shared')):
-        if fn.endswith('.js') and fn != 'common.js':
-            shared_names |= set(definitions(
-                io.open(os.path.join(ROOT, 'shared', fn), encoding='utf-8').read()))
+        if not fn.endswith('.js'):
+            continue
+        text = io.open(os.path.join(ROOT, 'shared', fn), encoding='utf-8').read()
+        shared_names |= set(definitions(text))
+        if fn == 'common.js':
+            existing_common = text
 
     build_names = set(online) | set(local)
     # Identical in both, a const or a function, and not an entry point.
     candidates = [n for n in online
                   if n in local and n not in NEVER
-                  and online[n][0] in ('function', 'const')
+                  and online[n][0] in ('function', 'const', 'let')
                   and norm(online[n][1]) == norm(local[n][1])]
 
     movable, changed = set(), True
@@ -125,17 +140,22 @@ def main():
 // build-specific. It exists because of a standing requirement: "you should
 // never have to update both for the same update".
 //
-// What is deliberately NOT here: mutable per-match state (`let`), the entry
-// points, and anything reaching for something only one build has - a HUD
-// canvas, a renderer, a split-screen viewport. art/audit_shared.py lists what
-// is still duplicated and why.
+// What is deliberately NOT here: the entry points, and anything reaching for
+// something only one build has - a HUD canvas, a renderer, a split-screen
+// viewport. art/audit_shared.py lists what is still duplicated and why.
 
 '''
     body = []
     for n in ordered:
         body.append(online[n][1].rstrip() + chr(10))
-    io.open(OUT, 'w', encoding='utf-8', newline='').write(header + chr(10).join(body))
-    print('wrote shared/common.js (%d definitions)' % len(ordered))
+    if existing_common:
+        # Append to what is already there, keeping its header.
+        io.open(OUT, 'w', encoding='utf-8', newline='').write(
+            existing_common.rstrip() + chr(10) * 2 + chr(10).join(body))
+    else:
+        io.open(OUT, 'w', encoding='utf-8', newline='').write(header + chr(10).join(body))
+    print('wrote shared/common.js (+%d definitions, %d total)'
+          % (len(ordered), len(definitions(io.open(OUT, encoding='utf-8').read()))))
 
     for path, table in ((os.path.join(ROOT, 'index.html'), online),
                         (os.path.join(ROOT, 'local', 'index.html'), local)):

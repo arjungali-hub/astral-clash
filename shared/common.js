@@ -1301,3 +1301,813 @@ function isBossWaveNumber(n) { return n > 0 && n % BOSS_WAVE_EVERY === 0; }
 // waves teach the enemy types before the crowd gets genuinely hard to track.
 
 function waveEnemyCount(n) { return Math.min(MAX_WAVE_ENEMIES, 2 + Math.floor((n - 1) / 3)); }
+
+let modalStack = [];
+
+function modalOpen() { return modalStack.length > 0; }
+
+function topModal() { return modalStack[modalStack.length - 1] || null; }
+
+let p1Choice = null;
+
+let p2Choice = null;
+
+let player1 = null;
+
+let player2 = null;
+
+let arenaTime = 0;
+
+// Delta-time: dt = 1.0 at a perfect 60fps frame, scales up/down from
+// there. Every existing speed/gravity/cooldown/lifespan constant in this
+// file was tuned assuming ~60fps per-frame steps, so multiplying by dt
+// (instead of switching to real-world units) keeps all that tuning valid
+// while making the game run at the same real-world speed on any monitor.
+
+let lastFrameTime = performance.now();
+
+let hitStopFrames = 0; // set on a hit; freezes physics/update for a beat
+
+let damageNumbers = []; // {x, y, z, amount, life, maxLife}
+
+let impactSparks = []; // {x, y, z, life, maxLife, color}
+
+let fpsSmoothed = 60, lastDt = 1;
+
+let loadingDepth = 0;
+
+function showLoading(arenaName) {
+    const el = document.getElementById('loading-screen');
+    if (!el) return;
+    loadingDepth++;
+    const label = document.getElementById('ld-arena');
+    if (label) label.textContent = 'ARENA // ' + String(arenaName || 'ASTRAL CLASH').toUpperCase();
+    const tip = document.getElementById('ld-tip');
+    if (tip) tip.textContent = LOADING_TIPS[Math.floor(Math.random() * LOADING_TIPS.length)];
+    el.classList.add('on');
+}
+
+function hideLoading() {
+    loadingDepth = Math.max(0, loadingDepth - 1);
+    if (loadingDepth > 0) return;   // something else is still loading
+    const el = document.getElementById('loading-screen');
+    if (el) el.classList.remove('on');
+}
+
+// Two frames, because showing an element does not paint it: the first lays out,
+// the second paints, and the caller's work runs in the third. One frame is not
+// enough - the paint has not been committed yet - and that is the difference
+// between a loading screen and a loading screen nobody sees.
+
+function themeTexturesReady(theme) {
+    if (!theme) return Promise.resolve();
+    const sets = [];
+    const wall = PHOTO_SETS.wall[theme.wallTex];
+    const floor = PHOTO_SETS.floor[theme.floorTex];
+    if (wall) sets.push(wall.set);
+    if (floor) sets.push(floor.set);
+    return Promise.all(sets.map(id => loadPhotoSet(id).catch(() => null)));
+}
+
+// THE MARK, INLINE, wherever this interface is waiting on something.
+//
+// "Loading animation should be present in EVERYTHING... even something as small
+// as that." The full screen is right for a transition and absurd for a field
+// waiting on one small thing, so the same mark comes in a text-sized version.
+//
+// busy(el, true) swaps an element's contents for the mark and remembers what
+// was there; busy(el, false) puts it back. Nothing is shown for work that
+// finishes immediately - a mark that flashes for one frame is noise.
+
+let coopEnemies = [];
+
+let waveNumber = 0;         // Survival Waves: how many have been cleared
+
+let isBossWave = false;     // true while the current Survival wave is a boss wave
+
+let zoneScore = { p1: 0, p2: 0 };
+
+let zoneMesh = null;      // ground ring, rebuilt per round
+
+let koTally = { p1: 0, p2: 0 };
+
+let waveBreakTimer = 0;
+// Fraction of max HP each player recovers per wave cleared, on request.
+// Deliberately PARTIAL rather than a full top-up: waves scale up, so incoming
+// damage per wave eventually outgrows a fixed 30% patch, which is what gives a
+// run a natural end instead of turning it into an unbounded grind. It's also the
+// only place in the game that restores HP — the no-healing rule still holds
+// everywhere else (see the tutorial's No Healing card).
+
+let toastTimer = null;
+
+function showToast(text) {
+    const el = document.getElementById('debug-toast');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+let HUD_TEXT_SCALE = parseFloat(safeLSGet('astralClashHudScale')) || 1;
+// Plain strings, because ctx.font is a string - no CSS variables reach a canvas.
+// The fallbacks are load-bearing: if the woff2 fails, ctx.font falls back
+// SILENTLY and per-call, and Courier New is at least also monospaced with
+// tabular advances, so metrics shift once rather than jittering every frame.
+
+let audioSettings = Object.assign({ master: 0.8, sfx: 1, music: 0.55, muted: false }, (() => {
+    try { return JSON.parse(safeLSGet(AUDIO_SETTINGS_KEY)) || {}; } catch (e) { return {}; }
+})());
+
+let actx = null, masterGain = null, sfxGain = null, musicGain = null;
+
+function initAudio() {
+    if (actx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return; // no WebAudio support — the game just stays silent, not broken
+    actx = new AC();
+    masterGain = actx.createGain();
+    masterGain.gain.value = audioSettings.muted ? 0 : audioSettings.master;
+    masterGain.connect(actx.destination);
+    sfxGain = actx.createGain();
+    sfxGain.gain.value = audioSettings.sfx;
+    sfxGain.connect(masterGain);
+    musicGain = actx.createGain();
+    musicGain.gain.value = audioSettings.music;
+    musicGain.connect(masterGain);
+}
+
+function applyAudioSettings() {
+    if (!masterGain) return;
+    masterGain.gain.value = audioSettings.muted ? 0 : audioSettings.master;
+    sfxGain.gain.value = audioSettings.sfx;
+    musicGain.gain.value = audioSettings.music;
+}
+
+function synthTone(freq, duration, opts = {}) {
+    if (!actx) return;
+    const now = actx.currentTime;
+    const osc = actx.createOscillator();
+    osc.type = opts.type || 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+    if (opts.freqEnd) osc.frequency.exponentialRampToValueAtTime(Math.max(1, opts.freqEnd), now + duration);
+    const g = actx.createGain();
+    const peak = opts.peak != null ? opts.peak : 0.3;
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.linearRampToValueAtTime(peak, now + (opts.attack || 0.005));
+    g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.connect(g);
+    g.connect(opts.bus || sfxGain);
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
+    return osc;
+}
+// Decaying white noise through an optional filter — covers hits/whooshes/
+// impacts that want a "thud"/"hiss" character a pure tone can't give.
+
+function sfxWindup(charName, kind) {
+    // A soft rising cue during startup frames — cheap, distinct telegraph
+    // independent of the visual lean added in Batch 8, useful with sound
+    // on even if you're not looking straight at the fighter.
+    const base = kind === 'special' ? 300 : 220;
+    synthTone(base, 0.09, { type: 'sine', freqEnd: base * 1.6, peak: 0.12 });
+}
+
+function sfxSpecial(f) {
+    // A per-character "sting" built from that character's own accent
+    // color hue-ish frequency spread rather than one shared sound —
+    // cheap way to give six specials six different identities without
+    // six bespoke hand-tuned cues.
+    const root = 220 + (hexNum(f.color) % 300);
+    synthTone(root, 0.3, { type: 'sawtooth', freqEnd: root * 2, peak: 0.22 });
+    synthTone(root * 1.5, 0.35, { type: 'sine', freqEnd: root * 2.5, peak: 0.14 });
+}
+// Low grinding "thud" — used for each arena-collapse tick (the walls
+// grinding inward a notch).
+
+let lastHeartbeatAt = -999;
+
+function sfxHeartbeatTick(now) {
+    if (now - lastHeartbeatAt < 45) return; // throttled — not a sound-per-frame
+    lastHeartbeatAt = now;
+    synthTone(55, 0.18, { type: 'sine', peak: 0.22 });
+}
+
+function sfxRoundStart() { synthTone(440, 0.15, { type: 'square', freqEnd: 880, peak: 0.2 }); }
+
+function sfxRoundEnd() { synthTone(392, 0.4, { type: 'triangle', freqEnd: 196, peak: 0.22 }); }
+
+let ambientNodes = null;
+
+function stopAmbientPad() {
+    if (!ambientNodes) return;
+    const { oscA, oscB, lfo, gain } = ambientNodes;
+    if (actx) {
+        const now = actx.currentTime;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(gain.gain.value, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.6);
+    }
+    setTimeout(() => { try { oscA.stop(); oscB.stop(); lfo.stop(); } catch (e) { /* already stopped */ } }, 700);
+    ambientNodes = null;
+}
+
+function startAmbientPad(map) {
+    stopAmbientPad();
+    if (!actx) return;
+    const accentHex = hexNum(map.accent);
+    const root = 55 + (accentHex % 40); // low root note, nudged per-map by its accent color so each arena has a slightly different drone
+    const now = actx.currentTime;
+    const oscA = actx.createOscillator(); oscA.type = 'sine'; oscA.frequency.value = root;
+    const oscB = actx.createOscillator(); oscB.type = 'sine'; oscB.frequency.value = root * 1.5 + 0.6; // slightly detuned fifth, beats slowly for a "living" pad
+    const filter = actx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 400;
+    const lfo = actx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.07;
+    const lfoGain = actx.createGain(); lfoGain.gain.value = 150;
+    lfo.connect(lfoGain); lfoGain.connect(filter.frequency);
+    const gain = actx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(1, now + 1.2);
+    oscA.connect(filter); oscB.connect(filter); filter.connect(gain); gain.connect(musicGain);
+    oscA.start(now); oscB.start(now); lfo.start(now);
+    ambientNodes = { oscA, oscB, lfo, gain };
+}
+
+let playLeft = ARENA_LEFT, playRight = ARENA_RIGHT, playTop = ARENA_TOP, playBottom = ARENA_BOTTOM;
+
+let bloomEnabled = safeLSGet('astralClashBloom') !== '0';
+
+let skyDome = null, sunSprite = null, skyTexCanvas = null;
+
+let pmremGen = null, envRT = null;
+
+let crushRigs = null;        // { p1, p2 } - each a Group of two slabs plus a stage floor
+
+let OBSTACLES = [], TERRAIN = [], PLATFORMS = [];
+
+let _photoLoader = null;
+
+function loadPhotoSet(setId) {
+    if (_photoSetPromises[setId]) return _photoSetPromises[setId];
+    if (typeof THREE === 'undefined' || !THREE.TextureLoader) return Promise.resolve(null);
+    const L = _photoLoader || (_photoLoader = new THREE.TextureLoader());
+    const one = (file, srgb) => new Promise(resolve => {
+        L.load(PHOTO_BASE + setId + '/' + file,
+            t => {
+                t.wrapS = t.wrapT = THREE.RepeatWrapping;
+                t.anisotropy = 8;
+                // Colour is colour; normals and packed ORM are DATA. Tagging
+                // data as sRGB gamma-decodes the vectors and flattens the
+                // lighting - the single easiest way to make PBR look wrong.
+                t.encoding = srgb ? THREE.sRGBEncoding : THREE.LinearEncoding;
+                resolve(t);
+            },
+            undefined,
+            () => resolve(null));
+    });
+    _photoSetPromises[setId] = Promise.all([
+        one('Diffuse.jpg', true), one('nor_gl.jpg', false), one('arm.jpg', false),
+    ]).then(([map, nor, orm]) => (map ? { map, nor, orm } : null))
+      .catch(() => null);
+    return _photoSetPromises[setId];
+}
+
+// One texture per (set, slot, tiling) - NOT per mesh. Cloning per mesh is what
+// leaked a GPU texture per platform per round before Batch 34; the clone is
+// needed only because `repeat` lives on the texture rather than the material.
+
+let floorMesh = null, floorBaseSize = null;
+
+let mapEdgeObjects = [];
+
+function spotBlocked(x, y, rad) {
+    return OBSTACLES.some(o => Math.hypot(x - o.x, y - o.y) < o.r + rad) ||
+        PLATFORMS.some(p => Math.abs(x - p.x) < p.hw + rad && Math.abs(y - p.y) < p.hd + rad) ||
+        TERRAIN.some(t => Math.abs(x - t.x) < t.hw + rad && Math.abs(y - t.y) < t.hd + rad);
+}
+
+let vmP1 = null, vmP2 = null;
+// Rebuilds both viewmodels once a character's GLB has landed.
+//
+// Without this, a viewmodel built during the load window keeps the PROCEDURAL
+// arm for the whole match: a primitive forearm tinted by the arena's light,
+// holding a fist prop that the real arm does not want. Reported as Gorgonok's
+// "large yellow/gold hexagonal block" and an arm that changed colour between
+// arenas - neither of which was his arm at all.
+//
+// Guarded on actually needing it, so a match that started with both models
+// ready never rebuilds.
+
+let charModelsLoaded = 0, charModelsFailed = 0;
+
+let modelsReady = null;       // Promise, resolved once every load has settled
+
+// glTF node names are sanitized by three.js (PropertyBinding.sanitizeNodeName
+// strips [ ] . : /), so Blender's "UpperArm.L" arrives as "UpperArmL". Try the
+// plausible spellings rather than depending on one exporter's behaviour.
+
+let p1Stage = 'pick', p2Stage = 'pick'; // 'pick' | 'preview' | 'confirmed'
+
+let mapSelectBuilt = false;
+
+const SHRINK_FRAC_STEP = 0.13;  // how much closer to center (as a fraction of the full extent) each tick pulls the bounds
+// Once the collapse fraction passes this, snap fully shut and start crushing.
+//
+// WHAT THAT WORKS OUT TO, with GRACE_PERIOD 40, SHRINK_INTERVAL 18 and
+// SHRINK_FRAC_STEP 0.13. Ticks fire at 40s, then every 18s, each adding 0.13:
+//
+//   tick 1   40s   frac 0.13        tick 4    94s   frac 0.52
+//   tick 2   58s   frac 0.26        tick 5   112s   frac 0.65
+//   tick 3   76s   frac 0.39        tick 6   130s   frac 0.78 -> >= 0.8 on the
+//                                                     NEXT step, so tick 7 at
+//                                                     148s snaps shut
+//
+// 0.78 is just under the 0.8 threshold, so the crush actually begins on tick 7
+// at 148 seconds - two minutes and twenty-eight seconds of full match before
+// the walls close, against 55 seconds before this change.
+
+const CRUSH_DPS = 40;           // flat HP/second lost by BOTH fighters while crushing — same rate regardless of max or current HP
+
+let shrinkTimer = GRACE_PERIOD; // first tick fires after the grace period, then every SHRINK_INTERVAL
+
+let shrinkFrac = 0;             // current (smoothly-lerped) collapse fraction, 0 = full arena, 1 = fully shut at center
+
+let shrinkTargetFrac = 0;       // the stepped target the visible fraction eases toward
+
+let crushing = false;
+
+let roundWins = { p1: 0, p2: 0 };
+
+let currentRound = 1;
+
+let roundEndTimer = 0;
+
+let roundStartedAt = 0;
+
+let roundDurations = [];
+
+let matchMap = null;
+
+let pausedFromState = null;
+
+let pauseStartedAt = 0;
+
+let introPhaseAt = 0;      // performance.now() when the current phase began
+
+function introPhaseElapsed() { return performance.now() - introPhaseAt; }
+
+function disposeBoss() {
+    for (const e of coopEnemies) if (e) e.disposeMesh();
+    coopEnemies = [];
+    isBossWave = false;
+}
+// Build one co-op enemy from a config name. Appends to `coopEnemies` (it no
+// longer replaces the previous one — a wave spawns several), so callers that
+// want a clean field call disposeBoss() first.
+// `hpMult`/`dmgMult` scale it: difficulty tier for a boss, wave number for a
+// Survival wave.
+
+function farthestSpawnFromPlayers() {
+    const inset = 140;
+    const corners = [
+        { x: ARENA_LEFT + inset, y: ARENA_TOP + inset },
+        { x: ARENA_RIGHT - inset, y: ARENA_TOP + inset },
+        { x: ARENA_LEFT + inset, y: ARENA_BOTTOM - inset },
+        { x: ARENA_RIGHT - inset, y: ARENA_BOTTOM - inset },
+    ];
+    const live = [player1, player2].filter(isAlive);
+    if (!live.length) return corners[0];
+    let best = corners[0], bestScore = -Infinity;
+    for (const c of corners) {
+        const score = Math.min(...live.map(p => Math.hypot((p.x + p.width / 2) - c.x, (p.y + p.height / 2) - c.y)));
+        if (score > bestScore) { bestScore = score; best = c; }
+    }
+    return best;
+}
+
+// The boss went down. Boss Fight ends in victory; Survival Waves counts the
+// clear and sends in the next, tougher challenger (Batch 18 supplies them).
+
+let gameState = "MENU"; // MENU, INTRO, FIGHT, DEATH, ROUND_END, PAUSED, GAMEOVER
+
+// --- Single screen manager. One source of truth for what's visible, so the
+// ~dozen scattered element.style.display assignments (in three different
+// truthy values) can't drift out of sync — the root cause of modal-leak bugs.
+//   SCREENS live inside #ui-overlay (only one shown at a time; overlay hidden
+//   during a fight). MODALS overlay everything and stack: opening one leaves
+//   whatever's underneath in place, so closing returns there. ---
+// Batch 34: `home` is the front page and `select` is the ROOM (connection,
+// both players' slots, your roster, host-only match setup). They are separate
+// screens rather than one scrolling page because they answer different
+// questions - "what do you want to do" vs "who is here and what are we
+// playing" - and the room is meaningless without a connection.
+
+let progression = (() => {
+    try {
+        const saved = JSON.parse(safeLSGet(PROGRESSION_KEY)) || {};
+        // Migration: Batch 12's shape was a single shared blob with `coins` at
+        // the top level. If we find that, copy it to BOTH sides rather than
+        // picking a winner — nobody should lose progress they already earned
+        // just because the save format changed under them.
+        const isLegacy = saved && saved.coins !== undefined && !saved.p1 && !saved.p2;
+        if (isLegacy) return { p1: repairSideProgress(saved), p2: repairSideProgress(JSON.parse(JSON.stringify(saved))) };
+        return { p1: repairSideProgress(saved.p1), p2: repairSideProgress(saved.p2) };
+    } catch (e) {
+        return { p1: freshSideProgress(), p2: freshSideProgress() };
+    }
+})();
+
+const MATCH_MODES = [
+    { id: 'classic', name: 'Classic Versus', blurb: 'Best of 3 rounds. Knock your opponent out to win a round.' },
+    { id: 'zone', name: 'Zone Control', blurb: 'Hold the glowing ring at the center. First to 45 seconds of control wins — knock them out of it.' },
+    // Batch 38: "Time Attack" named the one thing this mode does not involve.
+    // It is first to three knockouts with no clock at all - the name was
+    // borrowed from racing, where the timer IS the score. "Takedown Race" says
+    // what it is: a race, scored in takedowns.
+    //
+    // The ID stays `timeattack`. It is a localStorage progression key and a
+    // value on the wire in SETUP/START packets, so renaming it would reset
+    // players' records and desync a mixed-version match for a cosmetic gain.
+    { id: 'timeattack', name: 'Takedown Race', blurb: 'Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse — the race is the pressure.' },
+    { id: 'boss', name: 'Boss Fight (Co-op)', blurb: 'Both players team up against Karrigos, the Granite Colossus. Its attacks are slow and telegraphed — punish the wind-up. Go down and you are out for 25 seconds; if your teammate falls while you are down, the run is over.', coop: true },
+    { id: 'survival', name: 'Survival Waves (Co-op)', blurb: 'Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.', coop: true },
+];
+
+let zoneHolder = null;    // 'p1' | 'p2' | null (contested or empty) — drives the ring's color
+
+// Takedown Race (id `timeattack`). A fixed count, not player-configurable: 3 echoes the existing
+// best-of-3 motif, and at this game's real time-to-kill it lands a match at
+// roughly 1-3 minutes, matching the pacing everything else is tuned to.
+
+function sideOf(fighter) { return fighter.isPlayerOne ? 'p1' : 'p2'; }
+
+let hudFontReady = false;
+if (document.fonts && document.fonts.load) {
+    Promise.all([
+        document.fonts.load("500 13px AstralHUD"),
+        document.fonts.load("700 13px AstralHUD"),
+        document.fonts.load("800 32px AstralDisplay"),
+    ]).then(() => { hudFontReady = !!document.fonts.check("13px AstralHUD"); })
+      .catch(() => { hudFontReady = false; });
+}
+// Batch 36: the HUD cut, at a whole pixel size.
+//
+// The rounding is not cosmetic. The HUD is drawn to a 1755x975 virtual canvas
+// that is then scaled to the window, so an unrounded size lands on fractional
+// pixels with no hinting to rescue it and 9px text turns to mush. `bold` maps
+// to 700 on the variable weight axis.
+// The smallest the HUD is allowed to render on a real screen, and how far a
+// size may be stretched to reach it. Reported: "the HUD is tiny at 640x530,
+// name labels are about 7px tall" - true and arithmetic: the HUD is authored in
+// a 1755x975 space and drawn at min(w/1755, h/975), which is 0.35 in a 614px
+// frame, so an 18-unit label lands at 6.3 real pixels.
+//
+// The cap matters as much as the floor. Without it, a small window would get a
+// HUD scaled up by 3x, the two player panels would meet in the middle, and the
+// fix would be worse than the bug.
+
+let rebindCapture = null; // { side, action, buttonEl } while waiting on the next keydown
+// The one line of feedback this panel has: what just happened to a binding.
+// Reported against Reset ("acts instantly with no feedback") and needed again
+// for the swap, which changes a row you are not looking at.
+
+const MAP_THEMES = {
+    // Cyan energy arena — dark steel + glowing seams, clear cool midday.
+    'Voltaic Nexus': {
+        // white blocks whose tops read as flat pure white
+        exposure: 0.84,
+        id: 'astral', wallStyle: 'techrail', wallTex: 'metal', wallColor: 0x3a557e, capColor: 0x22314c,
+        floorTex: 'techgrid', floorColor: 0xaecbe6, column: 'pylon', stoneColor: 0x3a557e, stepColor: 0x2a3a58,
+        sky: ['#1a4fd0', '#3f86e6', '#87bff2', '#cfeaff'],
+        sun: { color: 0xffffff, pos: [-1500, 2800, 1400], int: 1.5, size: 720 },
+        hemi: { sky: 0xcfe6ff, ground: 0x33506f, int: 0.9 }, ambient: { color: 0xaccdf2, int: 0.5 },
+        fog: { color: 0xc4e2ff, near: 1600, far: 5400 }, scenery: 'tech'
+    },
+    // Warm desert sandstone temple — stepped ziggurat walls, golden-hour haze.
+    'Sundered Stair': {
+        id: 'desert', wallStyle: 'ziggurat', wallTex: 'sandstone', wallColor: 0xd9b579, capColor: 0xbf9a5f,
+        floorTex: 'sand', floorColor: 0xe6cd97, column: 'stone', stoneColor: 0xd9c19a, stepColor: 0xc2a06a,
+        sky: ['#5f8fc8', '#c7b184', '#e6cfa0', '#f5e0b4'],
+        sun: { color: 0xffd8a0, pos: [-1900, 1900, 1200], int: 1.5, size: 900 },
+        hemi: { sky: 0xffe6c0, ground: 0x8a6a45, int: 0.9 }, ambient: { color: 0xe8c99a, int: 0.6 },
+        fog: { color: 0xf0d9a8, near: 1300, far: 4800 }, scenery: 'temple'
+    },
+    // Cool grey granite castle — classic battlements, soft diffuse daylight.
+    'Twin Ramparts': {
+        id: 'castle', wallStyle: 'battlement', wallTex: 'ashlar', wallColor: 0x8b9099, capColor: 0x6b7079,
+        floorTex: 'flagstone', floorColor: 0x9aa1aa, column: 'stone', stoneColor: 0x9098a2, stepColor: 0x5c636e,
+        sky: ['#6f92c4', '#9ab4d6', '#c2d2e6', '#dde7f0'],
+        sun: { color: 0xeef0ff, pos: [-1200, 2400, 1500], int: 1.2, size: 680 },
+        hemi: { sky: 0xcdd9ec, ground: 0x545a64, int: 0.85 }, ambient: { color: 0xb8c2d4, int: 0.65 },
+        fog: { color: 0xcdd8e8, near: 1400, far: 5000 }, scenery: 'castle'
+    },
+    // Cream marble + grass colosseum — smooth ivy-topped walls, bright midday.
+    'The Colosseum Ring': {
+        // marble and pale sandstone, reported as "very washed-out"
+        exposure: 0.8,
+        id: 'colosseum', wallStyle: 'ivy', wallTex: 'marble', wallColor: 0xe6ddc9, capColor: 0xd2c8b0,
+        floorTex: 'grass', floorColor: 0x8fbf6f, column: 'marble', stoneColor: 0xe6ddc9, stepColor: 0xcfc6b0,
+        sky: ['#2f8fe0', '#66b6f2', '#a6d8fb', '#e0f4ff'],
+        sun: { color: 0xfffff2, pos: [-1300, 3000, 1400], int: 1.8, size: 800 },
+        hemi: { sky: 0xe4f4ff, ground: 0x5f7d45, int: 0.95 }, ambient: { color: 0xd0ead0, int: 0.55 },
+        fog: { color: 0xdaf0ff, near: 1800, far: 5600 }, scenery: 'grove'
+    },
+    // Red-rock canyon mesa — rough jagged cliffs, warm dusty afternoon.
+    'Skyreach Spire': {
+        id: 'canyon', wallStyle: 'jagged', wallTex: 'redrock', wallColor: 0xb0623a, capColor: 0x8f4a2e,
+        floorTex: 'redsand', floorColor: 0xc87a4a, column: 'redspire', stoneColor: 0xb0623a, stepColor: 0x8f4a2e,
+        sky: ['#4a80c0', '#c88a55', '#e6a865', '#f3c98f'],
+        sun: { color: 0xffc27a, pos: [-2000, 1700, 1100], int: 1.5, size: 950 },
+        hemi: { sky: 0xffd9a0, ground: 0x6a3a25, int: 0.9 }, ambient: { color: 0xe0a878, int: 0.6 },
+        fog: { color: 0xe8b482, near: 1300, far: 4600 }, scenery: 'canyon'
+    },
+    // Frozen glacier — pale cracked-ice walls, crisp cold clear light.
+    'The Shattered Bridge': {
+        // ice walls, ice floor and a white sun: the palest arena there is
+        exposure: 0.72,
+        id: 'glacier', wallStyle: 'crystal', wallTex: 'ice', wallColor: 0xbfe4f2, capColor: 0x9fd0e8,
+        floorTex: 'ice', floorColor: 0xd6eef8, column: 'icecrystal', stoneColor: 0xbfe4f2, stepColor: 0x9fd0e8,
+        sky: ['#3f96de', '#79c2ef', '#aadcf5', '#e2f5ff'],
+        sun: { color: 0xeef8ff, pos: [-1400, 2700, 1500], int: 1.65, size: 760 },
+        hemi: { sky: 0xeaf7ff, ground: 0x6a8494, int: 0.9 }, ambient: { color: 0xcfe6f2, int: 0.6 },
+        fog: { color: 0xdcf0fa, near: 1500, far: 5200 }, scenery: 'ice'
+    },
+    // Volcanic foundry — black basalt with glowing lava seams, smoky warm daylight.
+    'Molten Foundry': {
+        // Its whole identity is being nearly black, so this is the one theme
+        // that needs its own colour to actually apply (see themeTintFade) AND
+        // its own exposure, the same lever the three pale arenas use in the
+        // other direction. A foundry should be the darkest room in the game.
+        tintFade: 0.10,
+        // 0.62 was a genuinely dark foundry and unplayable with it - the far
+        // wall went to near-black and an opponent standing against it was
+        // invisible. 0.75 keeps the plate dark and the lava seams glowing while
+        // leaving enough range to see someone coming.
+        exposure: 0.75,
+        id: 'volcanic', wallStyle: 'jagged', wallTex: 'basalt', wallColor: 0x2e2a33, capColor: 0x1a1720,
+        floorTex: 'lava', floorColor: 0x403a46, column: 'redspire', stoneColor: 0x2a2530, stepColor: 0x241f28,
+        sky: ['#5f5560', '#9a6a55', '#c88a5a', '#e0b487'],
+        sun: { color: 0xff9a50, pos: [-1600, 2200, 1300], int: 1.35, size: 840 },
+        hemi: { sky: 0xd9a878, ground: 0x3a2a28, int: 0.85 }, ambient: { color: 0xc78a60, int: 0.55 },
+        fog: { color: 0xc79070, near: 1100, far: 4200 }, scenery: 'volcanic'
+    },
+    // Overgrown jungle ruins — mossy grey-green stone + vines, humid green daylight.
+    'Overgrown Sanctuary': {
+        id: 'jungle', wallStyle: 'ivy', wallTex: 'mossstone', wallColor: 0x8a9478, capColor: 0x6a7458,
+        floorTex: 'jungle', floorColor: 0x6f8a4a, column: 'stone', stoneColor: 0x7a856a, stepColor: 0x4a5540,
+        sky: ['#5a86b0', '#8fae86', '#b6cf9a', '#dbe8bf'],
+        sun: { color: 0xfff0c8, pos: [-1400, 2500, 1500], int: 1.45, size: 780 },
+        hemi: { sky: 0xcfe0b8, ground: 0x3a4a2a, int: 0.95 }, ambient: { color: 0xbccf9a, int: 0.6 },
+        fog: { color: 0xcfe0b0, near: 1300, far: 4600 }, scenery: 'jungle'
+    },
+    // Sky temple — white marble + gold, bright airy pastel dawn.
+    'Skyward Temple': {
+        id: 'celestial', wallStyle: 'gilded', wallTex: 'cloudmarble', wallColor: 0xf2ecdd, capColor: 0xd9b24a,
+        floorTex: 'cloud', floorColor: 0xeee6d2, column: 'marble', stoneColor: 0xf3ecdc, stepColor: 0xd8cfb8,
+        sky: ['#6aa6e6', '#a9c8f0', '#e6c6d8', '#f7e6c8'],
+        sun: { color: 0xfff0d0, pos: [-1300, 3000, 1500], int: 1.7, size: 860 },
+        hemi: { sky: 0xeaf0ff, ground: 0xc8b88a, int: 1.0 }, ambient: { color: 0xe8e0f0, int: 0.6 },
+        fog: { color: 0xeee0e8, near: 1800, far: 5600 }, scenery: 'celestial'
+    },
+    // Coral reef hollow — pink coral stone + turquoise, bright tropical daylight.
+    'Coral Hollow': {
+        id: 'coral', wallStyle: 'crystal', wallTex: 'coralstone', wallColor: 0xe6a890, capColor: 0xd98a78,
+        floorTex: 'coralsand', floorColor: 0xbfe8dc, column: 'icecrystal', stoneColor: 0xf2b0a0, stepColor: 0xc98a78,
+        sky: ['#2fb0d8', '#6fd0e6', '#bfeaf0', '#f0f8e8'],
+        sun: { color: 0xfffbe8, pos: [-1400, 2800, 1400], int: 1.7, size: 800 },
+        hemi: { sky: 0xdff6ff, ground: 0x4a7a70, int: 0.95 }, ambient: { color: 0xcfeee8, int: 0.6 },
+        fog: { color: 0xd6f0ee, near: 1700, far: 5400 }, scenery: 'coral'
+    }
+};
+// How much of a theme's COLOUR survives onto the photographic albedo.
+//
+// 0.62 means "mostly faded", which Batch 34 chose because a real photograph
+// carries its own colour and multiplying medieval blocks by a courtyard's
+// grey-green turned them to mud. That reasoning holds for every theme whose
+// identity is its architecture - and fails completely for one whose identity is
+// being nearly black: Molten Foundry's basalt and lava both map to a TAN rock
+// photograph, and at 38% tint strength a tan photograph stays tan. It rendered
+// as "a bright tan sandstone canyon", which is the opposite of a foundry.
+//
+// So a theme may ask for its tint back.
+
+function specialHitDmg(f) { return f.cfg.specialDmg || 0; }
+
+function hexToRgbTriplet(hex) {
+    const n = (typeof hex === 'number') ? hex : hexNum(hex);
+    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+}
+
+// --- Batch 34: teleport visual smoothing. See Fighter.visOffX / teleportTo. --
+// Batch 47: THERE IS NO MINIMUM ANY MORE.
+//
+// This used to be 26 units, with a comment explaining that a shove is not a
+// teleport and must not acquire a smear "otherwise ordinary knockback would
+// feel mushy". The concern was right and the conclusion was wrong: mushiness
+// is a function of DURATION, not of whether the slide exists. A 300ms lag on
+// an 8-unit shove is mush; the same shove drawn over four frames is the hit
+// landing. Requested as "knockbacks/dashes/literally anything shouldn't snap
+// you into a spot".
+//
+// Kept as a named constant at 0 rather than deleted, because the decay curve
+// below is what replaced it and the two belong together.
+
+const TELEPORT_VIS_DECAY = 0.82;
+// ...and for a short shove, which must be caught up in a few frames or it
+// reads as lag rather than as impact. Interpolated by distance between the
+// two: a 10-unit knockback lands on ~0.60 (about four frames), a 70-unit dash
+// keeps the 0.82 (~eighteen frames) that was tuned for it.
+
+const VM_PROP_YAW = 0.99, VM_PROP_PITCH = -0.34, VM_PROP_ROLL = 0.62;
+
+// ...and PER WEAPON, because one angle cannot serve them all. The general
+// values were tuned against a sword, whose silhouette is a long flat blade;
+// applied to a hammer - one big head at the end of a stick - the same angle
+// shows that head end-on, and it reads as "a flat disc or washer on a thin
+// stick" (reported). Overrides are partial: anything omitted takes the value
+// above.
+
+const VM_AIM = {
+    //              forward,  up,     right(inboard)
+    upper: [0.42, -0.86, 0.30],
+    lower: [0.93, 0.22, 0.30],
+};
+
+// Resolves a bone by name from a SkinnedMesh's SKELETON.
+//
+// This exists because findBone(root, ...) traverses the object graph, and a
+// SkinnedMesh's bones are NOT its children - they hang off the character group
+// beside it. Calling findBone(skinnedMesh, 'UpperArm', 'L') therefore returns
+// null, always, and every `if (bone)` guard downstream silently does nothing.
+//
+// That single mistake is the whole reason the first-person arms were reported
+// as "backwards and sometimes separated and weird": the pose step below looked
+// like it was swinging the arm forward and was in fact a no-op, so what shipped
+// was the BIND pose - a T-pose, arm straight out to the side - rigidly rotated
+// a quarter turn to face the camera. It was caught by measuring the baked
+// geometry: the arm's bounding box spanned 0.7 across and 0.4 vertically, which
+// is an arm pointing sideways, not one pointing forward.
+//
+// three.js sanitises glTF node names (PropertyBinding.sanitizeNodeName strips
+// [ ] . : /), so "UpperArm.L" can arrive as either "UpperArm.L" or "UpperArmL".
+// Both spellings are tried, in that order, exactly as findBone does.
+
+function findBone(root, base, side) {
+    const names = side ? [`${base}.${side}`, `${base}${side}`, `${base}_${side}`] : [base];
+    for (const n of names) {
+        const o = root.getObjectByName(n);
+        if (o) return o;
+    }
+    return null;
+}
+
+// Batch 35: models load ON DEMAND, not all at once.
+//
+// This used to load every entry in CHAR_MODEL_URLS in parallel at boot. With
+// one character that was 2 MB; with the full roster of fourteen it is ~29 MB
+// before the menu is usable, which is not a defensible first load for a game
+// served over the web - and a match only ever needs two of them (plus a boss).
+//
+// So: nothing loads at boot, and a character's model is fetched the moment
+// anyone commits to it - you previewing a card, or the opponent's PICK message
+// arriving. That is seconds of lead time while the other player is still
+// choosing, which is almost always enough. If it is not, initMesh() falls back
+// to the procedural mesh for that round and the model is simply ready for the
+// next one; the game never blocks on a download.
+
+const SPECIAL_ANIMS = {
+    dash: { type: 'dash' },                              // Kaelen — explosive lunging thrust
+    volley: { type: 'volley' },                          // Lyra — sweeping multi-shot cast
+    shockwave: { type: 'slam' },                         // Gorgonok — two-fisted ground slam
+    flurry: { type: 'blinkflurry', jabs: 5, reachDeg: 105 }, // Voss — blink-in rapid stab storm
+    groundbreak: { type: 'slam', big: true },            // Draven — giant overhead smash
+    ward: { type: 'ward' },                              // Seraphine — raised glowing guard
+    reap: { type: 'reap' },                              // Nyx — spinning scythe reap
+    inferno: { type: 'flameburst' },                     // Ignis — crouch then flame burst
+    thunder: { type: 'skybolt' },                        // Aurelia — call the bolt from the sky
+    bramble: { type: 'whipsweep' }                       // Thorne — huge sweeping lash
+};
+// Batch 25: `axis` lets one animation path drive both rigs. A procedural arm is
+// a Group hanging down, swung about Z. A skeleton's arm bone swings about its
+// local X, and with the opposite sign (measured in Blender: negative local-X is
+// forward). Everything else - all thirteen anim types, their timings, the
+// special overrides - is untouched.
+// The usable range of a shoulder swing, in degrees. See the clamp in _swingArm.
+
+let p1Preview = null, p2Preview = null;
+
+let p1IsBot = false, p2IsBot = false;
+
+// Batch 6: difficulty tiers built on the existing think-timer/probability
+// model rather than a separate system — easy reacts slowly and whiffs
+// often, higher tiers react fast, punish recovery, lead their shots, and
+// strafe. `lead` = predict the target's position when aiming projectiles;
+// `strafe` = perpendicular-movement amplitude (harder to hit, dodges
+// shots passively); `relentless` = no random idle jump-twitch, always
+// pressing. 'insane' is a deliberately very strong boss tier.
+
+function statRow(label, value, max, lvl, text) {
+    const pct = Math.round((value / max) * 100);
+    // Show the upgrade level inline when there is one, so the numbers on this
+    // panel visibly match what you bought in the Shop.
+    const badge = lvl ? ` <span style="color:#00f3ff">+${lvl}</span>` : '';
+    // `text` lets the printed value differ from the bar's number: Seraphine's
+    // special reads "Shield" while filling 0%, Lyra's reads "120 (24x5)".
+    const shown = text == null ? value : text;
+    return `<div class="stat-row"><span>${label}</span><div class="stat-bar"><div class="stat-fill" style="width:${pct}%"></div></div><span class="stat-val">${shown}${badge}</span></div>`;
+}
+
+// Batch 24: derived from the SAME fields doSpecial reads, so the number on the
+// card is by construction the number the special actually deals.
+
+function showGrid(side) {
+    const isBot = side === 'p1' ? p1IsBot : p2IsBot;
+    const grid = document.getElementById(`${side}-grid`);
+    grid.style.display = isBot ? 'none' : 'grid';
+    grid.classList.remove('locked');
+    markSelected(side, null);
+    document.getElementById(`${side}-detail`).style.display = 'none';
+}
+
+// A side is ready to fight if a human confirmed a pick, or if it's a bot
+// (bots don't pick — their fighter is rolled randomly at match start).
+// Ready means "has a fighter and has locked it in", not "says confirmed".
+//
+// A stage can be set without a pick ever having happened - a scripted confirm
+// did exactly that, and the room then painted READY over "No fighter yet" while
+// the other machine still showed that player as choosing. Checking the CHOICE
+// as well as the stage makes that state unrepresentable, wherever it comes from.
+
+function sideReady(side) {
+    if (side === 'p1') return p1IsBot || (p1Stage === 'confirmed' && !!p1Choice);
+    return p2IsBot || (p2Stage === 'confirmed' && !!p2Choice);
+}
+
+let loser = null, winner = null, deathPhase = '', deathTimer = 0, isDraw = false, deathCandidates = [];
+
+// --- Batch 5: match structure — best-of-3 rounds, pause, and a post-match
+// summary. gameState gains two new values: 'PAUSED' and 'ROUND_END' (brief
+// pips/reset screen between rounds). ---
+
+const DEATH_SKIP_AFTER = 15; // frames into the death sequence before a keypress can skip it
+
+// --- Arena Collapse: replaces the old flat round timer. There's no clock
+// counting down to a timeout draw anymore — instead there's a timer to the
+// *next* collapse tick. The arena holds at full size for a grace period
+// (GRACE_PERIOD) so players get to use the whole map early, THEN starts
+// pulling inward on ALL FOUR sides proportionally (X and Y together, so it
+// keeps its shape) every SHRINK_INTERVAL seconds, squeezing the fight so
+// two fighters just avoiding each other run out of room. As the bounds
+// close, the map geometry left outside them literally falls away into the
+// void beneath the (also-shrinking) floor — "as if it never existed" — so
+// the arena visibly disappears from the edges in rather than being hidden
+// behind wall props. Once the collapse passes CRUSH_AT_FRAC, it snaps the
+// rest of the way shut and both fighters take flat, equal, maxHP-independent
+// damage per second (CRUSH_DPS) until one dies — reusing the existing
+// hp<=0 -> DEATH flow so "whoever dies first loses" falls out of logic that
+// already existed, and the map stays fully visible (no obscuring props)
+// while each fighter is crushed in place on their own side.
+//
+// Timing: retuned for the current (much higher) damage. After the 5x damage
+// pass a decisive round resolves in well under a minute, so the old 2¾-minute
+// window meant collapse essentially never fired. Now GRACE_PERIOD 20s of full
+// arena, then a tick every SHRINK_INTERVAL (6s) closing SHRINK_FRAC_STEP (0.13)
+// each. Crush (frac >= 0.8) lands on the 7th tick, ~20 + 6·6 ≈ 56s into a
+// fully-stalled round — real pressure on a staller, but it won't interrupt a
+// decisive fight.
+// Batch 38: the collapse is much less hurried.
+//
+// Requested as "make the amount of time before the first time the wall closes
+// in 2x more, and the intervals between the walls closing in 3 times as much".
+// At 20s + 6s the arena was already visibly shrinking while players were still
+// learning the map, and a Classic Versus round was effectively on a ~55 second
+// clock. The collapse is meant to be a backstop against two players refusing
+// to engage, not the primary pressure.
+//
+// See the arithmetic written out at CRUSH_AT_FRAC: the first tick now lands at
+// 40s and the walls slam shut at 130s.
+
+function decideRoundResult() {
+    if (player1.hp <= 0 && player2.hp <= 0) {
+        isDraw = true; winner = null; loser = null;
+    } else {
+        isDraw = false;
+        loser = player1.hp <= 0 ? player1 : player2;
+        winner = loser === player1 ? player2 : player1;
+    }
+}
+
+function coopRevive(f) {
+    // Back at your own spawn, not next to your teammate. Dropping a
+    // half-health fighter into the middle of the fight they just lost is a
+    // second death, and the walk back is the rest of the cost of the first.
+    f.respawn(f === player1 ? matchMap.spawn1 : matchMap.spawn2, COOP_RESPAWN_HP_FRAC);
+    sfxRoundStart();
+}
+
+// Co-op win/loss, checked every FIGHT frame.
+//
+// Batch 16 ended the run the moment EITHER player hit 0, and its comment here
+// said why: a revivable teammate needed a sub-state the file did not have.
+// It does now - the continuous modes brought respawn() and a KO that is a
+// setback - so a downed player counts down instead, and only a WIPE ends it.

@@ -22,6 +22,8 @@ instead of re-deriving what to copy. Every block is extracted from index.html by
 its own anchors, so it cannot drift from the live version; paths are rewritten
 from `assets/` to `../assets/` because the archive lives one directory down.
 """
+import difflib
+import subprocess
 import io
 import os
 import re
@@ -35,6 +37,53 @@ DST = os.path.join(ROOT, 'local', 'index.html')
 # A column-0 definition, the same shape art/extract_shared.py looks for.
 _DEF_RE = re.compile(r'(?m)^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|'
                      r'(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=)')
+
+
+def code_only(text):
+    """The lines that actually run: no comments, no blanks, no indentation."""
+    out = []
+    for line in text.splitlines():
+        t = line.strip()
+        if t and not t.startswith('//'):
+            out.append(t)
+    return chr(10).join(out)
+
+
+def close_comment_drift(src, dst):
+    """Rewrite local definitions whose code already matches, to pick up the notes.
+
+    A definition that differs ONLY in its comments is a note that never crossed
+    over, and it pins the definition in both builds forever: art/extract_shared.py
+    moves a definition only when the two copies are byte-identical, so a stale
+    comment is as good as a real difference to it.
+
+    Rewriting is safe here by construction, not by review - the guard is that
+    code_only() already agrees, so what changes is exclusively comments. A
+    definition whose code differs is left alone and reported as drift instead.
+    """
+    src_defs = {}
+    hits = list(_DEF_RE.finditer(src))
+    for k, m in enumerate(hits):
+        end = hits[k + 1].start() if k + 1 < len(hits) else len(src)
+        src_defs[m.group(1) or m.group(2)] = src[m.start():end]
+
+    updated = []
+    while True:
+        hits = list(_DEF_RE.finditer(dst))
+        for k, m in enumerate(hits):
+            name = m.group(1) or m.group(2)
+            if name in updated or name not in src_defs:
+                continue
+            end = hits[k + 1].start() if k + 1 < len(hits) else len(dst)
+            mine, theirs = dst[m.start():end], src_defs[name]
+            if mine == theirs or code_only(mine) != code_only(theirs):
+                continue
+            dst = dst[:m.start()] + theirs + dst[end:]
+            updated.append(name)
+            break
+        else:
+            break
+    return dst, updated
 
 
 def strip_shared_duplicates(text, shared_sources):
@@ -97,13 +146,43 @@ def comment_start(text, i):
     return start
 
 
+# Filled in by main() once the shared modules have been read. block() falls
+# back to these; see the note in block().
+SHARED_FALLBACK = []
+BLOCK_MOVED = []
+
+
 def block(text, start_marker, end_marker, name='block'):
-    """The text from start_marker up to (not including) end_marker."""
-    i = text.index(start_marker)
-    j = text.index(end_marker, i)
-    out = text[i:j]
-    assert len(out) > 40, name
-    return out
+    """The text from start_marker up to (not including) end_marker.
+
+    Falls back to the shared modules when the online build no longer contains
+    the region. Every step that copies a region out of index.html dies the day
+    that region moves to shared/ - the marker is simply gone - and three steps
+    went that way in one afternoon, each aborting the whole sync. But a step
+    whose content has moved is not broken, it is FINISHED: both builds load that
+    code from one file now.
+
+    So rather than crash, the region is found in shared/, the step runs, and the
+    de-shadowing pass removes the copy it inserted on the same run. That makes a
+    finished step inert instead of fatal. It is reported so it can be deleted on
+    purpose instead of discovered by a traceback, and the fixed-point check at
+    the end proves the inertness rather than taking it on trust.
+    """
+    haystacks = [text] + SHARED_FALLBACK
+    for k, hay in enumerate(haystacks):
+        if start_marker not in hay:
+            continue
+        i = hay.index(start_marker)
+        if end_marker not in hay[i:]:
+            continue
+        out = hay[i:hay.index(end_marker, i)]
+        if len(out) <= 40:
+            continue
+        if k:
+            BLOCK_MOVED.append(name)
+        return out
+    raise ValueError('block %r: start marker not in the online build or in shared/'
+                     % name)
 
 
 # `required=False` means "skip if the anchor is gone". Used by every step whose
@@ -314,6 +393,15 @@ WATCH_NEW = """    // Nobody is playing: one camera, from above. Two split-scree
 
 def main():
     src = io.open(SRC, encoding='utf-8').read()
+    shared_src = io.open(os.path.join(ROOT, 'shared', 'roster.js'), encoding='utf-8').read()
+    anim_src = io.open(os.path.join(ROOT, 'shared', 'animation.js'), encoding='utf-8').read()
+    props_src = io.open(os.path.join(ROOT, 'shared', 'props.js'), encoding='utf-8').read()
+    chars_src = io.open(os.path.join(ROOT, 'shared', 'characters.js'), encoding='utf-8').read()
+    common_src = io.open(os.path.join(ROOT, 'shared', 'common.js'), encoding='utf-8').read()
+    # block() falls back to these when a region has moved out of the online
+    # build; see its docstring. Read here rather than at the de-shadowing
+    # pass because the port steps that need the fallback run long before it.
+    SHARED_FALLBACK[:] = [shared_src, anim_src, props_src, chars_src, common_src]
     dst = io.open(DST, encoding='utf-8').read()
     before = len(dst)
 
@@ -573,20 +661,22 @@ def main():
               "            font-variation-settings: 'CASL' 0, 'MONO' 0;",
               'body font stack', required=False)
 
-    hudfont = block(src, "// Batch 36: the HUD cut, at a whole pixel size.", "function cycleHudScale()", 'hudFont')
-    old_hudfont = "function hudFont(px, bold) { return `${bold ? 'bold ' : ''}${Math.round(px * HUD_TEXT_SCALE)}px sans-serif`; }\n"
-    dst = rep(dst, old_hudfont, hudfont, 'hudFont', required=False)
+    # hudFont IS NOT PORTED ANY MORE EITHER. It moved to shared/common.js once
+    # closing the comment drift made the two copies identical - which is worth
+    # noting, because the previous comment here said it could never move, on the
+    # grounds that it calls hudUnitScale() and the builds do not share a canvas.
+    # That was true of hudUnitScale's ORIGINAL split-screen version and stopped
+    # being true when that converged; the reasoning was sound and the conclusion
+    # still expired. Hence the fixed-point check rather than more reasoning.
 
-    families = block(src, "// Plain strings, because ctx.font is a string", "// Batch 36: the HUD cut, at a whole pixel size.", 'font families')
-    # Guard on the DEFINITION, not the bare name. Keying on the name silently
-    # skipped this: hudFont's own body REFERENCES HUD_FAMILY, so inserting the
-    # hudFont block a few lines above put the name in the file and satisfied
-    # the guard. Same trap hit getTiledWallTexture, whose name appears in a
-    # comment inside the photo block. The local build then died at load with
-    # "getTiledWallTexture is not defined".
-    if 'const HUD_FAMILY' not in dst:
-        anchor = "let HUD_TEXT_SCALE = parseFloat(safeLSGet('astralClashHudScale')) || 1;"
-        dst = rep(dst, anchor, anchor + "\n" + families, 'font families + preload')
+    # THE FONT FAMILIES ARE NOT PORTED ANY MORE. HUD_FAMILY, ANNOUNCE_FAMILY and
+    # announceFont live in shared/common.js, which both builds load, so copying
+    # them across was copying a definition that is no longer in the source file
+    # - this step died on its own start marker the moment they moved.
+    #
+    # hudFont stays ported, and legitimately so: it calls hudUnitScale(), which
+    # measures the build's own HUD canvas, and the two builds do not have the
+    # same canvas. That is the interface boundary, not drift.
 
     # Announcements: the same canvas sites exist in both files.
     n = dst.count('px sans-serif')
@@ -723,16 +813,18 @@ def main():
                   block(src, "    // The model faces local +X (buildRiggedCharacter rotates it so render3D can",
                         "\n\n    holder.userData.mats", 'arm facing'), 'first-person arm faces away')
 
-    # ------------------------------------------------ photographic surfaces
-    photo = block(src, "// ===========================================================================\n"
-                       "// Batch 34: PHOTOGRAPHIC ARENA SURFACES",
-                  "const wallTextureCache = {};", 'photo layer')
-    photo = photo.replace("const PHOTO_BASE = 'assets/tex/';", "const PHOTO_BASE = '../assets/tex/';")
-    # NOT guarded on PHOTO_SETS: that moved to shared/common.js, so the guard
-    # became permanently true and this 3.7KB block went in on every run.
-    # loadPhotoSet is part of the block and still lives in the build.
-    if 'function loadPhotoSet(' not in dst:
-        dst = rep(dst, "const wallTextureCache = {};", photo + "const wallTextureCache = {};", 'photo surface layer', required=False)
+    # THE PHOTOGRAPHIC SURFACE LAYER IS NOT PORTED ANY MORE. PHOTO_SETS,
+    # PHOTO_BASE, loadPhotoSet and attachPhotoSurface all live in
+    # shared/common.js now, and PHOTO_BASE is already written against
+    # AC_ASSET_BASE, so the '../assets/tex/' rewrite this step performed has no
+    # subject left either.
+    #
+    # It is worth naming what went wrong here twice, because the fix below is
+    # aimed at it. This step was guarded on PHOTO_SETS; that moved to shared and
+    # the guard became permanently true, so the block went in every run. It was
+    # re-keyed onto loadPhotoSet; loadPhotoSet has now moved to shared too and
+    # the guard became permanently true AGAIN. Re-keying a guard onto whichever
+    # name has not moved yet is not a fix, it is a wait.
 
     tiled = block(src, "// Batch 34: see the note in buildPlatformMesh. A clone is needed per distinct",
                   "function getWallTexture(theme) {", 'tiled cache')
@@ -1490,43 +1582,12 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
     # because a local `const` would shadow the shared one and bring the drift
     # straight back.
 
-    # ----------------------------------------------- how each arena is lit
-    # Same story as PHOTO_SETS below, found the same way: this build's Molten
-    # Foundry is still the bright arena reported three times, because every
-    # per-theme fix landed in the online build only. MAP_THEMES is pure art
-    # direction, so it ports whole, along with the two things that read its new
-    # fields.
-    new_themes = block(src, 'const MAP_THEMES = {', chr(10) + 'function themeFor(', 'map themes')
-    old_themes = block(dst, 'const MAP_THEMES = {', chr(10) + 'function themeFor(', 'map themes (old)')
-    if 'themeTintFade' not in dst:
-        dst = dst.replace(old_themes, new_themes, 1)
-        # themeTintFade and BASE_EXPOSURE are in shared/common.js now, so only
-        # the TABLE is copied here - and only because MAP_THEMES still differs
-        # between the builds.
-    # The reader for theme.tintFade, and the per-theme exposure base.
-        dst = rep(dst, 'function themeFor(map) {',
-                  block(src, '// How much of a theme\'s COLOUR survives',
-                        chr(10) + 'function themeFor(map) {', 'tint fade helper')
-                  + 'function themeFor(map) {', 'tint fade helper')
-        dst = rep(dst, 'renderer.toneMappingExposure = 1.1;',
-                  """// The base, which applyLighting() then scales per theme (see theme.exposure).
-// 1.1 was this build's flat value; the online build settled on 0.92 after the
-// pale arenas were reported as "almost entirely white".
-const BASE_EXPOSURE = 0.92;
-renderer.toneMappingExposure = BASE_EXPOSURE;""", 'base exposure')
-        dst = rep(dst, """function applyLighting(theme) {
-    ambientLight.color.set(theme.ambient.color);""",
-                  """function applyLighting(theme) {
-    // PER-THEME EXPOSURE. One global value cannot serve a glacier and a
-    // foundry: a near-white albedo clips under it and a near-black one washes
-    // out. See theme.exposure.
-    renderer.toneMappingExposure = BASE_EXPOSURE * (theme.exposure || 1);
-    ambientLight.color.set(theme.ambient.color);""", 'per-theme exposure')
-        # ...and the tint strength actually reaching the surfaces.
-        for old_tint in ('tintFade: 0.62 }', 'tintFade: 0.62 });'):
-            while old_tint in dst:
-                dst = dst.replace(old_tint, old_tint.replace('0.62', 'themeTintFade(theme)'), 1)
-        print('  %-34s ok' % 'map themes + exposure')
+    # THE MAP THEME STEP IS FINISHED. MAP_THEMES, themeTintFade and the tint
+    # helper are in shared/common.js, and the local build already carries
+    # BASE_EXPOSURE and the per-theme exposure line this step used to install,
+    # so every replacement it performed now has no subject. Left in place it
+    # would insert shared code that the de-shadowing pass strips again on the
+    # same run, which the fixed-point check reports as churn.
 
     # PHOTO_SETS IS NOT PORTED ANY MORE: it is in shared/common.js, which both
     # builds load. It was the clearest example of why - "the Voltaic Nexus
@@ -1696,11 +1757,16 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
             height: min(96vh, 650px);""",
               'frame fills the window', required=False)
 
-    shared_src = io.open(os.path.join(ROOT, 'shared', 'roster.js'), encoding='utf-8').read()
-    anim_src = io.open(os.path.join(ROOT, 'shared', 'animation.js'), encoding='utf-8').read()
-    props_src = io.open(os.path.join(ROOT, 'shared', 'props.js'), encoding='utf-8').read()
-    chars_src = io.open(os.path.join(ROOT, 'shared', 'characters.js'), encoding='utf-8').read()
-    common_src = io.open(os.path.join(ROOT, 'shared', 'common.js'), encoding='utf-8').read()
+
+    if BLOCK_MOVED:
+        print('  %-34s %d step(s) now copy from shared/ and are inert: %s'
+              % ('finished port steps', len(BLOCK_MOVED), ', '.join(sorted(set(BLOCK_MOVED)))))
+
+    # COMMENT DRIFT, closed before the de-shadowing pass so anything it makes
+    # identical is a candidate for shared/ on the next extraction run.
+    dst, recommented = close_comment_drift(src, dst)
+    if recommented:
+        print('  %-34s %d definitions took the online notes' % ('comment drift', len(recommented)))
 
     # NOTHING THE SHARED MODULES DEFINE MAY ALSO BE DEFINED HERE. Run last, so
     # it cleans up after every step above rather than racing them.
@@ -1838,6 +1904,57 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
 
     io.open(DST, 'w', encoding='utf-8', newline='').write(dst)
     print('\nlocal build: %d -> %d bytes' % (before, len(dst)))
+    return check_fixed_point()
+
+
+def check_fixed_point():
+    """Run this script on its own output and fail if the output moves.
+
+    This script PATCHES the existing local build rather than generating it,
+    so every step needs its own correct guard, and a guard is nearly always
+    "is this name absent". The shared extraction keeps moving names out of
+    the build, so guards keep becoming permanently true and their blocks go
+    back in on every run.
+
+    That has happened four times now - PHOTO_SETS, faceUrl, the face-chip
+    CSS, and loadPhotoSet - each found only after the file had quietly grown
+    by kilobytes a run, and each "fixed" by re-keying the guard onto a name
+    that had not moved YET. Re-keying is a wait, not a fix.
+
+    Running the whole pipeline twice and comparing bytes is the property
+    those guards are each trying to have, so it is asserted once, here,
+    instead of forty times by hand. A step that grows the file now fails the
+    sync that introduced it, at the moment it is introduced.
+    """
+    if os.environ.get('AC_SYNC_INNER'):
+        return 0
+    first = io.open(DST, encoding='utf-8').read()
+    env = dict(os.environ, AC_SYNC_INNER='1')
+    r = subprocess.run([sys.executable, os.path.abspath(__file__)],
+                       capture_output=True, text=True, env=env)
+    if r.returncode != 0:
+        print('\nFIXED POINT: the second run failed:\n'
+              + (r.stdout or '') + (r.stderr or ''))
+        return 1
+    second = io.open(DST, encoding='utf-8').read()
+    if first == second:
+        print('  %-34s ok (a second run changes nothing)' % 'fixed point')
+        return 0
+
+    # Name the step. Whatever a second run ADDS is what some guard let back in.
+    print('\nFIXED POINT FAILED: a second sync changed the build by %+d bytes.'
+          % (len(second) - len(first)))
+    added = [l[2:] for l in difflib.unified_diff(
+        first.splitlines(), second.splitlines(), n=0)
+        if l.startswith('+') and not l.startswith('+++')]
+    if added:
+        print('  a second run re-inserts %d lines, beginning:' % len(added))
+        for line in added[:6]:
+            print('    ' + line.strip()[:96])
+    print('  A port step is inserting a block its guard can no longer see.')
+    print('  The guard is probably keyed on a name that moved to shared/:')
+    print('  delete the step if the block is shared now, or make it strip-then-write.')
+    return 1
 
 
 if __name__ == '__main__':
