@@ -1742,17 +1742,6 @@ function computeDt() {
     return Math.min(dt, 3); // clamp so a tab-switch/lag spike can't jump physics far
 }
 
-// --- Batch 31: ONE local player per client. -------------------------------
-// The game was local split-screen: one keyboard drove two fighters, each with
-// its own 10-action binding set, and the screen was cut in half. Going online
-// means this client owns exactly ONE fighter and renders exactly one view, so
-// almost everything that used to be indexed by side is now indexed by
-// "mine" vs "theirs".
-//
-// LOCAL_SIDE is which fighter this client controls. The host takes 'p1' and
-// the joiner 'p2' (see the lobby), so both clients run the same code with the
-// only difference being this one value. Declared up here with the earliest
-// state because the menu build and renderViews both read it during load.
 const keys = {};
 // Batch 3a: attack/special/dodge must fire once per press, not once
 // per frame the key is held. `pressed` records the down-transition only;
@@ -2312,18 +2301,11 @@ function busyWhile(el, promise, label) {
                                          e => { done(); throw e; });
 }
 
-// ---- Batch 36: player names ----------------------------------------------
-// You name yourself, and that is what everyone sees. "Player 1" / "Player 2"
-// survive only as a fallback for someone who has NOT named themselves, per the
-// request: if neither player has a name the host is Player 1; if exactly one
-// has, the anonymous one is Player 1 (there is no ambiguity, because only one
-// side is wearing a number).
-//
-// Note this deliberately decouples the DISPLAY label from the fighter slot.
-// LOCAL_SIDE stays the mechanical p1/p2 - it decides spawns, HUD sides and
-// which fighter you drive - while the label is a separate presentation
-// concern. Conflating them is what made the old UI talk about "Player 2" when
-// it meant "the person on the other machine".
+// Batch 21: progression is PER PLAYER. P1 and P2 each keep their own coins,
+// unlocked roster, upgrades, and Double Jump — two people sharing one machine
+// each build their own account, and coins are earned by winning rather than
+// pooled. So every accessor and mutator below takes a `side` ('p1'|'p2') as its
+// first argument; there is no such thing as "the" progression anymore.
 function saveProgression() { safeLSSet(PROGRESSION_KEY, JSON.stringify(progression)); }
 // Batch 34: online there is exactly one player at this keyboard, so there is
 // exactly one account. `progression` is still keyed p1/p2 (the save format
@@ -2380,22 +2362,9 @@ function isCoopMode() { return !!modeInfo().coop; }
 let coopResultText = '';    // filled by endCoopMatch for the game-over screen
 function liveEnemies() { return coopEnemies.filter(e => e && e.hp > 0); }
 
-// ---------------------------------------------------------------------------
-// Batch 42: WHO OWNS THE CO-OP ENEMIES.
-//
-// Offline, and for the host, nobody else does: the enemies are simulated
-// locally like any other fighter. Online, the guest must NOT run them - two
-// independent copies of the same AI, stepped with each machine's own `dt`,
-// diverge immediately and then disagree about who is being hit and whether the
-// wave is clear.
-//
-// So: the host owns spawning, AI, movement and hp; it broadcasts enemy state at
-// the same rate it broadcasts its own fighter, and the guest applies it. The
-// guest's own attacks still land - it sends a HIT_ENEMY the way it already
-// sends a HIT for the opponent (attacker-authoritative), and the host applies
-// the damage so the hp that comes back is the one both machines agree on.
-//
-// `coopIsPuppet()` is the single question every enemy code path asks.
+// Zone Control. The ring sits at arena center — which is also where Arena
+// Collapse converges, so the shrinking walls naturally squeeze both fighters
+// toward the contested point instead of fighting the mode.
 const WAVE_HEAL_PCT = 0.30;
 
 // Which player's account the Shop modal is currently showing. Declared HERE,
@@ -2710,9 +2679,14 @@ function buildTutorialControls() {
         `<div class="tutorial-controls-row" style="margin-top:4px;"><b>Two players:</b> the screen splits and each side uses its own keys, above — turn to look, then walk in the direction you face.</div>` +
         `<div class="tutorial-controls-row" style="margin-top:4px;"><b>Esc</b> pauses, and opens Rebind Keys and Settings.</div>`;
 }
-// Batch 37: the "don't show automatically" checkbox is hidden when you
-// opened this deliberately - offering to stop something that is not
-// happening implies the button you just pressed was an accident.
+// `auto` is true only when the game opened this by itself on first load.
+//
+// Batch 37: the "Don't show this automatically next time" checkbox is hidden
+// when you opened it deliberately. Reported plainly: "it shouldn't say don't
+// show this automatically next time with a check box next to it, because it
+// didn't show automatically, you made it show on purpose." Offering to stop
+// something that is not happening is worse than offering nothing - it implies
+// the button you just pressed was an accident.
 function openTutorial(auto) {
     buildTutorialControls();
     const row = document.getElementById('tutorial-hide-row');
@@ -2874,9 +2848,13 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // over 1 for a sunny daytime feel.
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// Batch 45: 1.1 -> 0.92. The exposure was set for a scene lit by a flat
+// environment and four fill sources; with a directional environment and a
+// stronger key it blew the pale arenas out - Voltaic Nexus' walls and the
+// Colosseum's marble rendered as near-white, which flattens every bevel and
+// leaves bloom nothing but surfaces to grab. Slightly under 1 also gives the
+// emissive accents somewhere to be brighter THAN.
 // The base, which applyLighting() then scales per theme (see theme.exposure).
-// 1.1 was this build's flat value; the online build settled on 0.92 after the
-// pale arenas were reported as "almost entirely white".
 const BASE_EXPOSURE = 0.92;
 renderer.toneMappingExposure = BASE_EXPOSURE;
 
@@ -3090,35 +3068,6 @@ onWindowResize(); // establish real pixel size now that a camera-ish setup exist
 // - each player framed in their own half of the screen. Requested, with a
 // drawing: two figures side by side, a wall closing on each from both sides.
 let crushTime = 0;           // frames since the crush began; drives the whole sequence
-// ===========================================================================
-// THE SIDE-BY-SIDE CRUSH, AS ITS OWN SCENE.
-//
-// Batch 27 built this cinematic for split-screen, where each half already had
-// its own camera: each half showed one fighter alone with a wall behind, which
-// is what the original drawing asked for. Online there is ONE camera, so the
-// same code showed you only yourself and your opponent's death was invisible.
-//
-// Batch 39 tried staging both fighters onto marks inside the LIVE arena and was
-// reverted, for two reasons that between them say what the right design is:
-//
-//   1. The bodies would not stay put. `render3D` writes `mesh.position` from
-//      the simulation every frame, so anything that moves a fighter for
-//      presentation is overwritten before it is drawn.
-//   2. The arena is still there. Two 300-unit stages need ~640 units of gap,
-//      and at the camera distance that requires, the arena's own collapsing
-//      walls and floor are in shot behind the diorama.
-//
-// Both disappear if the cinematic stops borrowing the arena. So: a separate
-// THREE.Scene with its own lights, its own two stages, and the fighters
-// REPARENTED into it for the duration. Nothing in the main scene is touched,
-// nothing fights render3D (the reparent and the placement happen at RENDER
-// time, after every update has run), and the backdrop is whatever the
-// cinematic wants rather than whatever the level happens to look like.
-//
-// The simulation is completely unaffected: crush damage, the bounds and who
-// dies first are all computed from the real arena positions. This moves only
-// what is drawn.
-// ===========================================================================
 const CRUSH_DUST_COUNT = 18; // fixed pool per fighter; never grows (see buildCrushRigs)
 
 function crushGap() {
@@ -3469,6 +3418,12 @@ function renderOneView(cam, viewer, x, y, vw, vh, dt) {
 // (layers.enableAll) because the fighters live on their own body layers
 // (1/2) so cameras can hide the viewer's own body — a light only
 // illuminates objects sharing an enabled layer with it.
+// Batch 45: the ambient/hemi/fill trio came DOWN when the environment map
+// became directional. They were tuned against a PMREM of a vertical gradient -
+// four sources of nearly directionless light (ambient 0.55 + hemi 0.95 + fill
+// 0.85 + a 1.8x env) against a single directional key of 1.75, which is why
+// screenshots of every arena showed even, shadowless cardboard. The env does
+// that job for real now; keeping the fakes as well just double-counts it.
 const ambientLight = new THREE.AmbientLight(0xbfd6f5, 0.18); // a floor under the shadows, nothing more
 ambientLight.layers.enableAll();
 scene.add(ambientLight);
@@ -3641,29 +3596,23 @@ function groundLevelAt(x, y) {
     return best;
 }
 
-// Batch 7: nothing in this file used to dispose GPU resources — every
-// short-lived effect/projectile/particle mesh (and the whole map on every
-// rematch) just got scene.remove()'d, leaking its geometry/material/texture
-// forever. This walks an object's full subtree and frees all three.
-// Declared up here (rather than near its Batch 7 call sites further down)
-// so it's initialized before loadMap()'s mesh builders — which run at
-// startup, not just on rematch — can reference it; a late const here bit
-// us once already as the camera TDZ regression, so this one goes early.
+// The name the current seeds derive from. buildOuterWall reseeds per wall PAIR
+// (see the note there) and needs the same source the map's own seed came from.
 let currentMapName = '';
 
-// Batch 31: TOUCH_UI is gone along with the touch control scheme. It used to
-// select a reduced-quality renderer path (no antialias, no shadows, pixel
-// ratio 1) and to hide the rebind UI, since the touch pads were
-// fixed-function. The game requires a mouse to aim and a keyboard to move, so
-// it is desktop-only now and all of those settings are unconditional.
+// A full-height obstacle "column" whose form varies by theme.column: carved
+// stone pillar, sleek energy pylon, fluted marble column, natural red-rock
+// spire, or an ice-crystal cluster. Solid cover you fight around.
+// Batch 34: columns were the last untextured thing in the arena - flat
+// MeshStandardMaterial colours with no map of any kind - so once the walls and
+// floors became photographic they were what still read as clay. They take the
+// theme's WALL set, which is also correct art direction: a stone arena's
+// pillars are cut from the same stone as its walls.
 //
-// Batch 33: which makes it worth SAYING SO on a touch device rather than
-// serving a menu whose game cannot be played. Same detection the old TOUCH_UI
-// used: a coarse primary pointer or no hover, AND actual touch points - a
-// touchscreen laptop reports a fine pointer and real hover, so it is not
-// caught. `continue anyway` exists regardless, because pointer media queries
-// do misreport on hybrid devices and being wrong here would lock someone out
-// of a game they can play perfectly well.
+// The base repeat follows the wall convention of ~80 units per tile (the
+// PHOTO_SETS `tile` multiplier then lands it near 45), computed from the
+// column's actual circumference and height so a fat pillar and a thin one get
+// the same texel density instead of the same tile count.
 function photoColumn(mat, theme, radius, height, opts) {
     const rx = Math.max(0.6, (2 * Math.PI * radius) / 80);
     const ry = Math.max(0.6, height / 80);
@@ -3672,15 +3621,27 @@ function photoColumn(mat, theme, radius, height, opts) {
     return attachPhotoSurface(mat, 'wall', theme.wallTex, rx, ry, o);
 }
 
-// ARCHITECTURAL EDGES. A plinth at the base, a coping at the top, and
-// optionally a band partway up - each a slim box that OVERHANGS the face it
-// sits on, which is how masonry gets its edge and why a real building never
-// reads as an extruded rectangle.
+// A solid block: short ones read as jump-on cover platforms, tall ones as
+// full interior walls (collision is the same). Uses the theme wall texture
+// so interior cover matches the perimeter, with a glowing accent-trimmed top.
+// BUILD ONE OF EACH PAIR, CLONE THE OTHER.
 //
-// An overhanging lip is used instead of a chamfered box on purpose: see the
-// note at the top of this batch about ExtrudeGeometry's UVs. It also costs one
-// mesh instead of a geometry rebuild, and it is the same trick the outer walls
-// already used for their cap, generalised.
+// "The arenas should all have perfect 180 degree rotational symmetry, so that
+// both players have the exact same situation for every map."
+//
+// The map DATA has always been symmetric - symmetrycheck asserts it for all ten
+// arenas - but the builders decorate with Math.random(), so two calls for two
+// mirrored positions produce two different objects. That is what the report
+// "on one side there is a ramp and on the other side there are stairs" was.
+//
+// So: walk the authored list, build the first of each rotational pair, and
+// clone the second with its facing a half-turn further round. A clone shares
+// geometry and materials, so this is also cheaper than building both.
+//
+// `build` is expected to position its result and add it to mapGroup (which is
+// what the existing builders do), so the clone is placed and added here. Getting
+// that wrong left two of Voltaic Nexus's four pillars built but never in the
+// scene.
 function buildPairedFromData(list, build) {
     const CX = (ARENA_LEFT + ARENA_RIGHT) / 2, CY = (ARENA_TOP + ARENA_BOTTOM) / 2;
     const built = [];
@@ -3731,9 +3692,82 @@ function ensureCharModel(name) {
     return _charModelPromises[name];
 }
 
-// Kept for the checkers, which await `modelsReady` before asserting anything
-// about the rigged art. It now means "everything requested so far has
-// settled", which is the useful question once loading is lazy.
+// Batch 41: WAIT for the models before the match starts.
+//
+// Reported from a render where both crushed fighters appeared as their
+// PROCEDURAL meshes: the match had started before the GLBs finished loading,
+// and `initMesh` falls back to the primitive builder when `charModels[name]` is
+// empty. It is not a test artifact - pick a fighter and press Start immediately
+// and the same thing happens in a real match, permanently, because the mesh is
+// built once per round.
+//
+// It was also making boss mode appear to fail: the smoke check waits 30s for
+// FIGHT, and loading Karrigos on top of two fighters pushed past it. The state
+// was correct, just late.
+//
+// A short wait is the honest fix. The alternative - swapping the mesh in when
+// the model arrives - means rebuilding a live fighter's group mid-round, which
+// touches the weapon transplant, the material clones the hit flash mutates and
+// the outline shell. Far more moving parts than pausing for a moment before a
+// match that is about to last minutes.
+//
+// The wait is BOUNDED: if a model genuinely will not load, the match starts
+// anyway with the procedural mesh rather than hanging on a blank screen. That
+// was always the contract - the game must never fail to start over art.
+// Everything a match needs, waited for in ONE place - and deliberately one
+// after the other, which is not what it looks like it should be.
+//
+// The obvious move is to fetch the models and the textures at once: nothing in
+// the textures depends on the models, since themeTexturesReady only needs the
+// map. That was tried and MEASURED, and it is slower here:
+//
+//                       sequential        parallel
+//   Sundered Stair      17.0 17.6         18.5 19.6 22.1 24.2
+//   Skyreach Spire      17.9 13.3         15.3 17.5 17.8 21.1
+//   Overgrown Sanct.    15.3 13.1         16.1 18.8 20.2 22.0
+//   Skyward Temple      19.7 15.5         16.3 16.7 18.1 18.1
+//
+// Both waits are CPU work on this thread - GLTF parsing and 1k texture decode -
+// and the assets come off local disk, so there is no network latency for the
+// overlap to hide. Running them together just makes them contend. Sequential
+// lets each finish at full speed.
+//
+// That reasoning does NOT obviously hold in production, where the assets come
+// over the network from a CDN and latency is real. It is unmeasured there, so
+// this keeps the ordering that the environment we can measure prefers, rather
+// than the one the argument prefers. tests/maptimecheck.js is how to revisit it.
+//
+// It lives here rather than inside either startMatch because it is not
+// interface. The two startMatch bodies legitimately differ - the online one
+// hands off to startMatchNow, the local one resets its own state and calls
+// startRound - but "are the assets ready" is the same question in both, and it
+// was being answered twice.
+//
+// Failures are swallowed deliberately, per asset: a model that will not load
+// must not stop the match, because initMesh falls back to the procedural mesh
+// and a playable arena beats a blank screen. That contract predates this
+// function and is the reason the timeout it replaced existed at all.
+function matchAssetsReady(names, map) {
+    return Promise.all((names || []).map(
+        n => Promise.resolve(ensureCharModel(n)).catch(() => null)))
+        .then(() => Promise.resolve(themeTexturesReady(themeFor(map))).catch(() => null));
+}
+
+// One rendered frame with everything in place, so the first-draw shader compiles
+// happen behind the loading screen rather than as a hitch mid-fight. See
+// warmCombatShaders for what that used to cost.
+function oneRenderedFrame() {
+    return new Promise(r => requestAnimationFrame(() => { renderViews(0); r(); }));
+}
+
+// Batch 7: nothing in this file used to dispose GPU resources — every
+// short-lived effect/projectile/particle mesh (and the whole map on every
+// rematch) just got scene.remove()'d, leaking its geometry/material/texture
+// forever. This walks an object's full subtree and frees all three.
+// Declared up here (rather than near its Batch 7 call sites further down)
+// so it's initialized before loadMap()'s mesh builders — which run at
+// startup, not just on rematch — can reference it; a late const here bit
+// us once already as the camera TDZ regression, so this one goes early.
 function disposeObject3D(obj) {
     if (!obj) return;
     obj.traverse(node => {
@@ -4068,19 +4102,15 @@ function addCornerGlow(x, z, accent) {
     return group;
 }
 
-// A full-height obstacle "column" whose form varies by theme.column: carved
-// stone pillar, sleek energy pylon, fluted marble column, natural red-rock
-// spire, or an ice-crystal cluster. Solid cover you fight around.
-// Batch 34: columns were the last untextured thing in the arena - flat
-// MeshStandardMaterial colours with no map of any kind - so once the walls and
-// floors became photographic they were what still read as clay. They take the
-// theme's WALL set, which is also correct art direction: a stone arena's
-// pillars are cut from the same stone as its walls.
+// ARCHITECTURAL EDGES. A plinth at the base, a coping at the top, and
+// optionally a band partway up - each a slim box that OVERHANGS the face it
+// sits on, which is how masonry gets its edge and why a real building never
+// reads as an extruded rectangle.
 //
-// The base repeat follows the wall convention of ~80 units per tile (the
-// PHOTO_SETS `tile` multiplier then lands it near 45), computed from the
-// column's actual circumference and height so a fat pillar and a thin one get
-// the same texel density instead of the same tile count.
+// An overhanging lip is used instead of a chamfered box on purpose: see the
+// note at the top of this batch about ExtrudeGeometry's UVs. It also costs one
+// mesh instead of a geometry rebuild, and it is the same trick the outer walls
+// already used for their cap, generalised.
 function buildPillarMesh(ob, theme) {
     const group = new THREE.Group();
     const colH = ob.h || 165;
@@ -4155,27 +4185,6 @@ function buildPillarMesh(ob, theme) {
     return group;
 }
 
-// A solid block: short ones read as jump-on cover platforms, tall ones as
-// full interior walls (collision is the same). Uses the theme wall texture
-// so interior cover matches the perimeter, with a glowing accent-trimmed top.
-// BUILD ONE OF EACH PAIR, CLONE THE OTHER.
-//
-// "The arenas should all have perfect 180 degree rotational symmetry, so that
-// both players have the exact same situation for every map."
-//
-// The map DATA has always been symmetric - symmetrycheck asserts it for all ten
-// arenas - but the builders decorate with Math.random(), so two calls for two
-// mirrored positions produce two different objects. That is what the report
-// "on one side there is a ramp and on the other side there are stairs" was.
-//
-// So: walk the authored list, build the first of each rotational pair, and
-// clone the second with its facing a half-turn further round. A clone shares
-// geometry and materials, so this is also cheaper than building both.
-//
-// `build` is expected to position its result and add it to mapGroup (which is
-// what the existing builders do), so the clone is placed and added here. Getting
-// that wrong left two of Voltaic Nexus's four pillars built but never in the
-// scene.
 function buildPlatformMesh(p, theme) {
     const group = new THREE.Group();
     // Batch 34: was `getWallTexture(theme).clone()` per platform. The clone
@@ -6994,6 +7003,14 @@ function addRimOutline(group, colorHex, opts) {
 // taken from the fighter, and the plates use the same metal materials as the
 // rebuilt weapons so the hand and the thing it is holding belong together.
 
+// Pushed further right than the arm needs, so the SEALED SHOULDER CUT leaves
+// the frame. The seal draws the limb's interior rather than the sky (Batch 42),
+// but a dark interior sitting in shot still reads as a hole - and the game's
+// canvas is wider (1170/650) than the preview it was tuned in, so it shows
+// MORE of that side, not less.
+// The viewmodel's overall size in camera space, and the mirror that makes the
+// model's left arm read as the player's right one (see finishViewmodel).
+const VM_SCALE = 0.24;
 // ===========================================================================
 // Batch 36: the first-person arm is CUT FROM THE CHARACTER'S OWN MESH.
 //
@@ -7033,16 +7050,8 @@ function addRimOutline(group, colorHex, opts) {
 // blade inboard across the frame, pitch lifts the tip, roll tilts the flat of
 // the blade toward the light so it reads as a blade rather than a line.
 // How far the whole limb is tipped toward the bottom-right corner.
-const VM_SCALE = 0.24;
 const VM_ARM_ROLL = -0.52;
 const VM_ARM_LENGTH = 30;
-// Pushed further right than the arm needs, so the SEALED SHOULDER CUT leaves
-// the frame. The seal draws the limb's interior rather than the sky (Batch 42),
-// but a dark interior sitting in shot still reads as a hole - and the game's
-// canvas is wider (1170/650) than the preview it was tuned in, so it shows
-// MORE of that side, not less.
-// The viewmodel's overall size in camera space, and the mirror that makes the
-// model's left arm read as the player's right one (see finishViewmodel).
 const VM_ARM_ANCHOR = new THREE.Vector3(3.6, -2.6, -13.6);
 
 // Which bones count as "the arm". Bone names arrive sanitised by three.js
@@ -7729,7 +7738,7 @@ function syncViewmodels(dt) {
 }
 
 // THE PROCEDURAL CHARACTER BODIES live in shared/characters.js, loaded
-// above: one copy, shared with the online build.
+// above: one copy, shared with the local build.
 const charModels = {};        // name -> { scene, animations, height }
 function preloadCharModels() {
     const names = Object.keys(CHAR_MODEL_URLS);
@@ -8308,23 +8317,6 @@ document.getElementById('btn-difficulty').style.display = 'none'; // hidden unti
 // but plainly wrong once progression mode hides it entirely.
 refreshBotUI('p1'); refreshBotUI('p2');
 
-// Batch 37: the circles hold the character's FACE.
-//
-// They were a flat disc of the character's accent colour, which was the right
-// answer when the fighters were assembled primitives with no face to show.
-// Every character has one now, so `assets/faces/<name>.png` is a baked
-// head-and-shoulders portrait rendered from the actual model by
-// art/render_faces.js.
-//
-// Baked rather than rendered live for two reasons: the select screen would
-// otherwise have to load fourteen 2 MB GLBs to draw fourteen 44-pixel circles
-// (the whole point of the lazy model loading was not doing that), and a
-// portrait wants its own framing and lighting rather than whatever the arena
-// happens to have.
-//
-// The accent colour stays as the border and glow - it is how a fighter is
-// identified everywhere else - and stays as the FALLBACK fill, so a missing
-// portrait file degrades to exactly the old behaviour instead of a blank hole.
 function buildGrid(gridId, keyList, side) {
     const grid = document.getElementById(gridId);
     CHARACTERS.forEach((c, i) => {
@@ -9368,14 +9360,12 @@ function startMatch(mapOverride) {
     // Behind the loading screen: the models, the arena's photographs and the
     // first-draw shader compiles all happen here rather than as visible hitches
     // once the fight has started. See withLoading.
-    withLoading(matchMap.name, () => Promise.resolve()
-        .then(() => Promise.all([p1Choice, p2Choice].map(
-            c => c && Promise.resolve(ensureCharModel(c.name)).catch(() => null))))
-        .then(() => themeTexturesReady(themeFor(matchMap)))
+    withLoading(matchMap.name, () => matchAssetsReady(
+        [p1Choice, p2Choice].filter(Boolean).map(c => c.name), matchMap)
         .then(() => {
-            startRound(true);
-            return new Promise(r => requestAnimationFrame(() => { renderViews(0); r(); }));
-        })); // the first round of a match opens with the drop-in intro cinematic
+            startRound(true);   // opens with the drop-in intro cinematic
+            return oneRenderedFrame();
+        }));
 }
 
 // --- Intro drop-in cinematic: at match start both fighters plummet from the
@@ -9528,8 +9518,11 @@ function drawWaveBreakHUD() {
     hudCtx.textAlign = 'left';
 }
 
-// The respawn clock, for both players: the one on the floor needs to know how
-// long, and the one still standing needs to know how long they are alone.
+// A dark plate behind a centred string, sized to the text. For anything drawn
+// over the ARENA rather than over the HUD's own panels: the sky is bright, the
+// pale arenas are brighter, and a drop shadow cannot rescue dark text on a
+// light background - it only makes a darker smudge in the same place. Reported
+// twice as "the arena name at the top center is unreadable".
 function hudPlate(text, cx, y, padX, padY) {
     const w = hudCtx.measureText(text).width;
     const px = padX != null ? padX : 10, py = padY != null ? padY : 5;

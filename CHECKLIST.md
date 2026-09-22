@@ -2588,26 +2588,89 @@ makes the same change twice" is.
 
 ### Still open
 
-- [ ] **Draven's weapon reads backwards in first person.** Now that the arm is
-      actually in frame this needs looking at again, with the hammer's own
-      carry angles rather than the arm's.
-- [ ] **An arena takes 20-30 seconds to reach a live fight under headless
-      software rendering** — measured per arena by the new
-      tests/maptimecheck.js (19.7s / 25.4s / 29.0s / 30.2s, cold cache, no
-      GPU). That is the cost of the promise that nothing pops in after the
-      loading screen, and mapscheck's old 30s limit sat in the middle of the
-      spread, so a different two or three arenas "failed" every run. Limit
-      raised; what is still worth doing is finding out what a real GPU pays,
-      and whether the two photographic texture sets can be fetched in parallel
-      with the models rather than after them.
-- [ ] **The shared-code redesign, continued.** Five slices done:
-      `shared/roster.js`, `animation.js`, `props.js`, `characters.js` and
-      `common.js` — 336 definitions. The sync script fails if either build
-      re-declares one, fails if a second run changes the output, and reports
-      every definition that still differs without a documented reason.
-      Remaining candidates, roughly in dependency order: the HUD, arena and
+- [x] **Draven's weapon reads backwards in first person** — done, and now
+      asserted. `tests/weaponcheck.js` measures every weapon's own local axis
+      projected into view and requires it to be carried INBOARD (> 0.2); Draven
+      was the only one pointing out of the frame. The bounding box could not
+      answer this — for a hammer the furthest corner measures the head's bulk,
+      not where the weapon points — which is why the first attempt at a metric
+      moved the wrong number.
+
+      It is fixed in BOTH builds: `VM_PROP_TUNE` is one of the definitions the
+      local build now takes from the online one on every sync, so it can no
+      longer be corrected in one place only. That was exactly how it stayed
+      broken in the local build after Batch 69 fixed it online.
+## Batch 76 — a measurement that overruled the argument, and a comment that moved
+
+- [x] **Fetching the models and textures in parallel is SLOWER here, and the
+      case for it was built on a contended baseline.** The reasoning was sound:
+      nothing in the textures depends on the models, so the two waits were being
+      paid end to end. The measurement disagrees:
+
+                              sequential        parallel
+          Sundered Stair      17.0 17.6         18.5 19.6 22.1 24.2
+          Skyreach Spire      17.9 13.3         15.3 17.5 17.8 21.1
+          Overgrown Sanct.    15.3 13.1         16.1 18.8 20.2 22.0
+          Skyward Temple      19.7 15.5         16.3 16.7 18.1 18.1
+
+      Both waits are CPU work on one thread — GLTF parsing and 1k texture decode
+      — and the assets come off local disk, so there is no latency for the
+      overlap to hide; running them together just makes them contend. Kept
+      sequential.
+
+      The "19.7 / 25.4 / 29.0 / 30.2" baseline this item used to quote was itself
+      contended by another test run. True sequential is 13–20s. So the original
+      premise ("arenas take 20–30s, parallel would help") was wrong twice over,
+      and three things had to be discarded to find that out: a cross-run
+      comparison whose variance (18.1s to 35.0s for one arena) exceeded the
+      effect; an in-page probe that measured 7–17ms because fresh pages share the
+      browser's HTTP cache; and an A/B whose flip silently never applied because
+      the backup step used a Git Bash path that Windows Python rejects.
+
+      Unmeasured in production, where assets come from a CDN and latency IS real
+      — so the ordering follows the environment that can be measured rather than
+      the argument. tests/maptimecheck.js is how to revisit it.
+- [x] **`matchAssetsReady` — one definition of "are the assets ready"**, instead
+      of the same sequential chain written out in both builds. `startMatch` is
+      genuinely interface; the asset wait inside it never was.
+- [x] **A definition's chunk now includes the comment ABOVE it.** Every mechanism
+      here chunked as "from this definition to the next", so a definition's
+      leading comment — the block explaining it — belonged to the PREVIOUS chunk
+      and stayed behind when it moved. It hid because definitions move in runs
+      and a comment left behind is still adjacent; it only showed at a boundary.
+
+      And it had already done damage: twenty lines about baked portrait
+      rendering, plus a block about accent-colour swatches, were sitting directly
+      above `function localPlayerNumber()` — a two-line function about which side
+      you are. They document `faceUrl` and `paintSlotPortrait`, both in
+      shared/common.js, and are now back with them. In a codebase that keeps its
+      reasoning in comments, a comment attached to the wrong function is the
+      worst available kind of wrong, because nothing distinguishes it from a real
+      one.
+
+      No general hunt for more: "a shared definition with no leading comment"
+      flags 273 of 361 and is mostly wrong, because this codebase documents
+      GROUPS with one header above a run. The orphan above was found by a crash,
+      which is a signal worth trusting; the heuristic is not.
+- [x] **The shared-code redesign is done, in the sense that matters.** Five
+      modules — `roster.js`, `animation.js`, `props.js`, `characters.js`,
+      `common.js` — hold 361 definitions.
+
+      The old note here listed "remaining candidates: the HUD, arena and
       lighting construction, the Fighter class and combat, the menus and
-      modals, the Armory, audio.
+      modals, the Armory, audio". Measurement says that list was wishful.
+      What is left is ONE mutually-recursive core — `gameLoop`, the renderers,
+      the fighters — in which every root pins nearly every other (~270 each),
+      so no single extraction unlocks anything and the ordering the list implies
+      does not exist.
+
+      But sharing was never the requirement; "nobody makes the same change
+      twice" was. That is met a different way: of the 83 definitions that still
+      differ, **zero** lack a documented reason. Every definition is now either
+      shared, copied from the online build on every sync, or on `INTERFACE` with
+      a reason beside it — and the sync fails if a fourth category appears,
+      if a second run changes the output, if either build re-declares a shared
+      name, or if anything is referenced that nothing defines.
 - [ ] **What legitimately stays forked**: the input scheme, `renderViews`, the
       lobby/netcode against the local start flow, and the spectator camera.
 

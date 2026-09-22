@@ -1249,6 +1249,23 @@ function markSelected(side, name) {
     grid.querySelectorAll('.fighter-btn').forEach(b => b.classList.toggle('selected', b.dataset.name === name));
 }
 
+// Batch 37: the circles hold the character's FACE.
+//
+// They were a flat disc of the character's accent colour, which was the right
+// answer when the fighters were assembled primitives with no face to show.
+// Every character has one now, so `assets/faces/<name>.png` is a baked
+// head-and-shoulders portrait rendered from the actual model by
+// art/render_faces.js.
+//
+// Baked rather than rendered live for two reasons: the select screen would
+// otherwise have to load fourteen 2 MB GLBs to draw fourteen 44-pixel circles
+// (the whole point of the lazy model loading was not doing that), and a
+// portrait wants its own framing and lighting rather than whatever the arena
+// happens to have.
+//
+// The accent colour stays as the border and glow - it is how a fighter is
+// identified everywhere else - and stays as the FALLBACK fill, so a missing
+// portrait file degrades to exactly the old behaviour instead of a blank hole.
 function faceUrl(name) { return AC_ASSET_BASE + 'faces/' + String(name).toLowerCase() + '.png'; }
 
 function arenaSlug(name) {
@@ -2260,6 +2277,10 @@ const _charModelPromises = {};   // name -> Promise, so N callers cause 1 fetch
 
 let _charLoader = null;
 
+// A character's accent colour, as a portrait swatch. A real portrait would mean
+// rendering ten headshots; the accent colour is already the fighter's identity
+// everywhere else in the UI (card border, detail panel, HUD), so reusing it
+// keeps the slot readable without inventing new art.
 function paintSlotPortrait(el, name) {
     if (!el) return;
     const c = name && CHAR_MAP[name];

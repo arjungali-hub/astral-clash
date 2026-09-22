@@ -317,9 +317,13 @@ def port_missing_definitions(src, dst):
     src_defs, dst_defs = {}, {}
     for table, text in ((src_defs, src), (dst_defs, dst)):
         hits = list(_DEF_RE.finditer(text))
+        # From the top of the leading COMMENT, not from the definition: the
+        # comment is what explains it, and chunking from the definition left
+        # that behind. See definitions() in art/extract_shared.py.
+        starts = [comment_start(text, m.start()) for m in hits]
         for k, m in enumerate(hits):
-            end = hits[k + 1].start() if k + 1 < len(hits) else len(text)
-            table[m.group(1) or m.group(2)] = text[m.start():end]
+            end = starts[k + 1] if k + 1 < len(hits) else len(text)
+            table[m.group(1) or m.group(2)] = text[starts[k]:end]
 
     have = set(dst_defs) | SHARED_NAMES
     # SEEDED BY WHAT THIS BUILD CALLS AND NOTHING DEFINES, first. Scanning only
@@ -397,20 +401,25 @@ def force_online_bodies(src, dst):
     src_defs, dst_defs = {}, {}
     for table, text in ((src_defs, src), (dst_defs, dst)):
         hits = list(_DEF_RE.finditer(text))
+        # From the top of the leading COMMENT, not from the definition: the
+        # comment is what explains it, and chunking from the definition left
+        # that behind. See definitions() in art/extract_shared.py.
+        starts = [comment_start(text, m.start()) for m in hits]
         for k, m in enumerate(hits):
-            end = hits[k + 1].start() if k + 1 < len(hits) else len(text)
-            table[m.group(1) or m.group(2)] = text[m.start():end]
+            end = starts[k + 1] if k + 1 < len(hits) else len(text)
+            table[m.group(1) or m.group(2)] = text[starts[k]:end]
 
     have = set(dst_defs) | SHARED_NAMES
     copied, needs_port = [], []
     while True:
         hits = list(_DEF_RE.finditer(dst))
+        starts = [comment_start(dst, m.start()) for m in hits]
         for k, m in enumerate(hits):
             name = m.group(1) or m.group(2)
             if name in copied or name in INTERFACE or name not in src_defs:
                 continue
-            end = hits[k + 1].start() if k + 1 < len(hits) else len(dst)
-            mine, theirs = dst[m.start():end], src_defs[name]
+            end = starts[k + 1] if k + 1 < len(hits) else len(dst)
+            mine, theirs = dst[starts[k]:end], src_defs[name]
             if mine == theirs:
                 continue
             missing = {r for r in set(_IDENT_RE.findall(theirs)) - {name}
@@ -419,7 +428,7 @@ def force_online_bodies(src, dst):
                 needs_port.append((name, sorted(missing)[:3]))
                 copied.append(name)          # counted, not copied; do not revisit
                 continue
-            dst = dst[:m.start()] + theirs + dst[end:]
+            dst = dst[:starts[k]] + theirs + dst[end:]
             copied.append(name)
             break
         else:
@@ -441,22 +450,24 @@ def close_comment_drift(src, dst):
     """
     src_defs = {}
     hits = list(_DEF_RE.finditer(src))
+    starts = [comment_start(src, m.start()) for m in hits]
     for k, m in enumerate(hits):
-        end = hits[k + 1].start() if k + 1 < len(hits) else len(src)
-        src_defs[m.group(1) or m.group(2)] = src[m.start():end]
+        end = starts[k + 1] if k + 1 < len(hits) else len(src)
+        src_defs[m.group(1) or m.group(2)] = src[starts[k]:end]
 
     updated = []
     while True:
         hits = list(_DEF_RE.finditer(dst))
+        starts = [comment_start(dst, m.start()) for m in hits]
         for k, m in enumerate(hits):
             name = m.group(1) or m.group(2)
             if name in updated or name not in src_defs:
                 continue
-            end = hits[k + 1].start() if k + 1 < len(hits) else len(dst)
-            mine, theirs = dst[m.start():end], src_defs[name]
+            end = starts[k + 1] if k + 1 < len(hits) else len(dst)
+            mine, theirs = dst[starts[k]:end], src_defs[name]
             if mine == theirs or code_only(mine) != code_only(theirs):
                 continue
-            dst = dst[:m.start()] + theirs + dst[end:]
+            dst = dst[:starts[k]] + theirs + dst[end:]
             updated.append(name)
             break
         else:
@@ -970,28 +981,16 @@ def main():
     # --- roster faces -------------------------------------------------------
     # NOT guarded on faceUrl: that moved to shared/common.js, so the guard
     # became permanently true. Keyed on the block's own comment, which stays in
-    # the build.
-    if "the circles hold the character's FACE" not in dst:
-        face = block(src, "// Batch 37: the circles hold the character's FACE.",
-                     "function paintSlotPortrait(", 'faceUrl')
-        face = face.replace("'assets/faces/'", "'../assets/faces/'")
-        dst = rep(dst, "function buildGrid(gridId, keyList, side) {",
-                  face + "function buildGrid(gridId, keyList, side) {",
-                  'faceUrl helper', required=False)
-        dst = dst.replace(
-            '        btn.innerHTML = `<span><span class="fkey">${keyList[i].toUpperCase()}</span><span class="fname">${c.name}</span></span><span class="ftitle">${c.title}</span>`;',
-            '        btn.innerHTML =\n'
-            '            `<span class="fface" style="background-color:${c.color};background-image:url(\'${faceUrl(c.name)}\')"></span>`\n'
-            '            + `<span class="fmeta"><span><span class="fkey">${keyList[i].toUpperCase()}</span><span class="fname">${c.name}</span></span>`\n'
-            '            + `<span class="ftitle">${c.title}</span></span>`;', 1)
-        facecss = block(src, "        /* Batch 37: the roster card's face chip. */",
-                        "\n        .pslot-portrait {", 'face css')
-        # Guarded on the CSS ITSELF. The enclosing guard is about the markup,
-        # which is inserted once; this block was going in on every run after
-        # that, at 700 bytes a time.
-        if '.fighter-btn .fface' not in dst:
-            dst = dst.replace("        .fighter-grid {", facecss + "        .fighter-grid {", 1)
-            print('  %-34s ok' % 'roster face chips')
+    # THE faceUrl STEP IS FINISHED. faceUrl and paintSlotPortrait both live in
+    # shared/common.js, so the region this copied no longer exists in one piece:
+    # its start marker was in index.html and its end marker in shared/, and
+    # block() cannot span two files. It went one better than dying, too - the
+    # long Batch 37 comment it keyed on had been ORPHANED by the old chunker
+    # (which cut from the definition, not from the top of its comment), so it was
+    # sitting above localPlayerNumber, twenty lines about baked portraits above a
+    # two-line function about which side you are. Both blocks are back with their
+    # code in shared/common.js.
+
 
     # ------------------------------------------------------------- balance
     # Reported as "most of the changes seem to have not landed in the legacy
@@ -2149,6 +2148,32 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     dst, recommented = close_comment_drift(src, dst)
     if recommented:
         print('  %-34s %d definitions took the online notes' % ('comment drift', len(recommented)))
+
+    # ------------------------------------- the match asset wait, shared and parallel
+    # startMatch is interface (this build resets its own state and calls
+    # startRound; the online one hands off to startMatchNow), but the ASSET WAIT
+    # inside it is not - "are the models and textures ready" is the same question
+    # in both, and it was being answered twice, sequentially, in both.
+    #
+    # matchAssetsReady runs the two fetches at once. Nothing in the textures
+    # depends on the models. Once this build REFERENCES it,
+    # port_missing_definitions carries the definition across by itself, because a
+    # name referenced and nowhere defined is exactly what that step looks for.
+    dst = rep(dst, """    withLoading(matchMap.name, () => Promise.resolve()
+        .then(() => Promise.all([p1Choice, p2Choice].map(
+            c => c && Promise.resolve(ensureCharModel(c.name)).catch(() => null))))
+        .then(() => themeTexturesReady(themeFor(matchMap)))
+        .then(() => {
+            startRound(true);
+            return new Promise(r => requestAnimationFrame(() => { renderViews(0); r(); }));
+        })); // the first round of a match opens with the drop-in intro cinematic""",
+             """    withLoading(matchMap.name, () => matchAssetsReady(
+        [p1Choice, p2Choice].filter(Boolean).map(c => c.name), matchMap)
+        .then(() => {
+            startRound(true);   // opens with the drop-in intro cinematic
+            return oneRenderedFrame();
+        }));""",
+             'parallel match asset wait', required=False)
 
     # ------------------------------------------------- CSS asset URLs, all of them
     # CSS url() resolves against the DOCUMENT, and this one is a directory down,

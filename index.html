@@ -8868,27 +8868,6 @@ function pickKeyHint() {
     return `${keyLabel(b.attack)} confirm / ${keyLabel(b.special)} back`;
 }
 
-// A character's accent colour, as a portrait swatch. A real portrait would mean
-// rendering ten headshots; the accent colour is already the fighter's identity
-// everywhere else in the UI (card border, detail panel, HUD), so reusing it
-// keeps the slot readable without inventing new art.
-// Batch 37: the circles hold the character's FACE.
-//
-// They were a flat disc of the character's accent colour, which was the right
-// answer when the fighters were assembled primitives with no face to show.
-// Every character has one now, so `assets/faces/<name>.png` is a baked
-// head-and-shoulders portrait rendered from the actual model by
-// art/render_faces.js.
-//
-// Baked rather than rendered live for two reasons: the select screen would
-// otherwise have to load fourteen 2 MB GLBs to draw fourteen 44-pixel circles
-// (the whole point of the lazy model loading was not doing that), and a
-// portrait wants its own framing and lighting rather than whatever the arena
-// happens to have.
-//
-// The accent colour stays as the border and glow - it is how a fighter is
-// identified everywhere else - and stays as the FALLBACK fill, so a missing
-// portrait file degrades to exactly the old behaviour instead of a blank hole.
 function localPlayerNumber() { return LOCAL_SIDE === 'p1' ? 1 : 2; }
 
 function refreshRoomUI() {
@@ -10799,6 +10778,52 @@ function neededModelsReady(mode) {
 // The wait is BOUNDED: if a model genuinely will not load, the match starts
 // anyway with the procedural mesh rather than hanging on a blank screen. That
 // was always the contract - the game must never fail to start over art.
+// Everything a match needs, waited for in ONE place - and deliberately one
+// after the other, which is not what it looks like it should be.
+//
+// The obvious move is to fetch the models and the textures at once: nothing in
+// the textures depends on the models, since themeTexturesReady only needs the
+// map. That was tried and MEASURED, and it is slower here:
+//
+//                       sequential        parallel
+//   Sundered Stair      17.0 17.6         18.5 19.6 22.1 24.2
+//   Skyreach Spire      17.9 13.3         15.3 17.5 17.8 21.1
+//   Overgrown Sanct.    15.3 13.1         16.1 18.8 20.2 22.0
+//   Skyward Temple      19.7 15.5         16.3 16.7 18.1 18.1
+//
+// Both waits are CPU work on this thread - GLTF parsing and 1k texture decode -
+// and the assets come off local disk, so there is no network latency for the
+// overlap to hide. Running them together just makes them contend. Sequential
+// lets each finish at full speed.
+//
+// That reasoning does NOT obviously hold in production, where the assets come
+// over the network from a CDN and latency is real. It is unmeasured there, so
+// this keeps the ordering that the environment we can measure prefers, rather
+// than the one the argument prefers. tests/maptimecheck.js is how to revisit it.
+//
+// It lives here rather than inside either startMatch because it is not
+// interface. The two startMatch bodies legitimately differ - the online one
+// hands off to startMatchNow, the local one resets its own state and calls
+// startRound - but "are the assets ready" is the same question in both, and it
+// was being answered twice.
+//
+// Failures are swallowed deliberately, per asset: a model that will not load
+// must not stop the match, because initMesh falls back to the procedural mesh
+// and a playable arena beats a blank screen. That contract predates this
+// function and is the reason the timeout it replaced existed at all.
+function matchAssetsReady(names, map) {
+    return Promise.all((names || []).map(
+        n => Promise.resolve(ensureCharModel(n)).catch(() => null)))
+        .then(() => Promise.resolve(themeTexturesReady(themeFor(map))).catch(() => null));
+}
+
+// One rendered frame with everything in place, so the first-draw shader compiles
+// happen behind the loading screen rather than as a hitch mid-fight. See
+// warmCombatShaders for what that used to cost.
+function oneRenderedFrame() {
+    return new Promise(r => requestAnimationFrame(() => { renderViews(0); r(); }));
+}
+
 function startMatch(mapOverride) {
     closeAllModals();
     hideOverlay(); // the match takes over the viewport — no menu/gameover screen behind it
@@ -10813,16 +10838,10 @@ function startMatch(mapOverride) {
     //
     // Awaiting the promises the loaders already return is both simpler and
     // exact. The timeout only existed because nothing was awaiting them.
-    withLoading(matchMap.name, () => Promise.resolve()
-        .then(() => Promise.all(modelsNeededFor(matchMode).map(
-            n => Promise.resolve(ensureCharModel(n)).catch(() => null))))
-        .then(() => themeTexturesReady(themeFor(matchMap)))
+    withLoading(matchMap.name, () => matchAssetsReady(modelsNeededFor(matchMode), matchMap)
         .then(() => {
             startMatchNow();
-            // One rendered frame with everything in place, so the first-draw
-            // shader compiles happen here rather than mid-fight. See
-            // warmCombatShaders for what that used to cost.
-            return new Promise(r => requestAnimationFrame(() => { renderViews(0); r(); }));
+            return oneRenderedFrame();
         }));
 }
 
@@ -12219,6 +12238,12 @@ if (DEBUG) {
         get remoteAway() { return remoteAway; },
         get awayPaused() { return awayPaused; },
         sideReady, showLoading, hideLoading, withLoading, themeTexturesReady, armsOf,
+        // themeFor and matchAssetsReady are here so the asset wait can be
+        // TIMED from a checker. Comparing whole maptimecheck runs could not
+        // settle sequential vs parallel - the run-to-run variance (18.1s to
+        // 35.0s for the same arena) is larger than the effect - so the two
+        // orderings have to be measured against each other inside one run.
+        themeFor, matchAssetsReady, oneRenderedFrame,
         busy, busyWhile, remoteNamePending,
         newRoomCode, roomIdFor, roomCodeOf, ROOM_CODE_LEN, ROOM_CODE_CHARS, ROOM_ID_PREFIX,
         NET_FATAL_ERRORS, netErrorText, refreshPauseUI,   // netTeardown/onNetLost are already above

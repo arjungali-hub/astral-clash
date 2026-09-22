@@ -63,15 +63,44 @@ CanvasRenderingContext2D HTMLCanvasElement getComputedStyle matchMedia structure
 '''.split())
 
 
+def comment_start(text, i):
+    """Index of the start of the run of `//` lines directly above `i`.
+
+    A definition's leading comment is the block that explains it, and the whole
+    value of this codebase is in those blocks - so it has to travel with the
+    definition rather than stay behind with whatever happened to precede it.
+    """
+    start = text.rfind(chr(10), 0, i) + 1
+    while start > 0:
+        prev_end = start - 1
+        prev_start = text.rfind(chr(10), 0, prev_end) + 1
+        if not text[prev_start:prev_end].strip().startswith('//'):
+            break
+        start = prev_start
+    return start
+
+
 def definitions(text):
-    """name -> (kind, source), for every column-0 definition."""
+    """name -> (kind, source), for every column-0 definition.
+
+    The source INCLUDES the comment block above the definition. Chunking from
+    the definition itself left a definition's explanation in the previous chunk,
+    so moving one moved the code and left the reasoning behind. It hid because
+    definitions move in runs and an adjacent comment still reads correctly - it
+    only showed at a boundary, when matchAssetsReady was ported into the local
+    build and landed under a comment describing modelsReady instead.
+
+    Boundaries still tile the file exactly (each chunk ends where the next one's
+    comment begins), so removal and replacement stay consistent.
+    """
     out = {}
     hits = list(DEF.finditer(text))
+    starts = [comment_start(text, m.start()) for m in hits]
     for k, m in enumerate(hits):
         name = m.group(1) or m.group(3)
         kind = 'function' if m.group(1) else m.group(2)
-        end = hits[k + 1].start() if k + 1 < len(hits) else len(text)
-        out[name] = (kind, text[m.start():end])
+        end = starts[k + 1] if k + 1 < len(hits) else len(text)
+        out[name] = (kind, text[starts[k]:end])
     return out
 
 
