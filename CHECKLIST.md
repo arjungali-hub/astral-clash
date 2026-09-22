@@ -2425,15 +2425,99 @@ Updated 2026-09-21. Struck items are done; what is left is listed after them.
       Batches 58, 62.
 - [x] **It is called the local version**, everywhere. Batch 63.
 
+### Correction to the four items above
+
+Batches 64 and 65 marked the arms, the zone art, the 180-degree symmetry and the
+classic-only collapse done. They were done **online only**. The local build — the
+one the testing actually happens in — still had `VM_SCALE = 0.30` and the old arm
+anchor, the un-rebalanced lighting, no scenery symmetry and the collapse firing in
+every mode, because each fix landed in `index.html` and nothing carried it across.
+Batch 73 closed that and now closes it on every sync; see below.
+
+Marking those done was wrong in the way that matters: the report came from the
+local build, so the report was still true when the box was ticked.
+
+## Batch 72 — 99 more definitions shared, and a sync that proves itself
+
+- [x] The extractor moves `let` as well, after checking that no initializer
+      touches the DOM or THREE at load and that `bootGame()` runs once per build.
+      75 definitions, plus 21 functions that were pinned by the state they read.
+- [x] It **appends** to `shared/common.js`. Excluding common.js from its own view
+      of "already shared" made a second run rewrite the file with only the new
+      batch, dropping 153 working definitions. Reverted within the minute; the
+      guard is that every shared module now counts.
+- [x] **Comment drift closed.** 49 definitions differed in their comments alone,
+      and each one pinned a definition in both builds forever. Safe by
+      construction: the step acts only when stripping comments from both yields
+      identical text.
+- [x] **The sync script runs itself on its own output and fails if it moves.**
+      Guards keyed on "is this name absent" keep becoming permanently true as the
+      extraction removes names — four times now, each found only after the file
+      had grown by kilobytes a run. Re-keying a guard onto a name that has not
+      moved yet is a wait, not a fix.
+
+## Batch 73 — the local build stops being behind
+
+Sharing hit its limit: what is left is one mutually-recursive core where every
+root pins nearly every other. But "shared" was never the requirement — "nobody
+makes the same change twice" is.
+
+- [x] **42 definitions the local build simply lacked** moved to `shared/`
+      (`art/promote_shared.py`). Networking, room codes and the lobby stay
+      online-only by name, with the matching anchored rather than a substring
+      test, because a case-insensitive `host` also matches `hpGhost`.
+- [x] **29 definitions now take the online body on every sync** — the viewmodel
+      arm constants, `applyLighting`, `applySky`, `buildScenery`, `buildZoneMesh`,
+      `updateZoneControl`, `buildRiggedCharacter`, the props, `disposeObject3D`,
+      `buildMapThumbnail`, `updateArenaShrink`. Safe by a check that runs every
+      time: a body is copied only when every free name it uses already exists in
+      the local build or in shared/.
+- [x] **`INTERFACE` lists what differs on purpose**, with a reason on each entry —
+      split-screen rendering, two-player controls, the two purses, the match
+      framework, the lobby. Entries that move to shared/ are pruned rather than
+      left as no-ops, because an entry naming something that no longer exists
+      reads exactly like a live decision.
+- [x] Retired six finished port steps (font families, photographic surfaces,
+      `hudFont`, map themes, the Takedown Race guard, and its REQUIRED string).
+      Each is gone precisely because its code is now shared.
+
+- [x] **The three definitions that needed a real port got one.** `loadMap`,
+      `buildOuterWall` and `buildPillarMesh` could not take the online body
+      because the local build lacked `currentMapName`, `photoColumn` and
+      `buildPairedFromData` — the 180-degree pairing helper, which builds one of
+      each paired piece and clones the other rotated by pi. So the local build
+      had symmetric map DATA and asymmetric walls and pillars. A companion step
+      carries a missing definition across on the same safety rule (only when
+      everything IT calls is already there), computed to a fixed point, and that
+      unblocked seven more bodies.
+
+      shared/  220 -> 361 definitions      still differing  162 -> 83
+      and of those 83, zero without a documented reason.
+
+  **The standing answer to "do I have to update both?" is now: no.** Every
+  definition either lives in shared/ (361), is copied from the online build on
+  every sync, or is on `INTERFACE` with a reason written next to it (83). The
+  sync fails if a fourth category appears.
+
 ### Still open
 
 - [ ] **Draven's weapon reads backwards in first person.** Now that the arm is
       actually in frame this needs looking at again, with the hammer's own
       carry angles rather than the arm's.
-- [ ] **The shared-code redesign, continued.** Two slices done:
-      `shared/animation.js` (the attack envelope) and `shared/props.js` (every
-      weapon, plus the material and geometry caches). 22 declarations verified
-      shared, and the sync script now fails if either build re-declares one.
+- [ ] **An arena takes 20-30 seconds to reach a live fight under headless
+      software rendering** — measured per arena by the new
+      tests/maptimecheck.js (19.7s / 25.4s / 29.0s / 30.2s, cold cache, no
+      GPU). That is the cost of the promise that nothing pops in after the
+      loading screen, and mapscheck's old 30s limit sat in the middle of the
+      spread, so a different two or three arenas "failed" every run. Limit
+      raised; what is still worth doing is finding out what a real GPU pays,
+      and whether the two photographic texture sets can be fetched in parallel
+      with the models rather than after them.
+- [ ] **The shared-code redesign, continued.** Five slices done:
+      `shared/roster.js`, `animation.js`, `props.js`, `characters.js` and
+      `common.js` — 336 definitions. The sync script fails if either build
+      re-declares one, fails if a second run changes the output, and reports
+      every definition that still differs without a documented reason.
       Remaining candidates, roughly in dependency order: the HUD, arena and
       lighting construction, the Fighter class and combat, the menus and
       modals, the Armory, audio.

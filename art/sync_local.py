@@ -35,6 +35,10 @@ DST = os.path.join(ROOT, 'local', 'index.html')
 
 
 # A column-0 definition, the same shape art/extract_shared.py looks for.
+_IDENT_RE = re.compile(r'[A-Za-z_$][\w$]*')
+# Every name the shared modules define; filled in by main().
+SHARED_NAMES = set()
+
 _DEF_RE = re.compile(r'(?m)^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|'
                      r'(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=)')
 
@@ -47,6 +51,258 @@ def code_only(text):
         if t and not t.startswith('//'):
             out.append(t)
     return chr(10).join(out)
+
+
+# Definitions that differ BETWEEN THE BUILDS ON PURPOSE.
+#
+# Names that have since moved to shared/ are pruned from this list rather than
+# left as harmless no-ops: an entry naming something that no longer exists reads
+# as a decision somebody made, and the next person has no way to tell it from a
+# live one. Nothing here is copied
+# across, and each entry says why, because an unexplained name on this list is
+# indistinguishable from drift somebody gave up on.
+INTERFACE = {
+    # --- rendering: one full-screen camera vs two split-screen viewports
+    'renderer': 'split-screen sizing and scissor state',
+    'PIXEL_RATIO': 'local pays for two viewports, so it caps lower',
+    'renderViews': 'the split itself',
+    'renderOneView': 'per-viewport camera and scissor',
+    'hudViewports': 'two HUD panels here, one there',
+    'drawHUD': 'draws two panels',
+    'drawHUDInner': 'draws two panels',
+    'drawPlayerHUD': 'per-panel geometry',
+    'drawHitFeedback': 'per-panel geometry',
+    'drawIntroOverlay': 'per-panel geometry',
+    'drawRoundStatus': 'per-panel geometry',
+    'drawCoopDownHUD': 'per-panel geometry',
+    'drawWaveBreakHUD': 'per-panel geometry',
+    'camP2': 'the second camera only exists here',
+    'positionFpsCamera': 'two cameras to place',
+    'syncViewmodels': 'two viewmodels to sync',
+    'buildViewmodel': 'built per side',
+    'toggleBloom': 'the local build has no composer',
+    'refreshBloomUI': 'the local build has no composer',
+    'onWindowResize': 'no composer to resize, two viewports to lay out',
+
+    # --- controls: two players at one keyboard vs one player and a mouse
+    'DEFAULT_BINDINGS': 'two full key sets',
+    'REBIND_ACTION_LABELS': 'labelled per side',
+    'RANDOM_KEYS': 'two sides to seed',
+    'keyLabel': 'labelled per side',
+    'controlsSummary': 'describes two players',
+    'buildTutorialControls': 'describes two players',
+    'buildRebindList': 'two lists',
+    'saveBindings': 'two sides',
+    'closeRebind': 'two sides',
+    'closeTutorial': 'two sides',
+    'startCapture': 'two sides',
+    'pollGamepad': 'two pads',
+    'typingInField': 'no name field here',
+
+    # --- screens and flow: lobby and room code vs a local picker
+    'SCREEN_EL': 'different screens exist',
+    'MODAL_EL': 'different modals exist',
+    'currentScreen': 'different screens exist',
+    'closeModal': 'different modals exist',
+    'openModal': 'different modals exist',
+    'startGame': 'entry point',
+    'startMatch': 'match framework',
+    'startRound': 'match framework',
+    'beginMatch': 'match framework',
+    'endMatch': 'match framework',
+    'endCoopMatch': 'match framework',
+    'backToPick': 'match framework',
+    'confirmPick': 'match framework',
+    'previewPick': 'match framework',
+    'chooseMap': 'match framework',
+    'randomPick': 'match framework',
+    'togglePause': 'match framework',
+    'refreshMenuUI': 'different menus',
+    'refreshModeUI': 'different modes offered',
+    'refreshBotUI': 'bots are per side here',
+    'buildModeSelect': 'different modes offered',
+    'setMatchMode': 'match framework',
+    'resolveCoopMode': 'match framework',
+    'coopOwnsRespawn': 'match framework',
+    'gameLoop': 'drives two views and no network tick',
+    'computeDt': 'no network pacing here',
+    'stepFight': 'no remote fighter here',
+    'onBossDefeated': 'match framework',
+
+    # --- progression and the store: one account vs two side-local purses
+    'prog': 'two purses',
+    'saveProgression': 'two purses',
+    'upgradeLevel': 'two purses',
+    'addCoins': 'two purses',
+    'refreshCoinDisplays': 'two purses',
+    'buildShop': 'two purses',
+    'openShop': 'two purses',
+    'showDetail': 'two purses',
+    'buildDetailHTML': 'two purses',
+    'buildGrid': 'two purses',
+    'refreshGridLocks': 'two purses',
+    'isCharUnlocked': 'two purses',
+    'isDoubleJumpUnlocked': 'two purses',
+    'freshStats': 'two purses',
+    'shopExpanded': 'two panels open at once',
+    'debugUnlockAll': 'per side',
+    'setDebugUnlockAll': 'per side',
+    'syncDebugUnlockUI': 'per side',
+    'syncLockHint': 'per side',
+    'loadThreeFallback': 'the engine sits one directory up',
+    'preloadCharModels': 'preloads both sides at once',
+    'botDifficulty': 'bots are per side here',
+    'steerAroundObstacles': 'bot AI differs; see the checklist',
+    'liveEnemies': 'co-op roster differs',
+    'refreshPauseUI': 'pause offers different things',
+    'refreshGameOverUI': 'results name two local players',
+    'refreshSandboxUI': 'sandbox is online-only',
+    'refreshHudScaleUI': 'two HUD panels',
+    'cycleHudScale': 'two HUD panels',
+    'hudUnitScale': 'two HUD panels',
+    'hudCanvas': 'two HUD panels',
+    'hudCtx': 'two HUD panels',
+    'matchMode': 'match framework',
+    'mapRng': 'seeded by the match framework',
+    'crushTime': 'the crush cinematic is online-only',
+    'resetCrush': 'the crush cinematic is online-only',
+    'buildCrushRigs': 'the crush cinematic is online-only',
+    'disposeCrushRigs': 'the crush cinematic is online-only',
+    'applyCrushCameraLayers': 'the crush cinematic is online-only',
+    'positionCrushCamera': 'the crush cinematic is online-only',
+    'safeLSSet': 'namespaced per build',
+    'hideOverlay': 'different overlays',
+    'closeTopModalByEscape': 'different modals exist',
+    'makeNameSprite': 'names two local players',
+    'buildViewmodelArmFromModel': 'built per side',
+    'vmPropAngles': 'built per side',
+    'STATE_STEPS': 'keyed per side here',
+    'spawnMuzzleFlash': 'per-side pools',
+    'resolvePlayerCollision': 'two local players',
+    'addCornerGlow': 'per-viewport',
+    'addRimOutline': 'per-viewport',
+    'derivedCanvasCache': 'sized per viewport',
+    'busyWhile': 'wraps the local loading screen',
+}
+
+
+def port_missing_definitions(src, dst):
+    """Insert definitions the local build lacks, when it already has their needs.
+
+    The counterpart to force_online_bodies(): that one refuses to copy a body
+    whose free names are missing here, and this one supplies the missing names
+    so the next pass can. Same safety rule - a definition travels only when
+    every free name IT uses already exists in the local build or in shared/ -
+    and computed to a fixed point so a helper brings the helper it calls.
+
+    Nothing from the online build's own business travels: networking, room codes
+    and the lobby are filtered by name, the same way art/promote_shared.py does
+    it, because those exist only online by design.
+    """
+    src_defs, dst_defs = {}, {}
+    for table, text in ((src_defs, src), (dst_defs, dst)):
+        hits = list(_DEF_RE.finditer(text))
+        for k, m in enumerate(hits):
+            end = hits[k + 1].start() if k + 1 < len(hits) else len(text)
+            table[m.group(1) or m.group(2)] = text[m.start():end]
+
+    have = set(dst_defs) | SHARED_NAMES
+    wanted = set()
+    for name, chunk in dst_defs.items():
+        theirs = src_defs.get(name)
+        if not theirs or theirs == chunk or name in INTERFACE:
+            continue
+        wanted |= {r for r in set(_IDENT_RE.findall(theirs)) - {name}
+                   if r in src_defs and r not in have}
+
+    # Close over what those need, and keep only what can travel safely.
+    movable, changed = set(), True
+    while changed:
+        changed = False
+        for n in sorted(wanted - movable):
+            # INTERFACE is as binding here as it is for the body sync. Four of
+            # its entries exist only in the online build - the sandbox panel,
+            # the pause and results screens - and pulling those across because
+            # something referenced them is exactly the move it exists to stop.
+            if n in INTERFACE or is_online_only_business(n):
+                continue
+            refs = {r for r in set(_IDENT_RE.findall(src_defs[n])) - {n}
+                    if r in src_defs and r not in have and r not in movable}
+            if refs:
+                wanted |= refs          # try to bring them too
+                continue
+            movable.add(n)
+            changed = True
+
+    if not movable:
+        return dst, []
+    # In the online build's own order, so anything order-sensitive keeps it.
+    ordered = [n for n in src_defs if n in movable]
+    block_text = chr(10).join(src_defs[n].rstrip() + chr(10) for n in ordered)
+    anchor = "function disposeObject3D("
+    i = dst.index(anchor)
+    i = comment_start(dst, i)
+    return dst[:i] + block_text + chr(10) + dst[i:], ordered
+
+
+# Same anchored matching art/promote_shared.py uses; a plain substring test for
+# "host" also matches hpGhost.
+_UPPER_NET = ('NET_', 'ROOM_', 'LOBBY_', 'PEER_', 'HOST_')
+_CAMEL_NET = ('net', 'room', 'lobby', 'peer', 'host', 'remote', 'spectat')
+_INFIX_NET = ('Net', 'Room', 'Lobby', 'Peer', 'Host', 'Remote', 'Spectat')
+
+
+def is_online_only_business(name):
+    if name.startswith(_UPPER_NET):
+        return True
+    if name.isupper():
+        return False
+    return name.startswith(_CAMEL_NET) or any(k in name for k in _INFIX_NET)
+
+
+def force_online_bodies(src, dst):
+    """Copy the online body over the local one for everything that is not
+    interface, and return what is still out of step.
+
+    Safe by a check rather than by review: a body is copied only when every free
+    name it uses already exists in the local build or in a shared module. A
+    missing name would mean the local build lacks the feature outright, and that
+    is a port, not a sync - those are reported instead.
+
+    What this cannot judge is whether two bodies differ deliberately, so that is
+    INTERFACE above, with a reason on every entry.
+    """
+    src_defs, dst_defs = {}, {}
+    for table, text in ((src_defs, src), (dst_defs, dst)):
+        hits = list(_DEF_RE.finditer(text))
+        for k, m in enumerate(hits):
+            end = hits[k + 1].start() if k + 1 < len(hits) else len(text)
+            table[m.group(1) or m.group(2)] = text[m.start():end]
+
+    have = set(dst_defs) | SHARED_NAMES
+    copied, needs_port = [], []
+    while True:
+        hits = list(_DEF_RE.finditer(dst))
+        for k, m in enumerate(hits):
+            name = m.group(1) or m.group(2)
+            if name in copied or name in INTERFACE or name not in src_defs:
+                continue
+            end = hits[k + 1].start() if k + 1 < len(hits) else len(dst)
+            mine, theirs = dst[m.start():end], src_defs[name]
+            if mine == theirs:
+                continue
+            missing = {r for r in set(_IDENT_RE.findall(theirs)) - {name}
+                       if r in src_defs and r not in have}
+            if missing:
+                needs_port.append((name, sorted(missing)[:3]))
+                copied.append(name)          # counted, not copied; do not revisit
+                continue
+            dst = dst[:m.start()] + theirs + dst[end:]
+            copied.append(name)
+            break
+        else:
+            break
+    return dst, [c for c in copied if c not in dict(needs_port)], needs_port
 
 
 def close_comment_drift(src, dst):
@@ -402,6 +658,9 @@ def main():
     # build; see its docstring. Read here rather than at the de-shadowing
     # pass because the port steps that need the fallback run long before it.
     SHARED_FALLBACK[:] = [shared_src, anim_src, props_src, chars_src, common_src]
+    for _text in SHARED_FALLBACK:
+        for _m in _DEF_RE.finditer(_text):
+            SHARED_NAMES.add(_m.group(1) or _m.group(2))
     dst = io.open(DST, encoding='utf-8').read()
     before = len(dst)
 
@@ -630,12 +889,10 @@ def main():
     # number again"; sharing the declaration is the stronger version of that
     # sentence.
 
-    # No collapse in the Takedown Race.
-    if "matchMode === 'timeattack') return;" not in dst:
-        guard = block(src, "    // Batch 38: no collapse in the Takedown Race either.", "    if (!crushing) {", 'guard')
-        dst = rep(dst, "    if (isCoopMode()) return;\n    if (!crushing) {",
-                  "    if (isCoopMode()) return;\n" + guard + "    if (!crushing) {",
-                  'no collapse in Takedown Race')
+    # THE TAKEDOWN RACE GUARD IS NOT PORTED ANY MORE. updateArenaShrink takes
+    # the online body in full (it is not interface), and that body has since
+    # replaced the exclusion list this step inserted with a classic-opts-in
+    # test, so there is nothing left to copy.
 
     # Zone Control clears its own ring.
     if 'const clearZone' not in dst:
@@ -1768,6 +2025,26 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     if recommented:
         print('  %-34s %d definitions took the online notes' % ('comment drift', len(recommented)))
 
+    # EVERYTHING THAT IS NOT INTERFACE TAKES THE ONLINE BODY. This is what keeps
+    # the two builds in step now that extraction has reached its limit: what is
+    # left is one mutually-recursive core, so the answer is no longer "share it"
+    # but "do not let it drift".
+    # Supply what the local build is missing FIRST, so the bodies that need it
+    # can be synced on the same run rather than the next one.
+    dst, ported = port_missing_definitions(src, dst)
+    if ported:
+        print('  %-34s %d carried across: %s'
+              % ('missing definitions', len(ported), ', '.join(ported)))
+
+    dst, forced, needs_port = force_online_bodies(src, dst)
+    if forced:
+        print('  %-34s %d definitions took the online body' % ('drift closed', len(forced)))
+    if needs_port:
+        print('  %-34s %d definitions cannot: the local build lacks what they call'
+              % ('needs a port, not a sync', len(needs_port)))
+        for nm, missing in sorted(needs_port)[:8]:
+            print('      %-28s needs %s' % (nm, ', '.join(missing)))
+
     # NOTHING THE SHARED MODULES DEFINE MAY ALSO BE DEFINED HERE. Run last, so
     # it cleans up after every step above rather than racing them.
     dst, deduped = strip_shared_duplicates(
@@ -1803,7 +2080,11 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         'TELEPORT_VIS_DECAY', 'decayVisualOffset', 'projCoreSphere',
         'meshBaseScale', 'function openTutorial(auto)', 'function faceUrl(',
         'const SHRINK_INTERVAL = 18;', 'Takedown Race',
-        "matchMode === 'timeattack') return;", 'const clearZone',
+        # Was "matchMode === 'timeattack') return;". The online build turned the
+        # collapse from a list of exclusions into CLASSIC OPTS IN, so the string
+        # is gone - and updateArenaShrink now takes the online body wholesale,
+        # which is what this line was trying to approximate.
+        'const clearZone',
         'const PHOTO_SETS = {', 'function getTiledWallTexture(',
         'function attachPhotoSurface(', 'function attachAccentGlow(',
         'function ensureUV2(', 'function loadPhotoSet(',

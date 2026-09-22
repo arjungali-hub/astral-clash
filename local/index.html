@@ -2655,11 +2655,24 @@ function refreshAudioUI() {
     document.getElementById('vol-master').value = audioSettings.master;
     document.getElementById('vol-sfx').value = audioSettings.sfx;
     document.getElementById('vol-music').value = audioSettings.music;
-    document.getElementById('btn-audio-mute').textContent = `Mute: ${audioSettings.muted ? 'ON' : 'OFF'}`;
+    setOptState('btn-audio-mute', audioSettings.muted ? 'On' : 'Off', audioSettings.muted);
+    // ...and the numbers the sliders never showed.
+    for (const slot of ['master', 'sfx', 'music']) {
+        const out = document.getElementById('vol-' + slot + '-value');
+        if (out) out.textContent = Math.round((audioSettings[slot] != null ? audioSettings[slot] : 1) * 100) + '%';
+    }
 }
-document.getElementById('vol-master').addEventListener('input', e => { audioSettings.master = parseFloat(e.target.value); applyAudioSettings(); saveAudioSettings(); });
-document.getElementById('vol-sfx').addEventListener('input', e => { audioSettings.sfx = parseFloat(e.target.value); applyAudioSettings(); saveAudioSettings(); });
-document.getElementById('vol-music').addEventListener('input', e => { audioSettings.music = parseFloat(e.target.value); applyAudioSettings(); saveAudioSettings(); });
+// The readout has to follow the drag, or the number is only right until you
+// touch it. refreshAudioUI writes the slider positions too, which is harmless
+// here - they are already where the drag put them.
+for (const slot of ['master', 'sfx', 'music']) {
+    document.getElementById('vol-' + slot).addEventListener('input', e => {
+        audioSettings[slot] = parseFloat(e.target.value);
+        applyAudioSettings();
+        saveAudioSettings();
+        refreshAudioUI();
+    });
+}
 document.getElementById('btn-audio-mute').addEventListener('click', () => {
     audioSettings.muted = !audioSettings.muted;
     applyAudioSettings();
@@ -2678,11 +2691,11 @@ document.getElementById('btn-audio-close').addEventListener('click', () => close
 // (the modal manager keeps Settings underneath), so closing either returns
 // here — no separate "hide Settings first" listeners needed.
 document.getElementById('btn-open-settings').addEventListener('click', () => { syncDebugUnlockUI(); openModal('settings'); });
-document.getElementById('btn-back-to-online').addEventListener('click', () => { location.href = '/' + location.search; });
 document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());
 // Batch 13: the visible half of the unlock-everything override (the other
 // entry point is the typed cheat code in the keyboard dispatcher).
-document.getElementById('chk-unlock-all').addEventListener('change', e => setDebugUnlockAll(e.target.checked));
+// The sandbox checkbox no longer exists in the UI (see Settings); the
+// setDebugUnlockAll path is still reachable from ACDebug under ?debug=1.
 syncDebugUnlockUI(); // reflect a persisted override on load
 
 // Tutorial overlay. The controls card is generated from controlsSummary()
@@ -2927,8 +2940,12 @@ scene.fog = new THREE.Fog(0xbfe0ff, 1400, 5200);
 function buildSkyDome() {
     // Gradient sky texture is redrawn per map by applySky(); build the mesh
     // and sun sprite once here.
+    // 256x128 equirectangular, not a 16-pixel-wide strip. The width is what
+    // makes the environment DIRECTIONAL: with one column of pixels there is no
+    // such thing as a sun azimuth, so every horizontal direction reflects the
+    // same colour and the PMREM lights all four walls identically.
     skyTexCanvas = document.createElement('canvas');
-    skyTexCanvas.width = 16; skyTexCanvas.height = 256;
+    skyTexCanvas.width = 256; skyTexCanvas.height = 128;
     const tex = new THREE.CanvasTexture(skyTexCanvas);
     tex.encoding = THREE.sRGBEncoding;
     skyDome = new THREE.Mesh(
@@ -2995,11 +3012,53 @@ function updateEnvironment() {
 }
 
 function applySky(theme) {
+    const W = skyTexCanvas.width, H = skyTexCanvas.height;
     const g = skyTexCanvas.getContext('2d');
-    const grad = g.createLinearGradient(0, 0, 0, 256);
+    // The vertical gradient still defines the sky, and the dome still shows
+    // exactly it - so every arena looks like itself.
+    const grad = g.createLinearGradient(0, 0, 0, H);
     grad.addColorStop(0.0, theme.sky[0]); grad.addColorStop(0.4, theme.sky[1]);
     grad.addColorStop(0.74, theme.sky[2]); grad.addColorStop(1.0, theme.sky[3]);
-    g.fillStyle = grad; g.fillRect(0, 0, 16, 256);
+    g.fillStyle = grad; g.fillRect(0, 0, W, H);
+
+    // THE GROUND HALF. An equirect's lower half is what a downward-facing
+    // surface reflects, and a sky gradient there means the underside of every
+    // ledge is lit by sky - which is half of why nothing had a dark side. The
+    // map's own floor colour is the honest answer to "what is below".
+    // Theme colours are hex NUMBERS (0xaecbe6), and a canvas gradient throws on
+    // one - "The value provided ('16767136') could not be parsed as a color".
+    // theme.sky[] is already a CSS string; floorColor and sun.color are not.
+    const cssHex = (c) => (typeof c === 'number'
+        ? '#' + ('000000' + c.toString(16)).slice(-6) : c);
+    const floor = cssHex(theme.floorColor != null ? theme.floorColor : 0x3a3a3a);
+    const gg = g.createLinearGradient(0, H * 0.5, 0, H);
+    gg.addColorStop(0, theme.sky[3]);
+    gg.addColorStop(0.35, floor);
+    gg.addColorStop(1, '#0c0d11');       // straight down is nearly unlit
+    g.fillStyle = gg; g.fillRect(0, Math.floor(H * 0.5), W, Math.ceil(H * 0.5));
+
+    // THE SUN, at the azimuth the key light actually comes from, so a
+    // specular highlight lands on the same side as the shadows fall away
+    // from. theme.sun.pos is a direction in world space; the equirect u axis
+    // is the angle around Y.
+    const sp = theme.sun.pos;
+    const u = (Math.atan2(sp[0], sp[2]) / (Math.PI * 2) + 0.75) % 1;
+    const elev = Math.atan2(sp[1], Math.hypot(sp[0], sp[2]));   // 0 = horizon
+    const sy = H * 0.5 * (1 - elev / (Math.PI / 2));
+    const sunR = Math.max(10, H * 0.17);
+    const sg2 = g.createRadialGradient(u * W, sy, 0, u * W, sy, sunR);
+    sg2.addColorStop(0, '#ffffff');
+    sg2.addColorStop(0.18, cssHex(theme.sun.color));
+    sg2.addColorStop(1, 'rgba(255,255,255,0)');
+    g.globalCompositeOperation = 'lighter';
+    g.fillStyle = sg2;
+    g.fillRect(0, 0, W, H);
+    // ...and again wrapped, since a sun near u=0 is cut in half by the seam.
+    g.save();
+    g.translate(u < 0.5 ? W : -W, 0);
+    g.fillStyle = sg2; g.fillRect(-W, 0, W * 3, H);
+    g.restore();
+    g.globalCompositeOperation = 'source-over';
     skyDome.material.map.needsUpdate = true;
     scene.background.set(theme.sky[3]);
     sunSprite.position.set(theme.sun.pos[0], theme.sun.pos[1], theme.sun.pos[2]);
@@ -3410,15 +3469,15 @@ function renderOneView(cam, viewer, x, y, vw, vh, dt) {
 // (layers.enableAll) because the fighters live on their own body layers
 // (1/2) so cameras can hide the viewer's own body — a light only
 // illuminates objects sharing an enabled layer with it.
-const ambientLight = new THREE.AmbientLight(0xbfd6f5, 0.55); // soft sky-tinted fill
+const ambientLight = new THREE.AmbientLight(0xbfd6f5, 0.18); // a floor under the shadows, nothing more
 ambientLight.layers.enableAll();
 scene.add(ambientLight);
-const hemiLight = new THREE.HemisphereLight(0xdcefff, 0x6b5a45, 0.95); // bright sky above, warm sunlit ground bounce
+const hemiLight = new THREE.HemisphereLight(0xdcefff, 0x6b5a45, 0.42); // sky/ground bounce, now that the env map also carries it
 hemiLight.layers.enableAll();
 scene.add(hemiLight);
 // The sun — a strong warm-white directional aimed to match the sun sprite
 // in the sky dome, casting crisp shadows across the arena.
-const keyLight = new THREE.DirectionalLight(0xfff4e0, 1.75);
+const keyLight = new THREE.DirectionalLight(0xfff4e0, 2.1);   // the only light that should read as a DIRECTION
 keyLight.position.set(-1400, 2600, 1600);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(2048, 2048);
@@ -3431,7 +3490,10 @@ keyLight.layers.enableAll();
 scene.add(keyLight);
 // A cool sky-bounce fill from the opposite side to keep shadows from going
 // muddy — subtle, just lifts the shadowed faces toward the sky color.
-const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.85);
+const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.4);
+// Batch 34: raised and steepened. It sat low at (900, 500, -700), which lit
+// two of the four perimeter walls and left the other two dark; a higher,
+// more central position rakes all four inward faces.
 fillLight.position.set(700, 1400, -600);
 fillLight.layers.enableAll();
 scene.add(fillLight);
@@ -3486,16 +3548,34 @@ function fitKeyShadow() {
 // times/moods). keyLight is placed at the sun's sky position so shadows fall
 // the right way; fillLight is tinted toward the sky for coherent bounce.
 function applyLighting(theme) {
-    // PER-THEME EXPOSURE. One global value cannot serve a glacier and a
-    // foundry: a near-white albedo clips under it and a near-black one washes
-    // out. See theme.exposure.
+    // PER-THEME EXPOSURE. 0.92 suits stone and metal; an arena whose albedo is
+    // already near-white clips under it, and a clipped surface cannot show
+    // shading however good the lighting is - reported as "the tops of the white
+    // blocks are flat pure white" and "almost entirely white".
     renderer.toneMappingExposure = BASE_EXPOSURE * (theme.exposure || 1);
-    ambientLight.color.set(theme.ambient.color); ambientLight.intensity = theme.ambient.int;
-    hemiLight.color.set(theme.hemi.sky); hemiLight.groundColor.set(theme.hemi.ground); hemiLight.intensity = theme.hemi.int;
+    ambientLight.color.set(theme.ambient.color);
+    ambientLight.intensity = theme.ambient.int * 0.33;   // see the Batch 45 rebalance
+    // Batch 45: the per-map hemi/ambient values are SCALED, not replaced. Each
+    // map authored its own (0.9-1.0 hemi, 0.5-0.6 ambient) against the old flat
+    // environment, and applyLighting runs on every map load - so rebalancing
+    // only the declarations above would have been undone a frame later, which
+    // is exactly how the fill light's Batch 34 override went unnoticed.
+    hemiLight.color.set(theme.hemi.sky); hemiLight.groundColor.set(theme.hemi.ground);
+    hemiLight.intensity = theme.hemi.int * 0.45;
     keyLight.color.set(theme.sun.color); keyLight.intensity = theme.sun.int;
     keyLight.position.set(theme.sun.pos[0], theme.sun.pos[1], theme.sun.pos[2]);
     fillLight.color.set(theme.hemi.sky);
-    fillLight.intensity = (theme.fill != null) ? theme.fill : 0.85;
+    // Batch 34: the fill was authored at 0.4 and no theme ever overrode it, so
+    // an overcast castle and a golden-hour desert got identical sky bounce.
+    // `fill` is optional - default to the original constant so a theme without
+    // one is unchanged.
+    // Batch 34: the default rose from 0.4 to 0.85 with the photographic
+    // surfaces. The procedural canvases were painted bright, so 0.4 was enough
+    // to read the walls' inward faces; a real albedo (metal_plate, rock_face)
+    // is considerably darker and the same fill left them nearly black while
+    // the sunlit floor looked correct. Lighting, not albedo, decides how this
+    // scene reads - that lesson is in CHECKLIST.md twice already.
+    fillLight.intensity = (theme.fill != null) ? theme.fill * 0.5 : 0.4;   // see the Batch 45 rebalance
     fitKeyShadow();   // the sun moved; the shadow frustum must follow it
 }
 
@@ -3569,6 +3649,58 @@ function groundLevelAt(x, y) {
 // so it's initialized before loadMap()'s mesh builders — which run at
 // startup, not just on rematch — can reference it; a late const here bit
 // us once already as the camera TDZ regression, so this one goes early.
+let currentMapName = '';
+
+// Batch 31: TOUCH_UI is gone along with the touch control scheme. It used to
+// select a reduced-quality renderer path (no antialias, no shadows, pixel
+// ratio 1) and to hide the rebind UI, since the touch pads were
+// fixed-function. The game requires a mouse to aim and a keyboard to move, so
+// it is desktop-only now and all of those settings are unconditional.
+//
+// Batch 33: which makes it worth SAYING SO on a touch device rather than
+// serving a menu whose game cannot be played. Same detection the old TOUCH_UI
+// used: a coarse primary pointer or no hover, AND actual touch points - a
+// touchscreen laptop reports a fine pointer and real hover, so it is not
+// caught. `continue anyway` exists regardless, because pointer media queries
+// do misreport on hybrid devices and being wrong here would lock someone out
+// of a game they can play perfectly well.
+function photoColumn(mat, theme, radius, height, opts) {
+    const rx = Math.max(0.6, (2 * Math.PI * radius) / 80);
+    const ry = Math.max(0.6, height / 80);
+    const o = opts || { normalScale: 0.9, ao: 0.8 };
+    if (o.tintFade == null) o.tintFade = 0.66;   // same reasoning as the walls
+    return attachPhotoSurface(mat, 'wall', theme.wallTex, rx, ry, o);
+}
+
+// ARCHITECTURAL EDGES. A plinth at the base, a coping at the top, and
+// optionally a band partway up - each a slim box that OVERHANGS the face it
+// sits on, which is how masonry gets its edge and why a real building never
+// reads as an extruded rectangle.
+//
+// An overhanging lip is used instead of a chamfered box on purpose: see the
+// note at the top of this batch about ExtrudeGeometry's UVs. It also costs one
+// mesh instead of a geometry rebuild, and it is the same trick the outer walls
+// already used for their cap, generalised.
+function buildPairedFromData(list, build) {
+    const CX = (ARENA_LEFT + ARENA_RIGHT) / 2, CY = (ARENA_TOP + ARENA_BOTTOM) / 2;
+    const built = [];
+    for (const item of list) {
+        const twin = built.find(b => Math.abs(b.x - (2 * CX - item.x)) < 2
+                                  && Math.abs(b.y - (2 * CY - item.y)) < 2);
+        let mesh;
+        if (twin) {
+            mesh = twin.mesh.clone();
+            mesh.position.set(worldX(item.x), twin.mesh.position.y, worldZ(item.y));
+            mesh.rotation.y = twin.mesh.rotation.y + Math.PI;
+            mapGroup.add(mesh);
+        } else {
+            mesh = build(item);
+        }
+        built.push({ x: item.x, y: item.y, mesh });
+        mapEdgeObjects.push({ mesh, x: item.x, y: item.y });
+    }
+}
+
 function disposeObject3D(obj) {
     if (!obj) return;
     obj.traverse(node => {
@@ -3588,6 +3720,13 @@ function disposeObject3D(obj) {
                         if (m[slot]) m[slot].dispose();
                     }
                 }
+                // Batch 34: mark it, so an in-flight photographic-texture load
+                // (attachPhotoSurface resolves asynchronously, possibly after
+                // the arena it belongs to has been unloaded) does not write
+                // maps onto a material that is already gone. Assigning to a
+                // disposed material is not an error in three.js, it is just a
+                // silent leak of the tiled texture reference.
+                m.userData.photoStale = true;
                 m.dispose();
             });
         }
@@ -3749,11 +3888,17 @@ function attachPhotoSurface(mat, kind, texId, rx, ry, opts) {
             // as metal, grime does not) while leaving enough diffuse for the
             // key light to actually light the surface. Less physical, far more
             // legible - and legibility is the point in a fighting game.
-            mat.metalness = opts.metalness != null ? opts.metalness : 0.45;
+            // Batch 45: 0.45 -> 0.7. The cap existed because the environment
+            // was a dim vertical ramp with no sun, so a metallic surface had
+            // nothing to reflect and rendered black. It now has a sun, a
+            // horizon and a dark ground, so metal can be metal.
+            mat.metalness = opts.metalness != null ? opts.metalness : 0.7;
             mat.aoMapIntensity = opts.ao != null ? opts.ao : 0.85;
             // Lift the environment contribution to compensate for the sky
             // PMREM being much dimmer than a real HDRI.
-            mat.envMapIntensity = opts.envMapIntensity != null ? opts.envMapIntensity : 1.8;
+            // ...and the 1.8x lift that compensated for that dimness comes
+            // back to 1.0, or the new environment blows the surfaces out.
+            mat.envMapIntensity = opts.envMapIntensity != null ? opts.envMapIntensity : 1.0;
         }
         // Soften the theme tint. `color` multiplies the albedo, and the
         // procedural canvases were near-grey by design so a strong tint WAS
@@ -3762,14 +3907,31 @@ function attachPhotoSurface(mat, kind, texId, rx, ry, opts) {
         // industrial steel into mud. Pulling the tint most of the way toward
         // white keeps each arena's cast - which is what makes them
         // recognisable - without fighting the albedo for control of the hue.
-        if (!mat.userData.photoTinted) {
-            // 0.72 rather than 0.55: the theme wall colours are genuinely dark
-            // (Voltaic Nexus is 0x3a557e), and multiplying an already mid-dark
-            // steel albedo by a dark blue produced near-black walls - the
-            // opposite of the problem the tint fade was added to solve. A
-            // photographic albedo needs the tint as a CAST, not as the colour.
-            mat.color.lerp(new THREE.Color(0xffffff), opts.tintFade != null ? opts.tintFade : 0.72);
-            mat.userData.photoTinted = true;   // idempotent: never lerp twice
+        // 0.72 rather than 0.55: the theme wall colours are genuinely dark
+        // (Voltaic Nexus is 0x3a557e), and multiplying an already mid-dark
+        // steel albedo by a dark blue produced near-black walls - the opposite
+        // of the problem the tint fade was added to solve. A photographic
+        // albedo needs the tint as a CAST, not as the colour.
+        //
+        // KEYED BY THE TINT, not by "has this ever been tinted". These
+        // materials are cached and shared across arenas (see getCachedMaterial
+        // / keepMap), so a `photoTinted` boolean meant the first arena loaded in
+        // a session tinted the shared material and every arena after it
+        // inherited that tint and skipped its own. Load the Colosseum, then
+        // Molten Foundry, and the Foundry rendered in the Colosseum's pale
+        // sandstone cast - reported three times as "Molten Foundry loads a
+        // bright tan canyon".
+        //
+        // The guard cannot just be dropped: lerp compounds, so a material would
+        // creep toward white on every load. The base colour is kept instead and
+        // the tint recomputed from it, which is idempotent for a repeat and
+        // correct for a change.
+        const fade = opts.tintFade != null ? opts.tintFade : 0.72;
+        const tintKey = mat.color.getHex() + ':' + fade.toFixed(3);
+        if (mat.userData.photoTintKey !== tintKey) {
+            if (!mat.userData.photoBaseColor) mat.userData.photoBaseColor = mat.color.clone();
+            mat.color.copy(mat.userData.photoBaseColor).lerp(new THREE.Color(0xffffff), fade);
+            mat.userData.photoTintKey = mat.userData.photoBaseColor.getHex() + ':' + fade.toFixed(3);
         }
         mat.userData.keepMap = true;   // shared across rounds; never freed here
         mat.needsUpdate = true;
@@ -3783,190 +3945,6 @@ function attachPhotoSurface(mat, kind, texId, rx, ry, opts) {
 // Molten Foundry's lava cracks and the Colosseum's ivy are all painted in the
 // theme accent, and they are the map's signature. Everything that is not close
 // to the accent hue becomes black, and black is simply "not emitting".
-// ===========================================================================
-// Batch 34: PHOTOGRAPHIC ARENA SURFACES
-//
-// The arenas were dressed entirely in 256x256 canvases painted at runtime,
-// with normal and roughness maps derived from their luminance
-// (attachSurfaceMaps, above). That is a good trick and it is what made ten
-// visually distinct maps affordable - but hand-painted 256px albedo is the
-// single biggest reason the arenas read as toy-like rather than real, which is
-// the complaint this work exists to answer.
-//
-// So: real 1k PBR sets from PolyHaven (CC0), three files each -
-//   Diffuse  base colour, sRGB
-//   nor_gl   normal, OPENGL convention. Not nor_dx - three.js is GL, and the
-//            DirectX variant has Y inverted, which lights everything backwards.
-//   arm      AO + Roughness + Metalness packed in R/G/B, which is exactly the
-//            glTF ORM convention three.js reads natively: one file, three slots.
-//
-// Three things make this safe to bolt onto the existing pipeline:
-//
-// 1. IT IS AN UPGRADE, NOT A REPLACEMENT. The procedural material is built
-//    first and rendered immediately; the photo set is fetched asynchronously
-//    and swapped onto the SAME material when it arrives. A slow or failed
-//    fetch leaves a fully playable, fully textured arena - the game never
-//    waits on the network and never shows an untextured one.
-// 2. THE MAP'S IDENTITY IS PRESERVED. `theme.wallColor`/`floorColor` still
-//    multiply the albedo, and the procedural canvas is kept as an EMISSIVE
-//    overlay (see accentEmissiveTexture) so each arena keeps its glow
-//    signature - the tech grid, the lava cracks, the ivy. Dropping those would
-//    have flattened ten distinctive arenas into two rock textures.
-// 3. TEXTURES ARE SHARED AND CACHED BY TILING, never cloned per mesh - the
-//    same discipline getTiledWallTexture needed for exactly the same reason.
-// ===========================================================================
-
-// Which PolyHaven set dresses each theme surface. Several themes share a set
-// and separate themselves by tint - a set is ~2-4 MB, so one per surface per
-// theme would be a 40 MB download for a game that renders one arena at a time.
-//
-// `tile` MULTIPLIES the procedural texture's existing repeat, and getting it
-// wrong is the single most visible mistake available here. The procedural
-// canvases were 256px hand-painted patterns authored to tile every ~190 world
-// units on the floor and ~80 on the walls; at that density a real 1k
-// photograph reads as one enormous slab - the first pass put diamond plate on
-// the floor at 190 units per tile and it looked like giant scoops rather than
-// metal. A fighter is 40 units wide, so the target is roughly 45-55 units per
-// tile: small enough that the surface has grain at standing height, large
-// enough that the tiling pattern does not become obvious.
-// ===========================================================================
-// Batch 34: PHOTOGRAPHIC ARENA SURFACES
-//
-// The arenas were dressed entirely in 256x256 canvases painted at runtime,
-// with normal and roughness maps derived from their luminance
-// (attachSurfaceMaps, above). That is a good trick and it is what made ten
-// visually distinct maps affordable - but hand-painted 256px albedo is the
-// single biggest reason the arenas read as toy-like rather than real, which is
-// the complaint this work exists to answer.
-//
-// So: real 1k PBR sets from PolyHaven (CC0), three files each -
-//   Diffuse  base colour, sRGB
-//   nor_gl   normal, OPENGL convention. Not nor_dx - three.js is GL, and the
-//            DirectX variant has Y inverted, which lights everything backwards.
-//   arm      AO + Roughness + Metalness packed in R/G/B, which is exactly the
-//            glTF ORM convention three.js reads natively: one file, three slots.
-//
-// Three things make this safe to bolt onto the existing pipeline:
-//
-// 1. IT IS AN UPGRADE, NOT A REPLACEMENT. The procedural material is built
-//    first and rendered immediately; the photo set is fetched asynchronously
-//    and swapped onto the SAME material when it arrives. A slow or failed
-//    fetch leaves a fully playable, fully textured arena - the game never
-//    waits on the network and never shows an untextured one.
-// 2. THE MAP'S IDENTITY IS PRESERVED. `theme.wallColor`/`floorColor` still
-//    multiply the albedo, and the procedural canvas is kept as an EMISSIVE
-//    overlay (see accentEmissiveTexture) so each arena keeps its glow
-//    signature - the tech grid, the lava cracks, the ivy. Dropping those would
-//    have flattened ten distinctive arenas into two rock textures.
-// 3. TEXTURES ARE SHARED AND CACHED BY TILING, never cloned per mesh - the
-//    same discipline getTiledWallTexture needed for exactly the same reason.
-// ===========================================================================
-
-// Which PolyHaven set dresses each theme surface. Several themes share a set
-// and separate themselves by tint - a set is ~2-4 MB, so one per surface per
-// theme would be a 40 MB download for a game that renders one arena at a time.
-//
-// `tile` MULTIPLIES the procedural texture's existing repeat, and getting it
-// wrong is the single most visible mistake available here. The procedural
-// canvases were 256px hand-painted patterns authored to tile every ~190 world
-// units on the floor and ~80 on the walls; at that density a real 1k
-// photograph reads as one enormous slab - the first pass put diamond plate on
-// the floor at 190 units per tile and it looked like giant scoops rather than
-// metal. A fighter is 40 units wide, so the target is roughly 45-55 units per
-// tile: small enough that the surface has grain at standing height, large
-// enough that the tiling pattern does not become obvious.
-// ===========================================================================
-// Batch 34: PHOTOGRAPHIC ARENA SURFACES
-//
-// The arenas were dressed entirely in 256x256 canvases painted at runtime,
-// with normal and roughness maps derived from their luminance
-// (attachSurfaceMaps, above). That is a good trick and it is what made ten
-// visually distinct maps affordable - but hand-painted 256px albedo is the
-// single biggest reason the arenas read as toy-like rather than real, which is
-// the complaint this work exists to answer.
-//
-// So: real 1k PBR sets from PolyHaven (CC0), three files each -
-//   Diffuse  base colour, sRGB
-//   nor_gl   normal, OPENGL convention. Not nor_dx - three.js is GL, and the
-//            DirectX variant has Y inverted, which lights everything backwards.
-//   arm      AO + Roughness + Metalness packed in R/G/B, which is exactly the
-//            glTF ORM convention three.js reads natively: one file, three slots.
-//
-// Three things make this safe to bolt onto the existing pipeline:
-//
-// 1. IT IS AN UPGRADE, NOT A REPLACEMENT. The procedural material is built
-//    first and rendered immediately; the photo set is fetched asynchronously
-//    and swapped onto the SAME material when it arrives. A slow or failed
-//    fetch leaves a fully playable, fully textured arena - the game never
-//    waits on the network and never shows an untextured one.
-// 2. THE MAP'S IDENTITY IS PRESERVED. `theme.wallColor`/`floorColor` still
-//    multiply the albedo, and the procedural canvas is kept as an EMISSIVE
-//    overlay (see accentEmissiveTexture) so each arena keeps its glow
-//    signature - the tech grid, the lava cracks, the ivy. Dropping those would
-//    have flattened ten distinctive arenas into two rock textures.
-// 3. TEXTURES ARE SHARED AND CACHED BY TILING, never cloned per mesh - the
-//    same discipline getTiledWallTexture needed for exactly the same reason.
-// ===========================================================================
-
-// Which PolyHaven set dresses each theme surface. Several themes share a set
-// and separate themselves by tint - a set is ~2-4 MB, so one per surface per
-// theme would be a 40 MB download for a game that renders one arena at a time.
-//
-// `tile` MULTIPLIES the procedural texture's existing repeat, and getting it
-// wrong is the single most visible mistake available here. The procedural
-// canvases were 256px hand-painted patterns authored to tile every ~190 world
-// units on the floor and ~80 on the walls; at that density a real 1k
-// photograph reads as one enormous slab - the first pass put diamond plate on
-// the floor at 190 units per tile and it looked like giant scoops rather than
-// metal. A fighter is 40 units wide, so the target is roughly 45-55 units per
-// tile: small enough that the surface has grain at standing height, large
-// enough that the tiling pattern does not become obvious.
-// ===========================================================================
-// Batch 34: PHOTOGRAPHIC ARENA SURFACES
-//
-// The arenas were dressed entirely in 256x256 canvases painted at runtime,
-// with normal and roughness maps derived from their luminance
-// (attachSurfaceMaps, above). That is a good trick and it is what made ten
-// visually distinct maps affordable - but hand-painted 256px albedo is the
-// single biggest reason the arenas read as toy-like rather than real, which is
-// the complaint this work exists to answer.
-//
-// So: real 1k PBR sets from PolyHaven (CC0), three files each -
-//   Diffuse  base colour, sRGB
-//   nor_gl   normal, OPENGL convention. Not nor_dx - three.js is GL, and the
-//            DirectX variant has Y inverted, which lights everything backwards.
-//   arm      AO + Roughness + Metalness packed in R/G/B, which is exactly the
-//            glTF ORM convention three.js reads natively: one file, three slots.
-//
-// Three things make this safe to bolt onto the existing pipeline:
-//
-// 1. IT IS AN UPGRADE, NOT A REPLACEMENT. The procedural material is built
-//    first and rendered immediately; the photo set is fetched asynchronously
-//    and swapped onto the SAME material when it arrives. A slow or failed
-//    fetch leaves a fully playable, fully textured arena - the game never
-//    waits on the network and never shows an untextured one.
-// 2. THE MAP'S IDENTITY IS PRESERVED. `theme.wallColor`/`floorColor` still
-//    multiply the albedo, and the procedural canvas is kept as an EMISSIVE
-//    overlay (see accentEmissiveTexture) so each arena keeps its glow
-//    signature - the tech grid, the lava cracks, the ivy. Dropping those would
-//    have flattened ten distinctive arenas into two rock textures.
-// 3. TEXTURES ARE SHARED AND CACHED BY TILING, never cloned per mesh - the
-//    same discipline getTiledWallTexture needed for exactly the same reason.
-// ===========================================================================
-
-// Which PolyHaven set dresses each theme surface. Several themes share a set
-// and separate themselves by tint - a set is ~2-4 MB, so one per surface per
-// theme would be a 40 MB download for a game that renders one arena at a time.
-//
-// `tile` MULTIPLIES the procedural texture's existing repeat, and getting it
-// wrong is the single most visible mistake available here. The procedural
-// canvases were 256px hand-painted patterns authored to tile every ~190 world
-// units on the floor and ~80 on the walls; at that density a real 1k
-// photograph reads as one enormous slab - the first pass put diamond plate on
-// the floor at 190 units per tile and it looked like giant scoops rather than
-// metal. A fighter is 40 units wide, so the target is roughly 45-55 units per
-// tile: small enough that the surface has grain at standing height, large
-// enough that the tiling pattern does not become obvious.
 const wallTextureCache = {};
 // Batch 34: see the note in buildPlatformMesh. A clone is needed per distinct
 // `repeat`, not per mesh, so cache them by it.
@@ -4075,18 +4053,26 @@ function buildPillarMesh(ob, theme) {
     const colH = ob.h || 165;
     const style = theme.column;
     if (style === 'pylon') {
-        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(ob.r * 0.8, ob.r * 0.9, colH, 12),
-            new THREE.MeshStandardMaterial({ color: 0x2b3a52, roughness: 0.35, metalness: 0.7 }));
+        const shaftGeo = new THREE.CylinderGeometry(ob.r * 0.8, ob.r * 0.9, colH, 12);
+        ensureUV2(shaftGeo);
+        const shaftMat = new THREE.MeshStandardMaterial({ color: 0x2b3a52, roughness: 0.35, metalness: 0.7 });
+        photoColumn(shaftMat, theme, ob.r * 0.85, colH, { normalScale: 0.8, ao: 0.7, tintFade: 0.4 });
+        const shaft = new THREE.Mesh(shaftGeo, shaftMat);
         shaft.position.y = colH / 2; shaft.castShadow = shaft.receiveShadow = true; group.add(shaft);
         const ringMat = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 1.0 });
         for (let i = 1; i <= 4; i++) { const ring = new THREE.Mesh(new THREE.TorusGeometry(ob.r * 0.95, 2.4, 6, 16), ringMat); ring.rotation.x = Math.PI / 2; ring.position.y = colH * (i / 5); group.add(ring); }
         const tip = new THREE.Mesh(new THREE.OctahedronGeometry(ob.r * 0.6, 0), ringMat); tip.position.y = colH + ob.r * 0.5; group.add(tip);
         const l = new THREE.PointLight(theme.accent, 0.6, 260); l.position.y = colH * 0.6; l.layers.enableAll(); group.add(l);
+        // A base flange, so the pylon is bolted to the floor rather than
+        // resting on it. Same light count - this is geometry only.
+        const flange = new THREE.Mesh(new THREE.CylinderGeometry(ob.r * 1.25, ob.r * 1.45, 7, 12), shaftMat);
+        flange.position.y = 3.5; flange.castShadow = flange.receiveShadow = true; group.add(flange);
     } else if (style === 'redspire') {
         // stacked tapering rough rock chunks (hoodoo)
         const rockMat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: 0.95, metalness: 0.0 });
+        photoColumn(rockMat, theme, ob.r * 1.15, colH / 5, { normalScale: 1.1, ao: 0.85 });
         let y = 0, r = ob.r * 1.15;
-        for (let i = 0; i < 5; i++) { const h = colH / 5, rt = r * 0.82; const seg = new THREE.Mesh(new THREE.CylinderGeometry(rt, r, h, 7), rockMat); seg.position.set((Math.random() - 0.5) * 6, y + h / 2, (Math.random() - 0.5) * 6); seg.rotation.y = Math.random(); seg.castShadow = seg.receiveShadow = true; group.add(seg); y += h; r = rt; }
+        for (let i = 0; i < 5; i++) { const h = colH / 5, rt = r * 0.82; const segGeo = new THREE.CylinderGeometry(rt, r, h, 7); ensureUV2(segGeo); const seg = new THREE.Mesh(segGeo, rockMat); seg.position.set((Math.random() - 0.5) * 6, y + h / 2, (Math.random() - 0.5) * 6); seg.rotation.y = Math.random(); seg.castShadow = seg.receiveShadow = true; group.add(seg); y += h; r = rt; }
     } else if (style === 'icecrystal') {
         const iceMat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.92 });
         const coreMat = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.7, transparent: true, opacity: 0.85 });
@@ -4095,12 +4081,36 @@ function buildPillarMesh(ob, theme) {
         const l = new THREE.PointLight(theme.accent, 0.4, 220); l.position.y = colH * 0.6; l.layers.enableAll(); group.add(l);
     } else { // stone / marble — fluted shaft, plinth + capital
         const isMarble = style === 'marble';
-        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(ob.r, ob.r * 1.06, colH, isMarble ? 20 : 16),
-            new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: isMarble ? 0.5 : 0.85, metalness: 0.02 }));
+        const shaftGeo = new THREE.CylinderGeometry(ob.r, ob.r * 1.06, colH, isMarble ? 20 : 16);
+        ensureUV2(shaftGeo);
+        const shaftMat = new THREE.MeshStandardMaterial({ color: theme.stoneColor, roughness: isMarble ? 0.5 : 0.85, metalness: 0.02 });
+        photoColumn(shaftMat, theme, ob.r, colH, { normalScale: isMarble ? 0.6 : 1.0, ao: 0.85 });
+        const shaft = new THREE.Mesh(shaftGeo, shaftMat);
         shaft.position.y = colH / 2; shaft.castShadow = shaft.receiveShadow = true; group.add(shaft);
         const baseMat = new THREE.MeshStandardMaterial({ color: theme.capColor, roughness: 0.85, metalness: 0.02 });
-        const plinth = new THREE.Mesh(new THREE.BoxGeometry(ob.r * 2.7, 18, ob.r * 2.7), baseMat); plinth.position.y = 9; plinth.castShadow = plinth.receiveShadow = true; group.add(plinth);
-        const capital = new THREE.Mesh(new THREE.BoxGeometry(ob.r * 2.7, 16, ob.r * 2.7), baseMat); capital.position.y = colH - 8; capital.castShadow = true; group.add(capital);
+        // The plinth and capital are short and wide, so they need their own
+        // density - reusing the shaft's would stretch the texture across them.
+        photoColumn(baseMat, theme, ob.r * 2.7, 18, { normalScale: 0.8, ao: 0.8 });
+        const plinthGeo = new THREE.BoxGeometry(ob.r * 2.7, 18, ob.r * 2.7); ensureUV2(plinthGeo);
+        const plinth = new THREE.Mesh(plinthGeo, baseMat); plinth.position.y = 9; plinth.castShadow = plinth.receiveShadow = true; group.add(plinth);
+        const capitalGeo = new THREE.BoxGeometry(ob.r * 2.7, 16, ob.r * 2.7); ensureUV2(capitalGeo);
+        const capital = new THREE.Mesh(capitalGeo, baseMat); capital.position.y = colH - 8; capital.castShadow = true; group.add(capital);
+        // A REAL COLUMN PROFILE, which is what the plan asked for. The order
+        // bottom-to-top is plinth, torus, shaft, torus, capital, abacus - the
+        // two collars are what stop the shaft from looking like a pipe pushed
+        // through two crates, and the abacus is the flat slab that actually
+        // takes the load in every classical order.
+        const collarMat = baseMat;
+        for (const cy of [20, colH - 18]) {
+            const collar = new THREE.Mesh(new THREE.TorusGeometry(ob.r * 1.04, ob.r * 0.16, 8, isMarble ? 20 : 14), collarMat);
+            collar.rotation.x = Math.PI / 2; collar.position.y = cy;
+            collar.castShadow = true; group.add(collar);
+        }
+        group.add(edgeBand(ob.r * 2.7, ob.r * 2.7, 5, colH + 2.5, 2.5, collarMat));
+        // Flat shading on the marble shaft reads as FLUTES: a 20-sided
+        // cylinder lit facet by facet is exactly the vertical ribbing of a
+        // fluted column, for the cost of one material flag.
+        if (isMarble) shaftMat.flatShading = true;
         if (!isMarble) { // glowing accent orb crowns non-marble stone columns
             const orb = new THREE.Mesh(new THREE.SphereGeometry(ob.r * 0.55, 12, 12), new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.9 }));
             orb.position.y = colH + ob.r * 0.5; group.add(orb);
@@ -4115,8 +4125,30 @@ function buildPillarMesh(ob, theme) {
 // A solid block: short ones read as jump-on cover platforms, tall ones as
 // full interior walls (collision is the same). Uses the theme wall texture
 // so interior cover matches the perimeter, with a glowing accent-trimmed top.
+// BUILD ONE OF EACH PAIR, CLONE THE OTHER.
+//
+// "The arenas should all have perfect 180 degree rotational symmetry, so that
+// both players have the exact same situation for every map."
+//
+// The map DATA has always been symmetric - symmetrycheck asserts it for all ten
+// arenas - but the builders decorate with Math.random(), so two calls for two
+// mirrored positions produce two different objects. That is what the report
+// "on one side there is a ramp and on the other side there are stairs" was.
+//
+// So: walk the authored list, build the first of each rotational pair, and
+// clone the second with its facing a half-turn further round. A clone shares
+// geometry and materials, so this is also cheaper than building both.
+//
+// `build` is expected to position its result and add it to mapGroup (which is
+// what the existing builders do), so the clone is placed and added here. Getting
+// that wrong left two of Voltaic Nexus's four pillars built but never in the
+// scene.
 function buildPlatformMesh(p, theme) {
     const group = new THREE.Group();
+    // Batch 34: was `getWallTexture(theme).clone()` per platform. The clone
+    // lands on a `keepMap` material, which suppresses texture disposal, so
+    // every platform on every loadMap() leaked one GPU texture for the rest of
+    // the session. Cached by the repeat it needs instead.
     const tex = getTiledWallTexture(theme,
         Math.max(1, Math.round(p.hw / 40)),
         Math.max(1, Math.round(p.height / 60)));
@@ -4124,13 +4156,33 @@ function buildPlatformMesh(p, theme) {
     const slabMat = new THREE.MeshStandardMaterial({ map: tex, color: theme.wallColor, roughness: metalish ? 0.5 : 0.85, metalness: metalish ? 0.5 : 0.04 });
     attachSurfaceMaps(slabMat, 'wall:' + theme.id, { strength: 2.6, scale: 1.1 });
     slabMat.userData.keepMap = true;
-    attachAccentGlow(slabMat, tex, theme, 'wall:' + theme.id, tex.repeat.x, tex.repeat.y, 0.7);
+    // Batch 34: keep the theme's accent glow (painted into the procedural
+    // canvas) BEFORE the photographic albedo replaces `map`, then upgrade the
+    // base surface asynchronously. Order matters: the accent overlay is
+    // derived from the procedural image, so it has to be taken while `map`
+    // still is that image.
+    attachAccentGlow(slabMat, tex, theme, 'wall:' + theme.id, tex.repeat.x, tex.repeat.y,
+        0.7 * (theme.exposure || 1));   // see the note in buildOuterWall
     attachPhotoSurface(slabMat, 'wall', theme.wallTex, tex.repeat.x, tex.repeat.y,
         { normalScale: 1.0, ao: 0.8, tintFade: themeTintFade(theme) });
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2), slabMat);
+    const slabGeo = new THREE.BoxGeometry(p.hw * 2, p.height, p.hd * 2);
+    ensureUV2(slabGeo);   // the packed ORM's AO channel samples vUv2 in r128
+    const slab = new THREE.Mesh(slabGeo, slabMat);
     slab.position.y = p.height / 2;
     slab.castShadow = true; slab.receiveShadow = true;
     group.add(slab);
+
+    // A PLINTH and a COPING, in the wall's own material. The platform stops
+    // being a box: the base flares into the floor, and the top overhangs by 4
+    // units, which throws a shadow line along every edge and gives the accent
+    // trim something to sit on rather than float above.
+    const capMat = getCachedMaterial('platCap:' + theme.id, () => new THREE.MeshStandardMaterial({
+        color: theme.capColor, roughness: 0.82, metalness: metalish ? 0.35 : 0.03,
+    }));
+    if (p.height > 18) {   // a kerb-height platform has no room for both
+        group.add(edgeBand(p.hw * 2, p.hd * 2, 7, 3.5, 5, capMat));
+    }
+    group.add(edgeBand(p.hw * 2, p.hd * 2, 6, p.height - 3, 4, capMat));
 
     const trim = new THREE.Mesh(
         new THREE.BoxGeometry(p.hw * 2 + 3, 3, p.hd * 2 + 3),
@@ -4154,6 +4206,15 @@ function buildStepMesh(t, theme) {
     slab.position.y = t.height / 2;
     slab.castShadow = true; slab.receiveShadow = true;
     group.add(slab);
+
+    // A NOSING - the overhanging lip on the front of a real stair tread. On a
+    // step this is the whole difference between "a block" and "a stair": the
+    // lip catches the light while the riser below it falls into shadow, which
+    // is also what makes the step READABLE as something you can walk up.
+    group.add(edgeBand(t.hw * 2, t.hd * 2, 3, Math.max(6, t.height) - 1.5, 2.5,
+        getCachedMaterial('stepNose:' + theme.id, () => new THREE.MeshStandardMaterial({
+            color: theme.capColor, roughness: 0.8,
+        }))));
 
     const trim = new THREE.Mesh(
         new THREE.BoxGeometry(t.hw * 2 + 1.5, 1.5, t.hd * 2 + 1.5),
@@ -4240,8 +4301,20 @@ let outerWalls = []; // {mesh, side, baseLen} — the 4 enclosing walls; syncAre
 // so a uniform group.scale along local X shrinks the run.
 function buildOuterWall(side, theme) {
     const runX = (side === 'top' || side === 'bottom');
+    // OPPOSITE WALLS DRAW THE SAME NUMBERS.
+    //
+    // The skyline - battlements, ivy, ice spikes - comes out of mapRng(), which
+    // is a stream: each wall pulls different values, so the north wall never
+    // matched the south. Under "perfect 180 degree rotational symmetry, so that
+    // both players have the exact same situation", that is the same defect as a
+    // ramp facing a set of stairs, only further away.
+    //
+    // Reseeding per PAIR gives the two walls of an axis an identical skyline,
+    // while the map name still decides what that skyline is - so every arena
+    // keeps its own look and reloads identically.
+    mapRng = mulberry32(hashStr(currentMapName + ':wall:' + (runX ? 'x' : 'y')));
     const along = runX ? (ARENA_RIGHT - ARENA_LEFT) : (ARENA_BOTTOM - ARENA_TOP);
-    const wtex = getTiledWallTexture(theme,
+    const wtex = getTiledWallTexture(theme,           // Batch 34: see buildPlatformMesh
         Math.max(3, Math.round(along / 80)),
         Math.max(2, Math.round(WALL_HEIGHT / 80)));
     const thick = 18;
@@ -4250,16 +4323,39 @@ function buildOuterWall(side, theme) {
     const bodyMat = new THREE.MeshStandardMaterial({ map: wtex, color: theme.wallColor, roughness: metalish ? 0.5 : 0.9, metalness: metalish ? 0.5 : 0.03 });
     attachSurfaceMaps(bodyMat, 'wall:' + theme.id, { strength: 2.6, scale: 1.15 });
     bodyMat.userData.keepMap = true; // maps wrap canvases shared across rounds
-    attachAccentGlow(bodyMat, wtex, theme, 'wall:' + theme.id, wtex.repeat.x, wtex.repeat.y, 0.8);
+    // Batch 34: accent glow first (derived from the procedural canvas), then
+    // the photographic base swaps in when it loads. See attachPhotoSurface.
+    // Scaled with the theme's exposure: on a pale arena a 0.8 emissive rail was
+    // competing with a wall already at 1.0, so it read as more white rather
+    // than as light - and put the whole arena over the bloom threshold.
+    attachAccentGlow(bodyMat, wtex, theme, 'wall:' + theme.id, wtex.repeat.x, wtex.repeat.y,
+        0.8 * (theme.exposure || 1));
     attachPhotoSurface(bodyMat, 'wall', theme.wallTex, wtex.repeat.x, wtex.repeat.y,
         { normalScale: 1.15, ao: 0.85, tintFade: themeTintFade(theme) });
     const capMat = new THREE.MeshStandardMaterial({ color: theme.capColor, roughness: 0.85, metalness: metalish ? 0.4 : 0.03 });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(along, WALL_HEIGHT, thick), bodyMat);
+    const bodyGeo = new THREE.BoxGeometry(along, WALL_HEIGHT, thick);
+    ensureUV2(bodyGeo);
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.position.y = WALL_HEIGHT / 2; body.receiveShadow = true; body.castShadow = true;
     group.add(body);
     const cap = new THREE.Mesh(new THREE.BoxGeometry(along, 12, thick + 8), capMat);
     cap.position.y = WALL_HEIGHT + 6; cap.castShadow = true;
     group.add(cap);
+    // A PLINTH at the floor and a STRINGCOURSE two thirds up. Both are
+    // children of the wall group, so `group.scale.x` shrinks their run with
+    // everything else when the arena collapses - which is why they are built
+    // at the full base length like the body is, and not positioned in world
+    // space.
+    //
+    // The stringcourse does real work beyond decoration: a 260-unit wall with
+    // one texture and no horizontal break has no sense of scale, and a band at
+    // eye-ish height is what tells you how tall it is.
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(along, 26, thick + 12), capMat);
+    plinth.position.y = 13; plinth.castShadow = plinth.receiveShadow = true;
+    group.add(plinth);
+    const course = new THREE.Mesh(new THREE.BoxGeometry(along, 9, thick + 9), capMat);
+    course.position.y = WALL_HEIGHT * 0.62; course.castShadow = true;
+    group.add(course);
     const topY = WALL_HEIGHT + 12;
     const N = Math.max(4, Math.round(along / 90));
     const seg = along / N;
@@ -4309,6 +4405,7 @@ function loadMap(map) {
     mapEdgeObjects = [];
     outerWalls = [];
     sceneryFlames.length = 0; // drop references to the previous map's (now-disposed) brazier flames
+    currentMapName = map.name;
     mapRng = mulberry32(hashStr(map.name)); // deterministic skyline + prop layout for this map
 
     const theme = themeFor(map);
@@ -4328,11 +4425,20 @@ function loadMap(map) {
         shinyFloor ? { strength: 1.2, scale: 0.55, lo: 0.2, hi: 0.7 }
                    : { strength: 2.4, scale: 1.0 });
     floorMat.userData.keepMap = true; // texture is cached/shared across rounds; don't let disposeObject3D free it
+    // Batch 34: the floor carries the most obvious per-map signature - the
+    // tech grid, the lava cracks - so its accent overlay is the strongest of
+    // the three, and it is captured before the photographic albedo lands.
     attachAccentGlow(floorMat, floorTex, theme, 'floor:' + theme.id,
         floorTex.repeat.x, floorTex.repeat.y, theme.floorTex === 'lava' ? 1.5 : 0.95);
+    // tintFade, which this call site never passed - so it silently took the
+    // default 0.62 while the walls honoured the theme's own value, and Molten
+    // Foundry came out with basalt walls on a tan sandstone floor.
     attachPhotoSurface(floorMat, 'floor', theme.floorTex, floorTex.repeat.x, floorTex.repeat.y,
-        shinyFloor ? { normalScale: 0.55, ao: 0.6 } : { normalScale: 1.0, ao: 0.9 });
-    floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d), floorMat);
+        shinyFloor ? { normalScale: 0.55, ao: 0.6, tintFade: themeTintFade(theme) }
+                   : { normalScale: 1.0, ao: 0.9, tintFade: themeTintFade(theme) });
+    const floorGeo = new THREE.PlaneGeometry(floorBaseSize.w, floorBaseSize.d);
+    ensureUV2(floorGeo);
+    floorMesh = new THREE.Mesh(floorGeo, floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.position.set(worldX(ARENA_CX), 0, worldZ(ARENA_CY));
     floorMesh.receiveShadow = true;
@@ -4378,9 +4484,13 @@ function loadMap(map) {
     // OBSTACLES, not map.obstacles: in Zone Control the centre ones were just
     // filtered out, and building their meshes anyway would leave a column you
     // can see and walk through.
-    OBSTACLES.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, theme), x: ob.x, y: ob.y }));
-    TERRAIN.forEach(t => mapEdgeObjects.push({ mesh: (t.type === 'ramp' ? buildRampMesh : buildStepMesh)(t, theme), x: t.x, y: t.y }));
-    PLATFORMS.forEach(p => mapEdgeObjects.push({ mesh: buildPlatformMesh(p, theme), x: p.x, y: p.y }));
+    buildPairedFromData(OBSTACLES, ob => buildPillarMesh(ob, theme));
+    // ...and the ground pieces. A ramp and a step are different builders, so
+    // the pair carries its own: whichever the data asks for, its opposite
+    // number is a clone of the same thing. This is the reported case verbatim -
+    // "on one side there is a ramp and on the other side there are stairs".
+    buildPairedFromData(TERRAIN, t => (t.type === 'ramp' ? buildRampMesh : buildStepMesh)(t, theme));
+    buildPairedFromData(PLATFORMS, p => buildPlatformMesh(p, theme));
     buildScenery(map, theme); // decorative + collidable props, themed per map
 
     assertSpawnsClear(map);
@@ -4415,6 +4525,10 @@ function buildCrate(accent) {
     const box = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), woodMat);
     box.position.y = size / 2; box.castShadow = true; box.receiveShadow = true;
     g.add(box);
+    // A lid rim, overhanging like every other edge in this pass. It is what
+    // makes the crate look assembled rather than solid.
+    g.add(edgeBand(size, size, 3.5, size - 1.75, 1.6,
+        getCachedMaterial('crateLid', () => new THREE.MeshStandardMaterial({ color: 0x84562f, roughness: 0.85 }))));
     const frameMat = getCachedMaterial('crateFrame', () => new THREE.MeshStandardMaterial({ color: 0x6b4522, roughness: 0.8 }));
     for (const sy of [size * 0.5]) { // corner battens
         for (const [ex, ez] of [[0.5, 0.5], [-0.5, 0.5], [0.5, -0.5], [-0.5, -0.5]]) {
@@ -4427,9 +4541,15 @@ function buildCrate(accent) {
 function buildBarrel(accent) {
     const g = new THREE.Group();
     const h = 36, r = 15;
-    const woodMat = getCachedMaterial('barrelWood', () => new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 0.82 }));
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.85, h, 14), woodMat);
-    body.position.y = h / 2; body.castShadow = true; body.receiveShadow = true; g.add(body);
+    // A TURNED profile rather than a tapered cylinder: a barrel bulges at the
+    // middle and closes at both ends, and that silhouette is the whole reason
+    // you read it as a barrel. Flat-shaded so the 14 facets are staves.
+    const woodMat = getCachedMaterial('barrelWood', () => new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 0.82, flatShading: true }));
+    const body = new THREE.Mesh(lathe([
+        [r * 0.78, 0], [r * 0.95, h * 0.16], [r, h * 0.5],
+        [r * 0.95, h * 0.84], [r * 0.78, h], [0, h],
+    ], 14), woodMat);
+    body.castShadow = true; body.receiveShadow = true; g.add(body);
     const bandMat = getCachedMaterial('barrelBand', () => new THREE.MeshStandardMaterial({ color: 0x3f3a33, metalness: 0.6, roughness: 0.4 }));
     for (const by of [h * 0.22, h * 0.78]) {
         const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.02, r * 1.02, 3, 14), bandMat);
@@ -4440,10 +4560,14 @@ function buildBarrel(accent) {
 function buildUrn(accent) {
     const g = new THREE.Group();
     const mat = getCachedMaterial(`urnMat:${accent}`, () => new THREE.MeshStandardMaterial({ color: 0xcdbb95, roughness: 0.7, metalness: 0.05 }));
-    const body = new THREE.Mesh(new THREE.SphereGeometry(15, 14, 12), mat);
-    body.scale.y = 1.5; body.position.y = 20; body.castShadow = true; g.add(body);
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(7, 10, 8, 12), mat);
-    neck.position.y = 40; g.add(neck);
+    // One turned profile for the whole amphora - foot, belly, shoulder, neck
+    // and lip - instead of a squashed sphere with a cone stuck on top. A single
+    // surface also means no seam where the neck used to meet the body.
+    const body = new THREE.Mesh(lathe([
+        [7, 0], [9, 3], [6, 7], [13, 16], [15.5, 26], [13, 36],
+        [8, 41], [7.2, 44], [9.5, 46], [8.6, 47.5], [0, 47.5],
+    ], 18), mat);
+    body.castShadow = true; body.receiveShadow = true; g.add(body);
     const accMat = getCachedMaterial(`urnAcc:${accent}`, () => new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.4 }));
     const ring = new THREE.Mesh(new THREE.TorusGeometry(11, 1.6, 6, 14), accMat);
     ring.rotation.x = Math.PI / 2; ring.position.y = 26; g.add(ring);
@@ -4454,8 +4578,12 @@ function buildBrazier(accent) {
     const stoneMat = getCachedMaterial('brazierStone', () => new THREE.MeshStandardMaterial({ color: 0x8a7c60, roughness: 0.9 }));
     const stand = new THREE.Mesh(new THREE.CylinderGeometry(6, 10, 40, 10), stoneMat);
     stand.position.y = 20; stand.castShadow = true; g.add(stand);
-    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(15, 9, 12, 12), stoneMat);
-    bowl.position.y = 44; bowl.castShadow = true; g.add(bowl);
+    // A turned bowl with a rim and a hollow, so the flame sits IN it rather
+    // than on top of a tapered disc.
+    const bowl = new THREE.Mesh(lathe([
+        [8, 38], [15, 46], [16.5, 50], [14.5, 50], [13, 46.5], [7, 40], [0, 40],
+    ], 14), stoneMat);
+    bowl.castShadow = true; g.add(bowl);
     const flameMat = new THREE.MeshBasicMaterial({ color: 0xffa53c, transparent: true, opacity: 0.95, fog: false });
     const flame = new THREE.Mesh(new THREE.ConeGeometry(9, 26, 10), flameMat);
     flame.position.y = 60; g.add(flame);
@@ -4491,10 +4619,46 @@ function _makeProp(type, theme) {
     }
 }
 function buildScenery(map, theme) {
+    // Its own seed, because buildOuterWall now reseeds per wall pair and would
+    // otherwise leave the stream wherever the last wall finished - which would
+    // make a map's prop layout depend on wall-building order.
+    mapRng = mulberry32(hashStr(map.name + ':props'));
     const L = ARENA_LEFT, R = ARENA_RIGHT, T = ARENA_TOP, B = ARENA_BOTTOM, accent = theme.accent, sc = theme.scenery;
-    const addSolid = (mesh, x, y, r) => {
-        mesh.position.set(worldX(x), 0, worldZ(y)); mesh.rotation.y = mapRng() * Math.PI;
+    // ROTATION IS PASSED IN, not rolled here. It used to be
+    // `mapRng() * Math.PI` per prop, which meant that even where two props
+    // were a matched pair they faced different ways - see addPair.
+    const addSolid = (mesh, x, y, r, rotY) => {
+        mesh.position.set(worldX(x), 0, worldZ(y));
+        mesh.rotation.y = rotY != null ? rotY : mapRng() * Math.PI;
         mapGroup.add(mesh); OBSTACLES.push({ x, y, r, seed: 0 }); mapEdgeObjects.push({ mesh, x, y });
+    };
+    // EVERY PROP IS PLACED WITH ITS OPPOSITE NUMBER.
+    //
+    // "The arenas should all have perfect 180 degree rotational symmetry, so
+    // that both players have the exact same situation for every map." The
+    // arena geometry already was; the decoration was not, because the spots
+    // were symmetric while the prop TYPE was picked by list index - spot 0 and
+    // its opposite, spot 5, got set[0] and set[1]. Reported as a ramp on one
+    // side and stairs on the other.
+    //
+    // A pair is one call now: the partner's position is derived by rotating
+    // about the arena centre and its facing is exactly pi further round, so the
+    // two cannot drift apart however the list is edited later.
+    const CX = (ARENA_LEFT + ARENA_RIGHT) / 2, CY = (ARENA_TOP + ARENA_BOTTOM) / 2;
+    const addPair = (make, x, y, r) => {
+        const rotY = mapRng() * Math.PI;
+        // BUILT ONCE AND CLONED. The prop builders use Math.random() for their
+        // own shape - a rock's lumps, a bush's leaves, an ice shard's spikes -
+        // so calling the builder twice makes two different objects however
+        // carefully they are placed. A clone shares geometry and materials, so
+        // the pair is the same object seen from the other end of the arena, and
+        // it costs less than building it twice did.
+        const first = make();
+        for (const [px, py, pr, mesh] of [[x, y, rotY, first],
+                                          [2 * CX - x, 2 * CY - y, rotY + Math.PI, first.clone()]]) {
+            if (nearSpawnPt(map, px, py, 80) || spotBlocked(px, py, r + 8)) continue;
+            addSolid(mesh, px, py, r, pr);
+        }
     };
     // Corner accent prop varies by theme (a fire brazier for stone arenas, a
     // glowing pylon / ice shard / boulder / bush otherwise).
@@ -4504,9 +4668,9 @@ function buildScenery(map, theme) {
         celestial: () => buildTechPylon(theme)
     }[sc] || (() => buildBrazier(accent)); // volcanic/temple/castle get fire braziers
     const inset = 110;
-    for (const [x, y] of [[L + inset, T + inset], [R - inset, T + inset], [L + inset, B - inset], [R - inset, B - inset]]) {
-        if (nearSpawnPt(map, x, y, 90) || spotBlocked(x, y, 30)) continue;
-        addSolid(cornerBuild(), x, y, sc === 'canyon' ? 20 : 14);
+    // Two pairs, not four corners: the far corner of each is derived.
+    for (const [x, y] of [[L + inset, T + inset], [R - inset, T + inset]]) {
+        addPair(cornerBuild, x, y, sc === 'canyon' ? 20 : 14);
     }
     // Scattered solid props (theme-specific set), skipping spawns/geometry.
     const set = {
@@ -4516,15 +4680,16 @@ function buildScenery(map, theme) {
         volcanic: ['rock', 'boulder', 'crate', 'rock'], jungle: ['bush', 'rock', 'urn', 'bush'],
         celestial: ['urn', 'pylon', 'urn', 'crate'], coral: ['shard', 'rock', 'shard', 'crate']
     }[sc] || ['crate', 'barrel'];
+    // HALF the spots, each of which places two. The other half of the old list
+    // was these points' own opposites, which is what made the index-based type
+    // choice pair a crate with a barrel.
     const spots = [
-        [L + 200, T + 90], [R - 200, T + 90], [L + 90, (T + B) / 2 - 120], [R - 90, (T + B) / 2 + 120],
-        [L + 200, B - 90], [R - 200, B - 90], [(L + R) / 2 - 150, T + 100], [(L + R) / 2 + 150, B - 100],
-        [(L + R) / 2, T + 110], [(L + R) / 2, B - 110]
+        [L + 200, T + 90], [R - 200, T + 90], [L + 90, (T + B) / 2 - 120],
+        [(L + R) / 2 - 150, T + 100], [(L + R) / 2, T + 110],
     ];
     spots.forEach(([x, y], i) => {
         const type = set[i % set.length], r = _propRadius(type);
-        if (nearSpawnPt(map, x, y, 80) || spotBlocked(x, y, r + 8)) return;
-        addSolid(_makeProp(type, theme), x, y, r);
+        addPair(() => _makeProp(type, theme), x, y, r);
     });
     // Wall banners only for the built/stone arenas.
     if (sc === 'castle' || sc === 'temple' || sc === 'grove' || sc === 'jungle' || sc === 'celestial') {
@@ -4986,7 +5151,7 @@ loadMap(MAPS[Math.floor(Math.random() * MAPS.length)]);
 // A function DECLARATION, not a const arrow: this is read from doSpecial, which
 // can't run before load finishes, but declarations hoist completely and so
 // can't join this file's long history of temporal-dead-zone regressions.
-const TELEPORT_VIS_MIN = 26;
+const TELEPORT_VIS_MIN = 0;
 // The furthest the drawn body may lag behind the simulation. Uncapped, a
 // long chain of teleports could draw a fighter through a wall.
 function pickTarget(attacker, defaultOpponent) {
@@ -6835,8 +7000,8 @@ function addRimOutline(group, colorHex, opts) {
 // blade inboard across the frame, pitch lifts the tip, roll tilts the flat of
 // the blade toward the light so it reads as a blade rather than a line.
 // How far the whole limb is tipped toward the bottom-right corner.
-const VM_SCALE = 0.30;
-const VM_ARM_ROLL = -0.34;
+const VM_SCALE = 0.24;
+const VM_ARM_ROLL = -0.52;
 const VM_ARM_LENGTH = 30;
 // Pushed further right than the arm needs, so the SEALED SHOULDER CUT leaves
 // the frame. The seal draws the limb's interior rather than the sky (Batch 42),
@@ -6845,7 +7010,7 @@ const VM_ARM_LENGTH = 30;
 // MORE of that side, not less.
 // The viewmodel's overall size in camera space, and the mirror that makes the
 // model's left arm read as the player's right one (see finishViewmodel).
-const VM_ARM_ANCHOR = new THREE.Vector3(5.6, -6.2, -14.0);
+const VM_ARM_ANCHOR = new THREE.Vector3(3.6, -2.6, -13.6);
 
 // Which bones count as "the arm". Bone names arrive sanitised by three.js
 // (PropertyBinding.sanitizeNodeName strips '.'), so 'UpperArm.L' may be
@@ -7090,7 +7255,30 @@ function _sealArmCut(mesh) {
 const VM_PROP_TUNE = {
     // A hammer is turned so its FACE is across the view, not pointing down it,
     // and dropped slightly so the head is not level with the crosshair.
-    hammer: { yaw: 0.34, pitch: -0.12, roll: 1.35 },
+    // yaw 0.34 -> 0.92. Reported as "Draven's weapon is backwards in first
+    // person", and measurable: the grip-to-head vector is the only one on the
+    // roster pointing OUTBOARD. Every other weapon sweeps inboard across the
+    // view - Kaelen -4.8, Nyx -7.1, Thorne -8.2, Voss -2.0, Aurelia -4.8 - and
+    // the hammer measured +4.1, off the right edge of the frame.
+    //
+    // The small yaw was a Batch 46 correction for a real problem (the head was
+    // being seen end-on, "a flat disc or washer on a thin stick") and it
+    // over-shot: turning the head into view also turned the whole weapon out of
+    // it. The roll is what keeps the face across the view, so the yaw can come
+    // back up.
+    // Measured against the rest of the roster rather than eyeballed. The
+    // weapon's own axis, in camera space, should point inboard and into the
+    // screen like everyone else's: Kaelen (0.39, 0.61), Nyx (0.38, 0.76),
+    // Thorne (0.60, 0.70), Voss (0.39, 0.61), Aurelia (0.44, 0.86). The hammer
+    // measured (-0.32, 0.25) with its axis 0.91 straight UP - held vertical and
+    // tipped out of frame, which is what "Draven's weapon is backwards in first
+    // person" was. At yaw 0.92 / roll 0.55 it measures (0.36, 0.58).
+    //
+    // The old roll of 1.35 was a real fix for a real thing - the head being
+    // seen end-on, "a flat disc or washer on a thin stick" - and it over-shot:
+    // rolling that far about the weapon's own axis swings the whole haft
+    // upright. The yaw carries the head across the view instead.
+    hammer: { yaw: 0.92, pitch: -0.12, roll: 0.55 },
     // A scythe is mostly haft with the blade far out; less yaw keeps the blade
     // in frame rather than swinging it off the left edge.
     scythe: { yaw: 0.72, pitch: -0.22, roll: 0.45 },
@@ -7599,12 +7787,44 @@ function buildRiggedCharacter(name) {
     g.userData.rigged = true;
     g.userData.rigScale = rigTarget / m.height;
 
+    // ARMS DOWN AT REST: ATTEMPTED AT RUNTIME, REVERTED. DO IT IN BLENDER.
+    //
+    // Reported as "when characters are at rest, their arms should be at their
+    // sides, not open and facing sideways, like some of them (for example
+    // Thorne) are". They are, because what you see at rest is the BIND pose:
+    // the game animates by rotating bones itself and never plays the baked Idle
+    // clip, so the pose on screen is whatever the model was generated in - and
+    // these were generated arms-out, because that is what automatic weighting
+    // needs (limbs touching the torso weld together and bleed weights across
+    // the seam).
+    //
+    // Lowering the arms HERE, by aiming the bones after binding, was tried and
+    // reverted: it mangles the mesh. Bringing an arm from horizontal to hanging
+    // is roughly a 90-degree shoulder rotation, and automatic weights do not
+    // survive that - the deltoid collapses and the torso folds with it. Draven
+    // came out as a crumpled heap, visibly worse than arms-out. That is a
+    // limitation of the weights, not a bug in the rotation: no amount of
+    // tuning the direction fixes a shoulder that has no corrective weighting.
+    //
+    // The fix belongs in art/pipeline.py, BEFORE `bind`: pose the armature into
+    // the rest stance and bind the mesh in THAT pose, so the arms-down position
+    // is the one the weights were solved for. It has to be before binding for
+    // the same reason the smoothing pass does - changing the mesh or the pose
+    // afterwards invalidates the weights. All fourteen characters then need
+    // re-rigging, which is why this is its own job rather than a line here.
     // Rather than re-declare each character's weapon and swing timings beside
     // the rig (a second copy free to drift from the real one), build the
     // ORIGINAL procedural mesh once and transplant its hand props and anim
     // config onto the skeleton. Same weapon, same tuned numbers, one source.
     const proto = PROC_MESH_BUILDERS[name] ? PROC_MESH_BUILDERS[name](((CHAR_MAP[name] || BOSS_MAP[name] || {}).color) || '#ffffff') : null;
     if (proto) {
+        // RIG_TARGET_HEIGHT, not rigTarget. The prop hangs off a hand bone, so
+        // it inherits `inner`'s scale (rigTarget / m.height); counter-scaling by
+        // m.height / rigTarget would cancel that exactly and give every
+        // character an identically-sized weapon - Karrigos would swing the same
+        // hammer as Grint. Counter-scaling by the CONSTANT instead leaves the
+        // character's own size multiplier applied to the prop, so a 1.5x titan
+        // carries a 1.5x weapon.
         const invScale = m.height / RIG_TARGET_HEIGHT;   // props are authored in world units
         const remap = new Map();
         for (const key of ['armPos', 'armNeg']) {
@@ -7623,11 +7843,62 @@ function buildRiggedCharacter(name) {
             // +X as "forward out of the hand", so rotate +X onto +Y here.
             const holder = new THREE.Group();
             holder.scale.setScalar(invScale);
-            holder.rotation.z = Math.PI / 2;
             holder.userData.noOutline = true;
             ra.hand.add(holder);
+
+            // ORIENT THE PROP FROM THE RIG, not from a fixed rotation.
+            //
+            // This was `holder.rotation.z = Math.PI / 2`, on the reasoning that
+            // a bone's local +Y runs wrist-to-fingertips while every prop is
+            // authored with local +X as "out of the hand". That is true of the
+            // rig art/pipeline.py builds, and it is NOT true of every generated
+            // character's hand bone - which produced three separate reports:
+            // Gorgonok's fist swinging behind him, Draven's weapon overlapping
+            // his leg, and Ignis's fists sitting at his waist.
+            //
+            // Measure instead. The direction out of the hand is the forearm's
+            // own direction (elbow -> wrist), so express that in the hand
+            // bone's local space and rotate prop +X onto it. No convention to
+            // be wrong about, and it self-corrects per character.
+            (() => {
+                const handBone = ra.hand;
+                const foreBone = handBone.parent;
+                if (!foreBone) { holder.rotation.z = Math.PI / 2; return; }
+                handBone.updateWorldMatrix(true, false);
+                foreBone.updateWorldMatrix(true, false);
+                const hp = new THREE.Vector3().setFromMatrixPosition(handBone.matrixWorld);
+                const fp = new THREE.Vector3().setFromMatrixPosition(foreBone.matrixWorld);
+                const outWorld = hp.clone().sub(fp);
+                if (outWorld.lengthSq() < 1e-8) { holder.rotation.z = Math.PI / 2; return; }
+                outWorld.normalize();
+                // Into the hand bone's local frame: rotation only, so use the
+                // inverse of its world quaternion rather than the full matrix.
+                const hq = new THREE.Quaternion();
+                handBone.matrixWorld.decompose(new THREE.Vector3(), hq, new THREE.Vector3());
+                const outLocal = outWorld.applyQuaternion(hq.invert()).normalize();
+                holder.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), outLocal);
+            })();
+
             for (const child of [...pa.hand.children]) {
                 pa.hand.remove(child);
+                // A BARE FIST IS NOT A WEAPON TO CARRY OVER. buildFistProp caps
+                // the procedural arm's stub; this body has a modelled hand
+                // already, so the cap lands on top of it as a floating block -
+                // reported as Gorgonok's "large gold hexagonal prism", with one
+                // face rendering solid black because it is the cap's interior.
+                // Kept in the graph but not drawn, so userData.weapon stays
+                // wired for animateWeapon and the hit-flash material list.
+                if (child.userData && child.userData.bareFistCap) child.visible = false;
+                // DROP the inherited local offset's large component.
+                //
+                // These offsets were authored against the PROCEDURAL body, whose
+                // hand sits somewhere else entirely - carrying them across is
+                // what put Ignis's fists at his waist rather than on the ends of
+                // his arms. The prop belongs at the hand it is parented to; any
+                // offset beyond a small authored nudge is a statement about a
+                // body that is no longer there.
+                const off = child.position.length();
+                if (off > PROP_OFFSET_MAX) child.position.multiplyScalar(PROP_OFFSET_MAX / off);
                 holder.add(child);
             }
         }
@@ -7682,9 +7953,10 @@ function buildRiggedCharacter(name) {
 //   'cast'   — raise/point the casting arm(s) and hold through the active
 //              window while the held focus flares (Lyra forward, Seraphine
 //              overhead, Aurelia forward two-handed).
-// The attack ENVELOPE lives in shared/animation.js, loaded above - one copy,
-// shared with the online build. Re-declaring any of it here would shadow the
-// shared version and restore exactly the drift it removes.
+// The attack ENVELOPE - swingT, actionPhase, readableJabs and their constants -
+// lives in shared/animation.js, loaded above. It is pure timing, both builds
+// need exactly the same of it, and keeping one copy is what stopped it being
+// half-ported. See that file's header.
 
 function animateWeapon(f) {
     const acting = f.atkState !== 'idle' && f.atkKind;
@@ -7792,7 +8064,11 @@ function animateWeapon(f) {
         const jabs = anim.jabs || 5, reachDeg = anim.reachDeg || 105;
         const on = f.atkState === 'active';
         const phase = on ? strike * Math.PI * 2 * jabs : 0;
-        arms.forEach((arm, i) => { const s = on ? Math.max(0, Math.sin(phase + i * Math.PI)) : (f.atkState === 'startup' ? -0.3 * wind : 0); arm.pivot.rotation.z = arm.pivot.userData.restRotZ + s * reachDeg * DEG * (on ? 1 : poseGain); });
+        _reachArms(arms, i => {
+            const sv = on ? Math.max(0, Math.sin(phase + i * Math.PI))
+                          : (f.atkState === 'startup' ? -0.3 * wind : 0);
+            return sv * reachDeg * (on ? 1 : poseGain);
+        }, f);
         if (on) { const blink = Math.max(0, 1 - strike * 3); f.mesh.position.x += f.fx * 10 * blink; f.mesh.position.z += f.fy * 10 * blink; } // quick blink-in
     } else if (anim.type === 'skybolt') {
         const armDeg = (f.atkState === 'active') ? (-150 + 230 * strike) : -150 * wind; // point to sky, then snap down-forward
@@ -8226,6 +8502,9 @@ function buildMapThumbnail(map) {
     img.loading = 'lazy';
     img.decoding = 'async';
     img.src = AC_ASSET_BASE + 'arena/' + arenaSlug(map.name) + '.png';
+    // The card shows the mark until its render has decoded. These are ~400KB
+    // PNGs read from disk or cache, so on a cold load there IS a wait here.
+    img.addEventListener('load', () => { img.classList.add('ready'); });
     img.addEventListener('error', () => {
         // No render for this arena: fall back to the plan view, in place.
         const plan = buildMapPlan(map);
@@ -8233,6 +8512,7 @@ function buildMapThumbnail(map) {
     });
     return img;
 }
+
 function buildMapPlan(map) {
     const theme = themeFor(map);
     const W = 240, H = 150, pad = 8;
@@ -8852,19 +9132,46 @@ function freshStats() {
 function buildZoneMesh() {
     disposeZoneMesh();
     const g = new THREE.Group();
-    const ring = new THREE.Mesh(
-        new THREE.RingGeometry(ZONE_RADIUS - 8, ZONE_RADIUS, 48),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false })
-    );
-    ring.rotation.x = -Math.PI / 2;
-    const fill = new THREE.Mesh(
-        new THREE.CircleGeometry(ZONE_RADIUS - 8, 48),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.10, side: THREE.DoubleSide, depthWrite: false })
-    );
-    fill.rotation.x = -Math.PI / 2;
-    g.add(ring, fill);
-    g.position.set(worldX(ARENA_CX), 1.5, worldZ(ARENA_CY)); // just above the floor to avoid z-fighting
+    const flat = (mesh) => { mesh.rotation.x = -Math.PI / 2; return mesh; };
+    const basic = (opts) => new THREE.MeshBasicMaterial(Object.assign({
+        color: 0xffffff, transparent: true, side: THREE.DoubleSide,
+        depthWrite: false, fog: false,
+    }, opts));
+
+    const ring = flat(new THREE.Mesh(
+        new THREE.RingGeometry(ZONE_RADIUS - 5, ZONE_RADIUS, 64), basic({ opacity: 0.9 })));
+    const fill = flat(new THREE.Mesh(
+        new THREE.CircleGeometry(ZONE_RADIUS - 5, 64), basic({ opacity: 0.14 })));
+    // The collar: a ring cut into eight arcs, rotating. A dashed circle reads
+    // as a live marker; a solid one reads as paint.
+    const collar = new THREE.Group();
+    for (let i = 0; i < 8; i++) {
+        const a0 = (i / 8) * Math.PI * 2;
+        const seg = flat(new THREE.Mesh(
+            new THREE.RingGeometry(ZONE_RADIUS + 4, ZONE_RADIUS + 9, 12, 1, a0, Math.PI / 8),
+            basic({ opacity: 0.75 })));
+        collar.add(seg);
+    }
+    // Four ticks aimed inward, so the zone has a direction to walk toward.
+    const ticks = new THREE.Group();
+    for (let i = 0; i < 4; i++) {
+        const t = flat(new THREE.Mesh(new THREE.PlaneGeometry(3, 18), basic({ opacity: 0.55 })));
+        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+        t.position.set(Math.cos(a) * (ZONE_RADIUS + 20), 0.2, Math.sin(a) * (ZONE_RADIUS + 20));
+        t.rotation.z = -a;
+        ticks.add(t);
+    }
+    // A column of light over the whole thing: the part you can see from the
+    // far side of the arena, and over a platform.
+    const column = new THREE.Mesh(
+        new THREE.CylinderGeometry(ZONE_RADIUS - 6, ZONE_RADIUS - 2, 150, 32, 1, true),
+        basic({ opacity: 0.10, blending: THREE.AdditiveBlending }));
+    column.position.y = 75;
+
+    g.add(ring, fill, collar, ticks, column);
+    g.position.set(worldX(ARENA_CX), 1.5, worldZ(ARENA_CY)); // just off the floor, no z-fighting
     g.userData.ring = ring; g.userData.fill = fill;
+    g.userData.collar = collar; g.userData.ticks = ticks; g.userData.column = column;
     scene.add(g);
     zoneMesh = g;
 }
@@ -8881,12 +9188,23 @@ function updateZoneControl(dt) {
     // it while it's being held, so control is readable from inside the fight
     // rather than only on the HUD.
     if (zoneMesh) {
-        const held = zoneHolder ? (zoneHolder === 'p1' ? 0x00f3ff : 0xf472b6) : 0xffffff;
-        zoneMesh.userData.ring.material.color.setHex(held);
-        zoneMesh.userData.fill.material.color.setHex(held);
-        const pulse = zoneHolder ? 0.55 + 0.25 * Math.sin(arenaTime * 0.2) : 0.4;
-        zoneMesh.userData.ring.material.opacity = pulse;
-        zoneMesh.userData.fill.material.opacity = zoneHolder ? 0.16 : 0.08;
+        const u = zoneMesh.userData;
+        // Held: the holder's colour, pulsing. EMPTY: a bright amber beacon, and
+        // MORE visible than when held - an unclaimed zone is the one asking you
+        // to come and stand in it. It used to be dimmest exactly then.
+        const held = zoneHolder ? (zoneHolder === 'p1' ? 0x00f3ff : 0xf472b6) : 0xffd166;
+        const beat = 0.5 + 0.5 * Math.sin(arenaTime * (zoneHolder ? 0.22 : 0.12));
+        for (const part of [u.ring, u.fill, u.column]) part.material.color.setHex(held);
+        for (const seg of u.collar.children) seg.material.color.setHex(held);
+        for (const t of u.ticks.children) t.material.color.setHex(held);
+        u.ring.material.opacity = zoneHolder ? 0.75 + 0.2 * beat : 0.9;
+        u.fill.material.opacity = zoneHolder ? 0.18 : 0.13 + 0.06 * beat;
+        u.column.material.opacity = zoneHolder ? 0.09 : 0.13 + 0.05 * beat;
+        for (const seg of u.collar.children) seg.material.opacity = zoneHolder ? 0.55 : 0.8;
+        for (const t of u.ticks.children) t.material.opacity = zoneHolder ? 0.3 : 0.6;
+        // Turning while empty, still while held: motion is what the eye finds,
+        // and once somebody owns it the colour says so.
+        u.collar.rotation.y += (zoneHolder ? 0.004 : 0.011) * dt;
     }
 }
 
@@ -8910,7 +9228,15 @@ function updateArenaShrink(dt) {
     //
     // Leaving the bounds at full size also keeps `crushing` false, so the
     // crush cinematic and CRUSH_DPS never fire here.
-    if (matchMode === 'timeattack') return;
+    // CLASSIC OPTS IN; nothing else does. This was a list of exclusions - not
+    // in co-op, not in Takedown Race - so Zone Control still collapsed, and any
+    // mode added later would have collapsed by default. Requested directly:
+    // "the only mode arena should close in is classic versus".
+    //
+    // The other modes each have their own pressure: a race is decided by
+    // takedowns, a zone by standing in it, co-op by the boss. Closing the walls
+    // on top of that replaces the mode's own clock with a crush.
+    if (matchMode !== 'classic') return;
     if (!crushing) {
         shrinkTimer -= dt / 60;
         if (shrinkTimer <= 0) {
@@ -10055,7 +10381,7 @@ function stepDeath(dt) {
     // Either side's attack key, or Space/Enter as a universal fallback
     // (read from the live bindings, not hardcoded 'f'/'k').
     const skipRequested = deathTimer >= DEATH_SKIP_AFTER &&
-        (consumePress(BINDINGS.p1.attack) || consumePress(BINDINGS.p2.attack) || consumePress(' ') || consumePress('enter'));
+        (consumePress(BINDINGS.attack) || consumePress(' ') || consumePress('enter'));
 
     // Batch 19: in the continuous modes a knockout is a setback, not the end of
     // the match — the KO animation still plays in full (it's good feel and the

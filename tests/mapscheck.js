@@ -167,7 +167,20 @@ const JUMP_REACH_XY = 130;    // conservative horizontal reach during that jump
             const cards = document.querySelectorAll('#mapselect-grid .map-card');
             (cards[i] || cards[0]).click();
         }, started);
-        const ok = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 30000);
+        // 30s used to be the limit, and it was BELOW the spread it was judging.
+        // tests/maptimecheck.js timed these four at 19.7s, 25.4s, 29.0s and
+        // 30.2s under swiftshader, so a different two or three "failed" on every
+        // run depending on machine load, with no page errors and the right map
+        // loaded - a flake that read exactly like a per-arena bug.
+        //
+        // The wait is long because startMatch now holds the loading screen until
+        // the models, both photographic texture sets AND one rendered frame are
+        // done, which is the point of it ("the new art should already be loaded
+        // when the loading animation is exited"). Headless software rendering
+        // pays several times what a GPU does, and mapscheck reboots per arena so
+        // nothing is cached. maptimecheck is where the actual numbers live; this
+        // only needs to catch STUCK.
+        const ok = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 90000);
         const loaded = await page.evaluate(() => window.ACDebug.matchMap && window.ACDebug.matchMap.name);
         check(`${name}: loads into a live fight`, ok, `state map=${loaded}`);
     }

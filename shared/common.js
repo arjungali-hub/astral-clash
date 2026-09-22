@@ -2111,3 +2111,209 @@ function coopRevive(f) {
 // said why: a revivable teammate needed a sub-state the file did not have.
 // It does now - the continuous modes brought respawn() and a KO that is a
 // setback - so a downed player counts down instead, and only a WIPE ends it.
+
+let hudPainted = false;
+
+const NAME_KEY = 'astralClashPlayerName';
+
+const NAME_MAX = 14;      // fits the room slot and the in-match HUD without clipping
+
+function sanitizeName(raw) {
+    // Names are rendered into innerHTML in places and drawn to a canvas in
+    // others, so strip anything that is not plainly a name rather than trying
+    // to escape it everywhere downstream.
+    return String(raw || '')
+        .replace(/[<>&"'`\\]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, NAME_MAX);
+}
+
+let myPlayerName = '';
+// PER TAB FIRST, per origin second. localStorage is shared by every tab of this
+// origin, so two tabs of the game are one player to it - reported as "when the
+// guest set their name to 'Arjun', the host tab also became 'Arjun'". A tab
+// that has chosen a name keeps it in sessionStorage, which no other tab can
+// see; localStorage stays the remembered default a NEW tab starts from.
+try {
+    myPlayerName = sanitizeName(sessionStorage.getItem(NAME_KEY)
+                                || localStorage.getItem(NAME_KEY) || '');
+} catch (e) {}
+
+let sandboxMatch = false;
+
+let localAway = false;        // this tab is hidden
+
+let awayPaused = false;       // the current pause was caused by absence
+
+const MOUSE_SENS_DEFAULT = 0.0022;   // radians of yaw per pixel of movement
+
+let mouseSensitivity = parseFloat(safeLSGet('astralClashMouseSens') || '') || MOUSE_SENS_DEFAULT;
+
+let invertMouseY = safeLSGet('astralClashInvertY') === '1';
+
+let pointerLocked = false;
+// Deltas ACCUMULATE between simulation steps and are drained by the input
+// block. Mouse movement is an absolute delta, so unlike the keyboard turn rate
+// it must NOT be scaled by dt - doing so makes sensitivity depend on framerate.
+
+let mouseDX = 0, mouseDY = 0;
+
+function wantsPointerLock() {
+    return gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH';
+}
+
+function requestPointerLock() {
+    if (pointerLocked || !wantsPointerLock()) return;
+    const el = document.getElementById('gameCanvas');
+    if (el && el.requestPointerLock) {
+        try { el.requestPointerLock(); } catch (e) { /* refused; keyboard pitch still works */ }
+    }
+}
+
+let selectedMap = null;
+
+const SANDBOX_KEY = 'astralClashDebugUnlockAll:online';
+
+function setOptState(id, text, on) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const pill = el.querySelector('.opt-state');
+    if (pill) pill.textContent = text;
+    else el.textContent = text;   // a build whose row is still a plain button
+    el.classList.toggle('is-on', !!on);
+}
+
+let rebindNoteTimer = 0;
+
+function rebindNote(text) {
+    const el = document.getElementById('rebind-note');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.add('show');
+    clearTimeout(rebindNoteTimer);
+    rebindNoteTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+const IS_TOUCH_DEVICE = !!(window.matchMedia
+    && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches)
+    && navigator.maxTouchPoints > 0);
+
+function showDesktopOnlyNotice() {
+    const el = document.getElementById('desktop-only');
+    if (el) el.style.display = 'flex';
+}
+
+function dismissDesktopOnlyNotice() {
+    const el = document.getElementById('desktop-only');
+    if (el) el.style.display = 'none';
+}
+// Batch 41: no "play the touch version" and no "continue anyway" - see the
+// markup. dismissDesktopOnlyNotice is kept because ACDebug still exposes it for
+// tests, but nothing in the UI calls it any more: on a touch device the notice
+// is the end of the road.
+if (IS_TOUCH_DEVICE) showDesktopOnlyNotice();
+
+
+// Batch 8: the canvas was being sized straight from getBoundingClientRect()
+// CSS pixels, so on any HiDPI display (2x, 3x) the game rendered at half or
+// a third of native resolution and looked soft/blurry compared to the rest
+// of the page. Cap at 2x rather than the raw devicePixelRatio (which can be
+// 3+ on some phones/high-end panels) — diminishing visual return past 2x
+// for a game this size, not worth the fill-rate cost. Phone GPUs are a much
+// smaller/weaker fill-rate budget than a desktop one, and the fragment cost
+// of every pass (shadow map, sky/fog, tone mapping) scales with pixel count,
+// so capped-at-2x was still enough to make a real phone chug — cap at 1x
+// there instead.
+
+const BLOOM_STRENGTH = 0.55, BLOOM_RADIUS = 0.38, BLOOM_THRESHOLD = 0.9;
+
+let crushCam = null;            // and its own camera
+
+const CRUSH_STAGE_HALF = 165;
+
+function edgeBand(w, d, h, y, overhang, mat) {
+    const m = new THREE.Mesh(
+        new THREE.BoxGeometry(w + overhang * 2, h, d + overhang * 2), mat);
+    m.position.y = y;
+    m.castShadow = true; m.receiveShadow = true;
+    return m;
+}
+
+// A turned profile, revolved around Y - the honest way to make an urn, a bowl
+// or a barrel, and the reason those three stop looking like cylinders.
+// `pts` is [[radius, height], ...] from the bottom up.
+
+function lathe(pts, segments) {
+    const v = pts.map(pt => new THREE.Vector2(Math.max(0.001, pt[0]), pt[1]));
+    return new THREE.LatheGeometry(v, segments || 16);
+}
+
+const TELEPORT_VIS_DECAY_NEAR = 0.58;
+
+const TELEPORT_VIS_FULL = 70;      // the distance at which the slow decay applies
+// Below this, a move slides but does not draw a streak: see teleportTo.
+
+const TELEPORT_STREAK_MIN = 26;
+
+const _charModelPromises = {};   // name -> Promise, so N callers cause 1 fetch
+
+let _charLoader = null;
+
+function paintSlotPortrait(el, name) {
+    if (!el) return;
+    const c = name && CHAR_MAP[name];
+    el.style.borderColor = c ? c.color : '#2e3a59';
+    el.style.boxShadow = c ? `0 0 12px ${c.color}66` : 'none';
+    if (c) {
+        // The accent stays underneath the portrait: it shows through the
+        // transparent background the render leaves, and it is what you see if
+        // the image 404s.
+        el.style.backgroundColor = c.color;
+        el.style.backgroundImage = `url('${faceUrl(name)}')`;
+        el.style.backgroundSize = 'cover';
+        el.style.backgroundPosition = 'center top';
+        el.style.backgroundRepeat = 'no-repeat';
+    } else {
+        el.style.backgroundColor = '#0d1017';
+        el.style.backgroundImage = 'none';
+    }
+}
+
+// Which numbered player the local client drives. Online this is decided by the
+// lobby (host = 1, joiner = 2) and is worth stating in the UI, because it
+// decides your spawn and which HUD bar is yours.
+
+function announceResult(text, isDrawResult) {
+    const el = document.getElementById('winner-title');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('draw', !!isDrawResult);
+    el.classList.remove('emphasise');
+    void el.offsetWidth;            // force a reflow so the removal takes effect
+    el.classList.add('emphasise');
+}
+
+function inLiveMatch() {
+    return gameState === 'FIGHT' || gameState === 'INTRO'
+        || gameState === 'DEATH' || gameState === 'ROUND_END';
+}
+
+let quitArmed = 0;
+
+function modelsNeededFor(mode) {
+    const names = [];
+    if (p1Choice) names.push(p1Choice);
+    if (p2Choice) names.push(p2Choice);
+    if (mode === 'boss') names.push('Karrigos');
+    else if (mode === 'survival') names.push('Grint', 'Slagling', 'Hollowkin', 'Karrigos');
+    return [...new Set(names)];
+}
+
+const MODEL_WAIT_MS = 8000;
+
+let awaitingModels = false;
+
+const LOCK_HINT_FADE_MS = 4500;
+
+let lockHintShownAt = 0;

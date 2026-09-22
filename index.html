@@ -1882,7 +1882,6 @@ const hudCanvas = document.getElementById('hudCanvas');
 // leaving a match left the last HUD on screen under the menu's 96%-opaque
 // background, i.e. "the previous match's HUD bars stay faintly visible behind
 // the menu". Cleared once on the way out (see gameLoop), not every frame.
-let hudPainted = false;
 const hudCtx = hudCanvas.getContext('2d');
 
 const SCREEN_EL = { home: 'home-screen', select: 'select-screen', gameover: 'gameover-screen', pause: 'pause-screen' };
@@ -2111,31 +2110,6 @@ function busyWhile(el, promise, label) {
 // which fighter you drive - while the label is a separate presentation
 // concern. Conflating them is what made the old UI talk about "Player 2" when
 // it meant "the person on the other machine".
-const NAME_KEY = 'astralClashPlayerName';
-const NAME_MAX = 14;      // fits the room slot and the in-match HUD without clipping
-
-function sanitizeName(raw) {
-    // Names are rendered into innerHTML in places and drawn to a canvas in
-    // others, so strip anything that is not plainly a name rather than trying
-    // to escape it everywhere downstream.
-    return String(raw || '')
-        .replace(/[<>&"'`\\]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, NAME_MAX);
-}
-
-let myPlayerName = '';
-// PER TAB FIRST, per origin second. localStorage is shared by every tab of this
-// origin, so two tabs of the game are one player to it - reported as "when the
-// guest set their name to 'Arjun', the host tab also became 'Arjun'". A tab
-// that has chosen a name keeps it in sessionStorage, which no other tab can
-// see; localStorage stays the remembered default a NEW tab starts from.
-try {
-    myPlayerName = sanitizeName(sessionStorage.getItem(NAME_KEY)
-                                || localStorage.getItem(NAME_KEY) || '');
-} catch (e) {}
-
 function setMyName(raw) {
     const next = sanitizeName(raw);
     if (next === myPlayerName) return myPlayerName;
@@ -2204,7 +2178,6 @@ function playerLabelShort(side) {
 // setSandboxMatch. Declared up here with `net` because refreshRoomUI() reads
 // it while the menu paints itself, and this file has lost whole releases to
 // temporal-dead-zone regressions on exactly that pattern.
-let sandboxMatch = false;
 const net = {
     peer: null,
     conn: null,
@@ -2243,9 +2216,7 @@ function netActive() { return !!(net.conn && net.conn.open); }
 // throttled to about 1 Hz in a hidden tab but not stopped, and the 15 s
 // timeout tolerates that - without which every away-pause would end in a
 // disconnect instead.
-let localAway = false;        // this tab is hidden
 let remoteAway = false;       // their tab is hidden (from PRESENCE)
-let awayPaused = false;       // the current pause was caused by absence
 const anyoneAway = () => localAway || remoteAway;
 // Who may lift an away-pause: the host, or whoever is alone (offline/debug).
 const mayResumeAway = () => !anyoneAway() && (!netActive() || netIsHost());
@@ -2447,25 +2418,6 @@ function saveBindings() {
 // --- Mouse look and mouse buttons. ---------------------------------------
 // Pointer lock is requested by clicking the canvas during a fight, and released
 // automatically by Escape (the browser does that for us) or when the fight ends.
-const MOUSE_SENS_DEFAULT = 0.0022;   // radians of yaw per pixel of movement
-let mouseSensitivity = parseFloat(safeLSGet('astralClashMouseSens') || '') || MOUSE_SENS_DEFAULT;
-let invertMouseY = safeLSGet('astralClashInvertY') === '1';
-let pointerLocked = false;
-// Deltas ACCUMULATE between simulation steps and are drained by the input
-// block. Mouse movement is an absolute delta, so unlike the keyboard turn rate
-// it must NOT be scaled by dt - doing so makes sensitivity depend on framerate.
-let mouseDX = 0, mouseDY = 0;
-
-function wantsPointerLock() {
-    return gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH';
-}
-function requestPointerLock() {
-    if (pointerLocked || !wantsPointerLock()) return;
-    const el = document.getElementById('gameCanvas');
-    if (el && el.requestPointerLock) {
-        try { el.requestPointerLock(); } catch (e) { /* refused; keyboard pitch still works */ }
-    }
-}
 function exitPointerLock() {
     if (document.exitPointerLock) { try { document.exitPointerLock(); } catch (e) {} }
 }
@@ -2554,7 +2506,6 @@ let matchMode = 'classic';
 // arena was nor that a choice was being made, and a modal that starts a match
 // on first click has no safe way to browse. null = Random, resolved to a
 // concrete map when the host starts (never sent as an intent - see startOnline).
-let selectedMap = null;
 function modeInfo(id) { return MATCH_MODES.find(m => m.id === (id || matchMode)) || MATCH_MODES[0]; }
 // True for the modes that run as one continuous match with respawns instead of
 // discrete best-of-3 rounds. Used in enough places that naming it beats
@@ -2636,7 +2587,6 @@ const shopExpanded = new Set();
 // Scoping the key fixes it in both directions and needs no migration - the old
 // unscoped key simply stops being read here, so an online build that is
 // currently unlocked goes back to the real save on its next load.
-const SANDBOX_KEY = 'astralClashDebugUnlockAll:online';
 let debugUnlockAll = safeLSGet(SANDBOX_KEY) === '1';
 
 // WHEN IS EVERYTHING UNLOCKED?
@@ -2772,15 +2722,6 @@ function hudFont(px, bold) {
 }
 // Writes an option row's current state into its pill. `on` is what gives it
 // colour - the only state that gets any, so a glance finds what is enabled.
-function setOptState(id, text, on) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const pill = el.querySelector('.opt-state');
-    if (pill) pill.textContent = text;
-    else el.textContent = text;   // a build whose row is still a plain button
-    el.classList.toggle('is-on', !!on);
-}
-
 function cycleHudScale() {
     HUD_TEXT_SCALE = HUD_TEXT_SCALE >= 1.3 ? 1 : 1.3;
     safeLSSet('astralClashHudScale', HUD_TEXT_SCALE);
@@ -2818,15 +2759,6 @@ const REBIND_ACTION_LABELS = {
     forward: 'Forward', back: 'Back', strafeLeft: 'Strafe L', strafeRight: 'Strafe R',
     jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash',
 };
-let rebindNoteTimer = 0;
-function rebindNote(text) {
-    const el = document.getElementById('rebind-note');
-    if (!el) return;
-    el.textContent = text;
-    el.classList.add('show');
-    clearTimeout(rebindNoteTimer);
-    rebindNoteTimer = setTimeout(() => el.classList.remove('show'), 2600);
-}
 function buildRebindList() {
     const list = document.getElementById('rebind-list');
     list.innerHTML = '';
@@ -3093,35 +3025,6 @@ let currentMapName = '';
 // caught. `continue anyway` exists regardless, because pointer media queries
 // do misreport on hybrid devices and being wrong here would lock someone out
 // of a game they can play perfectly well.
-const IS_TOUCH_DEVICE = !!(window.matchMedia
-    && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches)
-    && navigator.maxTouchPoints > 0);
-
-function showDesktopOnlyNotice() {
-    const el = document.getElementById('desktop-only');
-    if (el) el.style.display = 'flex';
-}
-function dismissDesktopOnlyNotice() {
-    const el = document.getElementById('desktop-only');
-    if (el) el.style.display = 'none';
-}
-// Batch 41: no "play the touch version" and no "continue anyway" - see the
-// markup. dismissDesktopOnlyNotice is kept because ACDebug still exposes it for
-// tests, but nothing in the UI calls it any more: on a touch device the notice
-// is the end of the road.
-if (IS_TOUCH_DEVICE) showDesktopOnlyNotice();
-
-
-// Batch 8: the canvas was being sized straight from getBoundingClientRect()
-// CSS pixels, so on any HiDPI display (2x, 3x) the game rendered at half or
-// a third of native resolution and looked soft/blurry compared to the rest
-// of the page. Cap at 2x rather than the raw devicePixelRatio (which can be
-// 3+ on some phones/high-end panels) — diminishing visual return past 2x
-// for a game this size, not worth the fill-rate cost. Phone GPUs are a much
-// smaller/weaker fill-rate budget than a desktop one, and the fragment cost
-// of every pass (shadow map, sky/fog, tone mapping) scales with pixel count,
-// so capped-at-2x was still enough to make a real phone chug — cap at 1x
-// there instead.
 const PIXEL_RATIO = Math.min(window.devicePixelRatio || 1, 2);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -3160,7 +3063,6 @@ renderer.toneMappingExposure = BASE_EXPOSURE;
 // making a bright SURFACE look like a light SOURCE. 0.95 keeps it to things
 // that are genuinely near-white: emissive rails and cores, brazier flame, the
 // sun sprite, a lightning bolt.
-const BLOOM_STRENGTH = 0.55, BLOOM_RADIUS = 0.38, BLOOM_THRESHOLD = 0.9;
 let composer = null, bloomRenderPass = null, bloomPass = null, bloomFailed = false;
 // Declared HERE, not next to its toggle further down: renderWithBloom reads it,
 // and a `let` below that function would be in its temporal dead zone for any
@@ -3462,7 +3364,6 @@ let crushTime = 0;           // frames since the crush began; drives the whole s
 // what is drawn.
 // ===========================================================================
 let crushScene = null;          // the cinematic's own scene
-let crushCam = null;            // and its own camera
 const crushBorrowed = [];       // { obj, parent } so every reparent is undone
 
 // Half the distance between the two marks. Each stage floor is a 300-unit box
@@ -3471,8 +3372,6 @@ const crushBorrowed = [];       // { obj, parent } so every reparent is undone
 // 165, not 190: the floors overlap very slightly at their far corners, which is
 // invisible once each stage is yawed toward the camera (see renderCrushCinematic)
 // and lets the camera sit close enough for the fighters to be the subject.
-const CRUSH_STAGE_HALF = 165;
-
 function buildCrushScene() {
     if (crushScene) return crushScene;
     crushScene = new THREE.Scene();
@@ -4505,22 +4404,6 @@ function photoColumn(mat, theme, radius, height, opts) {
 // note at the top of this batch about ExtrudeGeometry's UVs. It also costs one
 // mesh instead of a geometry rebuild, and it is the same trick the outer walls
 // already used for their cap, generalised.
-function edgeBand(w, d, h, y, overhang, mat) {
-    const m = new THREE.Mesh(
-        new THREE.BoxGeometry(w + overhang * 2, h, d + overhang * 2), mat);
-    m.position.y = y;
-    m.castShadow = true; m.receiveShadow = true;
-    return m;
-}
-
-// A turned profile, revolved around Y - the honest way to make an urn, a bowl
-// or a barrel, and the reason those three stop looking like cylinders.
-// `pts` is [[radius, height], ...] from the bottom up.
-function lathe(pts, segments) {
-    const v = pts.map(pt => new THREE.Vector2(Math.max(0.001, pt[0]), pt[1]));
-    return new THREE.LatheGeometry(v, segments || 16);
-}
-
 function buildPillarMesh(ob, theme) {
     const group = new THREE.Group();
     const colH = ob.h || 165;
@@ -5647,11 +5530,6 @@ loadMap(MAPS[Math.floor(Math.random() * MAPS.length)]);
 const TELEPORT_VIS_MIN = 0;
 // The furthest the drawn body may lag behind the simulation. Uncapped, a
 // long chain of teleports could draw a fighter through a wall.
-const TELEPORT_VIS_DECAY_NEAR = 0.58;
-const TELEPORT_VIS_FULL = 70;      // the distance at which the slow decay applies
-// Below this, a move slides but does not draw a streak: see teleportTo.
-const TELEPORT_STREAK_MIN = 26;
-
 function pickTarget(attacker, defaultOpponent) {
     if (!isCoopMode()) return defaultOpponent;
     if (attacker && attacker.isBossEntity) {
@@ -8286,9 +8164,6 @@ function syncViewmodels(dt) {
 // THE PROCEDURAL CHARACTER BODIES live in shared/characters.js, loaded
 // above: one copy, shared with the local build.
 const charModels = {};        // name -> { scene, animations, height }
-const _charModelPromises = {};   // name -> Promise, so N callers cause 1 fetch
-let _charLoader = null;
-
 function ensureCharModel(name) {
     if (!name) return Promise.resolve(null);
     if (charModels[name]) return Promise.resolve(charModels[name]);
@@ -9014,29 +8889,6 @@ function pickKeyHint() {
 // The accent colour stays as the border and glow - it is how a fighter is
 // identified everywhere else - and stays as the FALLBACK fill, so a missing
 // portrait file degrades to exactly the old behaviour instead of a blank hole.
-function paintSlotPortrait(el, name) {
-    if (!el) return;
-    const c = name && CHAR_MAP[name];
-    el.style.borderColor = c ? c.color : '#2e3a59';
-    el.style.boxShadow = c ? `0 0 12px ${c.color}66` : 'none';
-    if (c) {
-        // The accent stays underneath the portrait: it shows through the
-        // transparent background the render leaves, and it is what you see if
-        // the image 404s.
-        el.style.backgroundColor = c.color;
-        el.style.backgroundImage = `url('${faceUrl(name)}')`;
-        el.style.backgroundSize = 'cover';
-        el.style.backgroundPosition = 'center top';
-        el.style.backgroundRepeat = 'no-repeat';
-    } else {
-        el.style.backgroundColor = '#0d1017';
-        el.style.backgroundImage = 'none';
-    }
-}
-
-// Which numbered player the local client drives. Online this is decided by the
-// lobby (host = 1, joiner = 2) and is worth stating in the UI, because it
-// decides your spawn and which HUD bar is yours.
 function localPlayerNumber() { return LOCAL_SIDE === 'p1' ? 1 : 2; }
 
 function refreshRoomUI() {
@@ -10522,16 +10374,6 @@ document.getElementById('btn-reroll-map').addEventListener('click', () => hostRe
 // Sets the result line and replays its grow animation. Re-adding the class is
 // required: a CSS animation does not restart when the same class is already
 // present, so a rematch would have shown the second result with no animation.
-function announceResult(text, isDrawResult) {
-    const el = document.getElementById('winner-title');
-    if (!el) return;
-    el.textContent = text;
-    el.classList.toggle('draw', !!isDrawResult);
-    el.classList.remove('emphasise');
-    void el.offsetWidth;            // force a reflow so the removal takes effect
-    el.classList.add('emphasise');
-}
-
 function refreshGameOverUI() {
     const canRematch = !netActive() || netIsHost();
     const actions = document.getElementById('gameover-actions');
@@ -10566,11 +10408,6 @@ function togglePause() {
 // See the note by `localAway`. `document.hidden` is the signal rather than
 // window blur: the request is about leaving the TAB, and blur also fires for
 // clicking a second monitor or a devtools panel, which should not stop a match.
-function inLiveMatch() {
-    return gameState === 'FIGHT' || gameState === 'INTRO'
-        || gameState === 'DEATH' || gameState === 'ROUND_END';
-}
-
 function pauseForAway() {
     if (gameState === 'PAUSED') { awayPaused = true; refreshPauseUI(); return; }
     if (!inLiveMatch()) return;
@@ -10677,7 +10514,6 @@ document.getElementById('btn-resume').addEventListener('click', requestResume);
 // dialog cannot be styled and stops the frame loop, and this is the pattern the
 // local build's progress reset already uses. Clicking anything else disarms
 // it, and so does closing the pause menu.
-let quitArmed = 0;
 function disarmQuit() {
     if (!quitArmed) return;
     quitArmed = 0;
@@ -10937,15 +10773,6 @@ function resolvePlayerCollision(a, b) {
 // the fighters/hazard/pickup/timers, keeping the same map and score.
 // Every model this match needs, so the fighters are never built from a
 // procedural placeholder because a GLB was still in flight.
-function modelsNeededFor(mode) {
-    const names = [];
-    if (p1Choice) names.push(p1Choice);
-    if (p2Choice) names.push(p2Choice);
-    if (mode === 'boss') names.push('Karrigos');
-    else if (mode === 'survival') names.push('Grint', 'Slagling', 'Hollowkin', 'Karrigos');
-    return [...new Set(names)];
-}
-
 function neededModelsReady(mode) {
     return modelsNeededFor(mode).every(n => !CHAR_MODEL_URLS[n] || charModels[n]);
 }
@@ -10972,9 +10799,6 @@ function neededModelsReady(mode) {
 // The wait is BOUNDED: if a model genuinely will not load, the match starts
 // anyway with the procedural mesh rather than hanging on a blank screen. That
 // was always the contract - the game must never fail to start over art.
-const MODEL_WAIT_MS = 8000;
-let awaitingModels = false;
-
 function startMatch(mapOverride) {
     closeAllModals();
     hideOverlay(); // the match takes over the viewport — no menu/gameover screen behind it
@@ -12161,9 +11985,6 @@ const STATE_STEPS = {
 // Called from the game loop, so it follows the lock being lost (Escape, a
 // tab-switch) as well as never being taken.
 // How long the pointer-lock hint stays at full strength.
-const LOCK_HINT_FADE_MS = 4500;
-let lockHintShownAt = 0;
-
 function syncLockHint() {
     const el = document.getElementById('lock-hint');
     if (!el) return;
