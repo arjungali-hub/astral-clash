@@ -2,7 +2,8 @@
 r"""Ports the art, font and balance work from index.html into the local
 local split-screen build.
 
-    python art/sync_local.py
+    python art/sync_local.py            # regenerate the local build
+    python art/sync_local.py --check    # fail if it is stale, write nothing
 
 local/index.html is a FORK, not a shared module: it was local
 verbatim before the online refactor because the two builds differ in their
@@ -2374,6 +2375,20 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
           % ('verified', len(REQUIRED),
              len(SHARED_REQUIRED) + len(ANIM_REQUIRED) + len(PROPS_REQUIRED)
              + len(CHARS_REQUIRED), len(CALLED)))
+
+    if '--check' in sys.argv:
+        # COMPARE, do not write. The point is to answer "is the committed local
+        # build what this script would produce from the committed online one",
+        # which is the question a pre-commit hook needs and the one nobody
+        # remembers to ask by hand.
+        current = io.open(DST, encoding='utf-8').read()
+        if current == dst:
+            print('\nlocal build is up to date with index.html')
+            return 0
+        print('\nLOCAL BUILD IS STALE: index.html has changes the local build does not.')
+        print('   %d bytes here, %d bytes if regenerated.' % (len(current), len(dst)))
+        print('   Run: python art/sync_local.py')
+        return 1
 
     io.open(DST, 'w', encoding='utf-8', newline='').write(dst)
     print('\nlocal build: %d -> %d bytes' % (before, len(dst)))

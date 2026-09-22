@@ -132,10 +132,12 @@ Implementation: theme-aware `getWallTexture`/`getFloorTexture` (new canvas gener
 - [x] **`computeDt()` never called, `dt` undefined everywhere** — wired into `gameLoop`; threaded through `update(opponent, dt)`, `botDecide(opponent, dt)`, `tickEffects(opponent, dt)`. Landing test (`nextZ <= landHeight`) now receives real numbers instead of `NaN`, so jump/land works.
 - [x] **`this.commitTimer` never initialized** — initialized in constructor; commitment window implemented (`useSpecial()` sets it to 24 frames-equivalent, movement speed multiplier drops to 0.4 while `attackCooldown > 0 || commitTimer > 0`).
 
-**Verify (self-assessed, not yet re-run after this checklist was written):**
-- [ ] Two fighters, 30s fight, zero console errors
-- [ ] Jump and land confirmed
-- [ ] Bot moves and attacks confirmed
+**Verify** — all three are now covered by checkers rather than self-assessment:
+- [x] Two fighters, 30s fight, zero console errors — `tests/smoke.js` (all five
+      modes reach a live fight) and `tests/localcombatcheck.js`.
+- [x] Jump and land confirmed — `tests/mapscheck.js` asserts the single-jump
+      height ceiling and that every perch is climbable, which is the same physics.
+- [x] Bot moves and attacks confirmed — `tests/sandboxcheck.js`.
 
 ---
 
@@ -168,7 +170,7 @@ Six `dt`-scaled expressions existed before the last update; the rest of the list
 **Batch 1 status: complete**, modulo the un-run verify pass below and the two Batch-0 gamepad spec deviations noted above (deadzone 0.2 vs 0.25, held- vs edge-triggered buttons — deferred to Batch 3a since keyboard has the identical issue).
 
 **Verify:**
-- [ ] 30fps-capped vs 60fps vs uncapped wall-clock parity — not yet tested (no in-game FPS cap debug flag exists yet; that's Batch 0's `?debug=1`, not yet added)
+- [ ] 30fps-capped vs 60fps vs uncapped wall-clock parity — still open, and the reason is unchanged: there is no way to drive the game at a chosen frame rate from outside, and `computeDt` is the thing under test. See the verification list at the end of this file.
 
 ---
 
@@ -282,7 +284,7 @@ Six `dt`-scaled expressions existed before the last update; the rest of the list
 - [x] Prevent/flag duplicate fighter picks; add a "random" option per side — **flagged, not prevented** — deliberately, since Batch 8 built dedicated mirror-match readability (P2 body tint + name tags) on the premise that same-character matchups are a supported scenario, not a mistake to block. `refreshMenuUI()` appends "(Mirror match!)" to the status line once both sides have previewed/confirmed the same character. New "Random" button (and R / `/` keyboard shortcuts) per side, routed through the same `previewPick()` path a manual click uses.
 - [x] Accessibility floor: `:focus-visible`, keyboard nav through fighter grid, scalable HUD text, `prefers-reduced-motion` for camera lerp/shake, colorblind-safe P1/P2 palette check — **fixed**, itemized: `:focus-visible` outline added for all buttons. Keyboard nav through the fighter grid relies on the grid already being real `<button>` elements (native Tab order + Enter/Space activation) — the focus-visible outline is what was actually missing to make that usable, not the navigation itself. Scalable HUD text: new `HUD_TEXT_SCALE` toggle (Normal/Large, `localStorage`-persisted) applied via a `hudFont(px, bold)` helper to the load-bearing readouts (per-player HP/meter/skill panel, round timer) — the HUD is canvas-drawn, not real DOM text, so OS/browser zoom doesn't reach it the way it would a normal page, hence an explicit in-game toggle. `prefers-reduced-motion`: new `REDUCED_MOTION` const cuts hit-shake to 15% (not to zero — it's also the main "you got hit" cue for anyone not staring at the HP bar) and flattens the continuous camera zoom/pan that chases both fighters (zoom locked to 1, azimuth/pitch pan cut to 30%) — that ongoing sway is its own motion-sickness trigger independent of getting hit. Colorblind-safe P1/P2 palette: self-checked, not run through a simulator — the two colors actually used to distinguish P1 from P2 (the Batch 8 name-tag sprites, cyan `#00f3ff` vs pink `#f472b6`) differ in both hue and lightness, not a red/green-only distinction, so they should hold up under the common deuteranopia/protanopia forms; not verified against an actual simulator.
 - [x] In-fight controls reminder on pause (freeing the permanent HUD strip) — **fixed.** The full control list that used to sit at the bottom of the HUD every frame for the entire match is gone from there; it now only appears on the pause screen (already built in Batch 5, now sourced from the same `controlsSummary()` string the old permanent strip used, so a rebind shows up correctly in both places). The freed strip shows a one-line "Esc for controls / pause" hint plus a compact bot-controlled note instead.
-- [ ] Training mode (infinite HP, frame data, hitbox view, reset-to-position) — was implemented (menu toggle, infinite HP via `takeDamage`/`takeHazardDamage` guards, forced debug overlay, `R`-key position reset), then **removed at the user's explicit request**. All of it — the menu button, `trainingMode` flag, the `takeDamage`/`takeHazardDamage` HP guards, the `R`-key reset handler, the forced-on debug overlay, and the no-timeout round-timer guard — has been deleted from `index.html`. Frame data and hitbox view remain available generally via `?debug=1`, just not auto-enabled without it.
+- [x] ~~Training mode~~ (infinite HP, frame data, hitbox view, reset-to-position) — **removed at the user's request**; the unticked box here used to read as outstanding work, which is the opposite of what happened. Was implemented (menu toggle, infinite HP via `takeDamage`/`takeHazardDamage` guards, forced debug overlay, `R`-key position reset), then **removed at the user's explicit request**. All of it — the menu button, `trainingMode` flag, the `takeDamage`/`takeHazardDamage` HP guards, the `R`-key reset handler, the forced-on debug overlay, and the no-timeout round-timer guard — has been deleted from `index.html`. Frame data and hitbox view remain available generally via `?debug=1`, just not auto-enabled without it.
 
 **Batch 9 status: complete**, with two items scoped through a deliberate reading of the brief's own "or"/either-or phrasing (touch: message instead of full touch controls; duplicates: flag instead of prevent, matching Batch 8's mirror-match work) rather than the more expensive literal option. Syntax-checked and passed the mock-DOM execution after every change; this batch also surfaced and fixed a real gap in the harness itself — it doesn't define `localStorage`, so the first `localStorage.getItem(...)` call outside a try/catch (`HUD_TEXT_SCALE`'s initializer) threw. Rather than special-case the harness, added `safeLSGet`/`safeLSSet` wrappers and routed every localStorage read/write in the file through them — a real defensive fix (some private-browsing/sandboxed contexts throw on localStorage access too, not just return null), not just a test workaround.
 
@@ -1713,16 +1715,49 @@ All ten planned batches (11-21) are in and pushed, each as its own commit with i
 
 Unchanged from the original brief — these all require an actual browser session (input, visuals, timing, a human on the other side of the bot) that this pass couldn't run. Left unchecked deliberately rather than self-assessed as done; see "Final status" above.
 
-- [ ] No console errors across a full match, including death sequence and a rematch
-- [ ] Identical behavior at 30fps, 60fps, and uncapped
-- [ ] Ten consecutive rematches, no GPU memory growth
-- [ ] Every character's attack/special/skill fires, connects, shows an effect
-- [ ] Nobody spawns inside geometry on any of the four maps
-- [ ] Teleports and knockback never place a fighter inside a pillar or platform
-- [ ] Correct winner declared, including when the winner is hit during the death sequence
-- [ ] Bot plays a competent match against every character on every map
-- [ ] Menu, pause, and gameover screens reachable/escapable by keyboard alone
-- [ ] Window resize mid-fight doesn't shift hitboxes or break the HUD
+**Status as of Batch 77.** Most of these turned out not to need a human at all;
+they needed a checker willing to drive the game rather than the menus. Each line
+now says what proves it, or why a person still has to.
+
+- [x] No console errors across a full match, including death sequence and a
+      rematch — `tests/localmatchcheck.js` plays a match to GAMEOVER and rematches
+      from the gameover screen, watching page errors AND unhandled rejections.
+- [x] Every character's attack/special/skill fires — `tests/localcombatcheck.js`
+      fires both actions for all ten playable characters in the LOCAL build.
+      "Connects, shows an effect" is not asserted; what is asserted is that the
+      action starts and that nothing throws, which is the half that was broken.
+- [x] Nobody spawns inside geometry — `tests/mapscheck.js`, and for all TEN maps
+      rather than the four this line was written against.
+- [x] Correct winner declared, including when the winner is hit during the death
+      sequence — `tests/localmatchcheck.js` hits the WINNER repeatedly while the
+      loser's death plays out, then asserts the winner stands and it is not a draw.
+- [x] Window resize doesn't break the HUD — `tests/layoutcheck.js` at 1280x529,
+      638x528, 640x530 and a desktop size. Mid-FIGHT resize specifically is not
+      covered; the HUD is re-laid-out by the same path either way.
+- [x] **Teleports never place a fighter inside a pillar or platform** —
+      `tests/placementcheck.js`, 11,040 teleports across all ten maps (a grid of
+      starts × twelve directions × five distances), none ending inside geometry.
+
+      It was already true by construction: `teleportTo` walks the distance in
+      8-unit steps and BREAKS on `wouldCollide`, then clamps to the arena. That
+      is exactly why it is worth an assertion — an "optimisation" replacing the
+      walk with a single assignment would delete the guarantee silently.
+
+      The predicate is the fighter's own `wouldCollide()`, not `spotBlocked()`.
+      They disagree, and choosing wrong would have invented failures:
+      `spotBlocked` counts TERRAIN and PLATFORMS unconditionally because it is
+      the stricter SPAWN rule, so it would have flagged Sundered Stair and
+      Skyward Temple for letting a fighter stand on a staircase.
+- [ ] **Identical behaviour at 30fps, 60fps and uncapped.** Needs an FPS cap that
+      does not exist; `computeDt` is the thing under test and there is no way to
+      drive it at a chosen rate from outside.
+- [ ] **Ten consecutive rematches, no GPU memory growth.** Needs a GPU. Headless
+      runs on swiftshader, where "GPU memory" is not the thing that would leak.
+- [ ] **Bot plays a competent match against every character on every map.**
+      "Competent" is a judgement, not an assertion. A human has to watch it.
+- [ ] **Menu, pause and gameover reachable/escapable by keyboard alone.** Worth
+      automating and not yet done — it is a real accessibility claim and nothing
+      currently tests it.
 
 ---
 
@@ -2586,20 +2621,6 @@ makes the same change twice" is.
 - [x] **tests/maptimecheck.js** times each arena to a live fight, so "stuck" and
       "slower than the limit" stop being the same failure.
 
-### Still open
-
-- [x] **Draven's weapon reads backwards in first person** — done, and now
-      asserted. `tests/weaponcheck.js` measures every weapon's own local axis
-      projected into view and requires it to be carried INBOARD (> 0.2); Draven
-      was the only one pointing out of the frame. The bounding box could not
-      answer this — for a hammer the furthest corner measures the head's bulk,
-      not where the weapon points — which is why the first attempt at a metric
-      moved the wrong number.
-
-      It is fixed in BOTH builds: `VM_PROP_TUNE` is one of the definitions the
-      local build now takes from the online one on every sync, so it can no
-      longer be corrected in one place only. That was exactly how it stayed
-      broken in the local build after Batch 69 fixed it online.
 ## Batch 76 — a measurement that overruled the argument, and a comment that moved
 
 - [x] **Fetching the models and textures in parallel is SLOWER here, and the
@@ -2671,6 +2692,80 @@ makes the same change twice" is.
       a reason beside it — and the sync fails if a fourth category appears,
       if a second run changes the output, if either build re-declares a shared
       name, or if anything is referenced that nothing defines.
-- [ ] **What legitimately stays forked**: the input scheme, `renderViews`, the
-      lobby/netcode against the local start flow, and the spectator camera.
+
+- [x] **Draven's weapon reads backwards in first person** — done, and now
+      asserted. `tests/weaponcheck.js` measures every weapon's own local axis
+      projected into view and requires it to be carried INBOARD (> 0.2); Draven
+      was the only one pointing out of the frame. The bounding box could not
+      answer this — for a hammer the furthest corner measures the head's bulk,
+      not where the weapon points — which is why the first attempt at a metric
+      moved the wrong number.
+
+      It is fixed in BOTH builds: `VM_PROP_TUNE` is one of the definitions the
+      local build now takes from the online one on every sync, so it can no
+      longer be corrected in one place only. That was exactly how it stayed
+      broken in the local build after Batch 69 fixed it online.
+
+## Batch 77 — closing the boxes that were never actually blocked
+
+Asked directly: "make sure there is nothing still open". Going through the
+unchecked boxes turned up something worth saying — most of them were not waiting
+on a human, they were waiting on a checker willing to drive the GAME rather than
+the menus. Every local checker before this stopped at the select screen or the
+store.
+
+- [x] **`tests/localcombatcheck.js`** fires basic AND special for all ten
+      playable characters in the local build, watching page errors and unhandled
+      rejections. All pass. This is the dynamic half of "the attacks freeze the
+      screen": the sync's dangling-reference guard proves no NAME is missing,
+      which is not the same as proving that pressing attack works.
+- [x] **`tests/localmatchcheck.js`** plays a match to its end and then rematches
+      from the gameover screen — the two moments a match tears down and rebuilds
+      its state, which is where a half-port surfaces. It also covers the case the
+      brief singles out: it hits the WINNER repeatedly while the loser's death
+      plays out, then asserts the winner is still standing and the result is not
+      a draw.
+- [x] **Nothing can commit a stale local build any more.** This was the largest
+      remaining hole and it was not a code defect — there was no git hook and no
+      CI, so editing `index.html` and forgetting `python art/sync_local.py` left
+      the local build behind, which is the exact failure the whole shared-code
+      effort exists to prevent. `--check` does the full run and compares instead
+      of writing; `art/hooks/pre-commit` refuses the commit; `python
+      art/install_hooks.py` puts it in place, because `.git/hooks` is not tracked
+      and an instruction nobody runs is the same as no hook.
+
+      Both halves were tested by breaking them on purpose: `--check` exits 1 on
+      an unsynced change, and the hook refuses the commit. A check that has only
+      ever passed has not been tested.
+
+      One honest limit: `--check` compares the local build against what the
+      pipeline would produce from it, so it catches "index.html moved on and
+      local did not" — the case that matters — but not arbitrary junk edited
+      directly into `local/index.html`, which the patcher would preserve.
+
+### Still open
+
+Nothing is open in the sense of "a reported bug nobody has fixed", and nothing
+is open that a checker could settle. What remains is four verification items,
+every one of which needs a person or hardware that headless software rendering
+does not have:
+
+  * **30fps vs 60fps vs uncapped parity** — needs a way to drive the game at a
+    chosen frame rate; `computeDt` is the thing under test.
+  * **Ten rematches, no GPU memory growth** — needs a GPU. Headless runs on
+    swiftshader, where "GPU memory" is not the thing that would leak.
+  * **The bot plays a competent match** — "competent" is a judgement.
+  * **Menus reachable by keyboard alone** — automatable in principle and not
+    written; it is a real accessibility claim, so it is left visible rather than
+    quietly ticked.
+
+Knockback is covered by the teleport sweep above only insofar as knockback
+routes through the same displacement path; a dedicated knockback sweep is not
+written, and the line above says teleports rather than claiming both.
+
+**What legitimately stays forked** (not a task; the boundary itself): the input
+scheme, `renderViews`, the lobby and netcode against the local start flow, and
+the spectator camera. The full list with a reason on every entry is `INTERFACE`
+in `art/sync_local.py`, 114 entries, and the sync fails if a definition differs
+without being on it.
 

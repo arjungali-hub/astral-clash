@@ -1,0 +1,54 @@
+#!/bin/sh
+# Refuse a commit whose local build is stale.
+#
+# Everything in art/sync_local.py guarantees the two builds AGREE once the sync
+# has run. Nothing guaranteed that it ever runs. Editing index.html and
+# forgetting `python art/sync_local.py` leaves the local build behind - which is
+# the exact failure the whole shared-code effort exists to prevent, and the one
+# most likely to actually happen, because it is a memory lapse rather than a
+# code defect.
+#
+# Install with:
+#     python art/install_hooks.py
+#
+# Skip deliberately (and rarely) with:
+#     git commit --no-verify
+set -e
+
+# Only worth checking when a build or a shared module is actually in the commit.
+if ! git diff --cached --name-only | grep -qE '^(index\.html|local/index\.html|shared/|art/sync_local\.py)'; then
+    exit 0
+fi
+
+# Git's shell does not necessarily have the same PATH as the terminal, so a
+# bare `python` can be missing even where the sync runs fine by hand. Falling
+# back keeps a missing interpreter from silently becoming a passing hook.
+PY_BIN=""
+for c in python python3 py; do
+    if command -v "$c" >/dev/null 2>&1; then PY_BIN="$c"; break; fi
+done
+if [ -z "$PY_BIN" ]; then
+    echo "pre-commit: no python found; cannot check whether the local build is stale." >&2
+    echo "            install python or commit with --no-verify if you are sure." >&2
+    exit 1
+fi
+# An `if`, NOT `[ ... ] && ...`. Under `set -e` a bare test-and-assign whose
+# test is FALSE makes the whole list return non-zero and the shell exits - so
+# on every machine where python is found as `python` rather than `py`, this
+# hook would have aborted with status 1 and refused the commit silently, which
+# is the worst possible way for a safety check to fail.
+if [ "$PY_BIN" = "py" ]; then
+    PY_BIN="py -3"
+fi
+
+LOG="$(mktemp 2>/dev/null || echo /tmp/ac-sync-check.log)"
+$PY_BIN art/sync_local.py --check >"$LOG" 2>&1 && exit 0
+
+echo
+echo "COMMIT REFUSED: the local build is stale."
+echo
+tail -n 6 "$LOG"
+echo
+echo "  python art/sync_local.py     regenerates it"
+echo "  git commit --no-verify       commits anyway, if you mean to"
+exit 1
