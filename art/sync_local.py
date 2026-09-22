@@ -32,6 +32,50 @@ SRC = os.path.join(ROOT, 'index.html')
 DST = os.path.join(ROOT, 'local', 'index.html')
 
 
+# A column-0 definition, the same shape art/extract_shared.py looks for.
+_DEF_RE = re.compile(r'(?m)^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|'
+                     r'(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=)')
+
+
+def strip_shared_duplicates(text, shared_sources):
+    """Remove every top-level definition that a shared module already defines.
+
+    The steps above insert blocks guarded on names, and the shared extraction
+    keeps removing those names from this build - so a guard passes, the block
+    goes back, and the build gains a second copy of something shared. That is
+    a SyntaxError ("already been declared") and it grew the file by 13KB a run.
+
+    Rather than fix forty guards, the generated file is cleaned at the end:
+    whatever the steps did, what gets written cannot shadow shared/.
+    """
+    shared_names = set()
+    for src_text in shared_sources:
+        for m in _DEF_RE.finditer(src_text):
+            shared_names.add(m.group(1) or m.group(2))
+
+    removed = []
+    while True:
+        hits = list(_DEF_RE.finditer(text))
+        # A name declared twice HERE is the same failure with a different
+        # cause: a step whose guard stopped matching inserts its block on every
+        # run. `let hudFontReady` appeared twice and grew the file 13KB a run.
+        # The first declaration wins; later ones go.
+        seen = set()
+        for k, m in enumerate(hits):
+            name = m.group(1) or m.group(2)
+            dup_here = name in seen
+            seen.add(name)
+            if name not in shared_names and not dup_here:
+                continue
+            end = hits[k + 1].start() if k + 1 < len(hits) else len(text)
+            text = text[:m.start()] + text[end:]
+            removed.append(name)
+            break
+        else:
+            break
+    return text, removed
+
+
 def comment_start(text, i):
     """Index of the start of the run of `//` comment lines directly above the
     line containing `i` - or the start of that line if there is none.
@@ -452,7 +496,10 @@ def main():
         # _armTriangles and _armBoneIndices are inside that block too.
 
     # --- roster faces -------------------------------------------------------
-    if 'function faceUrl(' not in dst:
+    # NOT guarded on faceUrl: that moved to shared/common.js, so the guard
+    # became permanently true. Keyed on the block's own comment, which stays in
+    # the build.
+    if "the circles hold the character's FACE" not in dst:
         face = block(src, "// Batch 37: the circles hold the character's FACE.",
                      "function paintSlotPortrait(", 'faceUrl')
         face = face.replace("'assets/faces/'", "'../assets/faces/'")
@@ -467,8 +514,12 @@ def main():
             '            + `<span class="ftitle">${c.title}</span></span>`;', 1)
         facecss = block(src, "        /* Batch 37: the roster card's face chip. */",
                         "\n        .pslot-portrait {", 'face css')
-        dst = dst.replace("        .fighter-grid {", facecss + "        .fighter-grid {", 1)
-        print('  %-34s ok' % 'roster face chips')
+        # Guarded on the CSS ITSELF. The enclosing guard is about the markup,
+        # which is inserted once; this block was going in on every run after
+        # that, at 700 bytes a time.
+        if '.fighter-btn .fface' not in dst:
+            dst = dst.replace("        .fighter-grid {", facecss + "        .fighter-grid {", 1)
+            print('  %-34s ok' % 'roster face chips')
 
     # ------------------------------------------------------------- balance
     # Reported as "most of the changes seem to have not landed in the legacy
@@ -482,32 +533,14 @@ def main():
     # Every item below is extracted from index.html by its own anchors, so the
     # two builds cannot disagree about a number again. Anything whose meaning
     # depends on the online refactor is still excluded on purpose.
-    # MAX_WALK_STEP_UP: 30 -> 12. The one the report actually named.
-    step = block(src, "// Rises up to this are walkable on foot", "\nconst MAX_WALK_STEP_UP = 12;") + "\nconst MAX_WALK_STEP_UP = 12;"
-    i = comment_start(dst, dst.index("const MAX_WALK_STEP_UP = "))
-    j = dst.index("\n", dst.index("const MAX_WALK_STEP_UP = "))
-    dst = dst[:i] + step.lstrip("\n") + dst[j:]
-    print('  %-34s ok' % 'MAX_WALK_STEP_UP')
-
-    # The retimed arena collapse.
-    grace = block(src, "// Batch 38: the collapse is much less hurried.", "const SHRINK_FRAC_STEP", 'grace')
-    i = comment_start(dst, dst.index("const GRACE_PERIOD = "))
-    j = dst.index("const SHRINK_FRAC_STEP", i)
-    dst = dst[:i] + grace + dst[j:]
-    print('  %-34s ok' % 'GRACE_PERIOD + SHRINK_INTERVAL')
-
-    crushfrac = block(src, "// Once the collapse fraction passes this", "const CRUSH_DPS", 'crush frac')
-    i = comment_start(dst, dst.index("const CRUSH_AT_FRAC = "))
-    j = dst.index("const CRUSH_DPS", i)
-    dst = dst[:i] + crushfrac + dst[j:]
-    print('  %-34s ok' % 'CRUSH_AT_FRAC + arithmetic')
-
-    # The mode rename. The ID stays `timeattack` in both builds.
-    mode = block(src, "    // Batch 38: \"Time Attack\" named the one thing", "\n    { id: 'boss'")
-    i = comment_start(dst, dst.index("    { id: 'timeattack',"))
-    j = dst.index("\n    { id: 'boss'", i)
-    dst = dst[:i] + mode.lstrip("\n") + dst[j:]
-    print('  %-34s ok' % 'Takedown Race rename')
+    # THE BALANCE CONSTANTS ARE NOT PORTED ANY MORE.
+    #
+    # MAX_WALK_STEP_UP, GRACE_PERIOD, SHRINK_INTERVAL, CRUSH_AT_FRAC and the
+    # mode table live in shared/common.js, which both builds load, so there is
+    # nothing here to copy. These steps used to extract each one from
+    # index.html by its own anchors "so the two builds cannot disagree about a
+    # number again"; sharing the declaration is the stronger version of that
+    # sentence.
 
     # No collapse in the Takedown Race.
     if "matchMode === 'timeattack') return;" not in dst:
@@ -624,17 +657,6 @@ def main():
             i = dst.index(start)
             j = dst.index(end, i) + (len(end) if keep_end else 0)
             dst = dst[:i] + dst[j:]
-        dst = rep(dst, '<script src="../three.min.js"',
-                  '<!-- Shared with the online build; see the header in that file. -->\n'
-                  '<script src="../shared/roster.js"></script>\n'
-                  '<script src="../three.min.js"', 'shared roster script tag', required=False)
-        if 'shared/roster.js' not in dst:
-            # No vendored-three tag to anchor on: fall back to the CDN one.
-            dst = rep(dst, '<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"',
-                      '<!-- Shared with the online build; see the header in that file. -->\n'
-                      '<script src="../shared/roster.js"></script>\n'
-                      '<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"',
-                      'shared roster script tag (cdn anchor)')
         # The two remaining '../assets/' literals become base-relative, so the
         # local build stops caring what directory it is served from - which
         # matters because /local is a rewrite and its document URL is not in
@@ -647,45 +669,50 @@ def main():
                   'face url from AC_ASSET_BASE', required=False)
         print('  %-34s ok' % 'shared/roster.js replaces 5 steps')
 
-    # ---------------------------------------------- Batch 46: arm animation
-    # The swing axis, the jab rate and the first-person arm's facing. Whole
-    # blocks, not lines: _applyArms went from four lines to a helper with a new
-    # signature, and every call site changed with it.
-    if 'function _swingArm(' not in dst:
-        swing = block(src, "// The usable range of a shoulder swing, in degrees.",
-                      "\nfunction animateWeapon(", 'swing helpers')
-        old_apply = block(dst, "// Batch 25: `axis` lets one animation path drive both rigs.",
-                          "\nfunction animateWeapon(", 'legacy _applyArms')
-        dst = dst.replace(old_apply, swing, 1)
-        print('  %-34s ok' % 'swing axis + jab helpers')
+    # THE SHARED SCRIPT TAGS, stripped and rewritten every run.
+    #
+    # Two faults lived here. The step was guarded on "is common.js absent",
+    # which is also true when a PARTIAL set is present - so a build that already
+    # had four tags got a second copy of all five, every module loaded twice,
+    # and the page died with "Identifier 'PROC_MESH_BUILDERS' has already been
+    # declared". And it spliced around the engine tag by index, which left a
+    # stray closing tag in the file.
+    #
+    # Removing them all and writing the set back is idempotent by construction.
+    #
+    # The ORDER is load-bearing: roster and animation are pure data and timing
+    # and may load before three.js, while props, characters and common build
+    # THREE objects - shared/common.js opens with `const _fbVec = new
+    # THREE.Vector3()`, which runs the moment it loads.
+    PRE = ['roster.js', 'animation.js']
+    POST = ['props.js', 'characters.js', 'common.js']
+    for fn in PRE + POST:
+        for form in ('<script src="../shared/%s"></script>' + chr(10),
+                     '<script src="../shared/%s"></script>'):
+            dst = dst.replace(form % fn, '')
+    dst = dst.replace('<!-- Shared with the online build; see each file\'s header. Pure data' + chr(10)
+                      + '     and timing, so these may load before the engine. -->' + chr(10), '')
+    dst = dst.replace(chr(10) + '<!-- ...and these build THREE objects, some at load time. -->' + chr(10), '')
 
-        # readableJabs sits above armsOf in index.html; the local build needs
-        # it before animateWeapon runs.
-        jabs = block(src, "// How many jabs will actually READ inside an attack's active window.",
-                     "\nfunction armsOf(", 'readableJabs')
-        dst = rep(dst, "function armsOf(f) {", jabs + "\nfunction armsOf(f) {", 'readable jab count')
+    engine = ('<script src="../three.min.js"' if '<script src="../three.min.js"' in dst
+              else '<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"')
+    i = dst.index(engine)
+    close = dst.index('>', dst.index('</script>', i)) + 1     # the END of the engine tag
+    pre_tags = ('<!-- Shared with the online build; see each file\'s header. Pure data' + chr(10)
+                + '     and timing, so these may load before the engine. -->' + chr(10)
+                + ''.join('<script src="../shared/%s"></script>' % f + chr(10) for f in PRE))
+    post_tags = (chr(10) + '<!-- ...and these build THREE objects, some at load time. -->' + chr(10)
+                 + ''.join('<script src="../shared/%s"></script>' % f + chr(10) for f in POST).rstrip())
+    dst = dst[:i] + pre_tags + dst[i:close] + post_tags + dst[close:]
+    print('  %-34s ok' % 'shared script tags')
 
-        # The three animation branches that changed.
-        dst = rep(dst, "        const deg = t >= 0 ? t * anim.backDeg : -t * anim.fwdDeg;\n        _applyArms(arms, deg);",
-                  block(src, "        // The WIND-UP IS CAPPED AGAINST THE STRIKE",
-                        "\n        if (anim.twistDeg)", 'swing branch'),
-                  'wind-up cap')
-        dst = rep(dst, "reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 2 * anim.jabs);",
-                  "reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 2 * readableJabs(anim.jabs, fd.active));",
-                  'stab jab rate')
-        old_flurry = block(dst, "    } else if (anim.type === 'flurry') {",
-                           "\n    } else if (anim.type === 'cast') {", 'legacy flurry')
-        new_flurry = block(src, "    } else if (anim.type === 'flurry') {",
-                           "\n    } else if (anim.type === 'cast') {", 'flurry')
-        dst = dst.replace(old_flurry, new_flurry, 1)
-        print('  %-34s ok' % 'flurry spans the whole action')
-
-        # Every remaining _applyArms call has to pass the fighter, or the axis
-        # cannot be derived from the body.
-        n = dst.count("_applyArms(arms, ")
-        dst = re.sub(r"_applyArms\(arms, ([^;]+?)\);", r"_applyArms(arms, \1, f);", dst)
-        dst = dst.replace("_applyArms(arms, deg, f, f);", "_applyArms(arms, deg, f);")
-        print('  %-34s %d call sites' % ('fighter passed to _applyArms', n))
+    # THE SWING HELPERS ARE NOT PORTED ANY MORE either: _swingArm, _applyArms,
+    # SWING_MAX_FWD and armsOf are in shared/common.js and readableJabs is in
+    # shared/animation.js. Both builds load both files.
+    # The animation BRANCHES are not ported either: animateWeapon reads the
+    # shared envelope, and the branches that used to be patched here came
+    # across with it the last time this ran. What is left of animateWeapon in
+    # each build is the part that touches meshes.
 
     # The first-person arm's facing, and the weapon it holds.
     if 'VM_PROP_YAW' not in dst:
@@ -701,7 +728,10 @@ def main():
                        "// Batch 34: PHOTOGRAPHIC ARENA SURFACES",
                   "const wallTextureCache = {};", 'photo layer')
     photo = photo.replace("const PHOTO_BASE = 'assets/tex/';", "const PHOTO_BASE = '../assets/tex/';")
-    if 'const PHOTO_SETS = {' not in dst:
+    # NOT guarded on PHOTO_SETS: that moved to shared/common.js, so the guard
+    # became permanently true and this 3.7KB block went in on every run.
+    # loadPhotoSet is part of the block and still lives in the build.
+    if 'function loadPhotoSet(' not in dst:
         dst = rep(dst, "const wallTextureCache = {};", photo + "const wallTextureCache = {};", 'photo surface layer', required=False)
 
     tiled = block(src, "// Batch 34: see the note in buildPlatformMesh. A clone is needed per distinct",
@@ -1035,10 +1065,8 @@ if (location.protocol === 'https:'
               "const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.85);\nfillLight.position.set(700, 1400, -600);",
               'fill light rig', required=False)
 
-    # The derived-texture cache (the second, older leak).
-    if "const derivedTextureCache" not in dst:
-        dst = rep(dst, "const derivedCanvasCache = {};",
-                  "const derivedCanvasCache = {};\nconst derivedTextureCache = {};", 'derived texture cache', required=False)
+    # The derived-texture cache is in shared/common.js now, so this step
+    # would only re-create the second copy the verification refuses.
     old_mk = block(src, "    // Batch 34: cached by (key, slot, repeat, offset)", "    mat.normalMap = mk(entry.n", 'mk')
     legacy_mk_start = "    const mk = (cv, srgb) => {"
     if legacy_mk_start in dst and 'derivedTextureCache[ck]' not in dst:
@@ -1468,11 +1496,14 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
     # per-theme fix landed in the online build only. MAP_THEMES is pure art
     # direction, so it ports whole, along with the two things that read its new
     # fields.
-    new_themes = block(src, 'const MAP_THEMES = {', chr(10) + 'function themeTintFade(', 'map themes')
+    new_themes = block(src, 'const MAP_THEMES = {', chr(10) + 'function themeFor(', 'map themes')
     old_themes = block(dst, 'const MAP_THEMES = {', chr(10) + 'function themeFor(', 'map themes (old)')
     if 'themeTintFade' not in dst:
         dst = dst.replace(old_themes, new_themes, 1)
-        # The reader for theme.tintFade, and the per-theme exposure base.
+        # themeTintFade and BASE_EXPOSURE are in shared/common.js now, so only
+        # the TABLE is copied here - and only because MAP_THEMES still differs
+        # between the builds.
+    # The reader for theme.tintFade, and the per-theme exposure base.
         dst = rep(dst, 'function themeFor(map) {',
                   block(src, '// How much of a theme\'s COLOUR survives',
                         chr(10) + 'function themeFor(map) {', 'tint fade helper')
@@ -1497,19 +1528,10 @@ renderer.toneMappingExposure = BASE_EXPOSURE;""", 'base exposure')
                 dst = dst.replace(old_tint, old_tint.replace('0.62', 'themeTintFade(theme)'), 1)
         print('  %-34s ok' % 'map themes + exposure')
 
-    # ------------------------------------------- which photograph, and how big
-    # PHOTO_SETS is pure art direction - which photograph maps to which surface,
-    # and the tile scale - with nothing build-specific in it, so it is ported
-    # whole every time rather than as individual tile numbers. Ported per-line
-    # is exactly how it drifted: "the Voltaic Nexus floor is still the brown
-    # carpet texture from above" was this build still holding techgrid at 4.2
-    # after Batch 49 fixed it online, and its Molten Foundry was still tan rock
-    # after Batch 53 moved basalt and lava onto metal_plate.
-    new_sets = block(src, 'const PHOTO_SETS = {', chr(10) + 'const PHOTO_BASE', 'photo sets')
-    old_sets = block(dst, 'const PHOTO_SETS = {', chr(10) + 'const PHOTO_BASE', 'photo sets (old)')
-    if old_sets != new_sets:
-        dst = dst.replace(old_sets, new_sets, 1)
-        print('  %-34s ok' % 'photo sets')
+    # PHOTO_SETS IS NOT PORTED ANY MORE: it is in shared/common.js, which both
+    # builds load. It was the clearest example of why - "the Voltaic Nexus
+    # floor is still the brown carpet texture from above" was this build
+    # holding a tile number that had been fixed online four batches earlier.
 
     # ------------------------------------------------- the loading screen
     # "Loading animations are also not yet implemented in local mode." The
@@ -1674,6 +1696,21 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
             height: min(96vh, 650px);""",
               'frame fills the window', required=False)
 
+    shared_src = io.open(os.path.join(ROOT, 'shared', 'roster.js'), encoding='utf-8').read()
+    anim_src = io.open(os.path.join(ROOT, 'shared', 'animation.js'), encoding='utf-8').read()
+    props_src = io.open(os.path.join(ROOT, 'shared', 'props.js'), encoding='utf-8').read()
+    chars_src = io.open(os.path.join(ROOT, 'shared', 'characters.js'), encoding='utf-8').read()
+    common_src = io.open(os.path.join(ROOT, 'shared', 'common.js'), encoding='utf-8').read()
+
+    # NOTHING THE SHARED MODULES DEFINE MAY ALSO BE DEFINED HERE. Run last, so
+    # it cleans up after every step above rather than racing them.
+    dst, deduped = strip_shared_duplicates(
+        dst, [shared_src, anim_src, props_src, chars_src, common_src])
+    if deduped:
+        print('  %-34s %d removed (%s%s)'
+              % ('re-declared from shared/', len(deduped), ', '.join(sorted(set(deduped))[:4]),
+                 ', ...' if len(set(deduped)) > 4 else ''))
+
     # VERIFY, rather than trust the guards.
     #
     # The first run of this script shipped a local build that died at load
@@ -1751,10 +1788,6 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         'const SWING_PRESTRIKE_T', 'const SWING_HOLD_RECOVERY_FRAC',
         'function swingT(', 'function actionPhase(', 'function readableJabs(',
     ]
-    shared_src = io.open(os.path.join(ROOT, 'shared', 'roster.js'), encoding='utf-8').read()
-    anim_src = io.open(os.path.join(ROOT, 'shared', 'animation.js'), encoding='utf-8').read()
-    props_src = io.open(os.path.join(ROOT, 'shared', 'props.js'), encoding='utf-8').read()
-    chars_src = io.open(os.path.join(ROOT, 'shared', 'characters.js'), encoding='utf-8').read()
     shared_missing = ([d for d in SHARED_REQUIRED if d not in shared_src]
                       + [d for d in ANIM_REQUIRED if d not in anim_src]
                       + [d for d in PROPS_REQUIRED if d not in props_src]
@@ -1763,10 +1796,29 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
                 + [d for d in ANIM_REQUIRED if d in dst]
                 + [d for d in PROPS_REQUIRED if d in dst]
                 + [d for d in CHARS_REQUIRED if d in dst])
+    # Anything shared/common.js defines must not ALSO be defined here: a local
+    # copy shadows the shared one and silently reintroduces the drift.
+    import re as _re
+    for m in _re.finditer(r'(?m)^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|'
+                          r'const\s+([A-Za-z_$][\w$]*)\s*=)', common_src):
+        name = m.group(1) or m.group(2)
+        pat = ('function %s(' % name) if m.group(1) else ('const %s =' % name)
+        if _re.search(r'(?m)^' + _re.escape(pat), dst):
+            shadowed.append(pat + '   (shared/common.js)')
 
-    missing = [d for d in REQUIRED if d not in dst]
+    # SHARED COUNTS AS DEFINED. These lists were written when the local build
+    # was expected to contain the whole game; most of what they name now lives
+    # in a shared module that both builds load, so looking only at `dst` reports
+    # the check's own staleness as a missing definition.
+    #
+    # It still catches what it was written for - a name that is in NEITHER - so
+    # it is widened, not dropped.
+    everywhere = dst + chr(10) + shared_src + chr(10) + anim_src + chr(10) + props_src \
+        + chr(10) + chars_src + chr(10) + common_src
+    missing = [d for d in REQUIRED if d not in everywhere]
     undefined = [c for c in CALLED
-                 if ('function %s(' % c) not in dst and ('const %s' % c) not in dst]
+                 if ('function %s(' % c) not in everywhere
+                 and ('const %s' % c) not in everywhere]
     if missing or undefined or shared_missing or shadowed:
         print('')
         print('PORT INCOMPLETE - refusing to write:')
