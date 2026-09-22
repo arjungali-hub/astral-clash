@@ -2559,6 +2559,30 @@ makes the same change twice" is.
       broken. Now every `url(...assets/...)` is rewritten, idempotently by shape.
       Found by asserting on the URL rather than on "a 404 happened" — the console
       only says "Failed to load resource", which names nothing.
+- [x] **The dangling-reference guard covers READS, not just calls** — which is
+      the whole point, because the freeze this project keeps hitting is a
+      constant rather than a function:
+
+          SWING_WINDUP_FRAC is not defined    every frame of every swing
+          MUZZLE_FLASH_MAX is not defined     same shape
+
+      Three of those shipped together (Thorne, Gorgonok, Kaelen), each from a
+      port step whose guard had gone permanently true, and each reported as "the
+      attack freezes the screen and then you can't continue" rather than as an
+      error anyone saw. A search for `name(` sees none of them. Comments, block
+      comments and string literals are stripped first, so a constant mentioned in
+      prose is not a false positive — a check that cries wolf gets switched off
+      rather than fixed.
+
+      It currently reports **zero** dangling references in the local build, so
+      that freeze class is genuinely gone rather than merely unreported.
+- [x] **The guard checks itself on every sync**, eight cases: the two shapes that
+      have actually shipped, and the six that must not trip it (the name in a
+      comment, in a string, under a `typeof`, as a property, defined locally,
+      defined in shared/). A guard that reports zero is indistinguishable from a
+      guard that has silently stopped matching, and this one is a few regexes
+      with lookarounds — "looks right" is not enough for the only thing standing
+      between a half-port and another frame-by-frame freeze.
 - [x] **tests/maptimecheck.js** times each arena to a live fight, so "stuck" and
       "slower than the limit" stop being the same failure.
 

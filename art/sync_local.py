@@ -186,38 +186,117 @@ INTERFACE = {
 }
 
 
+# The two shapes that have actually shipped, and the six that must NOT trip the
+# guard. See selftest_guard().
+_GUARD_CASES = [
+    ('a swing reading an undefined constant',
+     'function doSwing(f) { const t = f.frames * SWING_WINDUP_FRAC; }', True),
+    ('a call to a function only the online build has',
+     'function startMatch(m) { ensureCharModel(m.name); }', True),
+    ('the name only inside a line comment',
+     'function ok() { // SWING_WINDUP_FRAC is documented here' + chr(10) + ' return 1; }', False),
+    ('the name only inside a string',
+     'function ok() { return "SWING_WINDUP_FRAC"; }', False),
+    ('a typeof feature detection',
+     'function ok() { return typeof SWING_WINDUP_FRAC === "number"; }', False),
+    ('a property that shares the name',
+     'function ok(o) { return o.SWING_WINDUP_FRAC; }', False),
+    ('a name that IS defined here',
+     'const SWING_WINDUP_FRAC = 0.7;' + chr(10) + 'function ok() { return SWING_WINDUP_FRAC; }', False),
+    ('a name defined in shared/',
+     'function ok() { return sharedOnlyName(12); }', False),
+]
+
+
+def selftest_guard():
+    """Prove the dangling-reference guard still works, before trusting it.
+
+    It reports zero on the real build, which is correct - and which makes a
+    broken guard and a clean build look identical. Since the guard is a few
+    regexes with lookarounds plus comment and string stripping, "looks right" is
+    not good enough for something whose whole job is to stop the freeze class
+    (SWING_WINDUP_FRAC, MUZZLE_FLASH_MAX) from shipping again.
+    """
+    saved = set(SHARED_NAMES)
+    SHARED_NAMES.clear()
+    SHARED_NAMES.add('sharedOnlyName')
+    names = ['SWING_WINDUP_FRAC', 'ensureCharModel', 'sharedOnlyName']
+    try:
+        wrong = [label for label, src, expect in _GUARD_CASES
+                 if bool(undefined_calls(src, names)) != expect]
+    finally:
+        SHARED_NAMES.clear()
+        SHARED_NAMES.update(saved)
+    if wrong:
+        print('THE DANGLING-REFERENCE GUARD IS BROKEN - refusing to run:')
+        for label in wrong:
+            print('   wrong answer for: ' + label)
+        print('   Fix undefined_calls() before syncing; it is the only thing')
+        print('   standing between a half-port and another frame-by-frame freeze.')
+        return False
+    print('  %-34s %d cases' % ('guard self-test', len(_GUARD_CASES)))
+    return True
+
+
 def _def_names(text):
     return [m.group(1) or m.group(2) for m in _DEF_RE.finditer(text)]
 
 
-# A call to `name(`, not preceded by a word character or a dot - so obj.name(
-# and othername( do not match.
-_CALL_RE_HEAD = r'(?<![\w$.])'
-_CALL_RE_TAIL = r'\s*\('
+# A REFERENCE to `name`: not preceded by a word character or a dot (so
+# obj.name and othername do not match) and not followed by one.
+_REF_HEAD = r'(?<![\w$.])'
+_REF_TAIL = r'(?![\w$])'
 _LINE_COMMENT = r'//[^\n]*'
+_BLOCK_COMMENT = r'/\*.*?\*/'
+_SQ_STRING = r"'(?:[^'\\\n]|\\.)*'"
+_DQ_STRING = r'"(?:[^"\\\n]|\\.)*"'
+
+
+def _code_only(text):
+    """The build with comments and string literals removed.
+
+    Without this, every comment explaining a constant would look like a
+    reference to it, and a check that cries wolf gets switched off rather
+    than fixed.
+    """
+    text = re.sub(_LINE_COMMENT, '', text)
+    text = re.sub(_BLOCK_COMMENT, '', text, flags=re.S)
+    text = re.sub(_SQ_STRING, "''", text)
+    text = re.sub(_DQ_STRING, '""', text)
+    return text
 
 
 def undefined_calls(dst, online_names):
-    """Names the generated build CALLS that neither it nor shared/ defines.
+    """Names the generated build REFERENCES that neither it nor shared/ defines.
 
     Bounded by the online build's own vocabulary, so this does not have to
     parse JavaScript: a name counts only if the online build defines it at
-    column 0, this build calls it as `name(`, and nothing this build loads
+    column 0, this build mentions it in code, and nothing this build loads
     defines it.
 
-    Exempt: `typeof X === 'function'` guards. typeof on an UNDECLARED
+    READS COUNT, not just calls, and that is the whole point. The freeze this
+    project keeps hitting is a constant, not a function:
+
+        SWING_WINDUP_FRAC is not defined    every frame of every swing
+        MUZZLE_FLASH_MAX is not defined     same shape
+
+    Three of those shipped together - Thorne, Gorgonok, Kaelen - each from a
+    port step whose guard had gone permanently true, and each reported as
+    "the attack freezes the screen and then you can't continue" rather than
+    as an error anyone saw. A search for `name(` sees none of them.
+
+    Exempt: any name under a `typeof` test. typeof on an UNDECLARED
     identifier is legal and yields 'undefined' rather than throwing, and the
-    local build uses exactly that (localCamera, line ~4857) to ask whether
-    the online build's camera pair exists here. Reading a deliberate feature
-    detection as a fault would make this check cry wolf on its first run.
+    local build uses exactly that (localCamera) to ask whether the online
+    build's camera pair exists here.
     """
     have = set(_def_names(dst)) | SHARED_NAMES
-    bare = re.sub(_LINE_COMMENT, '', dst)      # prose is not a call
+    bare = _code_only(dst)
     out = []
     for name in online_names:
-        if name in have or ("typeof %s === 'function'" % name) in bare:
+        if name in have or ('typeof %s' % name) in bare:
             continue
-        if re.search(_CALL_RE_HEAD + re.escape(name) + _CALL_RE_TAIL, bare):
+        if re.search(_REF_HEAD + re.escape(name) + _REF_TAIL, bare):
             out.append(name)
     return out
 
@@ -704,6 +783,9 @@ def main():
     for _text in SHARED_FALLBACK:
         for _m in _DEF_RE.finditer(_text):
             SHARED_NAMES.add(_m.group(1) or _m.group(2))
+    # The guard that stops the freeze class is itself checked first.
+    if not selftest_guard():
+        return 1
     dst = io.open(DST, encoding='utf-8').read()
     before = len(dst)
 
@@ -946,30 +1028,6 @@ def main():
         dst = dst.replace("    map.obstacles.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, theme), x: ob.x, y: ob.y }));",
                           "    OBSTACLES.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, theme), x: ob.x, y: ob.y }));", 1)
         print('  %-34s ok' % 'Zone Control ring clear')
-
-    # ------------------------------------------------- CSS asset URLs, all of them
-    # CSS url() resolves against the DOCUMENT, and this one is a directory down,
-    # so every `url('assets/...')` copied from the online build asks for
-    # /local/assets/... and 404s. The tableau did exactly that, which is why the
-    # loading screen here was "just some lighting" - the background-image was
-    # never being served.
-    #
-    # The @font-face block below already carried a hand-written version of this
-    # rewrite, which is the tell: the rule is general and was being applied one
-    # asset at a time, so the next one added to CSS was always going to arrive
-    # broken. JS has AC_ASSET_BASE; CSS cannot call anything, so the path rewrite
-    # is the instrument - it just has to cover every url(), not the remembered ones.
-    #
-    # Idempotent by shape: it matches `url('assets/` and emits `url('../assets/`,
-    # which does not match.
-    n_css = 0
-    for quote in ("'", '"'):
-        pat = 'url(%sassets/' % quote
-        n_css += dst.count(pat)
-        dst = dst.replace(pat, 'url(%s../assets/' % quote)
-    n_css += dst.count('url(assets/')
-    dst = dst.replace('url(assets/', 'url(../assets/')
-    print('  %-34s %d rewritten' % ('css asset urls', n_css))
 
     # ---------------------------------------------------------------- fonts
     # COUNT, not presence: re-running must not stack a second copy of the
@@ -2092,6 +2150,35 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     if recommented:
         print('  %-34s %d definitions took the online notes' % ('comment drift', len(recommented)))
 
+    # ------------------------------------------------- CSS asset URLs, all of them
+    # CSS url() resolves against the DOCUMENT, and this one is a directory down,
+    # so every `url('assets/...')` copied from the online build asks for
+    # /local/assets/... and 404s. The tableau did exactly that, which is why the
+    # loading screen here was "just some lighting" - the background-image was
+    # never being served.
+    #
+    # The @font-face block below already carried a hand-written version of this
+    # rewrite, which is the tell: the rule is general and was being applied one
+    # asset at a time, so the next one added to CSS was always going to arrive
+    # broken. JS has AC_ASSET_BASE; CSS cannot call anything, so the path rewrite
+    # is the instrument - it just has to cover every url(), not the remembered ones.
+    #
+    # Idempotent by shape: it matches `url('assets/` and emits `url('../assets/`,
+    # which does not match.
+    #
+    # RUNS LAST, after every step that can insert CSS. It was originally
+    # placed before them, which would have let a newly copied
+    # `url('assets/...')` through for one whole run - the same one-run window
+    # that let the tableau 404 sit there in the first place.
+    n_css = 0
+    for quote in ("'", '"'):
+        pat = 'url(%sassets/' % quote
+        n_css += dst.count(pat)
+        dst = dst.replace(pat, 'url(%s../assets/' % quote)
+    n_css += dst.count('url(assets/')
+    dst = dst.replace('url(assets/', 'url(../assets/')
+    print('  %-34s %d rewritten' % ('css asset urls', n_css))
+
     # EVERYTHING THAT IS NOT INTERFACE TAKES THE ONLINE BODY. This is what keeps
     # the two builds in step now that extraction has reached its limit: what is
     # left is one mutually-recursive core, so the answer is no longer "share it"
@@ -2127,9 +2214,9 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     dangling = undefined_calls(dst, _def_names(src))
     if dangling:
         print()
-        print('CALLS NOTHING DEFINES - refusing to write:')
+        print('REFERENCES NOTHING DEFINES - refusing to write:')
         for n in dangling:
-            print('   %s() is called here but defined only in the online build' % n)
+            print('   %s is used here but defined only in the online build' % n)
         print('   Port it, share it (art/promote_shared.py), or guard the call')
         print("   with typeof if it is genuinely meant to be optional.")
         return 1
