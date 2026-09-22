@@ -186,6 +186,42 @@ INTERFACE = {
 }
 
 
+def _def_names(text):
+    return [m.group(1) or m.group(2) for m in _DEF_RE.finditer(text)]
+
+
+# A call to `name(`, not preceded by a word character or a dot - so obj.name(
+# and othername( do not match.
+_CALL_RE_HEAD = r'(?<![\w$.])'
+_CALL_RE_TAIL = r'\s*\('
+_LINE_COMMENT = r'//[^\n]*'
+
+
+def undefined_calls(dst, online_names):
+    """Names the generated build CALLS that neither it nor shared/ defines.
+
+    Bounded by the online build's own vocabulary, so this does not have to
+    parse JavaScript: a name counts only if the online build defines it at
+    column 0, this build calls it as `name(`, and nothing this build loads
+    defines it.
+
+    Exempt: `typeof X === 'function'` guards. typeof on an UNDECLARED
+    identifier is legal and yields 'undefined' rather than throwing, and the
+    local build uses exactly that (localCamera, line ~4857) to ask whether
+    the online build's camera pair exists here. Reading a deliberate feature
+    detection as a fault would make this check cry wolf on its first run.
+    """
+    have = set(_def_names(dst)) | SHARED_NAMES
+    bare = re.sub(_LINE_COMMENT, '', dst)      # prose is not a call
+    out = []
+    for name in online_names:
+        if name in have or ("typeof %s === 'function'" % name) in bare:
+            continue
+        if re.search(_CALL_RE_HEAD + re.escape(name) + _CALL_RE_TAIL, bare):
+            out.append(name)
+    return out
+
+
 def port_missing_definitions(src, dst):
     """Insert definitions the local build lacks, when it already has their needs.
 
@@ -207,7 +243,14 @@ def port_missing_definitions(src, dst):
             table[m.group(1) or m.group(2)] = text[m.start():end]
 
     have = set(dst_defs) | SHARED_NAMES
-    wanted = set()
+    # SEEDED BY WHAT THIS BUILD CALLS AND NOTHING DEFINES, first. Scanning only
+    # the bodies being synced missed ensureCharModel entirely: its one caller is
+    # startMatch, which is on INTERFACE, so nothing ever asked what it needed -
+    # and the call had been throwing a ReferenceError into the promise
+    # withLoading() awaits, which is why the local build never left the loading
+    # screen. A dangling call is a correctness question; whose body it sits in
+    # is beside the point.
+    wanted = set(undefined_calls(dst, list(src_defs)))
     for name, chunk in dst_defs.items():
         theirs = src_defs.get(name)
         if not theirs or theirs == chunk or name in INTERFACE:
@@ -903,6 +946,30 @@ def main():
         dst = dst.replace("    map.obstacles.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, theme), x: ob.x, y: ob.y }));",
                           "    OBSTACLES.forEach(ob => mapEdgeObjects.push({ mesh: buildPillarMesh(ob, theme), x: ob.x, y: ob.y }));", 1)
         print('  %-34s ok' % 'Zone Control ring clear')
+
+    # ------------------------------------------------- CSS asset URLs, all of them
+    # CSS url() resolves against the DOCUMENT, and this one is a directory down,
+    # so every `url('assets/...')` copied from the online build asks for
+    # /local/assets/... and 404s. The tableau did exactly that, which is why the
+    # loading screen here was "just some lighting" - the background-image was
+    # never being served.
+    #
+    # The @font-face block below already carried a hand-written version of this
+    # rewrite, which is the tell: the rule is general and was being applied one
+    # asset at a time, so the next one added to CSS was always going to arrive
+    # broken. JS has AC_ASSET_BASE; CSS cannot call anything, so the path rewrite
+    # is the instrument - it just has to cover every url(), not the remembered ones.
+    #
+    # Idempotent by shape: it matches `url('assets/` and emits `url('../assets/`,
+    # which does not match.
+    n_css = 0
+    for quote in ("'", '"'):
+        pat = 'url(%sassets/' % quote
+        n_css += dst.count(pat)
+        dst = dst.replace(pat, 'url(%s../assets/' % quote)
+    n_css += dst.count('url(assets/')
+    dst = dst.replace('url(assets/', 'url(../assets/')
+    print('  %-34s %d rewritten' % ('css asset urls', n_css))
 
     # ---------------------------------------------------------------- fonts
     # COUNT, not presence: re-running must not stack a second copy of the
@@ -2053,6 +2120,19 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         print('  %-34s %d removed (%s%s)'
               % ('re-declared from shared/', len(deduped), ', '.join(sorted(set(deduped))[:4]),
                  ', ...' if len(set(deduped)) > 4 else ''))
+
+    # NOTHING MAY BE CALLED THAT NOTHING DEFINES. The backstop for the step
+    # above: if a dangling call could not be ported - it needs something this
+    # build genuinely lacks - that is a crash on a live path, not a warning.
+    dangling = undefined_calls(dst, _def_names(src))
+    if dangling:
+        print()
+        print('CALLS NOTHING DEFINES - refusing to write:')
+        for n in dangling:
+            print('   %s() is called here but defined only in the online build' % n)
+        print('   Port it, share it (art/promote_shared.py), or guard the call')
+        print("   with typeof if it is genuinely meant to be optional.")
+        return 1
 
     # VERIFY, rather than trust the guards.
     #

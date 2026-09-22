@@ -122,7 +122,23 @@ const H = require('./harness');
         D.netSetTimeout(900000);
         D.goHome();
         D.netFakeConnect('host');
-        D.setDebugUnlockAll(true);
+        // setSandboxMatch, NOT setDebugUnlockAll. This test asked for the wrong
+        // one and then waited 90 seconds for a match that could never start:
+        //
+        //     sandboxActive() = sandboxMatch || (debugUnlockAll && !netActive())
+        //
+        // netFakeConnect makes netActive() true, which is exactly when the
+        // unlock-all override is meant to stop applying - you do not get to
+        // unlock the roster in someone else's match. So Gorgonok stayed locked
+        // on cleared storage, previewPick returned at its isCharUnlocked guard,
+        // p1Choice was never set, sideReady('p1') stayed false and startOnline
+        // returned having done nothing. State MENU, both fighters null, no page
+        // error anywhere - which reads exactly like the art failing to load and
+        // is nothing of the kind.
+        //
+        // Declaring the match a sandbox is the route the game actually provides
+        // for this, and the host is allowed to do it.
+        D.setSandboxMatch(true);
         await Promise.all([D.ensureCharModel('Gorgonok'), D.ensureCharModel('Voss')]);
         D.previewPick('p1', 'Gorgonok'); D.confirmPick('p1');
         D.netFeed({ t: 'PICK', side: 'p2', name: 'Voss' });

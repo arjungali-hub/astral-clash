@@ -2499,6 +2499,69 @@ makes the same change twice" is.
   every sync, or is on `INTERFACE` with a reason written next to it (83). The
   sync fails if a fourth category appears.
 
+## Batch 74 — two test bugs and a real one, told apart
+
+- [x] **charcheck's last two assertions were a test bug**, and had been failing
+      since before any of this. It called `setDebugUnlockAll(true)` after
+      `netFakeConnect('host')`, but
+      `sandboxActive() = sandboxMatch || (debugUnlockAll && !netActive())` — the
+      unlock-all override deliberately stops applying once you are connected,
+      because you do not get to unlock the roster in someone else's match. So
+      Gorgonok stayed locked, `previewPick` returned at its `isCharUnlocked`
+      guard, `p1Choice` was never set and `startOnline()` returned having done
+      nothing. State MENU, both fighters null, **no page error anywhere** — which
+      reads exactly like the generated art failing to load. Now declares a
+      sandbox match, which is the route the game provides. Reproduced identically
+      against a scratch copy of Batch 71 before changing anything, to be sure it
+      was not from the sharing work.
+- [x] **`ensureCharModel` was called in the local build and defined nowhere it
+      could see it** (`local/index.html:9340`, inside `startMatch`). A genuine
+      latent crash: the `.catch(() => null)` beside it cannot help, because the
+      ReferenceError is thrown while EVALUATING the call, before there is a
+      promise to attach to. Ported.
+
+      It survived because the trigger was the wrong shape.
+      `port_missing_definitions` asked "what do the bodies I am syncing need?"
+      and `startMatch` is on `INTERFACE`, so nothing ever asked. It now seeds
+      from **what the build calls that nothing defines** — a correctness
+      question, indifferent to whose body the call is in — and the sync refuses
+      to write a build with any dangling call left. `typeof X === 'function'`
+      guards are exempt, because the local build uses exactly that for
+      `localCamera` on purpose.
+- [x] **tests/localstartcheck.js** takes the local build all the way into a live
+      fight. Nothing did before: every other local checker drives menus, the
+      store and the UI, which is how a broken match-start path stayed hidden.
+      It also captures **unhandled promise rejections**, which is the observability
+      gap that let the above hide — puppeteer's `pageerror` fires for uncaught
+      exceptions only, and a throw inside a `.then` is a rejected promise, so the
+      console stayed clean.
+- [x] **The local build's loading tableau 404s on one of its two live URLs.**
+      CSS `url()` resolves against the DOCUMENT, and both of these serve the page:
+
+          /local     ->  base is /        ->  /assets/loading-tableau.png   200
+          /local/    ->  base is /local/  ->  /local/assets/...             404
+
+      So whether the tableau appeared depended on a trailing slash. The lighting
+      is drawn in CSS and the tableau is a `background-image`, so on `/local/`
+      the tableau was the only part missing — which matches "there is no actual
+      tableau, just some lighting" exactly, and is what a missing image looks
+      like rather than a rendering bug. Whether that is what was actually seen
+      depends on which URL was open, so this is recorded as a real bug on a real
+      URL and **not** as a confirmed explanation of that report.
+
+      Rewriting to `../assets/` fixes both forms: from `/local/` it is
+      `/assets/...`, and from `/local` the leading `..` clamps at the root and
+      gives the same thing. Verified against the live deployment.
+
+      The `@font-face` block already carried a hand-written version of this same
+      rewrite, which was the tell: the rule is general and was being applied one
+      asset at a time, so the next asset added to CSS was always going to arrive
+      broken. Now every `url(...assets/...)` is rewritten, idempotently by shape.
+      Found by asserting on the URL rather than on "a 404 happened" — the console
+      only says "Failed to load resource", which names nothing.
+- [x] **tests/maptimecheck.js** times each arena to a live fight, so "stuck" and
+      "slower than the limit" stop being the same failure.
+
 ### Still open
 
 - [ ] **Draven's weapon reads backwards in first person.** Now that the arm is

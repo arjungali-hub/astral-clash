@@ -1069,7 +1069,7 @@
            here and already right, so the loading screen shows the actual thing
            being loaded. Re-run the script and the art follows the game. */
         .ld-art   { left: 14%; right: 14%; top: 9%; bottom: 3%;
-                    background-image: url('assets/loading-tableau.png');
+                    background-image: url('../assets/loading-tableau.png');
                     background-position: center; background-size: cover; background-repeat: no-repeat;
                     /* Sits under the vignette and the two fighter glows, which
                        is what ties it into the frame instead of looking pasted
@@ -3701,6 +3701,39 @@ function buildPairedFromData(list, build) {
     }
 }
 
+function ensureCharModel(name) {
+    if (!name) return Promise.resolve(null);
+    if (charModels[name]) return Promise.resolve(charModels[name]);
+    if (_charModelPromises[name]) return _charModelPromises[name];
+    const url = CHAR_MODEL_URLS[name];
+    if (!url || typeof THREE.GLTFLoader !== 'function') return Promise.resolve(null);
+    const loader = _charLoader || (_charLoader = new THREE.GLTFLoader());
+    _charModelPromises[name] = new Promise(resolve => {
+        loader.load(url, gltf => {
+            // A viewmodel built while this was still downloading is holding a
+            // placeholder; see upgradeViewmodelsIfPlaceholder.
+            setTimeout(upgradeViewmodelsIfPlaceholder, 0);
+            const box = new THREE.Box3().setFromObject(gltf.scene);
+            charModels[name] = {
+                scene: gltf.scene,
+                animations: gltf.animations || [],
+                height: Math.max(0.001, box.max.y - box.min.y),
+            };
+            charModelsLoaded++;
+            resolve(charModels[name]);
+        }, undefined, err => {
+            // Not fatal - this character just keeps its procedural mesh.
+            console.warn('[astral] could not load model for', name, err && err.message);
+            charModelsFailed++;
+            resolve(null);
+        });
+    });
+    return _charModelPromises[name];
+}
+
+// Kept for the checkers, which await `modelsReady` before asserting anything
+// about the rigged art. It now means "everything requested so far has
+// settled", which is the useful question once loading is lazy.
 function disposeObject3D(obj) {
     if (!obj) return;
     obj.traverse(node => {
