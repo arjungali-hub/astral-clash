@@ -170,7 +170,7 @@ Six `dt`-scaled expressions existed before the last update; the rest of the list
 **Batch 1 status: complete**, modulo the un-run verify pass below and the two Batch-0 gamepad spec deviations noted above (deadzone 0.2 vs 0.25, held- vs edge-triggered buttons — deferred to Batch 3a since keyboard has the identical issue).
 
 **Verify:**
-- [ ] 30fps-capped vs 60fps vs uncapped wall-clock parity — still open, and the reason is unchanged: there is no way to drive the game at a chosen frame rate from outside, and `computeDt` is the thing under test. See the verification list at the end of this file.
+- *(Frame-rate parity is tracked once, in the verification list at the end of this file. It was listed here too, which double-counted the only thing still outstanding and made the count look worse than it is.)*
 
 ---
 
@@ -2752,6 +2752,109 @@ store.
       pipeline would produce from it, so it catches "index.html moved on and
       local did not" — the case that matters — but not arbitrary junk edited
       directly into `local/index.html`, which the patcher would preserve.
+
+## Batch 79 — auditing what "differs on purpose" actually means
+
+Asked to check, in depth, whether the remaining differences could be made the
+same while still working. Reading all 83 diffs rather than trusting the reasons
+beside them, they fall into three groups, and only one of them is real.
+
+**Group A — drift wearing an interface label.** The reason said STRUCTURE ("two
+viewmodels", "two HUD panels") while the actual differing lines said something
+else entirely. Two were live bugs in the local build:
+
+  * `buildViewmodel` mirrored the arm about **X instead of Z**. The online
+    comment spells out why that is wrong — X is FORWARD in the character basis,
+    so flipping it reflects the limb front-to-back and leaves the handedness
+    alone. "The arms are still left arms" and "Draven's weapon is backwards in
+    first person" are one bug, and the local build still had it.
+  * `syncViewmodels` never applied `baseRoll`. It assigns rotation every frame,
+    so a roll set at build time survives exactly until the first frame — the arm
+    angle was correct in any screenshot taken before the loop started, and flat
+    in play.
+
+  Also here: `openModal` (no close X), `setMatchMode` (no model warm-up, so the
+  local build stalls on a mode switch), and five definitions held apart by a
+  comment at the END of a code line, which `code_only()` counted as code.
+
+**Group B — held apart by SCOPE, not by disagreement.** `netActive`,
+`isLocalSide`, `coopIsHost`, `coopOwnsRespawn`, `stepFight` and their dependents
+all fork for one reason: they read `net`, `net` lives inside `bootGame()`, and a
+shared module cannot see anything in there. Not one of them disagreed about
+behaviour.
+
+  The fix is not to move them individually. The builds differ in ONE fact, and
+  every one of these is a consequence of it:
+
+      const AC_ONE_SIDE_PER_CLIENT = true;    // online: you are p1 or p2
+      const AC_ONE_SIDE_PER_CLIENT = false;   // local: one keyboard, both sides
+
+  Declared in its own `<script>` at true top level, BEFORE the shared modules,
+  because that is the only place shared code can see it — classic scripts share
+  one global lexical scope and `bootGame()` is a closure that shuts them out.
+  With it, `net` and the predicates move to shared and are correct in both
+  builds with no branch: the local build never connects, so `netActive()` is
+  false forever and every guard resolves the local way by itself.
+
+  `isLocalSide` needed one honest adjustment, because "is this side mine" has no
+  meaning when one keyboard drives both:
+
+      const isLocalSide = side => !AC_ONE_SIDE_PER_CLIENT || side === LOCAL_SIDE;
+
+**Group C — genuinely different, and it is smaller than the list suggested.**
+Two players at one keyboard versus one player and a mouse: `BINDINGS` per side,
+`REBIND_ACTION_LABELS` (the local actions are up/down/left/right, the online ones
+forward/back/strafe — different actions, not different labels), `controlsSummary(side)`,
+`shopExpanded` per side, `drawPlayerHUD`'s `isMine`, `renderOneView`'s scissor,
+`camP2`, `syncLockHint` (pointer lock vs a shared keyboard). These are the fork,
+and they are the fork for a reason that will not go away.
+
+## Batch 80 — the blind spot, and a runner that cannot saturate the machine
+
+**`class` was never a definition, and it hid the largest file in the game.**
+The `DEF` regex matched `function`/`const`/`let`/`var`. So `class Fighter` —
+1,677 lines — was invisible to every tool here: never a sharing candidate, never
+drift-checked, never de-shadowed, never even named in a report.
+
+Worse than invisible. Chunks run from one MATCHED definition to the next, so the
+whole class was absorbed into the chunk of whatever preceded it. That is why
+`steerAroundObstacles` was reported as differing by 176 code lines — and the
+correction matters, because it was quoted as evidence that the bot AI had
+diverged. It has not. With `class` matched, `steerAroundObstacles` is 24 lines
+with **zero** code differences, and the 176 belong to the Fighter class below it.
+
+The class goes on `INTERFACE`, honestly: it holds the genuinely forked input
+handling (per-side bindings here, mouse look and `isLocalSide` there) in the same
+body as code that has merely drifted — the local copy still has the old
+single-rate teleport decay rather than the near/far ramp. A chunk is
+all-or-nothing, so copying it would trade a visual regression for a controls
+regression. Splitting the input out of the class is what would unify the rest.
+
+**A guard for shared scope, which is the rule I broke myself.** Moving `net` and
+its predicates to shared, I left `netIsHost()` inside `bootGame()` — and a shared
+module cannot see in there, so every call threw a ReferenceError and online
+multiplayer stopped leaving the menu. `netcheck` caught it in under a minute.
+
+The extractor has always enforced this with its fixed point; moving code BY HAND
+skips that entirely. So the rule now lives in the sync, where it applies to
+`shared/` however the code got there, and it was tested by putting the bug back:
+it names `netIsHost` and refuses to write.
+
+**`tests/run.js`, because good intentions did not hold.** Every checker launches
+headless Chrome rendering the 3D game through swiftshader — software
+rasterisation, no GPU. Running suites in the background while editing files, and
+layering them, put 35 chrome and 12 node processes on this machine at once;
+`tasklist` itself timed out at 120 seconds and the desktop stopped responding.
+
+It also corrupted the RESULTS, which is how it hid: `maptimecheck` swinging 18s
+to 35s for the same arena, three checkers returning no verdict, `charcheck`
+appearing to hang. Every one was contention — diagnosed correctly each time, and
+then recreated.
+
+So the runner enforces it: a lockfile refuses a second concurrent run, every
+test is swept before and after (a timeout that orphans a Chrome must not poison
+what follows), and each has its own timeout. Verified by holding the lock and
+watching a second run refuse to start.
 
 ### Still open
 

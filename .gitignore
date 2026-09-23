@@ -12,3 +12,4 @@ tests/screenshots/
 art/raw/*.glb
 art/raw/_build_log.txt
 art/__pycache__/
+tests/.run.lock

@@ -2338,3 +2338,51 @@ let awaitingModels = false;
 const LOCK_HINT_FADE_MS = 4500;
 
 let lockHintShownAt = 0;
+
+// ---------------------------------------------------------------------------
+// THE NETWORK STATE, and the handful of predicates built on it.
+//
+// These lived in the online build because they read `net`, and `net` lived
+// inside bootGame() - which a shared module cannot see. That scope fact, not
+// any disagreement about behaviour, is why netActive(), isLocalSide(),
+// coopIsHost(), coopOwnsRespawn() and stepFight() each had a forked copy here
+// and there, drifting apart with every change.
+//
+// They are shared now, and correct in both builds without a branch: the local
+// build simply never connects, so net.conn stays null, netActive() is false
+// forever, and every guard built on it resolves the local way on its own.
+//
+// The one thing that does NOT follow from `net` is whether a client drives one
+// side or both - so that is declared per build as AC_ONE_SIDE_PER_CLIENT, in a
+// script tag before this file.
+const net = {
+    peer: null,
+    conn: null,
+    role: null,            // 'host' | 'joiner'
+    status: 'offline',     // offline | starting | waiting | connecting | connected | error | dropped
+    detail: '',
+    lastSendAt: 0,
+    lastRecvAt: 0,
+    timeoutMs: 15000,      // = NET_TIMEOUT_MS; silence after which we call it dropped
+    pingTimer: null,       // setInterval handle - liveness, independent of rAF
+    remoteState: null,     // last STATE received; netApplyRemote eases toward it
+    remoteName: '',        // the opponent's chosen name, cleared on teardown
+    remoteReady: false,    // joiner has acknowledged SETUP
+    pendingSetup: null,    // joiner: setup received before it could be applied
+};
+function netActive() { return !!(net.conn && net.conn.open); }
+
+let LOCAL_SIDE = 'p1';
+// "Is this side mine" has no meaning when one keyboard drives both, so the
+// answer locally is always yes. Online this is exactly what it always was.
+const isLocalSide = side => !AC_ONE_SIDE_PER_CLIENT || side === LOCAL_SIDE;
+
+// Moved with net, not left behind: shared coopIsHost() calls this, and a
+// function inside bootGame() is invisible from here - so every call threw a
+// ReferenceError and online multiplayer stopped leaving the menu. Caught by
+// netcheck within a minute, which is the argument for running it.
+
+function netIsHost() { return net.role === 'host'; }
+
+function coopIsHost() { return !netActive() || netIsHost(); }
+function coopIsPuppet() { return netActive() && !netIsHost(); }

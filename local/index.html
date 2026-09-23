@@ -1575,6 +1575,17 @@ function startGame() {
 </script>
 <!-- Shared with the online build; see the header in that file. -->
 <!-- After three.js: these build THREE objects. -->
+<!-- THE BUILD PROFILE: the one thing this build declares about itself.
+     Everything downstream is shared and asks this rather than forking.
+
+     It sits in its own script at top level, BEFORE the shared modules, because
+     that is the only place shared code can see it: classic scripts share one
+     global lexical scope, while everything in the game lives inside bootGame(),
+     a closure that shuts shared code out. That single fact is why netActive(),
+     isLocalSide(), coopIsHost(), coopOwnsRespawn() and stepFight() each used to
+     fork - not because they disagreed, but because they read `net` and `net`
+     was unreachable from shared/. -->
+<script>const AC_ONE_SIDE_PER_CLIENT = false;  // local: one keyboard drives BOTH sides</script>
 <!-- Shared with the online build; see each file's header. Pure data
      and timing, so these may load before the engine. -->
 <script src="../shared/roster.js"></script>
@@ -1604,13 +1615,6 @@ function showScreen(name) {
     document.getElementById('ui-overlay').style.display = name ? 'flex' : 'none';
 }
 function hideOverlay() { showScreen(null); } // no screen — used when a match takes over the viewport
-// EVERY MODAL GETS AN X, injected here rather than written into ten panels of
-// markup - ten chances to forget one, and a new modal would arrive without it.
-// Added once per panel; after that it is already there.
-//
-// Reported as "in Settings, Close sits below the fold even on the short online
-// panel". The Close buttons stay where they are; this is the one that is always
-// reachable, whatever the panel's height.
 function openModal(name) {
     if (!modalStack.includes(name)) modalStack.push(name);
     // The overlay is a scroll container and the modal is absolutely positioned
@@ -1619,6 +1623,7 @@ function openModal(name) {
     const ov = document.getElementById('ui-overlay');
     if (ov) { ov.scrollTop = 0; ov.style.overflowY = 'hidden'; }
     const el = document.getElementById(MODAL_EL[name]);
+    ensureModalClose(el);
     el.style.zIndex = 40 + modalStack.length; // newest modal always renders on top of any it stacked over
     el.style.display = 'flex';
 }
@@ -1704,7 +1709,7 @@ function drawHitFeedback() {
     const fontPx = Math.round(hudCanvas.width * 0.018 * HUD_TEXT_SCALE);
     hudCtx.save();
     hudCtx.textAlign = 'center';
-    hudCtx.font = announceFont(fontPx, 700);
+    hudCtx.font = announceFont(fontPx, 700);   // floating damage numbers
     for (const vp of vps) {
         const project = (e) => {
             _fbVec.set(worldX(e.x), e.z != null ? e.z : 30, worldZ(e.y)).project(vp.cam);
@@ -1741,6 +1746,18 @@ function computeDt() {
     lastFrameTime = now;
     return Math.min(dt, 3); // clamp so a tab-switch/lag spike can't jump physics far
 }
+
+// --- Batch 31: ONE local player per client. -------------------------------
+// The game was local split-screen: one keyboard drove two fighters, each with
+// its own 10-action binding set, and the screen was cut in half. Going online
+// means this client owns exactly ONE fighter and renders exactly one view, so
+// almost everything that used to be indexed by side is now indexed by
+// "mine" vs "theirs".
+//
+// LOCAL_SIDE is which fighter this client controls. The host takes 'p1' and
+// the joiner 'p2' (see the lobby), so both clients run the same code with the
+// only difference being this one value. Declared up here with the earliest
+// state because the menu build and renderViews both read it during load.
 
 const keys = {};
 // Batch 3a: attack/special/dodge must fire once per press, not once
@@ -2362,6 +2379,24 @@ function isCoopMode() { return !!modeInfo().coop; }
 let coopResultText = '';    // filled by endCoopMatch for the game-over screen
 function liveEnemies() { return coopEnemies.filter(e => e && e.hp > 0); }
 
+// ---------------------------------------------------------------------------
+// Batch 42: WHO OWNS THE CO-OP ENEMIES.
+//
+// Offline, and for the host, nobody else does: the enemies are simulated
+// locally like any other fighter. Online, the guest must NOT run them - two
+// independent copies of the same AI, stepped with each machine's own `dt`,
+// diverge immediately and then disagree about who is being hit and whether the
+// wave is clear.
+//
+// So: the host owns spawning, AI, movement and hp; it broadcasts enemy state at
+// the same rate it broadcasts its own fighter, and the guest applies it. The
+// guest's own attacks still land - it sends a HIT_ENEMY the way it already
+// sends a HIT for the opponent (attacker-authoritative), and the host applies
+// the damage so the hp that comes back is the one both machines agree on.
+//
+// `coopIsPuppet()` is the single question every enemy code path asks.
+
+
 // Zone Control. The ring sits at arena center — which is also where Arena
 // Collapse converges, so the shrinking walls naturally squeeze both fighters
 // toward the contested point instead of fighting the mode.
@@ -2489,7 +2524,7 @@ function setDebugUnlockAll(on) {
 }
 function toggleDebugUnlockAll() { setDebugUnlockAll(!debugUnlockAll); }
 function syncDebugUnlockUI() {
-    const chk = document.getElementById('chk-unlock-all');
+    const chk = document.getElementById('chk-unlock-all');   // absent since Batch 34
     if (chk) chk.checked = debugUnlockAll;
 }
 
@@ -2514,13 +2549,16 @@ function cycleHudScale() {
     safeLSSet('astralClashHudScale', HUD_TEXT_SCALE);
     document.getElementById('btn-hud-scale').textContent = `HUD Text: ${HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal'}`;
 }
-// The archived build has no EffectComposer (one viewport is what made that
-// practical online), so "Glow" here drives the EMISSIVE strength of the accent
-// materials rather than a bloom pass - the same setting from the player's side:
-// how much the glowing trim glows.
+// The game's own coordinate system (arena bounds, maps, HUD layout) stays
+// a fixed 900x500 virtual space (see VIRTUAL_W/VIRTUAL_H) — only the
+// canvas's actual pixel resolution and the camera's aspect ratio change
+// here, so resizing can't shift hitboxes, map layouts, or HUD positions.
+// A real setting, because bloom is the one effect here with a per-frame cost
+// that scales with resolution: five extra full-screen-ish passes. Follows the
+// HUD-scale button's idiom - a button that states its own current value -
+// rather than introducing a checkbox the settings panel has no other use for.
 function refreshBloomUI() {
-    const b = document.getElementById('btn-bloom');
-    if (b) b.textContent = `Glow: ${bloomEnabled ? 'On' : 'Off'}`;
+    setOptState('btn-bloom', bloomEnabled ? 'On' : 'Off', bloomEnabled);
 }
 function toggleBloom() {
     bloomEnabled = !bloomEnabled;
@@ -2699,12 +2737,14 @@ function closeTutorial() {
     // stops auto-opening; the checkbox is now redundant but harmless.
     safeLSSet('astralClashTutorialSeen', '1');
 }
+// Explicitly `openTutorial(false)`: passing the handler directly would hand it
+// the click EVENT as `auto`, and an event object is truthy.
 document.getElementById('btn-open-tutorial').addEventListener('click', () => openTutorial(false));
 document.getElementById('btn-tutorial-close').addEventListener('click', closeTutorial);
 // Auto-opens the first time anyone loads the game in this browser (and on
 // every load after that, until they check "don't show automatically" —
 // see closeTutorial()).
-if (!safeLSGet('astralClashTutorialSeen')) openTutorial(true);
+if (!safeLSGet('astralClashTutorialSeen')) openTutorial(true);   // auto: the checkbox applies
 
 // --- Low-level synth primitives ---
 // A short, percussive tone: linear attack then exponential decay to
@@ -3758,6 +3798,33 @@ function matchAssetsReady(names, map) {
 // warmCombatShaders for what that used to cost.
 function oneRenderedFrame() {
     return new Promise(r => requestAnimationFrame(() => { renderViews(0); r(); }));
+}
+
+// EVERY MODAL GETS AN X, injected here rather than written into ten panels of
+// markup - ten chances to forget one, and a new modal would arrive without it.
+// Added once per panel; after that it is already there.
+//
+// Reported as "in Settings, Close sits below the fold even on the short online
+// panel". The Close buttons stay where they are; this is the one that is always
+// reachable, whatever the panel's height.
+function ensureModalClose(el) {
+    if (!el) return;
+    const panel = el.querySelector('.menu-section, .shop-panel, .tutorial-panel');
+    if (!panel || panel.querySelector('.modal-x')) return;
+    const x = document.createElement('button');
+    x.className = 'modal-x';
+    x.type = 'button';
+    x.innerHTML = '\u00d7';
+    x.setAttribute('aria-label', 'Close');
+    x.addEventListener('click', () => closeModal());
+    panel.appendChild(x);
+}
+
+// The co-op enemies are not picked by anyone, so nothing warms them the way a
+// PICK warms a fighter. The mode decides them, so warm them from the mode.
+function warmModelsForMode(mode) {
+    if (mode === 'boss') ensureCharModel('Karrigos');
+    else if (mode === 'survival') ['Grint', 'Slagling', 'Hollowkin', 'Karrigos'].forEach(ensureCharModel);
 }
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
@@ -6917,7 +6984,7 @@ function makeNameSprite(text, color) {
     const c = document.createElement('canvas');
     c.width = 128; c.height = 32;
     const ctx = c.getContext('2d');
-    ctx.font = announceFont(20, 700);
+    ctx.font = announceFont(20, 700);   // the name sprite above a fighter
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -7526,7 +7593,20 @@ function buildViewmodel(f, layer) {
     //
     // three.js flips the winding order for a negative determinant, so faces and
     // lighting stay correct.
-    armGroup.scale.x *= -1;
+    // MIRRORED ABOUT Z, NOT X. Batch 53 flipped X and the arm stayed a left
+    // arm, because X is not the lateral axis here: the arm is baked in the
+    // CHARACTER's basis, where local +X is FORWARD (see buildRiggedCharacter)
+    // and +Y is up - so the lateral axis, the one a left/right mirror needs, is
+    // Z. Flipping X reflected the limb front-to-back instead, which left the
+    // handedness exactly as it was and pointed the weapon the wrong way:
+    // reported as "the arms are still left arms" and "Draven's weapon is
+    // backwards in first person", which are one bug.
+    //
+    // Measured rather than reasoned about this time: the extracted arm's hand
+    // point sits at x=10.7 (forward of the shoulder), y=33 (up) and z=-9.9
+    // (out to the side) for Kaelen, which is what says X is depth and Z is
+    // width.
+    armGroup.scale.z *= -1;
     armGroup.updateMatrix();
     holder.userData.handPoint = armGroup.userData.handPoint
         ? armGroup.userData.handPoint.clone().applyMatrix4(armGroup.matrix)
@@ -7712,7 +7792,12 @@ function syncViewmodels(dt) {
             }
         }
         vm.position.set(px, py, pz);
-        vm.rotation.set(rx, ry, rz);
+        // The arm's resting roll is part of the BASE, not a one-time setting.
+        // syncViewmodels ASSIGNS rotation every frame, so a roll applied at
+        // build time survives exactly until the first frame - which is how a
+        // carefully-tipped viewmodel ends up flat again in play and fine in
+        // every screenshot taken before the loop runs.
+        vm.rotation.set(rx, ry, rz + (vm.userData.baseRoll || 0));
         const flash = vm.userData.flash;
         if (flash) {
             const t = Math.max(0, (f.muzzleFlash || 0) / 7);
@@ -8734,6 +8819,7 @@ function buildModeSelect() {
 }
 function setMatchMode(id) {
     matchMode = id;
+    warmModelsForMode(id);
     refreshModeUI();
     buildModeSelect();
 }

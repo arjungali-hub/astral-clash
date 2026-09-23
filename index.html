@@ -1865,7 +1865,18 @@ function startGame() {
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" onerror="loadThreeFallback()"></script>
-<!-- Shared with the local local build; see the header in that file. -->
+<!-- THE BUILD PROFILE: the one thing this build declares about itself.
+     Everything downstream is shared and asks this rather than forking.
+
+     It sits in its own script at top level, BEFORE the shared modules, because
+     that is the only place shared code can see it: classic scripts share one
+     global lexical scope, while everything in the game lives inside bootGame(),
+     a closure that shuts shared code out. That single fact is why netActive(),
+     isLocalSide(), coopIsHost(), coopOwnsRespawn() and stepFight() each used to
+     fork - not because they disagreed, but because they read `net` and `net`
+     was unreachable from shared/. -->
+<script>const AC_ONE_SIDE_PER_CLIENT = true;   // online: a client drives p1 OR p2</script>
+<!-- Shared with the local build; see the header in that file. -->
 <script src="shared/roster.js"></script>
 <script src="shared/animation.js"></script>
 <!-- After three.js: these build THREE objects. -->
@@ -2046,8 +2057,6 @@ function computeDt() {
 // the joiner 'p2' (see the lobby), so both clients run the same code with the
 // only difference being this one value. Declared up here with the earliest
 // state because the menu build and renderViews both read it during load.
-let LOCAL_SIDE = 'p1';
-const isLocalSide = side => side === LOCAL_SIDE;
 
 // ---- THE LOADING SCREEN --------------------------------------------------
 // Implemented from the design canvas; the markup and styles are above. What
@@ -2178,22 +2187,6 @@ function playerLabelShort(side) {
 // setSandboxMatch. Declared up here with `net` because refreshRoomUI() reads
 // it while the menu paints itself, and this file has lost whole releases to
 // temporal-dead-zone regressions on exactly that pattern.
-const net = {
-    peer: null,
-    conn: null,
-    role: null,            // 'host' | 'joiner'
-    status: 'offline',     // offline | starting | waiting | connecting | connected | error | dropped
-    detail: '',
-    lastSendAt: 0,
-    lastRecvAt: 0,
-    timeoutMs: 15000,      // = NET_TIMEOUT_MS; silence after which we call it dropped
-    pingTimer: null,       // setInterval handle - liveness, independent of rAF
-    remoteState: null,     // last STATE received; netApplyRemote eases toward it
-    remoteName: '',        // the opponent's chosen name, cleared on teardown
-    remoteReady: false,    // joiner has acknowledged SETUP
-    pendingSetup: null,    // joiner: setup received before it could be applied
-};
-function netActive() { return !!(net.conn && net.conn.open); }
 
 // ---------------------------------------------------------------------------
 // Batch 37: AWAY-PAUSE. Leaving the game tab pauses the match for both
@@ -2223,7 +2216,6 @@ const mayResumeAway = () => !anyoneAway() && (!netActive() || netIsHost());
 // The host always drives p1 (netHost/netJoin set LOCAL_SIDE), so naming the
 // host is a matter of which side we are, not a separate piece of state.
 const hostSide = () => (netIsHost() ? LOCAL_SIDE : otherSide(LOCAL_SIDE));
-function netIsHost() { return net.role === 'host'; }
 const otherSide = side => (side === 'p1' ? 'p2' : 'p1');
 
 const keys = {};
@@ -2544,8 +2536,6 @@ function liveEnemies() { return coopEnemies.filter(e => e && e.hp > 0); }
 // the damage so the hp that comes back is the one both machines agree on.
 //
 // `coopIsPuppet()` is the single question every enemy code path asks.
-function coopIsHost() { return !netActive() || netIsHost(); }
-function coopIsPuppet() { return netActive() && !netIsHost(); }
 
 
 // Zone Control. The ring sits at arena center — which is also where Arena

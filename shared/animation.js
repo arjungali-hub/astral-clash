@@ -143,3 +143,39 @@ const JAB_MIN_FRAMES = 5;
 function readableJabs(want, activeFrames) {
     return Math.max(1, Math.min(want || 1, Math.floor((activeFrames || 1) / JAB_MIN_FRAMES)));
 }
+
+
+// ---------------------------------------------------------------------------
+// A DEBUG FRAME CAP: ?fps=30 runs the whole game at 30fps.
+//
+// "Identical behaviour at 30fps, 60fps and uncapped" has been unchecked since
+// the original brief, for the honest reason that there was no way to drive the
+// game at a chosen rate - and computeDt, which normalises everything by real
+// elapsed time, is precisely the thing under test, so it cannot be trusted to
+// verify itself.
+//
+// This wraps requestAnimationFrame rather than touching either game loop. That
+// matters twice over: gameLoop is on INTERFACE and differs between the builds,
+// so editing it would have been a change in two places forever; and a loop that
+// does not know it is being throttled cannot accidentally compensate.
+//
+// Inert unless ?fps= is present - no wrapper is installed at all - so the shipped
+// game runs on the browser's own rAF exactly as before.
+const AC_FPS_CAP = (function () {
+    const m = /[?&]fps=(\d+)/.exec(typeof location !== 'undefined' ? location.search : '');
+    const n = m ? parseInt(m[1], 10) : 0;
+    return (n > 0 && n <= 240) ? n : 0;
+})();
+
+if (AC_FPS_CAP && typeof window !== 'undefined' && window.requestAnimationFrame) {
+    const raf = window.requestAnimationFrame.bind(window);
+    const minGap = 1000 / AC_FPS_CAP;
+    let lastAt = -1e9;
+    window.requestAnimationFrame = function (cb) {
+        return raf(function step(now) {
+            if (now - lastAt < minGap) return raf(step);
+            lastAt = now;
+            cb(now);
+        });
+    };
+}

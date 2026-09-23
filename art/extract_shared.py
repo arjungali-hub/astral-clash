@@ -45,8 +45,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'shared', 'common.js')
 
 # Column-0 definitions only. Anything indented belongs to something else.
+# `class` is a definition too. Leaving it out made `class Fighter` invisible to
+# every tool here AND absorbed its 1,681 lines into the preceding chunk, which
+# is why steerAroundObstacles was reported as differing by 176 lines when the
+# difference was entirely in the class below it.
 DEF = re.compile(r'(?m)^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|'
-                 r'(const|let|var)\s+([A-Za-z_$][\w$]*)\s*=)')
+                 r'(const|let|var)\s+([A-Za-z_$][\w$]*)\s*=|'
+                 r'(class)\s+([A-Za-z_$][\w$]*)\b)')
 IDENT = re.compile(r'\b([A-Za-z_$][\w$]*)\b')
 
 # Never moved: the entry points, and the pair of names that only make sense
@@ -97,8 +102,8 @@ def definitions(text):
     hits = list(DEF.finditer(text))
     starts = [comment_start(text, m.start()) for m in hits]
     for k, m in enumerate(hits):
-        name = m.group(1) or m.group(3)
-        kind = 'function' if m.group(1) else m.group(2)
+        name = m.group(1) or m.group(3) or m.group(5)
+        kind = 'function' if m.group(1) else (m.group(2) or m.group(4))
         end = starts[k + 1] if k + 1 < len(hits) else len(text)
         out[name] = (kind, text[starts[k]:end])
     return out
@@ -134,7 +139,7 @@ def main():
     # Identical in both, a const or a function, and not an entry point.
     candidates = [n for n in online
                   if n in local and n not in NEVER
-                  and online[n][0] in ('function', 'const', 'let')
+                  and online[n][0] in ('function', 'const', 'let')   # never 'class'
                   and norm(online[n][1]) == norm(local[n][1])]
 
     movable, changed = set(), True

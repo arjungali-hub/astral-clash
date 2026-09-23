@@ -40,21 +40,71 @@ _IDENT_RE = re.compile(r'[A-Za-z_$][\w$]*')
 # Every name the shared modules define; filled in by main().
 SHARED_NAMES = set()
 
+# `class` included: without it `class Fighter` was invisible here too, and its
+# 1,681 lines were absorbed into the chunk of whatever preceded it.
 _DEF_RE = re.compile(r'(?m)^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|'
-                     r'(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=)')
+                     r'(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=|'
+                     r'class\s+([A-Za-z_$][\w$]*)\b)')
+
+
+def strip_trailing_comment(line):
+    """Drop a `// ...` comment from the end of a line of code.
+
+    Scans rather than splits, because the '//' has to be found OUTSIDE string
+    literals: 'https://example' would otherwise be truncated to 'https:' and two
+    genuinely different URLs would compare equal. Quotes, double quotes and
+    template literals are tracked, with backslash escapes honoured.
+
+    Used for COMPARISON only. The text actually written is the online body
+    verbatim, so the worst a mis-scan can do is unify two bodies that should
+    have stayed apart - never corrupt one.
+    """
+    quote = None
+    i = 0
+    while i < len(line):
+        c = line[i]
+        if quote:
+            if c == chr(92):
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+        elif c in ('"', "'", '`'):
+            quote = c
+        elif c == '/' and i + 1 < len(line) and line[i + 1] == '/':
+            return line[:i].rstrip()
+        i += 1
+    return line
 
 
 def code_only(text):
-    """The lines that actually run: no comments, no blanks, no indentation."""
+    """The lines that actually run: no comments, no blanks, no indentation.
+
+    Trailing comments count as comments too. Keeping them made a note appended
+    to a line of code read as a code difference:
+
+        hudCtx.font = announceFont(fontPx, 700);   // floating damage numbers
+        hudCtx.font = announceFont(fontPx, 700);
+
+    - which pinned five definitions apart over nothing.
+    """
     out = []
     for line in text.splitlines():
-        t = line.strip()
+        t = strip_trailing_comment(line.strip())
         if t and not t.startswith('//'):
             out.append(t)
     return chr(10).join(out)
 
 
 # Definitions that differ BETWEEN THE BUILDS ON PURPOSE.
+#
+# AUDITED. Six entries were removed after reading their actual diffs: a reason
+# written beside a name is not the same as a necessary reason, and these six
+# described the STRUCTURE (two viewmodels, two HUD panels) while the actual
+# difference was drift. Two of them were live bugs in the local build - the arm
+# mirrored about X instead of Z ("the arms are still left arms" and "Draven's
+# weapon is backwards" are one bug), and a viewmodel roll that went flat on the
+# first frame because syncViewmodels assigns rotation every frame.
 #
 # Names that have since moved to shared/ are pruned from this list rather than
 # left as harmless no-ops: an entry naming something that no longer exists reads
@@ -63,6 +113,14 @@ def code_only(text):
 # across, and each entry says why, because an unexplained name on this list is
 # indistinguishable from drift somebody gave up on.
 INTERFACE = {
+    # The Fighter class holds the genuinely forked input handling - per-side
+    # bindings here, mouse look and isLocalSide there - in the SAME body as code
+    # that has merely drifted (the local copy still has the old single-rate
+    # teleport decay). A chunk is all-or-nothing, so copying it would trade a
+    # visual regression for a controls regression. Splitting the input out of
+    # the class is the way to unify the rest; until then this is honest.
+    'Fighter': 'forked input handling and drifted visuals share one class body',
+
     # --- rendering: one full-screen camera vs two split-screen viewports
     'renderer': 'split-screen sizing and scissor state',
     'PIXEL_RATIO': 'local pays for two viewports, so it caps lower',
@@ -79,10 +137,7 @@ INTERFACE = {
     'drawWaveBreakHUD': 'per-panel geometry',
     'camP2': 'the second camera only exists here',
     'positionFpsCamera': 'two cameras to place',
-    'syncViewmodels': 'two viewmodels to sync',
-    'buildViewmodel': 'built per side',
     'toggleBloom': 'the local build has no composer',
-    'refreshBloomUI': 'the local build has no composer',
     'onWindowResize': 'no composer to resize, two viewports to lay out',
 
     # --- controls: two players at one keyboard vs one player and a mouse
@@ -105,7 +160,6 @@ INTERFACE = {
     'MODAL_EL': 'different modals exist',
     'currentScreen': 'different screens exist',
     'closeModal': 'different modals exist',
-    'openModal': 'different modals exist',
     'startGame': 'entry point',
     'startMatch': 'match framework',
     'startRound': 'match framework',
@@ -122,9 +176,15 @@ INTERFACE = {
     'refreshModeUI': 'different modes offered',
     'refreshBotUI': 'bots are per side here',
     'buildModeSelect': 'different modes offered',
-    'setMatchMode': 'match framework',
     'resolveCoopMode': 'match framework',
     'coopOwnsRespawn': 'match framework',
+    # Not per-side at all: the online body calls refreshHudScaleUI(), and that
+    # helper cannot travel because a definition's CHUNK runs to the next
+    # definition - so it sweeps up the listener statements below it, which
+    # reference setSandboxMatch, which is online-only. The two-line inlined
+    # version here says the same thing. Honest limitation of chunk boundaries,
+    # recorded rather than papered over.
+    'cycleHudScale': 'calls a helper whose chunk drags in online-only listeners',
     'gameLoop': 'drives two views and no network tick',
     'computeDt': 'no network pacing here',
     'stepFight': 'no remote fighter here',
@@ -159,7 +219,6 @@ INTERFACE = {
     'refreshGameOverUI': 'results name two local players',
     'refreshSandboxUI': 'sandbox is online-only',
     'refreshHudScaleUI': 'two HUD panels',
-    'cycleHudScale': 'two HUD panels',
     'hudUnitScale': 'two HUD panels',
     'hudCanvas': 'two HUD panels',
     'hudCtx': 'two HUD panels',
@@ -239,8 +298,67 @@ def selftest_guard():
     return True
 
 
+# Names that are legitimately global at the point shared/ runs: the browser, the
+# engine, and the per-build profile declared in its own script tag.
+_SHARED_GLOBALS = set((
+    'THREE Math JSON Object Array String Number Boolean Date Promise Set Map WeakMap Symbol '
+    'document window console performance localStorage sessionStorage navigator location history '
+    'requestAnimationFrame cancelAnimationFrame setTimeout clearTimeout setInterval clearInterval '
+    'parseInt parseFloat isNaN isFinite Error TypeError RangeError encodeURIComponent '
+    'decodeURIComponent fetch AudioContext webkitAudioContext Peer atob btoa Image Audio Blob URL '
+    'CanvasRenderingContext2D HTMLCanvasElement getComputedStyle matchMedia structuredClone '
+    'AC_ONE_SIDE_PER_CLIENT undefined null true false this arguments'
+).split())
+
+# Reserved words and syntax that _IDENT_RE picks up but that are not references.
+_JS_WORDS = set((
+    'function const let var return if else for while do break continue new delete typeof '
+    'instanceof in of class extends super static get set try catch finally throw switch case '
+    'default void yield await async export import from as with debugger'
+).split())
+
+
+def shared_scope_violations(shared_sources, build_src):
+    """Names shared/ uses that only exist inside the build's bootGame() closure.
+
+    A shared module cannot see into bootGame(), so such a name is a
+    ReferenceError the moment that line runs - and only when it runs, which is
+    why it survives a page load and shows up later as a feature that silently
+    does nothing.
+
+    Bounded by the build's own vocabulary: a name is reported only if the BUILD
+    defines it at column 0 and shared/ does not. That keeps property names and
+    locals out of it.
+    """
+    shared_text = chr(10).join(shared_sources)
+    shared_names = set(_def_names(shared_text))
+    build_names = set(_def_names(build_src))
+    # Only names the build defines and shared does not - those are the ones
+    # that are definitely out of reach rather than merely unrecognised.
+    suspect = build_names - shared_names
+    if not suspect:
+        return []
+    bare = _code_only_text(shared_text)
+    out = []
+    for name in sorted(suspect):
+        if name in _SHARED_GLOBALS or name in _JS_WORDS:
+            continue
+        if re.search(_REF_HEAD + re.escape(name) + _REF_TAIL, bare):
+            out.append(name)
+    return out
+
+
+def _code_only_text(text):
+    """Comments and string literals removed, newlines kept."""
+    text = re.sub(_LINE_COMMENT, '', text)
+    text = re.sub(_BLOCK_COMMENT, '', text, flags=re.S)
+    text = re.sub(_SQ_STRING, "''", text)
+    text = re.sub(_DQ_STRING, '""', text)
+    return text
+
+
 def _def_names(text):
-    return [m.group(1) or m.group(2) for m in _DEF_RE.finditer(text)]
+    return [m.group(1) or m.group(2) or m.group(3) for m in _DEF_RE.finditer(text)]
 
 
 # A REFERENCE to `name`: not preceded by a word character or a dot (so
@@ -324,7 +442,7 @@ def port_missing_definitions(src, dst):
         starts = [comment_start(text, m.start()) for m in hits]
         for k, m in enumerate(hits):
             end = starts[k + 1] if k + 1 < len(hits) else len(text)
-            table[m.group(1) or m.group(2)] = text[starts[k]:end]
+            table[m.group(1) or m.group(2) or m.group(3)] = text[starts[k]:end]
 
     have = set(dst_defs) | SHARED_NAMES
     # SEEDED BY WHAT THIS BUILD CALLS AND NOTHING DEFINES, first. Scanning only
@@ -408,7 +526,7 @@ def force_online_bodies(src, dst):
         starts = [comment_start(text, m.start()) for m in hits]
         for k, m in enumerate(hits):
             end = starts[k + 1] if k + 1 < len(hits) else len(text)
-            table[m.group(1) or m.group(2)] = text[starts[k]:end]
+            table[m.group(1) or m.group(2) or m.group(3)] = text[starts[k]:end]
 
     have = set(dst_defs) | SHARED_NAMES
     copied, needs_port = [], []
@@ -416,7 +534,7 @@ def force_online_bodies(src, dst):
         hits = list(_DEF_RE.finditer(dst))
         starts = [comment_start(dst, m.start()) for m in hits]
         for k, m in enumerate(hits):
-            name = m.group(1) or m.group(2)
+            name = m.group(1) or m.group(2) or m.group(3)
             if name in copied or name in INTERFACE or name not in src_defs:
                 continue
             end = starts[k + 1] if k + 1 < len(hits) else len(dst)
@@ -454,14 +572,14 @@ def close_comment_drift(src, dst):
     starts = [comment_start(src, m.start()) for m in hits]
     for k, m in enumerate(hits):
         end = starts[k + 1] if k + 1 < len(hits) else len(src)
-        src_defs[m.group(1) or m.group(2)] = src[starts[k]:end]
+        src_defs[m.group(1) or m.group(2) or m.group(3)] = src[starts[k]:end]
 
     updated = []
     while True:
         hits = list(_DEF_RE.finditer(dst))
         starts = [comment_start(dst, m.start()) for m in hits]
         for k, m in enumerate(hits):
-            name = m.group(1) or m.group(2)
+            name = m.group(1) or m.group(2) or m.group(3)
             if name in updated or name not in src_defs:
                 continue
             end = starts[k + 1] if k + 1 < len(hits) else len(dst)
@@ -490,7 +608,7 @@ def strip_shared_duplicates(text, shared_sources):
     shared_names = set()
     for src_text in shared_sources:
         for m in _DEF_RE.finditer(src_text):
-            shared_names.add(m.group(1) or m.group(2))
+            shared_names.add(m.group(1) or m.group(2) or m.group(3))
 
     removed = []
     while True:
@@ -501,7 +619,7 @@ def strip_shared_duplicates(text, shared_sources):
         # The first declaration wins; later ones go.
         seen = set()
         for k, m in enumerate(hits):
-            name = m.group(1) or m.group(2)
+            name = m.group(1) or m.group(2) or m.group(3)
             dup_here = name in seen
             seen.add(name)
             if name not in shared_names and not dup_here:
@@ -794,7 +912,7 @@ def main():
     SHARED_FALLBACK[:] = [shared_src, anim_src, props_src, chars_src, common_src]
     for _text in SHARED_FALLBACK:
         for _m in _DEF_RE.finditer(_text):
-            SHARED_NAMES.add(_m.group(1) or _m.group(2))
+            SHARED_NAMES.add(_m.group(1) or _m.group(2) or _m.group(3))
     # The guard that stops the freeze class is itself checked first.
     if not selftest_guard():
         return 1
@@ -2176,6 +2294,28 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         }));""",
              'parallel match asset wait', required=False)
 
+    # ------------------------------------------------------ the build profile
+    # The one fact this build declares about itself; everything downstream is
+    # shared and asks it. See the tag's own comment in index.html for why it has
+    # to sit at true top level rather than inside bootGame().
+    #
+    # Copied from the online build and flipped, rather than written out here, so
+    # the comment above it cannot drift between the two.
+    if 'AC_ONE_SIDE_PER_CLIENT' not in dst:
+        prof = block(src, '<!-- THE BUILD PROFILE:', '<!-- Shared with the local build')
+        prof = prof.replace(
+            'const AC_ONE_SIDE_PER_CLIENT = true;   // online: a client drives p1 OR p2',
+            'const AC_ONE_SIDE_PER_CLIENT = false;  // local: one keyboard drives BOTH sides')
+        i = dst.index('<script src="../shared/roster.js"></script>')
+        i = comment_start(dst, i)
+        # Back up over the HTML comment the shared tags carry, so the profile
+        # lands above it rather than between it and the tags it introduces.
+        marker = '<!-- Shared with the online build'
+        if marker in dst[:i]:
+            i = dst.rindex(marker, 0, i)
+        dst = dst[:i] + prof + dst[i:]
+        print('  %-34s ok' % 'build profile')
+
     # ------------------------------------------------- CSS asset URLs, all of them
     # CSS url() resolves against the DOCUMENT, and this one is a directory down,
     # so every `url('assets/...')` copied from the online build asks for
@@ -2233,6 +2373,20 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         print('  %-34s %d removed (%s%s)'
               % ('re-declared from shared/', len(deduped), ', '.join(sorted(set(deduped))[:4]),
                  ', ...' if len(set(deduped)) > 4 else ''))
+
+    # SHARED CODE MAY NOT REACH INTO bootGame(). The rule that makes shared/
+    # work, and the one hand-moving code skips: the extractor enforces it with
+    # its fixed point, but nothing enforced it on code moved by hand.
+    reaching = shared_scope_violations(SHARED_FALLBACK, src)
+    if reaching:
+        print()
+        print('SHARED CODE REACHES INTO bootGame() - refusing to write:')
+        for n in reaching:
+            print('   shared/ uses %s, which the build defines inside bootGame()' % n)
+        print('   A shared module is a separate top-level script: it can be CALLED')
+        print('   from in there but cannot see in, so this throws when the line runs.')
+        print('   Move that definition to shared/ as well, or move the caller back.')
+        return 1
 
     # NOTHING MAY BE CALLED THAT NOTHING DEFINES. The backstop for the step
     # above: if a dangling call could not be ported - it needs something this
@@ -2341,7 +2495,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     import re as _re
     for m in _re.finditer(r'(?m)^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|'
                           r'const\s+([A-Za-z_$][\w$]*)\s*=)', common_src):
-        name = m.group(1) or m.group(2)
+        name = m.group(1) or m.group(2) or m.group(3)
         pat = ('function %s(' % name) if m.group(1) else ('const %s =' % name)
         if _re.search(r'(?m)^' + _re.escape(pat), dst):
             shadowed.append(pat + '   (shared/common.js)')
