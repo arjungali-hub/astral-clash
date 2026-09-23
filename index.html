@@ -1574,7 +1574,6 @@
                     <p class="rebind-hint">Click a key, then press its replacement. Esc cancels. Two actions cannot share a key &mdash; they swap.</p>
                     <p id="rebind-note" class="rebind-note" aria-live="polite"></p>
                     <button id="btn-rebind-reset" class="btn-tertiary">Reset to Defaults</button>
-                    <button id="btn-rebind-close">Close</button>
                 </div>
             </div>
 
@@ -1629,7 +1628,6 @@
                          it IS rather than where it came from. The UI review
                          called the old wording a developer note, which it was. -->
                     <p class="settings-note">Two players on one keyboard, split screen. Shares your progress.</p>
-                    <button id="btn-settings-close" class="btn-back">Close</button>
                 </div>
             </div>
 
@@ -2664,7 +2662,6 @@ document.getElementById('btn-pause-settings').addEventListener('click', () => {
     openModal('settings');
 });
 document.getElementById('btn-pause-rebind').addEventListener('click', openRebind);
-document.getElementById('btn-rebind-close').addEventListener('click', closeRebind);
 // Says so, rather than appearing to do nothing to a panel that was already
 // showing the defaults.
 document.getElementById('btn-rebind-reset').addEventListener('click', () => {
@@ -2686,7 +2683,6 @@ document.getElementById('btn-audio-close').addEventListener('click', () => close
 // (the modal manager keeps Settings underneath), so closing either returns
 // here — no separate "hide Settings first" listeners needed.
 document.getElementById('btn-open-settings').addEventListener('click', () => { syncDebugUnlockUI(); openModal('settings'); });
-document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());
 // Batch 13: the visible half of the unlock-everything override (the other
 // entry point is the typed cheat code in the keyboard dispatcher).
 // The sandbox checkbox no longer exists in the UI (see Settings); the

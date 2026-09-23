@@ -177,7 +177,10 @@ const SIZES = [
                 const el = document.getElementById('settings-screen');
                 return !!el && getComputedStyle(el).display !== 'none';
             })();
-            document.getElementById('btn-settings-close').click();
+            // The labelled Close button was removed as a duplicate of the injected X
+            // (ensureModalClose adds one to every panel, and it is the control that
+            // cannot end up below the fold). Close the way a player now does.
+            document.querySelector('#settings-screen .modal-x').click();
             return out;
         });
         // A 2px allowance: a focus ring or a 1px border legitimately sits on the

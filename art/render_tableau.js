@@ -102,9 +102,22 @@ const W = 1920, HGT = 1080;
         // name it. So the attacks are STARTED and the simulation stepped to the
         // frame wanted - the same thing swingcheck does to measure a swing.
         const fdA = FD[a.name].basic, fdB = FD[b.name].basic;
+        // render3D, NOT animateWeapon alone. For a RIGGED character the attack
+        // pose comes from the baked clip, and the clip is advanced by
+        // updateRigAnimation(dt) -> mixer.update(dt / 60), which only render3D
+        // calls. Stepping with animateWeapon alone left the mixer at t=0, so
+        // every rigged fighter stood in its idle pose while its atkState said
+        // it was mid-swing, and animateWeapon could only nudge the few bones it
+        // drives on top of that. Reported as "they aren't really fighting, just
+        // standing" - which was exactly right.
         const step = (f, o, n) => {
-            for (let i = 0; i < n; i++) { f.update(o, 1); D.animateWeapon(f); }
+            for (let i = 0; i < n; i++) { f.update(o, 1); f.render3D(null, 1); }
         };
+        // NEITHER MAY HIT THE OTHER WHILE POSING. `a` is stepped to its ACTIVE
+        // frame, which is a live hitbox - it connected, put `b` in hitstun and
+        // cancelled b's wind-up, so b came out of this standing. Measured:
+        // b.atkState was 'idle' when it should have been 'startup'.
+        a.invulnFrames = b.invulnFrames = 9999;
         a.tryStartAction('basic', b);
         b.tryStartAction('basic', a);
         // `a` lands on the first active frame - the contact pose, held since
@@ -116,6 +129,7 @@ const W = 1920, HGT = 1080;
         b.x = stageX + qx * 38; b.y = stageY + qy * 38;
         a.fx = qx; a.fy = qy; b.fx = -qx; b.fy = -qy;
         a.vx = a.vy = b.vx = b.vy = 0;
+        a.invulnFrames = b.invulnFrames = 0;
         a.render3D(null, 0); b.render3D(null, 0);
         D.animateWeapon(a); D.animateWeapon(b);
 
@@ -153,11 +167,30 @@ const W = 1920, HGT = 1080;
         D.renderer.setSize(w, h, false);
         cam.aspect = w / h;
         cam.updateProjectionMatrix();
+        // Measured, not assumed: how far each fighter's hand has travelled along
+        // its own forward axis. Standing is ~0; a strike is clearly positive.
+        // Same projection tests/weaponcheck.js uses.
+        const reach = (f) => {
+            const arms = D.armsOf ? D.armsOf(f) : [];
+            const arm = (arms || []).find(x => x && x.pivot && x.hand);
+            if (!arm) return null;
+            f.mesh.updateWorldMatrix(true, true);
+            const fwd = new THREE.Vector3(1, 0, 0).transformDirection(f.mesh.matrixWorld).normalize();
+            const sh = new THREE.Vector3().setFromMatrixPosition(arm.pivot.matrixWorld);
+            const hd = new THREE.Vector3().setFromMatrixPosition(arm.hand.matrixWorld);
+            return +hd.sub(sh).dot(fwd).toFixed(2);
+        };
+        window.__tableauPose = { a: { name: a.name, state: a.atkState, reach: reach(a) },
+                                 b: { name: b.name, state: b.atkState, reach: reach(b) } };
+
         const png = D.snapshot(cam);
         D.renderer.setSize(before.w, before.h, false);
         for (const o of hidden) o.visible = true;
         return png;
     }, [W, HGT]);
+
+    const pose = await page.evaluate(() => window.__tableauPose);
+    console.log('pose:', JSON.stringify(pose));
 
     if (!url || url.length < 5000) {
         console.error('render produced nothing usable');

@@ -154,7 +154,11 @@ INTERFACE = {
     # portable now that boundaries are right, but it reads setOptState on an
     # options row this build does not have, so the two-line inlined version
     # here says the same thing without the row. Left as the honest remainder.
-    'cycleHudScale': 'sets the button text directly; no options row here',
+
+    # Same behaviour, reached differently: the online body calls
+    # refreshHudScaleUI() and this one calls setOptState() directly, because that
+    # one-line helper is not portable yet. Both write the same pill.
+    'cycleHudScale': 'inlines refreshHudScaleUI, which cannot travel yet',
 
     # --- rendering: one full-screen camera vs two split-screen viewports
     'renderer': 'split-screen sizing and scissor state',
@@ -1019,6 +1023,23 @@ def main():
     dst = dst.replace("location.href = '../index.html' + location.search;",
                       "location.href = '/' + location.search;")
 
+    # ...AND THE BUTTON THAT WAS NEVER WIRED. #btn-back-to-online sits in the
+    # markup with no listener anywhere, so "Back to Online Version" did nothing.
+    # The rewrite above was renaming a destination that nothing navigated to,
+    # which is why this looked handled: a step that reports success every run
+    # and changes nothing reads exactly like a step that works.
+    #
+    # location.search is carried so ?debug=1 survives the trip, which is the
+    # reason anyone presses this button while testing.
+    if "getElementById('btn-back-to-online')" not in dst:
+        anchor = ".addEventListener('click', resetProgressClicked);"
+        dst = rep(dst, anchor,
+                  anchor + '\n'
+                  + "document.getElementById('btn-back-to-online')" + '\n'
+                  + "    .addEventListener('click', () => "
+                  + "{ location.href = '/' + location.search; });",
+                  'back to online button')
+
     # --------------------------------------------------------- mobile notice
     # /local must refuse to run on a phone too.
     #
@@ -1622,12 +1643,17 @@ if (location.protocol === 'https:'
                   "        .side-purse {", 'name field css')
 
         # --- reset progress, in settings -----------------------------------
+        # required=False: this anchors on a button that has been removed as a
+        # duplicate of the injected X. The step is dormant anyway - this build
+        # already has the reset-progress row - so skipping is the right answer
+        # rather than aborting the sync.
         dst = rep(dst, '<button id="btn-settings-close"',
                   '<div class="settings-list" style="margin-top:14px;">\n'
                   '                        <button id="btn-reset-progress" class="btn-danger">Reset Progress</button>\n'
                   '                    </div>\n'
                   '                    <p class="settings-note">Clears both players\' coins, unlocks and upgrades on this machine. Names are kept. Click twice to confirm.</p>\n'
-                  '                    <button id="btn-settings-close"', 'reset progress button')
+                  '                    <button id="btn-settings-close"',
+                  'reset progress button', required=False)
         dst = rep(dst, "        .settings-note {",
                   "        .btn-danger {\n"
                   "            background: transparent; color: #f87171; border: 1px solid #f87171;\n"
@@ -2393,6 +2419,89 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
             i = dst.rindex(marker, 0, i)
         dst = dst[:i] + prof + dst[i:]
         print('  %-34s ok' % 'build profile')
+
+    # --------------------------------------------- settings rows keep their labels
+    # setOptState writes into a `.opt-state` pill and, failing to find one,
+    # replaces the button's whole textContent - so a plain button loses its
+    # label the first time shared code touches it. Reported as "a button that
+    # just says off and on without saying what is off and what is on", and it
+    # appeared the moment refreshBloomUI was unified.
+    #
+    # The row is the fix, not the fallback: same markup as the online build, so
+    # the shared code behaves identically and the two Settings screens match.
+    opt_css = block(src, '        .opt {', '        .menu-section .opt { width: 100%; }')
+    if '.opt-state' not in dst:
+        dst = rep(dst, '        .settings-list {',
+                  opt_css + '        .menu-section .opt { width: 100%; }' + chr(10)
+                  + '        .settings-list {', 'opt row css')
+
+    for bid, label, initial in (('btn-hud-scale', 'HUD Text', 'Normal'),
+                                ('btn-audio-mute', 'Sound', 'On')):
+        plain = '<button id="%s">' % bid
+        if plain in dst:
+            i = dst.index(plain)
+            j = dst.index('</button>', i) + len('</button>')
+            dst = (dst[:i]
+                   + '<button id="%s" class="opt">%s<span class="opt-state">%s</span></button>'
+                     % (bid, label, initial)
+                   + dst[j:])
+            print('  %-34s ok' % ('opt row: ' + bid))
+
+    # GLOW IS REMOVED HERE, not relabelled. renderWithBloomLocal is
+    # `renderer.render(scn, cam)` and there is no EffectComposer in this build at
+    # all - bloom was turned down for split screen, where it would have to run
+    # per viewport. The toggle wrote a flag, reloaded the arena, and changed
+    # nothing visible. Reported as "it doesn't seem to change anything".
+    i = dst.find('<button id="btn-bloom"')
+    if i != -1:
+        j = dst.index('</button>', i) + len('</button>')
+        k = comment_start(dst, i)
+        dst = dst[:k] + dst[j:]
+        print('  %-34s ok' % 'glow toggle removed (no composer)')
+    # ...and its wiring, which would now throw on a missing element.
+    dst = dst.replace(
+        "document.getElementById('btn-bloom').addEventListener('click', toggleBloom);" + chr(10), '')
+    dst = dst.replace("document.getElementById('btn-bloom').addEventListener('click', toggleBloom);", '')
+
+    # cycleHudScale writes through setOptState, so the pill survives.
+    # It used to set the button's whole textContent, which was right while the
+    # button was plain and destroys the label now that it is an .opt row. The
+    # online body calls refreshHudScaleUI() for this; that one-line helper is not
+    # portable yet, so the call it makes is inlined rather than left wrong.
+    dst = dst.replace(
+        "    document.getElementById('btn-hud-scale').textContent = "
+        + '`HUD Text: ${HUD_TEXT_SCALE > 1 ? ' + "'Large' : 'Normal'}`;",
+        "    setOptState('btn-hud-scale', HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal',"
+        + " HUD_TEXT_SCALE > 1);")
+    dst = dst.replace(
+        "document.getElementById('btn-hud-scale').textContent = "
+        + '`HUD Text: ${HUD_TEXT_SCALE > 1 ? ' + "'Large' : 'Normal'}`;",
+        "setOptState('btn-hud-scale', HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal',"
+        + " HUD_TEXT_SCALE > 1);")
+
+    # The audio panel's button NAVIGATES, it does not close - it goes back to
+    # Settings, which is the panel above it. The online build already says so.
+    dst = dst.replace('<button id="btn-audio-close" class="btn-back">Close</button>',
+                      '<button id="btn-audio-close" class="btn-back">Back to Settings</button>')
+    dst = dst.replace('<button id="btn-audio-close">Close</button>',
+                      '<button id="btn-audio-close" class="btn-back">Back to Settings</button>')
+
+    # THE DUPLICATE CLOSE BUTTONS GO HERE TOO. ensureModalClose injects an X into
+    # every panel, so a button whose whole label is "Close" is a second control
+    # for the same action. The X is the one that stays: it exists because "Close
+    # sits below the fold" was a real report, so the labelled one is precisely
+    # the one that cannot be relied on, and the X carries aria-label="Close".
+    #
+    # Removed here as well as in the online build because this file is PATCHED,
+    # not regenerated - deleting them upstream leaves this build's copies alone.
+    for markup in ('                    <button id="btn-settings-close" class="btn-back">Close</button>' + chr(10),
+                   '                    <button id="btn-rebind-close">Close</button>' + chr(10)):
+        if markup in dst:
+            dst = dst.replace(markup, '')
+            print('  %-34s ok' % 'duplicate Close removed')
+    for wiring in ("document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());" + chr(10),
+                   "document.getElementById('btn-rebind-close').addEventListener('click', closeRebind);" + chr(10)):
+        dst = dst.replace(wiring, '')
 
     # ------------------------------------------------- CSS asset URLs, all of them
     # CSS url() resolves against the DOCUMENT, and this one is a directory down,

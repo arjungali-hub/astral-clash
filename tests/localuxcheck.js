@@ -102,7 +102,10 @@ const H = require('./harness');
     section('Nothing inside a panel has its own scrollbar:');
     st = await page.evaluate(() => {
         const D = window.ACDebug;
-        document.getElementById('btn-settings-close').click();
+        // The labelled Close button was removed as a duplicate of the injected X
+            // (ensureModalClose adds one to every panel, and it is the control that
+            // cannot end up below the fold). Close the way a player now does.
+            document.querySelector('#settings-screen .modal-x').click();
         // Show a fighter detail, the worst offender: a 200px scroll box inside
         // a panel inside an overlay.
         document.querySelectorAll('#p1-grid .fighter-btn')[0].click();

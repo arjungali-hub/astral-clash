@@ -717,6 +717,25 @@
             align-items: center; justify-content: center; z-index: 20;
         }
         #settings-screen .menu-section { max-width: 320px; }
+        .opt {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; width: 100%; margin: 6px 0; padding: 9px 12px;
+            background: #1a2235; color: #cbd5e1; border: 1px solid #2e3a59;
+            border-radius: 6px; font-size: 0.82rem; font-weight: 600;
+            box-shadow: none; text-align: left; cursor: pointer;
+        }
+        .opt:hover { background: #232d47; color: #e2e8f0; box-shadow: none; }
+        .opt .opt-state {
+            flex: none; padding: 3px 10px; border-radius: 999px;
+            background: #0f1626; border: 1px solid #334155;
+            color: #94a3b8; font-size: 0.74rem; font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+        /* ON is the only state that gets colour, so a glance finds it. */
+        .opt.is-on .opt-state {
+            background: rgba(0, 243, 255, 0.14); border-color: #00f3ff; color: #00f3ff;
+        }
+        .menu-section .opt { width: 100%; }
         .settings-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
         .settings-list button { margin: 0; text-align: left; }
         .settings-check {
@@ -1294,7 +1313,6 @@
                     <div id="rebind-list"></div>
                     <p class="rebind-hint">Click a key, then press its replacement. Esc cancels.</p>
                     <button id="btn-rebind-reset">Reset to Defaults</button>
-                    <button id="btn-rebind-close">Close</button>
                 </div>
             </div>
 
@@ -1313,8 +1331,8 @@
                         <label for="vol-music">Music</label>
                         <input type="range" id="vol-music" min="0" max="1" step="0.01">
                     </div>
-                    <button id="btn-audio-mute">Mute: OFF</button>
-                    <button id="btn-audio-close">Close</button>
+                    <button id="btn-audio-mute" class="opt">Sound<span class="opt-state">On</span></button>
+                    <button id="btn-audio-close" class="btn-back">Back to Settings</button>
                 </div>
             </div>
 
@@ -1323,8 +1341,8 @@
                     <h3>Settings</h3>
                     <div class="settings-list">
                         <button id="btn-open-rebind">Rebind Keys</button>
-                        <button id="btn-hud-scale">HUD Text: Normal</button>
-                        <button id="btn-bloom">Glow: On</button>
+                        <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
+
                         <button id="btn-open-audio">Audio Settings</button>
                         <!-- Added after archiving: the only edit to this file's
                              behaviour, so switching builds is not a one-way
@@ -1340,7 +1358,6 @@
                         <button id="btn-reset-progress" class="btn-danger">Reset Progress</button>
                     </div>
                     <p class="settings-note">Clears both players' coins, unlocks and upgrades on this machine. Names are kept. Click twice to confirm.</p>
-                    <button id="btn-settings-close" class="btn-back">Close</button>
                 </div>
             </div>
 
@@ -2409,7 +2426,7 @@ function hudFont(px, bold) {
 function cycleHudScale() {
     HUD_TEXT_SCALE = HUD_TEXT_SCALE >= 1.3 ? 1 : 1.3;
     safeLSSet('astralClashHudScale', HUD_TEXT_SCALE);
-    document.getElementById('btn-hud-scale').textContent = `HUD Text: ${HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal'}`;
+    setOptState('btn-hud-scale', HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal', HUD_TEXT_SCALE > 1);
 }
 function toggleBloom() {
     bloomEnabled = !bloomEnabled;
@@ -2419,10 +2436,9 @@ function toggleBloom() {
     // the next map load.
     if (currentMap) loadMap(currentMap);
 }
-document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
 refreshBloomUI();
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
-document.getElementById('btn-hud-scale').textContent = `HUD Text: ${HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal'}`;
+setOptState('btn-hud-scale', HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal', HUD_TEXT_SCALE > 1);
 
 function keyLabel(k) {
     if (k === ' ') return 'Space';
@@ -2486,7 +2502,6 @@ document.getElementById('btn-pause-settings').addEventListener('click', () => {
     openModal('settings');
 });
 document.getElementById('btn-pause-rebind').addEventListener('click', openRebind);
-document.getElementById('btn-rebind-close').addEventListener('click', closeRebind);
 document.getElementById('btn-rebind-reset').addEventListener('click', () => {
     BINDINGS = { p1: Object.assign({}, DEFAULT_BINDINGS.p1), p2: Object.assign({}, DEFAULT_BINDINGS.p2) };
     saveBindings();
@@ -2505,7 +2520,6 @@ document.getElementById('btn-audio-close').addEventListener('click', () => close
 // (the modal manager keeps Settings underneath), so closing either returns
 // here — no separate "hide Settings first" listeners needed.
 document.getElementById('btn-open-settings').addEventListener('click', () => { syncDebugUnlockUI(); openModal('settings'); });
-document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());
 // Batch 13: the visible half of the unlock-everything override (the other
 // entry point is the typed cheat code in the keyboard dispatcher).
 // The sandbox checkbox no longer exists in the UI (see Settings); the
@@ -6772,6 +6786,8 @@ for (const nameSide of SIDES) {
 }
 document.getElementById('btn-reset-progress')
     .addEventListener('click', resetProgressClicked);
+document.getElementById('btn-back-to-online')
+    .addEventListener('click', () => { location.href = '/' + location.search; });
 refreshLocalNames();
 
 // Rolls random fighters for any bot side (their pick is hidden until now),
