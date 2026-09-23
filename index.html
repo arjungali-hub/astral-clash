@@ -2385,8 +2385,6 @@ window.addEventListener('contextmenu', e => {
 // to the same account slot. Without this, hosting spent p1's coins and joining
 // spent p2's: your roster and upgrades changed depending on whether you clicked
 // Host or Join, which is nonsense for one person.
-const ACCOUNT = 'p1';
-function accountOf(side) { return isLocalSide(side) ? ACCOUNT : side; }
 function prog(side) { return progression[accountOf(side)] || progression.p1; }
 // The local player's account, for the many callers that mean "me" rather than
 // "some side".
@@ -2460,7 +2458,6 @@ const shopExpanded = new Set();
 // Scoping the key fixes it in both directions and needs no migration - the old
 // unscoped key simply stops being read here, so an online build that is
 // currently unlocked goes back to the real save on its next load.
-let debugUnlockAll = safeLSGet(SANDBOX_KEY) === '1';
 
 // WHEN IS EVERYTHING UNLOCKED?
 //
@@ -2481,7 +2478,6 @@ let debugUnlockAll = safeLSGet(SANDBOX_KEY) === '1';
 //                    local build, sandbox unlocks everything", which is fair:
 //                    a sandbox that cannot let you try the fighter you have
 //                    not bought is not a sandbox.
-function sandboxActive() { return sandboxMatch || (debugUnlockAll && !netActive()); }
 
 // THE accessors. Gameplay and UI both go through these rather than reading
 // `progression` directly, so there's exactly one place the debug override
@@ -2815,7 +2811,6 @@ renderer.toneMappingExposure = BASE_EXPOSURE;
 // making a bright SURFACE look like a light SOURCE. 0.95 keeps it to things
 // that are genuinely near-white: emissive rails and cores, brazier flame, the
 // sun sprite, a lightning bolt.
-let composer = null, bloomRenderPass = null, bloomPass = null, bloomFailed = false;
 // Declared HERE, not next to its toggle further down: renderWithBloom reads it,
 // and a `let` below that function would be in its temporal dead zone for any
 // render that happened during load. Seventh instance of that trap in this file.
@@ -3088,7 +3083,6 @@ onWindowResize(); // establish real pixel size now that a camera-ish setup exist
 // what is drawn.
 // ===========================================================================
 let crushScene = null;          // the cinematic's own scene
-const crushBorrowed = [];       // { obj, parent } so every reparent is undone
 
 // Half the distance between the two marks. Each stage floor is a 300-unit box
 // (stageGeo in buildCrushRigs), so 190 leaves a clear gap between them without
@@ -3131,12 +3125,6 @@ function borrowForCrush(obj, parent) {
     crushScene.add(obj);
 }
 
-function releaseCrushBorrowed() {
-    while (crushBorrowed.length) {
-        const { obj, parent } = crushBorrowed.pop();
-        if (obj && parent) parent.add(obj);
-    }
-}
 
 // Which mark a fighter stands on. p1 left of frame, p2 right, the same way
 // round on both machines so the two players see the same picture.
@@ -7872,7 +7860,6 @@ function setSandboxMatch(on) {
 // Is this match off the books? Same predicate as sandboxActive(), kept under
 // its own name because the call sites are about MONEY rather than about what is
 // unlocked, and those two could diverge again.
-function matchIsSandbox() { return sandboxActive(); }
 
 function refreshSandboxUI() {
     // Everything gated on isCharUnlocked/upgradeLevel has to re-read them now.

@@ -169,7 +169,6 @@ INTERFACE = {
     'drawRoundStatus': 'per-panel geometry',
     'drawCoopDownHUD': 'per-panel geometry',
     'toggleBloom': 'the local build has no composer',
-    'onWindowResize': 'no composer to resize, two viewports to lay out',
 
     # --- controls: two players at one keyboard vs one player and a mouse
     'DEFAULT_BINDINGS': 'two full key sets',
@@ -207,8 +206,6 @@ INTERFACE = {
     'onBossDefeated': 'match framework',
 
     # --- progression and the store: one account vs two side-local purses
-    'prog': 'two purses',
-    'upgradeLevel': 'two purses',
     'addCoins': 'two purses',
     'refreshCoinDisplays': 'two purses',
     'buildShop': 'two purses',
@@ -216,18 +213,13 @@ INTERFACE = {
     'showDetail': 'two purses',
     'buildDetailHTML': 'two purses',
     'refreshGridLocks': 'two purses',
-    'isCharUnlocked': 'two purses',
-    'isDoubleJumpUnlocked': 'two purses',
     'shopExpanded': 'two panels open at once',
-    'debugUnlockAll': 'per side',
-    'setDebugUnlockAll': 'per side',
     'syncLockHint': 'per side',
     'preloadCharModels': 'preloads both sides at once',
     'refreshPauseUI': 'pause offers different things',
     'refreshGameOverUI': 'results name two local players',
     'refreshSandboxUI': 'sandbox is online-only',
     'refreshHudScaleUI': 'two HUD panels',
-    'resetCrush': 'the crush cinematic is online-only',
     'buildCrushRigs': 'the crush cinematic is online-only',
     'disposeCrushRigs': 'the crush cinematic is online-only',
 }

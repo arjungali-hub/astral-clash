@@ -2243,7 +2243,7 @@ function withLoading(arenaName, work) {
 // to the same account slot. Without this, hosting spent p1's coins and joining
 // spent p2's: your roster and upgrades changed depending on whether you clicked
 // Host or Join, which is nonsense for one person.
-function prog(side) { return progression[side] || progression.p1; }
+function prog(side) { return progression[accountOf(side)] || progression.p1; }
 // --- Batch 19: game modes. `matchMode` is deliberately ORTHOGONAL to
 // `gameState`: gameState says where we are in the round lifecycle
 // (INTRO/FIGHT/DEATH/...), matchMode says what winning means. Everything
@@ -2295,23 +2295,16 @@ const shopExpanded = { p1: new Set(), p2: new Set() };
 // Which stores are open right now. BOTH may be: see syncShopPanels.
 const shopOpen = { p1: false, p2: false };
 
-// Batch 13 sets this; declared here because the accessors below are the
-// single gate every unlock/upgrade check in the game goes through, and they
-// have to read the override. Persisted under its OWN key, never inside
-// `progression` — that's what makes toggling it off restore the real save
-// exactly, since nothing ever writes into `progression` while it's on.
-let debugUnlockAll = safeLSGet('astralClashDebugUnlockAll') === '1';
-
 // THE accessors. Gameplay and UI both go through these rather than reading
 // `progression` directly, so there's exactly one place the debug override
 // has to be honored — and exactly one place that knows a side owns its stuff.
-function isCharUnlocked(side, name) { return debugUnlockAll || prog(side).unlockedChars.includes(name); }
+function isCharUnlocked(side, name) { return sandboxActive() || prog(side).unlockedChars.includes(name); }
 function upgradeLevel(side, name, trait) {
-    if (debugUnlockAll) return MAX_UPGRADE_LEVEL;
+    if (sandboxActive()) return MAX_UPGRADE_LEVEL;
     const u = prog(side).upgrades[name];
     return (u && u[trait]) || 0;
 }
-function isDoubleJumpUnlocked(side) { return debugUnlockAll || !!prog(side).doubleJumpUnlocked; }
+function isDoubleJumpUnlocked(side) { return sandboxActive() || !!prog(side).doubleJumpUnlocked; }
 // Multiplier a given character's base stat is scaled by, from that side's upgrades.
 function upgradeMult(side, name, trait) { return 1 + UPGRADE_STAT_BONUS * upgradeLevel(side, name, trait); }
 function unlockedCharNames(side) { return CHARACTERS.filter(c => isCharUnlocked(side, c.name)).map(c => c.name); }
@@ -2382,7 +2375,7 @@ function buyDoubleJump(side) {
 // confirmation you can't see is worse than none.
 function setDebugUnlockAll(on) {
     debugUnlockAll = !!on;
-    safeLSSet('astralClashDebugUnlockAll', debugUnlockAll ? '1' : '0');
+    safeLSSet(SANDBOX_KEY, debugUnlockAll ? '1' : '0');
     // Everything gated on the accessors has to re-read them now.
     refreshGridLocks();
     refreshCoinDisplays();
@@ -2643,21 +2636,6 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 const BASE_EXPOSURE = 0.92;
 renderer.toneMappingExposure = BASE_EXPOSURE;
 
-// BLOOM. See docs/arena-art-plan.md item 3 - and note this reverses the
-// earlier "no EffectComposer" decision on purpose, now that there is one
-// viewport instead of two.
-//
-// BLOOM_THRESHOLD is the whole tuning. At 0.86 only things that are already
-// nearly white on screen bloom: the emissive accent rails and cores, brazier
-// flames, the sun sprite, a lightning bolt. The sky, the marble arena and the
-// sand floor are bright but not that bright, and a lower threshold makes them
-// glow, which reads as fog rather than as light.
-// Tuned against screenshots, not guessed. At 0.86 the pale arenas - Voltaic
-// Nexus' white walls, the Colosseum's marble - sat above the threshold and the
-// entire frame glowed, which is bloom doing the one thing it must not do:
-// making a bright SURFACE look like a light SOURCE. 0.95 keeps it to things
-// that are genuinely near-white: emissive rails and cores, brazier flame, the
-// sun sprite, a lightning bolt.
 function onWindowResize() {
     const rect = canvas.getBoundingClientRect();
     const w = Math.max(1, Math.round(rect.width));
@@ -2673,6 +2651,7 @@ function onWindowResize() {
     hudCanvas.width = Math.round(w * PIXEL_RATIO);
     hudCanvas.height = Math.round(h * PIXEL_RATIO);
     renderer.setSize(w, h, false);
+    if (composer) composer.setSize(w, h);
     // The two FPS cameras get their aspect set per-viewport each frame in
     // renderOneView (split-screen halves have a different aspect than the
     // full window), so nothing to update here.
@@ -2953,6 +2932,10 @@ function buildCrushRigs() {
 function resetCrush() {
     crushing = false;
     crushTime = 0;
+    // Hand the bodies and rigs back BEFORE disposing anything: they were
+    // reparented into the cinematic scene, and a fighter left there would
+    // simply stop being drawn in the arena next round.
+    releaseCrushBorrowed();
     disposeCrushRigs();
     applyCrushCameraLayers();   // restore first-person layer masks + viewmodels
 }

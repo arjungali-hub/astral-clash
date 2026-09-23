@@ -2190,7 +2190,12 @@ function requestPointerLock() {
 
 let selectedMap = null;
 
-const SANDBOX_KEY = 'astralClashDebugUnlockAll:online';
+// DERIVED, so the two builds keep the two keys they already had - ':online'
+// here, bare there - without either one being written out twice. The split is
+// deliberate: both builds share an origin and therefore localStorage, which is
+// right for progression and wrong for a debug override, and a user who has
+// toggled the sandbox in one build should not find it on in the other.
+const SANDBOX_KEY = 'astralClashDebugUnlockAll' + (AC_ONE_SIDE_PER_CLIENT ? ':online' : '');
 
 function setOptState(id, text, on) {
     const el = document.getElementById(id);
@@ -4355,3 +4360,49 @@ function getWallTexture(theme) {
     wallTextureCache[theme.id] = t;
     return t;
 }
+
+// ---------------------------------------------------------------------------
+// Shared so that the two bodies that reach for them stop forking.
+//
+// onWindowResize differed by exactly `if (composer) composer.setSize(w, h)`,
+// and resetCrush by exactly `releaseCrushBorrowed()`. Neither line is
+// interface - the first is ALREADY guarded, and `if (composer)` is false
+// wherever there is no composer, which is precisely the local case. The fork
+// was never about behaviour, only about which file the name lived in.
+//
+// Locally nothing ever assigns composer and nothing is ever borrowed, so both
+// resolve to doing nothing, without a branch anywhere.
+let composer = null, bloomRenderPass = null, bloomPass = null, bloomFailed = false;
+
+const crushBorrowed = [];       // { obj, parent } so every reparent is undone
+function releaseCrushBorrowed() {
+    while (crushBorrowed.length) {
+        const { obj, parent } = crushBorrowed.pop();
+        if (obj && parent) parent.add(obj);
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// THE SANDBOX OVERRIDE AND THE ACCOUNT, shared.
+//
+// Seven definitions forked over these two facts alone: which key holds the
+// override, and whether a "side" and an "account" are the same thing. Neither
+// is interface; both are consequences of the build profile.
+//
+// accountOf asks the profile FIRST, and must. Locally isLocalSide() is true for
+// both sides - one keyboard drives both - so the online body would map p1 and
+// p2 onto the single ACCOUNT and quietly merge the two purses into one.
+const ACCOUNT = 'p1';
+function accountOf(side) {
+    return (AC_ONE_SIDE_PER_CLIENT && isLocalSide(side)) ? ACCOUNT : side;
+}
+
+let debugUnlockAll = safeLSGet(SANDBOX_KEY) === '1';
+
+// sandboxActive is the ONE predicate everything gated on "is everything
+// unlocked" should ask. The local copies inlined `debugUnlockAll` instead,
+// which is the same answer only while netActive() is false - true there, and a
+// trap the moment anything else changes.
+function sandboxActive() { return sandboxMatch || (debugUnlockAll && !netActive()); }
+function matchIsSandbox() { return sandboxActive(); }
