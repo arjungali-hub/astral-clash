@@ -98,6 +98,12 @@ def code_only(text):
 
 # Definitions that differ BETWEEN THE BUILDS ON PURPOSE.
 #
+# 35 entries were pruned once definition boundaries became correct: they did not
+# differ AT ALL. A chunk used to run to the next definition, so any top-level
+# statement in between counted as part of the body - and two identical functions
+# with different wiring after them looked like a fork. Every one of those had a
+# reason written beside it, and every one of those reasons was fiction.
+#
 # AUDITED. Six entries were removed after reading their actual diffs: a reason
 # written beside a name is not the same as a necessary reason, and these six
 # described the STRUCTURE (two viewmodels, two HUD panels) while the actual
@@ -121,6 +127,35 @@ INTERFACE = {
     # the class is the way to unify the rest; until then this is honest.
     'Fighter': 'forked input handling and drifted visuals share one class body',
 
+    # These four reach the LOBBY: refreshRoomUI, startOnline, netAnnouncePick and
+    # requestResume are the room screen and the away-pause handshake, which exist
+    # only where there is somebody to announce a pick TO. Tried unifying them and
+    # the sync refused by name, which is the check working.
+    'chooseMap': 'calls the room UI and startOnline',
+    'confirmPick': 'announces the pick to the other client',
+    'previewPick': 'announces the pick to the other client',
+
+    # Unified in CODE; the two copies differ only by the engine path, which the
+    # rewrite above applies deterministically after the body is copied. Listed
+    # so the drift report stays empty and so nobody "fixes" it by copying the
+    # online path over the top - which is exactly what happened once, and only
+    # bites when the CDN is down.
+    'loadThreeFallback': 'same body; the engine sits one directory up',
+
+    # NOT the function - the STATEMENTS after it. A chunk runs to the next
+    # definition, so copying randomPick also copied
+    #     document.getElementById('btn-my-random').addEventListener(...)
+    #     document.getElementById('btn-my-shop').addEventListener(...)
+    # which are the online build's single Random and Armory buttons. This build
+    # has a pair per side and no such ids, so getElementById returned null and
+    # the whole build died at load with "Cannot read properties of null".
+
+    # The last one. The online body calls refreshHudScaleUI(); that helper is
+    # portable now that boundaries are right, but it reads setOptState on an
+    # options row this build does not have, so the two-line inlined version
+    # here says the same thing without the row. Left as the honest remainder.
+    'cycleHudScale': 'sets the button text directly; no options row here',
+
     # --- rendering: one full-screen camera vs two split-screen viewports
     'renderer': 'split-screen sizing and scissor state',
     'PIXEL_RATIO': 'local pays for two viewports, so it caps lower',
@@ -130,36 +165,27 @@ INTERFACE = {
     'drawHUD': 'draws two panels',
     'drawHUDInner': 'draws two panels',
     'drawPlayerHUD': 'per-panel geometry',
-    'drawHitFeedback': 'per-panel geometry',
     'drawIntroOverlay': 'per-panel geometry',
     'drawRoundStatus': 'per-panel geometry',
     'drawCoopDownHUD': 'per-panel geometry',
-    'drawWaveBreakHUD': 'per-panel geometry',
-    'camP2': 'the second camera only exists here',
-    'positionFpsCamera': 'two cameras to place',
     'toggleBloom': 'the local build has no composer',
     'onWindowResize': 'no composer to resize, two viewports to lay out',
 
     # --- controls: two players at one keyboard vs one player and a mouse
     'DEFAULT_BINDINGS': 'two full key sets',
     'REBIND_ACTION_LABELS': 'labelled per side',
-    'RANDOM_KEYS': 'two sides to seed',
     'keyLabel': 'labelled per side',
     'controlsSummary': 'describes two players',
     'buildTutorialControls': 'describes two players',
     'buildRebindList': 'two lists',
     'saveBindings': 'two sides',
-    'closeRebind': 'two sides',
-    'closeTutorial': 'two sides',
     'startCapture': 'two sides',
     'pollGamepad': 'two pads',
-    'typingInField': 'no name field here',
 
     # --- screens and flow: lobby and room code vs a local picker
     'SCREEN_EL': 'different screens exist',
     'MODAL_EL': 'different modals exist',
     'currentScreen': 'different screens exist',
-    'closeModal': 'different modals exist',
     'startGame': 'entry point',
     'startMatch': 'match framework',
     'startRound': 'match framework',
@@ -167,32 +193,21 @@ INTERFACE = {
     'endMatch': 'match framework',
     'endCoopMatch': 'match framework',
     'backToPick': 'match framework',
-    'confirmPick': 'match framework',
-    'previewPick': 'match framework',
-    'chooseMap': 'match framework',
-    'randomPick': 'match framework',
     'togglePause': 'match framework',
     'refreshMenuUI': 'different menus',
-    'refreshModeUI': 'different modes offered',
     'refreshBotUI': 'bots are per side here',
-    'buildModeSelect': 'different modes offered',
     'resolveCoopMode': 'match framework',
-    'coopOwnsRespawn': 'match framework',
     # Not per-side at all: the online body calls refreshHudScaleUI(), and that
     # helper cannot travel because a definition's CHUNK runs to the next
     # definition - so it sweeps up the listener statements below it, which
     # reference setSandboxMatch, which is online-only. The two-line inlined
     # version here says the same thing. Honest limitation of chunk boundaries,
     # recorded rather than papered over.
-    'cycleHudScale': 'calls a helper whose chunk drags in online-only listeners',
     'gameLoop': 'drives two views and no network tick',
-    'computeDt': 'no network pacing here',
-    'stepFight': 'no remote fighter here',
     'onBossDefeated': 'match framework',
 
     # --- progression and the store: one account vs two side-local purses
     'prog': 'two purses',
-    'saveProgression': 'two purses',
     'upgradeLevel': 'two purses',
     'addCoins': 'two purses',
     'refreshCoinDisplays': 'two purses',
@@ -200,49 +215,21 @@ INTERFACE = {
     'openShop': 'two purses',
     'showDetail': 'two purses',
     'buildDetailHTML': 'two purses',
-    'buildGrid': 'two purses',
     'refreshGridLocks': 'two purses',
     'isCharUnlocked': 'two purses',
     'isDoubleJumpUnlocked': 'two purses',
-    'freshStats': 'two purses',
     'shopExpanded': 'two panels open at once',
     'debugUnlockAll': 'per side',
     'setDebugUnlockAll': 'per side',
-    'syncDebugUnlockUI': 'per side',
     'syncLockHint': 'per side',
-    'loadThreeFallback': 'the engine sits one directory up',
     'preloadCharModels': 'preloads both sides at once',
-    'botDifficulty': 'bots are per side here',
-    'steerAroundObstacles': 'bot AI differs; see the checklist',
-    'liveEnemies': 'co-op roster differs',
     'refreshPauseUI': 'pause offers different things',
     'refreshGameOverUI': 'results name two local players',
     'refreshSandboxUI': 'sandbox is online-only',
     'refreshHudScaleUI': 'two HUD panels',
-    'hudUnitScale': 'two HUD panels',
-    'hudCanvas': 'two HUD panels',
-    'hudCtx': 'two HUD panels',
-    'matchMode': 'match framework',
-    'mapRng': 'seeded by the match framework',
-    'crushTime': 'the crush cinematic is online-only',
     'resetCrush': 'the crush cinematic is online-only',
     'buildCrushRigs': 'the crush cinematic is online-only',
     'disposeCrushRigs': 'the crush cinematic is online-only',
-    'applyCrushCameraLayers': 'the crush cinematic is online-only',
-    'positionCrushCamera': 'the crush cinematic is online-only',
-    'safeLSSet': 'namespaced per build',
-    'hideOverlay': 'different overlays',
-    'closeTopModalByEscape': 'different modals exist',
-    'makeNameSprite': 'names two local players',
-    'buildViewmodelArmFromModel': 'built per side',
-    'vmPropAngles': 'built per side',
-    'STATE_STEPS': 'keyed per side here',
-    'spawnMuzzleFlash': 'per-side pools',
-    'resolvePlayerCollision': 'two local players',
-    'addCornerGlow': 'per-viewport',
-    'addRimOutline': 'per-viewport',
-    'derivedCanvasCache': 'sized per viewport',
-    'busyWhile': 'wraps the local loading screen',
 }
 
 
@@ -357,6 +344,82 @@ def _code_only_text(text):
     return text
 
 
+def definition_end(text, start):
+    """Index just past the definition beginning at `start`, or None if unsure.
+
+    A chunk that runs to the next definition carries any top-level statements
+    in between. Copying those across builds broke the local build at load:
+    randomPick's chunk included the online build's single Random/Armory button
+    wiring, whose element ids do not exist here, so getElementById returned null
+    and .addEventListener threw before ACDebug was ever assigned.
+
+    Braces are matched for a function or class, and the terminating semicolon
+    found for a const/let/var. Strings and comments are skipped so a brace
+    inside either cannot move the boundary. Regex literals are NOT understood -
+    `/}/` would fool it - so the caller checks the result and falls back to the
+    whole chunk when it looks wrong.
+    """
+    i, n = start, len(text)
+    depth, seen_brace, quote = 0, False, None
+    is_block = text.startswith('function', start) or text.startswith('class', start)
+    while i < n:
+        c = text[i]
+        if quote:
+            if c == chr(92):
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+            i += 1
+            continue
+        if c == '/' and i + 1 < n and text[i + 1] == '/':
+            j = text.find(chr(10), i)
+            i = n if j < 0 else j + 1
+            continue
+        if c == '/' and i + 1 < n and text[i + 1] == '*':
+            j = text.find('*/', i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        if c in ('"', "'", '`'):
+            quote = c
+            i += 1
+            continue
+        if c == '{':
+            depth += 1
+            seen_brace = True
+        elif c == '}':
+            depth -= 1
+            if is_block and seen_brace and depth == 0:
+                return i + 1
+        elif c == ';' and not is_block and depth == 0:
+            return i + 1
+        i += 1
+    return None
+
+
+def definition_span(text, start, chunk_end):
+    """Where this definition really ends, with the whole chunk as a fallback.
+
+    Checked rather than trusted: a definition ends on '}' or ';'. Anything else
+    means the scanner lost its place (an unhandled regex literal, most likely),
+    and the old whole-chunk boundary is used instead - wrong in the way we
+    already understand rather than wrong in a new one.
+    """
+    end = definition_end(text, start)
+    if end is None or end > chunk_end or end <= start:
+        return chunk_end
+    if text[end - 1] not in '};':
+        return chunk_end
+    # Take the rest of the line WITH the newline. Stopping exactly on the '}'
+    # left the boundary one character short of where the whole-chunk version
+    # ended, so a replacement dropped a newline and the build oscillated by a
+    # single byte forever - which the fixed-point check reported as -1 bytes.
+    nl = text.find(chr(10), end)
+    if nl != -1 and not text[end:nl].strip():
+        return nl + 1
+    return end
+
+
 def _def_names(text):
     return [m.group(1) or m.group(2) or m.group(3) for m in _DEF_RE.finditer(text)]
 
@@ -441,7 +504,20 @@ def port_missing_definitions(src, dst):
         # that behind. See definitions() in art/extract_shared.py.
         starts = [comment_start(text, m.start()) for m in hits]
         for k, m in enumerate(hits):
-            end = starts[k + 1] if k + 1 < len(hits) else len(text)
+            chunk_end = starts[k + 1] if k + 1 < len(hits) else len(text)
+            # The DEFINITION, not everything up to the next one. The gap between
+            # them holds top-level statements belonging to THIS build - copying
+            # randomPick's chunk brought the online build's Random/Armory button
+            # wiring with it, whose element ids do not exist in the other build,
+            # and the whole thing died at load on a null getElementById.
+            # close_comment_drift deliberately keeps the WHOLE chunk. Narrowing it
+            # made 179 definitions suddenly look comment-only-different, and the
+            # replacement is not idempotent at that boundary: comment_start walks
+            # back over CONTIGUOUS // lines only, so a blank line above a comment
+            # block leaves the old comments in place and adds the new ones below,
+            # growing the file by 8,493 bytes every run. The fixed-point check
+            # caught it on the first attempt.
+            end = chunk_end
             table[m.group(1) or m.group(2) or m.group(3)] = text[starts[k]:end]
 
     have = set(dst_defs) | SHARED_NAMES
@@ -525,7 +601,13 @@ def force_online_bodies(src, dst):
         # that behind. See definitions() in art/extract_shared.py.
         starts = [comment_start(text, m.start()) for m in hits]
         for k, m in enumerate(hits):
-            end = starts[k + 1] if k + 1 < len(hits) else len(text)
+            chunk_end = starts[k + 1] if k + 1 < len(hits) else len(text)
+            # The DEFINITION, not everything up to the next one. The gap between
+            # them holds top-level statements belonging to THIS build - copying
+            # randomPick's chunk brought the online build's Random/Armory button
+            # wiring with it, whose element ids do not exist in the other build,
+            # and the whole thing died at load on a null getElementById.
+            end = definition_span(text, m.start(), chunk_end)
             table[m.group(1) or m.group(2) or m.group(3)] = text[starts[k]:end]
 
     have = set(dst_defs) | SHARED_NAMES
@@ -537,7 +619,8 @@ def force_online_bodies(src, dst):
             name = m.group(1) or m.group(2) or m.group(3)
             if name in copied or name in INTERFACE or name not in src_defs:
                 continue
-            end = starts[k + 1] if k + 1 < len(hits) else len(dst)
+            chunk_end = starts[k + 1] if k + 1 < len(hits) else len(dst)
+            end = definition_span(dst, m.start(), chunk_end)
             mine, theirs = dst[starts[k]:end], src_defs[name]
             if mine == theirs:
                 continue
@@ -582,7 +665,15 @@ def close_comment_drift(src, dst):
             name = m.group(1) or m.group(2) or m.group(3)
             if name in updated or name not in src_defs:
                 continue
-            end = starts[k + 1] if k + 1 < len(hits) else len(dst)
+            chunk_end = starts[k + 1] if k + 1 < len(hits) else len(dst)
+            # close_comment_drift deliberately keeps the WHOLE chunk. Narrowing it
+            # made 179 definitions suddenly look comment-only-different, and the
+            # replacement is not idempotent at that boundary: comment_start walks
+            # back over CONTIGUOUS // lines only, so a blank line above a comment
+            # block leaves the old comments in place and adds the new ones below,
+            # growing the file by 8,493 bytes every run. The fixed-point check
+            # caught it on the first attempt.
+            end = chunk_end
             mine, theirs = dst[starts[k]:end], src_defs[name]
             if mine == theirs or code_only(mine) != code_only(theirs):
                 continue
@@ -658,6 +749,7 @@ def comment_start(text, i):
 # back to these; see the note in block().
 SHARED_FALLBACK = []
 BLOCK_MOVED = []
+BLOCK_MISSING = []
 
 
 def block(text, start_marker, end_marker, name='block'):
@@ -689,8 +781,18 @@ def block(text, start_marker, end_marker, name='block'):
         if k:
             BLOCK_MOVED.append(name)
         return out
-    raise ValueError('block %r: start marker not in the online build or in shared/'
-                     % name)
+    # NOT FATAL. A region that is in neither the online build nor shared/ is a
+    # step that has FINISHED - its code moved, most often into shared/, and
+    # there is nothing left to copy. Raising here meant one finished step
+    # aborted the whole sync, and after 87 definitions moved at once there were
+    # seven of them queued up, each discovered by a separate crash.
+    #
+    # Returning empty makes the step a no-op: a guarded insert inserts nothing,
+    # and a `rep(dst, anchor, '' + anchor)` leaves the file alone. What stops
+    # this from silently DROPPING something still needed is everything after it
+    # - the REQUIRED list, the dangling-reference guard, and the fixed point.
+    BLOCK_MISSING.append(name)
+    return ''
 
 
 # `required=False` means "skip if the anchor is gone". Used by every step whose
@@ -1015,20 +1117,8 @@ def main():
                   "    const ex = worldX(cx), ey = f.z + EYE_HEIGHT, ez = worldZ(cy);",
                   'camera follows the smear', required=False)
 
-    # --- projectiles: a lit sphere, and nothing allocated per shot ----------
-    if 'projCoreSphere' not in dst:
-        i = dst.find("                const c = new THREE.Color(p.color || '#00f3ff');")
-        if i != -1:
-            j = dst.index("                scene.add(grp);", i) + len("                scene.add(grp);")
-            newproj = block(src, "                // Batch 37: a lit 3D bolt, and NOTHING allocated per shot.",
-                            "                scene.add(grp);", 'projectile') + "                scene.add(grp);"
-            dst = dst[:i] + newproj + dst[j:]
-            print('  %-34s ok' % 'projectile sphere + cache')
-            dst = dst.replace(
-                "            const flick = 0.8 + Math.sin(arenaTime * 0.6 + p.x) * 0.2; // subtle energy shimmer\n"
-                "            p.mats[2].opacity = 0.25 * flick;",
-                "            const flick = 0.92 + Math.sin(arenaTime * 0.6 + p.x) * 0.08;\n"
-                "            if (p.halo) p.halo.scale.setScalar(flick * (p.big ? 1.7 : 1));", 1)
+    # THE PROJECTILE VISUAL STEP IS FINISHED: buildProjectileVisual and the
+    # caches it uses are shared, and this build already has projCoreSphere.
 
     # --- the death / crush scale fix ---------------------------------------
     if 'meshBaseScale' not in dst:
@@ -1304,14 +1394,10 @@ def main():
     # across with it the last time this ran. What is left of animateWeapon in
     # each build is the part that touches meshes.
 
-    # The first-person arm's facing, and the weapon it holds.
-    if 'VM_PROP_YAW' not in dst:
-        dst = rep(dst, "const ARM_CHAIN = ['UpperArm', 'LowerArm', 'Hand'];",
-                  block(src, "// HOW THE WEAPON IS HELD", "\nconst ARM_CHAIN")
-                  + "const ARM_CHAIN = ['UpperArm', 'LowerArm', 'Hand'];", 'viewmodel prop constants')
-        dst = rep(dst, "    holder.rotation.y = -Math.PI / 2;",
-                  block(src, "    // The model faces local +X (buildRiggedCharacter rotates it so render3D can",
-                        "\n\n    holder.userData.mats", 'arm facing'), 'first-person arm faces away')
+    # THE VIEWMODEL PROP CONSTANTS ARE NOT PORTED ANY MORE. VM_PROP_YAW and
+    # ARM_CHAIN are both in shared/common.js now, so there is no region left in
+    # index.html to copy - the step died on its own start marker. Finished, and
+    # finished for the right reason: the code is shared.
 
     # THE PHOTOGRAPHIC SURFACE LAYER IS NOT PORTED ANY MORE. PHOTO_SETS,
     # PHOTO_BASE, loadPhotoSet and attachPhotoSurface all live in
@@ -2016,17 +2102,13 @@ document.getElementById('btn-pause-rebind').addEventListener('click',""",
     mf.mesh.material.color.set(hexNum(colorHex));""", 'muzzle light follows')
         print('  %-34s ok' % 'muzzle flash light count')
 
-    # The cap the pool is built to. Checked on its own rather than inside the
-    # pool's guard: the committed build already had the pool and still lacked
-    # the cap, so a guard keyed on the pool skipped the one thing missing -
-    # "MUZZLE_FLASH_MAX is not defined" on every frame of a ranged attack, which
-    # is another frozen screen. Same half-port shape as the swing constants.
-    if 'const MUZZLE_FLASH_MAX' not in dst:
-        dst = rep(dst, 'const muzzleFlashes = [];',
-                  'const muzzleFlashes = [];' + chr(10)
-                  + block(src, '// Batch 30: HARD CAP.', chr(10) + "// ONE PROJECTILE'S VISUALS.",
-                          'muzzle cap').rstrip(chr(10)), 'muzzle cap')
-        print('  %-34s ok' % 'muzzle flash cap')
+    # THE MUZZLE CAP STEP IS FINISHED. MUZZLE_FLASH_MAX and muzzleFlashes are
+    # both in shared/common.js now, so the guard (keyed on the cap being absent)
+    # is permanently true AND its anchor is gone - it ran every sync and failed
+    # on the anchor. The original point stands and is worth keeping written
+    # down: the committed build once had the pool and not the cap, and
+    # "MUZZLE_FLASH_MAX is not defined" fired on every frame of a ranged attack.
+    # Sharing the declaration is the stronger version of that fix.
 
     # ...and the pool is BUILT before the fight, here as well. Measured in this
     # build after the light fix landed: Lyra's first shot still cost a 4,304ms
@@ -2258,6 +2340,11 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
               'frame fills the window', required=False)
 
 
+    if BLOCK_MISSING:
+        print('  %-34s %d finished, nothing left to copy: %s'
+              % ('retired port steps', len(BLOCK_MISSING),
+                 ', '.join(sorted(set(BLOCK_MISSING)))))
+
     if BLOCK_MOVED:
         print('  %-34s %d step(s) now copy from shared/ and are inert: %s'
               % ('finished port steps', len(BLOCK_MOVED), ', '.join(sorted(set(BLOCK_MOVED)))))
@@ -2386,6 +2473,32 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         print('   A shared module is a separate top-level script: it can be CALLED')
         print('   from in there but cannot see in, so this throws when the line runs.')
         print('   Move that definition to shared/ as well, or move the caller back.')
+        return 1
+
+    # ------------------------------------------- the engine path, one directory up
+    # force_online_bodies checks that every NAME a copied body uses exists here.
+    # It cannot check that a PATH is right, and loadThreeFallback differs by
+    # exactly one string: the online build loads 'three.min.js' from the root,
+    # this one lives a directory down. Unifying the body silently pointed the
+    # CDN fallback at a file that is not there - which only shows when the CDN
+    # is down, i.e. never in testing and exactly when it matters.
+    #
+    # So the body stays unified and the path is corrected here, AFTER
+    # force_online_bodies has copied it - placing this before the copy meant
+    # the copy simply put the root path back, which the guard below caught on
+    # the very next run. The same ordering lesson as the CSS asset rewrite,
+    # learned the same way.
+    n_engine = dst.count("s.src = 'three.min.js';")
+    dst = dst.replace("s.src = 'three.min.js';", "s.src = '../three.min.js';")
+    if n_engine:
+        print('  %-34s %d rewritten' % ('engine path (one directory up)', n_engine))
+
+    # NO ROOT-RELATIVE ENGINE PATH. The check above rewrites it; this is the
+    # proof, because a path fault is invisible until the CDN fails.
+    if "s.src = 'three.min.js';" in dst:
+        print()
+        print('ENGINE PATH IS ROOT-RELATIVE - refusing to write:')
+        print("   this build is one directory down, so 'three.min.js' is not there.")
         return 1
 
     # NOTHING MAY BE CALLED THAT NOTHING DEFINES. The backstop for the step

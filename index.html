@@ -1887,7 +1887,6 @@ function startGame() {
 function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
     const canvas = document.getElementById('gameCanvas');
-const hudCanvas = document.getElementById('hudCanvas');
 // Whether the HUD canvas currently holds a match frame. A canvas KEEPS its
 // pixels, and drawHUD's clearRect is the only thing that clears this one - so
 // leaving a match left the last HUD on screen under the menu's 96%-opaque
@@ -1947,7 +1946,7 @@ function closeModal() {
     return name;
 }
 function closeAllModals() { while (modalStack.length) closeModal(); }
-let cameraShakeMag = 0; // set on a hit; decays each frame, offsets the camera
+ // set on a hit; decays each frame, offsets the camera
 
 // Batch 8: floating damage numbers + impact sparks. Plain 2D HUD-space
 // entries carry a GAME-space position (x, y) plus the fighter's z (chest
@@ -2037,14 +2036,6 @@ function drawHitFeedback() {
     hudCtx.restore();
 }
 
-// ?debug=1: hitboxes/hurtboxes, facing vectors, dt, FPS, and each
-// fighter's action state machine, drawn on the HUD canvas.
-function computeDt() {
-    const now = performance.now();
-    let dt = (now - lastFrameTime) / (1000 / 60);
-    lastFrameTime = now;
-    return Math.min(dt, 3); // clamp so a tab-switch/lag spike can't jump physics far
-}
 
 // --- Batch 31: ONE local player per client. -------------------------------
 // The game was local split-screen: one keyboard drove two fighters, each with
@@ -2057,20 +2048,6 @@ function computeDt() {
 // the joiner 'p2' (see the lobby), so both clients run the same code with the
 // only difference being this one value. Declared up here with the earliest
 // state because the menu build and renderViews both read it during load.
-
-// ---- THE LOADING SCREEN --------------------------------------------------
-// Implemented from the design canvas; the markup and styles are above. What
-// matters here is the ORDER: show, let the browser actually paint, and only
-// then do the work that stalls.
-//
-// A shader compiles the first time its material is drawn, with the scene's
-// light count and shadow setup baked in - so the first of everything landed
-// mid-fight and froze the frame. Measured at 9,858ms for a first projectile.
-// Nothing about that cost changes; it simply happens here now, where a pause is
-// what the player expects.
-function afterPaint(fn) {
-    requestAnimationFrame(() => requestAnimationFrame(() => fn()));
-}
 
 // Run `work` with the loading screen up, whatever happens to `work` - and if
 // `work` returns a promise, hold the screen until it settles.
@@ -2095,16 +2072,6 @@ function withLoading(arenaName, work) {
             hideLoading();
         }
     });
-}
-
-// Every texture set this theme will use, settled. Resolves immediately when they
-// are already cached, which is every arena after the first visit.
-function busyWhile(el, promise, label) {
-    let shown = false;
-    const timer = setTimeout(() => { shown = true; busy(el, true, label); }, BUSY_DELAY_MS);
-    const done = () => { clearTimeout(timer); if (shown) busy(el, false); };
-    return Promise.resolve(promise).then(v => { done(); return v; },
-                                         e => { done(); throw e; });
 }
 
 // ---- Batch 36: player names ----------------------------------------------
@@ -2218,42 +2185,6 @@ const mayResumeAway = () => !anyoneAway() && (!netActive() || netIsHost());
 const hostSide = () => (netIsHost() ? LOCAL_SIDE : otherSide(LOCAL_SIDE));
 const otherSide = side => (side === 'p1' ? 'p2' : 'p1');
 
-const keys = {};
-// Batch 3a: attack/special/dodge must fire once per press, not once
-// per frame the key is held. `pressed` records the down-transition only;
-// consumePress() reads-and-clears it, so holding a button doesn't spam
-// the action every frame the way `keys` (held-state, still used for
-// movement) does.
-function consumePress(k) {
-    if (pressed.has(k)) { pressed.delete(k); return true; }
-    return false;
-}
-// C2: ONE keyboard dispatcher. This used to be five separate keydown
-// listeners (global key-state, rebind capture on the capture phase, a
-// first-gesture audio unlock, menu fighter-select, and Escape/pause) whose
-// correctness depended on capture-vs-bubble phase ordering and each one
-// early-returning to keep out of the others' way. Folding them into a single
-// handler makes the precedence explicit and readable top-to-bottom:
-//   (1) rebind capture wins outright and consumes the key,
-//   (2) first keypress unlocks audio,
-//   (3) global key-state (keys[]/pressed) updates,
-//   (4) Escape closes a modal or toggles pause,
-//   (5) menu fighter-select runs only on the menu with no modal open.
-let kbAudioUnlocked = false;
-// Is the keyboard currently talking to a text field rather than to the game?
-//
-// Checked at the ONE place every keystroke passes through, rather than in each
-// hotkey handler: there are a dozen of those and the thirteenth would forget.
-// isContentEditable covers rich-text hosts; the tag check covers everything
-// else, including <input type="range"> sliders, where arrow keys belong to the
-// control and not to the fighter.
-function typingInField(target) {
-    const el = target || document.activeElement;
-    if (!el) return false;
-    if (el.isContentEditable) return true;
-    const tag = el.tagName;
-    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-}
 
 window.addEventListener('keydown', e => {
     // (1) A rebind is listening: take this key as the new binding and consume
@@ -2348,13 +2279,6 @@ window.addEventListener('blur', () => {
     pressed.clear(); // otherwise a key pressed just before alt-tab stays queued and fires on return
 });
 
-// localStorage can throw (not just return null) in some private-browsing
-// modes and sandboxed/embedded contexts — every read/write in this file
-// goes through these two rather than touching localStorage directly, so
-// a disabled/blocked store degrades to "settings don't persist" instead
-// of a hard crash.
-function safeLSSet(key, val) { try { localStorage.setItem(key, val); } catch (e) { /* ignore — see comment above */ } }
-
 // Batch 9: full key rebinding, persisted to localStorage. Everything below
 // stores lowercased `e.key` values (matching how `keys`/`pressed` already
 // key themselves), so a rebound action drops straight into the existing
@@ -2440,7 +2364,7 @@ window.addEventListener('contextmenu', e => {
     if (pointerLocked || e.target === el) e.preventDefault();
 });
 
-const RANDOM_KEYS = { p1: 'r', p2: '/' }; // fighter-select "pick a random fighter" keys (not rebindable; named so the label/handler stay in sync)
+ // fighter-select "pick a random fighter" keys (not rebindable; named so the label/handler stay in sync)
 
 // --- Batch 12: meta-progression (coins, character unlocks, per-character
 // stat upgrades). Persisted with the same merge-over-defaults idiom as
@@ -2454,12 +2378,6 @@ const RANDOM_KEYS = { p1: 'r', p2: '/' }; // fighter-select "pick a random fight
 // produced "most of the changes seem to have not landed in the legacy
 // version".
 
-// Batch 21: progression is PER PLAYER. P1 and P2 each keep their own coins,
-// unlocked roster, upgrades, and Double Jump — two people sharing one machine
-// each build their own account, and coins are earned by winning rather than
-// pooled. So every accessor and mutator below takes a `side` ('p1'|'p2') as its
-// first argument; there is no such thing as "the" progression anymore.
-function saveProgression() { safeLSSet(PROGRESSION_KEY, JSON.stringify(progression)); }
 // Batch 34: online there is exactly one player at this keyboard, so there is
 // exactly one account. `progression` is still keyed p1/p2 (the save format
 // predates online play and is shared with the local split-screen build), so
@@ -2506,42 +2424,7 @@ function isContinuousMode() { return matchMode === 'zone' || matchMode === 'time
 // Batch 16: co-op modes — P1 and P2 are TEAMMATES against a third combatant.
 function isCoopMode() { return !!modeInfo().coop; }
 
-// The co-op third combatant. One slot, deliberately: supporting an arbitrary
-// number of simultaneous enemies would mean rewriting the render/HUD/target
-// code that assumes a small fixed cast, which is a much bigger change than
-// this needs. Survival Waves gets its "endless enemies" by reusing this one
-// slot sequentially rather than by holding many at once.
-// Batch 23: co-op enemies are now a LIST, not a single slot. Survival needs
-// several weaker enemies at once, which the one-slot design (Batch 16) couldn't
-// express. `bossEntity` is kept as a derived convenience — it means "the single
-// notable enemy, if there is exactly one" (a Boss Fight boss, or a boss wave) —
-// so the boss-bar HUD and the boss-specific paths keep reading naturally, while
-// everything that must handle a crowd iterates `coopEnemies`.
-let coopResultText = '';    // filled by endCoopMatch for the game-over screen
-function liveEnemies() { return coopEnemies.filter(e => e && e.hp > 0); }
-
-// ---------------------------------------------------------------------------
-// Batch 42: WHO OWNS THE CO-OP ENEMIES.
-//
-// Offline, and for the host, nobody else does: the enemies are simulated
-// locally like any other fighter. Online, the guest must NOT run them - two
-// independent copies of the same AI, stepped with each machine's own `dt`,
-// diverge immediately and then disagree about who is being hit and whether the
-// wave is clear.
-//
-// So: the host owns spawning, AI, movement and hp; it broadcasts enemy state at
-// the same rate it broadcasts its own fighter, and the guest applies it. The
-// guest's own attacks still land - it sends a HIT_ENEMY the way it already
-// sends a HIT for the opponent (attacker-authoritative), and the host applies
-// the damage so the hp that comes back is the one both machines agree on.
-//
-// `coopIsPuppet()` is the single question every enemy code path asks.
-
-
-// Zone Control. The ring sits at arena center — which is also where Arena
-// Collapse converges, so the shrinking walls naturally squeeze both fighters
-// toward the contested point instead of fighting the mode.
-const WAVE_HEAL_PCT = 0.30;
+    // filled by endCoopMatch for the game-over screen
 
 // Which player's account the Shop modal is currently showing. Declared HERE,
 // not next to buildShop() far below, because refreshCoinDisplays() reads it and
@@ -2668,14 +2551,6 @@ function buyDoubleJump(side) {
     return true;
 }
 
-// --- Batch 13: the "unlock everything" override. Two entry points (a typed
-// cheat code, and a Settings toggle) that both land on this one setter.
-//
-// Crucially this NEVER writes into `progression` — it's a separate flag the
-// accessors above read, so flipping it off restores the real save exactly as
-// it was, with every coin and purchase intact. That's the whole reason it's
-// an override layer rather than "just grant everything."
-let cheatBuffer = '';
 // A DOM toast rather than a HUD-canvas one: drawHUD() only runs during a
 // fight, but the cheat code is most often typed on the menu, and a
 // confirmation you can't see is worse than none.
@@ -2803,50 +2678,6 @@ document.getElementById('btn-rebind-reset').addEventListener('click', () => {
     rebindNote('Reset to defaults');
 });
 
-// === Batch 10: Audio — everything synthesized with WebAudio, no sample
-// files (per the brief's own ground rules). Three gain stages (master ->
-// sfx/music) so the volume UI below can control sfx and music
-// independently, both still gated by the master fader/mute. AudioContext
-// is only constructed on the first user gesture (autoplay policies block
-// it otherwise, and constructing it eagerly would also just throw in some
-// browsers) — see unlockAudio() below.
-function saveAudioSettings() { safeLSSet(AUDIO_SETTINGS_KEY, JSON.stringify(audioSettings)); }
-
-function unlockAudio() {
-    initAudio();
-    if (actx && actx.state === 'suspended') actx.resume();
-}
-// Keyboard's first-gesture audio unlock lives in the single keyboard
-// dispatcher (C2, kbAudioUnlocked gate); pointer needs its own one-shot.
-window.addEventListener('pointerdown', unlockAudio, { once: true });
-function refreshAudioUI() {
-    document.getElementById('vol-master').value = audioSettings.master;
-    document.getElementById('vol-sfx').value = audioSettings.sfx;
-    document.getElementById('vol-music').value = audioSettings.music;
-    setOptState('btn-audio-mute', audioSettings.muted ? 'On' : 'Off', audioSettings.muted);
-    // ...and the numbers the sliders never showed.
-    for (const slot of ['master', 'sfx', 'music']) {
-        const out = document.getElementById('vol-' + slot + '-value');
-        if (out) out.textContent = Math.round((audioSettings[slot] != null ? audioSettings[slot] : 1) * 100) + '%';
-    }
-}
-// The readout has to follow the drag, or the number is only right until you
-// touch it. refreshAudioUI writes the slider positions too, which is harmless
-// here - they are already where the drag put them.
-for (const slot of ['master', 'sfx', 'music']) {
-    document.getElementById('vol-' + slot).addEventListener('input', e => {
-        audioSettings[slot] = parseFloat(e.target.value);
-        applyAudioSettings();
-        saveAudioSettings();
-        refreshAudioUI();
-    });
-}
-document.getElementById('btn-audio-mute').addEventListener('click', () => {
-    audioSettings.muted = !audioSettings.muted;
-    applyAudioSettings();
-    saveAudioSettings();
-    refreshAudioUI();
-});
 document.getElementById('btn-open-audio').addEventListener('click', () => {
     unlockAudio(); // opening this screen is itself a user gesture — good a place as any to unlock if it hasn't happened yet
     refreshAudioUI();
@@ -2906,69 +2737,6 @@ document.getElementById('btn-tutorial-close').addEventListener('click', closeTut
 // see closeTutorial()).
 if (!safeLSGet('astralClashTutorialSeen')) openTutorial(true);   // auto: the checkbox applies
 
-// --- Low-level synth primitives ---
-// A short, percussive tone: linear attack then exponential decay to
-// near-silence, with an optional pitch sweep (freqEnd) — covers most of
-// the game's punchy one-shot cues (impacts, stings, chimes) without
-// needing a sample library.
-function synthNoise(duration, opts = {}) {
-    if (!actx) return;
-    const now = actx.currentTime;
-    const size = Math.max(1, Math.floor(actx.sampleRate * duration));
-    const buffer = actx.createBuffer(1, size, actx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < size; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / size);
-    const src = actx.createBufferSource();
-    src.buffer = buffer;
-    const g = actx.createGain();
-    g.gain.value = opts.peak != null ? opts.peak : 0.25;
-    let tail = src;
-    if (opts.filterFreq) {
-        const filter = actx.createBiquadFilter();
-        filter.type = opts.filterType || 'lowpass';
-        filter.frequency.value = opts.filterFreq;
-        src.connect(filter);
-        tail = filter;
-    }
-    tail.connect(g);
-    g.connect(opts.bus || sfxGain);
-    src.start(now);
-}
-
-// --- Gameplay sound effects ---
-// Each character's basic weapon maps to one of the same slash/punch/
-// hammer/dagger visual-effect identities already used by createEffectMesh
-// (plus shard/orb for the two ranged casters) — reused here as a sound
-// identity too, so impact/whiff timbre matches what's on screen.
-const IMPACT_SFX = {
-    slash: (pitch, peak) => { synthTone(520 * pitch, 0.12, { type: 'triangle', freqEnd: 260 * pitch, peak: peak * 0.5 }); synthNoise(0.08, { peak: peak * 0.3, filterFreq: 3000, filterType: 'highpass' }); },
-    punch: (pitch, peak) => { synthTone(140 * pitch, 0.14, { type: 'sine', freqEnd: 60 * pitch, peak: peak * 0.7 }); synthNoise(0.07, { peak: peak * 0.4, filterFreq: 800, filterType: 'lowpass' }); },
-    hammer: (pitch, peak) => { synthTone(90 * pitch, 0.22, { type: 'sine', freqEnd: 40 * pitch, peak: peak * 0.8 }); synthNoise(0.14, { peak: peak * 0.5, filterFreq: 500, filterType: 'lowpass' }); },
-    dagger: (pitch, peak) => { synthTone(900 * pitch, 0.07, { type: 'triangle', freqEnd: 500 * pitch, peak: peak * 0.4 }); synthNoise(0.05, { peak: peak * 0.35, filterFreq: 5000, filterType: 'highpass' }); },
-    shard: (pitch, peak) => { synthTone(1100 * pitch, 0.1, { type: 'sine', freqEnd: 700 * pitch, peak: peak * 0.45 }); synthNoise(0.06, { peak: peak * 0.25, filterFreq: 4000, filterType: 'highpass' }); },
-    orb: (pitch, peak) => { synthTone(680 * pitch, 0.16, { type: 'sine', freqEnd: 900 * pitch, peak: peak * 0.4 }); },
-    scythe: (pitch, peak) => { synthTone(360 * pitch, 0.16, { type: 'sawtooth', freqEnd: 150 * pitch, peak: peak * 0.45 }); synthNoise(0.1, { peak: peak * 0.3, filterFreq: 2200, filterType: 'bandpass' }); },
-    bolt: (pitch, peak) => { synthTone(1500 * pitch, 0.09, { type: 'square', freqEnd: 400 * pitch, peak: peak * 0.35 }); synthNoise(0.07, { peak: peak * 0.4, filterFreq: 6000, filterType: 'highpass' }); },
-    whip: (pitch, peak) => { synthTone(700 * pitch, 0.06, { type: 'triangle', freqEnd: 1400 * pitch, peak: peak * 0.4 }); synthNoise(0.05, { peak: peak * 0.35, filterFreq: 4500, filterType: 'bandpass' }); }
-};
-function sfxImpact(charName, damage) {
-    const type = SFX_TYPE_BY_CHAR[charName] || 'punch';
-    const pitch = 1 - Math.min(0.35, damage / 90); // heavier hits pitch down a bit — reads as "weightier"
-    const peak = Math.min(1, 0.5 + damage / 60);
-    (IMPACT_SFX[type] || IMPACT_SFX.punch)(pitch, peak);
-}
-function sfxWhiff() {
-    synthNoise(0.12, { peak: 0.15, filterFreq: 1800, filterType: 'bandpass' });
-}
-function sfxCollapseTick() {
-    synthNoise(0.3, { peak: 0.3, filterFreq: 300, filterType: 'lowpass' });
-    synthTone(70, 0.35, { type: 'square', peak: 0.2 });
-}
-function sfxKO() {
-    synthNoise(0.4, { peak: 0.35, filterFreq: 400, filterType: 'lowpass' });
-    synthTone(120, 0.5, { type: 'sawtooth', freqEnd: 30, peak: 0.3 });
-}
-
 // --- Ambient per-map pad: two detuned oscillators through a slow LFO'd
 // filter, started on loadMap() and stopped/replaced on the next map load
 // (or match teardown) rather than left running underneath a new map. ---
@@ -2984,12 +2752,6 @@ function arenaBoundsFromFrac(f) {
     playTop = ARENA_TOP + (ARENA_CY - ARENA_TOP) * f;
     playBottom = ARENA_BOTTOM - (ARENA_BOTTOM - ARENA_CY) * f;
 }
-
-// --- Three.js scene: an angled arena camera (Power Stone-style) instead
-// of a top-down view. All gameplay math below stays entirely in the
-// original 2D (x, y) plane; these two helpers are the only bridge into
-// 3D world space (x -> X, y -> Z, ground sits at Y = 0). ---
-function worldZ(y) { return y - ARENA_CY; }
 
 // Deterministic per-map PRNG. buildOuterWall (ivy/jagged/crystal skylines) and
 // buildScenery (prop orientation) used to call Math.random(), so a map's
@@ -3103,17 +2865,6 @@ function renderWithBloom(scn, cam, dt) {
     c.render(dt || 0.016);
 }
 
-// The game's own coordinate system (arena bounds, maps, HUD layout) stays
-// a fixed 900x500 virtual space (see VIRTUAL_W/VIRTUAL_H) — only the
-// canvas's actual pixel resolution and the camera's aspect ratio change
-// here, so resizing can't shift hitboxes, map layouts, or HUD positions.
-// A real setting, because bloom is the one effect here with a per-frame cost
-// that scales with resolution: five extra full-screen-ish passes. Follows the
-// HUD-scale button's idiom - a button that states its own current value -
-// rather than introducing a checkbox the settings panel has no other use for.
-function refreshBloomUI() {
-    setOptState('btn-bloom', bloomEnabled ? 'On' : 'Off', bloomEnabled);
-}
 function toggleBloom() {
     bloomEnabled = !bloomEnabled;
     safeLSSet('astralClashBloom', bloomEnabled ? '1' : '0');
@@ -3152,7 +2903,6 @@ if (THREE.Layers && !THREE.Layers.prototype.enableAll) {
     THREE.Layers.prototype.disableAll = function () { this.mask = 0; };
 }
 
-const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8ec7ff); // bright daytime sky
 // Daytime haze: fog tinted to the sky's horizon color and pushed far out,
 // so distance fades into a sunny blue haze instead of black. Recolored a
@@ -3293,12 +3043,6 @@ function applySky(theme) {
     updateEnvironment();   // reflections follow the map's own sky
 }
 
-// --- Rendering layers (three.js): each fighter's body is put on its own
-// layer so a first-person camera can exclude ITS OWN fighter's body (you
-// don't see your own head/torso from inside your head), while still seeing
-// the opponent and the environment. Viewmodels (the weapon in your own
-// hands) go on a per-player layer only that player's camera renders. ---
-const camP2 = makeFpsCamera(LAYER_P2_BODY, LAYER_P2_VM);
 // Batch 31: which fighter and camera belong to THIS client. Both cameras are
 // still built, because LOCAL_SIDE can be either 'p1' (host) or 'p2' (joiner)
 // and each has the correct layer mask already - only one of them is ever
@@ -3313,17 +3057,7 @@ const localCamera = () => (LOCAL_SIDE === 'p1' ? camP1 : camP2);
 scene.add(camP1, camP2);
 onWindowResize(); // establish real pixel size now that a camera-ish setup exists
 
-// --- Batch 27: the crush cinematic. -------------------------------------
-// Arena Collapse used to finish with both fighters squashed in place while
-// still in first person, which meant the most dramatic beat in the match was
-// also the one you could see least: your own body is hidden from your own
-// camera, so you watched a static wall texture while your health drained.
-//
-// Now, the moment the walls slam shut, both players leave first person and get
-// a side-on third-person shot of themselves pinned between two grinding slabs
-// - each player framed in their own half of the screen. Requested, with a
-// drawing: two figures side by side, a wall closing on each from both sides.
-let crushTime = 0;           // frames since the crush began; drives the whole sequence
+           // frames since the crush began; drives the whole sequence
 // ===========================================================================
 // THE SIDE-BY-SIDE CRUSH, AS ITS OWN SCENE.
 //
@@ -3473,15 +3207,7 @@ function renderCrushCinematic(dt, W, HGT) {
     return true;
 }
 
-const CRUSH_DUST_COUNT = 18; // fixed pool per fighter; never grows (see buildCrushRigs)
-
-function crushGap() {
-    // Ease-out: the slabs rush in, then grind the last few units slowly, which
-    // reads as weight rather than a linear slide.
-    const t = Math.min(1, crushTime / 165);
-    const eased = 1 - Math.pow(1 - t, 2.4);
-    return CRUSH_GAP_START + (CRUSH_GAP_END - CRUSH_GAP_START) * eased;
-}
+ // fixed pool per fighter; never grows (see buildCrushRigs)
 
 // Each fighter gets their OWN pair of slabs plus a stage floor, and they live on
 // that fighter's VIEWMODEL layer.
@@ -3696,111 +3422,6 @@ function syncCrushRigs(dt) {
     }
 }
 
-// A side-on shot of one fighter pinned between their slabs, looking down the
-// arena Z axis so the walls close horizontally ACROSS the screen - the framing
-// the request drew.
-function positionCrushCamera(cam, f, dt) {
-    const cx = f.x + f.width / 2, cy = f.y + f.height / 2;
-    const tx = worldX(cx), tz = worldZ(cy);
-    // Ease from the fighter's own eye out to the wide shot, so leaving first
-    // person is a camera move rather than a hard cut.
-    const t = Math.min(1, crushTime / CRUSH_CAM_IN);
-    const ease = 1 - Math.pow(1 - t, 3);
-    // 120 units out frames the fighter plus both slabs; further back and the
-    // slab faces dominate and the figure reads as a doll in a corridor.
-    // Wide enough for two stages plus their slabs when staged; the original
-    // 120 when it is one fighter.
-    const dist = 34 + 86 * ease;
-    cam.position.set(tx, f.z + EYE_HEIGHT + 10 * ease, tz + dist);
-    // Rising shake, peaking as the slabs bite.
-    const shake = (REDUCED_MOTION ? 0.2 : 1) * (1.5 + 6.5 * ease);
-    cam.position.x += (Math.random() - 0.5) * shake;
-    cam.position.y += (Math.random() - 0.5) * shake * 0.7;
-    cam.lookAt(tx, f.z + 24, tz);
-}
-
-// Swap each camera between first person and the crush shot. During the crush a
-// camera must see its OWN fighter (normally hidden) and its own slabs, and must
-// NOT draw the first-person weapon viewmodel floating in a third-person frame.
-// The VM LAYER stays enabled - the crush slabs live on it - so the viewmodel is
-// suppressed by hiding the object instead.
-function applyCrushCameraLayers() {
-    for (const cam of [camP1, camP2]) {
-        const own = cam.userData.ownBody;
-        if (own === undefined) continue;
-        const other = own === LAYER_P1_BODY ? LAYER_P2_BODY : LAYER_P1_BODY;
-        if (crushing) {
-            // Split-screen: show MY body and hide the opponent's, so each
-            // half is one fighter being crushed alone. Without the second half
-            // of that swap both fighters appear in both halves, one behind the
-            // other, and it stops reading as "this is happening to me".
-            //
-            // ONLINE: show BOTH. There is only one view, so hiding the
-            // opponent meant the shot contained one character and the other
-            // player's death was invisible. They are staged side by side
-            // rather than one behind the other, which is
-            // what made the split-screen version legible in the first place.
-            cam.layers.enable(own);
-            cam.layers.disable(other);
-        } else {
-            cam.layers.disable(own);
-            cam.layers.enable(other);
-        }
-    }
-    if (vmP1) vmP1.visible = !crushing;
-    if (vmP2) vmP2.visible = !crushing;
-}
-
-function positionFpsCamera(cam, f, dt) {
-    // Batch 27: the crush takes over the camera entirely (see positionCrushCamera).
-    if (crushing) { positionCrushCamera(cam, f, dt); return; }
-    // Batch 37: the camera follows the VISUAL position, offset included.
-    //
-    // This is why "when you use your special there is no animation, just a snap
-    // to a new location" survived Batch 34. That batch added a visual lag
-    // offset and a motion streak - and applied both to `this.mesh`, which in
-    // first person is the one thing you never see. The camera went on reading
-    // the raw simulation position, so the entire world still jumped in a single
-    // frame; the smear was only ever visible to the OPPONENT.
-    //
-    // Reading the same offset here means a dash or a blink travels for the
-    // player using it. The simulation is still instant, so i-frames, hitboxes
-    // and range checks are untouched - it is only where the eye is put.
-    const cx = f.x + f.width / 2 + (f.visOffX || 0);
-    const cy = f.y + f.height / 2 + (f.visOffY || 0);
-    const ex = worldX(cx), ey = f.z + EYE_HEIGHT, ez = worldZ(cy);
-    cam.position.set(ex, ey, ez);
-    _fwd.set(f.fx, 0, f.fy).normalize();
-    // Vertical aim. The intro drop keeps its own hardcoded steep downward tilt
-    // (it's a cinematic, not something the player is aiming through); in normal
-    // play the look target's height comes from the fighter's own pitch, on top
-    // of the small baseline down-tilt that keeps the floor and the weapon
-    // viewmodel in frame. LOOK_DIST is the (arbitrary) forward distance the
-    // target is placed at, so the vertical offset is tan(pitch) * that.
-    const LOOK_DIST = 20;
-    const pitchDrop = (gameState === 'INTRO' && !f.introLanded)
-        ? -22
-        : -4 + Math.tan(f.pitch || 0) * LOOK_DIST;
-    cam.lookAt(ex + _fwd.x * LOOK_DIST, ey + pitchDrop, ez + _fwd.z * LOOK_DIST);
-    const shakeScale = REDUCED_MOTION ? 0.15 : 1;
-    // No shake while paused: the PAUSED branch renders but returns before
-    // decayCameraShake, so an unguarded shake would vibrate the frozen frame
-    // forever if you paused right after a hit.
-    if (cameraShakeMag > 0.05 && gameState !== 'PAUSED') {
-        cam.position.x += (Math.random() - 0.5) * cameraShakeMag * 0.5 * shakeScale;
-        cam.position.y += (Math.random() - 0.5) * cameraShakeMag * 0.35 * shakeScale;
-        cam.position.z += (Math.random() - 0.5) * cameraShakeMag * 0.5 * shakeScale;
-    }
-}
-
-// Decays the shared hit-shake once per frame (the FPS cameras only READ it,
-// so it needs decaying somewhere central rather than inside the old camera
-// updater that no longer exists).
-function decayCameraShake(dt) {
-    if (cameraShakeMag > 0.05) cameraShakeMag *= Math.pow(0.85, dt);
-    else cameraShakeMag = 0;
-}
-
 // Split-screen (two humans) / full-screen (one human, or spectating a
 // bot-vs-bot match from P1's eyes) first-person rendering. Viewports and
 // scissor rects are in CSS pixels; three.js applies the pixel ratio.
@@ -3835,30 +3456,13 @@ function renderOneView(cam, viewer, x, y, vw, vh, dt) {
     renderWithBloom(scene, cam, dt);
 }
 
-// Lighting for the enclosed first-person arena. Every light has all render
-// layers enabled (layers.enableAll) because the fighters live on their own
-// body layers (1/2) so cameras can hide the viewer's own body — a light
-// only illuminates objects sharing an enabled layer with it, so without
-// this the fighters would render pitch black.
-// Bright outdoor daylight. Every light has all render layers enabled
-// (layers.enableAll) because the fighters live on their own body layers
-// (1/2) so cameras can hide the viewer's own body — a light only
-// illuminates objects sharing an enabled layer with it.
-// Batch 45: the ambient/hemi/fill trio came DOWN when the environment map
-// became directional. They were tuned against a PMREM of a vertical gradient -
-// four sources of nearly directionless light (ambient 0.55 + hemi 0.95 + fill
-// 0.85 + a 1.8x env) against a single directional key of 1.75, which is why
-// screenshots of every arena showed even, shadowless cardboard. The env does
-// that job for real now; keeping the fakes as well just double-counts it.
-const ambientLight = new THREE.AmbientLight(0xbfd6f5, 0.18); // a floor under the shadows, nothing more
+ // a floor under the shadows, nothing more
 ambientLight.layers.enableAll();
 scene.add(ambientLight);
-const hemiLight = new THREE.HemisphereLight(0xdcefff, 0x6b5a45, 0.42); // sky/ground bounce, now that the env map also carries it
+ // sky/ground bounce, now that the env map also carries it
 hemiLight.layers.enableAll();
 scene.add(hemiLight);
-// The sun — a strong warm-white directional aimed to match the sun sprite
-// in the sky dome, casting crisp shadows across the arena.
-const keyLight = new THREE.DirectionalLight(0xfff4e0, 2.1);   // the only light that should read as a DIRECTION
+   // the only light that should read as a DIRECTION
 keyLight.position.set(-1400, 2600, 1600);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(2048, 2048);
@@ -3869,9 +3473,6 @@ keyLight.shadow.bias = -0.0004;
 keyLight.shadow.normalBias = 1.2;
 keyLight.layers.enableAll();
 scene.add(keyLight);
-// A cool sky-bounce fill from the opposite side to keep shadows from going
-// muddy — subtle, just lifts the shadowed faces toward the sky color.
-const fillLight = new THREE.DirectionalLight(0xbcd8ff, 0.4);
 // Batch 34: raised and steepened. It sat low at (900, 500, -700), which lit
 // two of the four perimeter walls and left the other two dark; a higher,
 // more central position rakes all four inward faces.
@@ -3960,15 +3561,6 @@ function applyLighting(theme) {
     fitKeyShadow();   // the sun moved; the shadow frustum must follow it
 }
 
-// --- Per-map visual THEMES. Each map has a distinct palette, wall shape +
-// material, floor, column style, sky/time-of-day, lighting and scenery, so
-// you can tell which arena you're in at a glance. All are DAYTIME (varying
-// from cool clear midday to warm golden hour, never night). ---
-function themeFor(map) {
-    const base = MAP_THEMES[map.name] || MAP_THEMES['Twin Ramparts'];
-    return Object.assign({}, base, { accent: hexNum(map.accent), mapName: map.name });
-}
-
 // Terrain is per-map (see MAPS below); these bindings get reassigned by
 // loadMap() each time a map is chosen. Three kinds of terrain:
 //   OBSTACLES - solid pillars. Block movement/projectiles unless a fighter
@@ -3981,47 +3573,6 @@ function themeFor(map) {
 //               jumped up to it). Walking into its footprint at ground
 //               level just passes underneath, instead of popping you up.
 const JUMP_COOLDOWN = 60; // a full jump's own airtime is only ~43 frame-units — this is deliberately longer so jumping can't be spammed the instant you land
-// Rises up to this are walkable on foot; taller is a wall you must jump - see
-// resolveTallTerrain(), which reverts the move when the rise is too great.
-//
-// Batch 38: 30 -> 12. Reported with a screenshot: "when you go towards one of
-// those short platforms, instead of hitting it and it blocking you, which it
-// should do, you snap up onto it."
-//
-// That was exactly what the old value did. At 30, a 26-unit `step` - the long
-// low blocks across Voltaic Nexus, and waist-high on a 40-unit fighter -
-// counted as walkable, so walking into its side instantly raised you 26 units
-// with no jump, no animation and no cost. It read as a free elevator, because
-// that is what it was.
-//
-// 12 is not arbitrary: the step heights actually present in MAPS are
-// 1, 2, 3, 6, 9, then 18, 22, 26, 28, 30. There is a clean gap between "kerb
-// or ramp lip you would not notice" and "block you would put a hand on to
-// climb", and 12 sits in it. So ramps and thresholds stay walkable and every
-// waist-high block now has to be jumped.
-//
-// Reachability is the thing this could break, and it is asserted -
-// tests/mapscheck.js walks every map and checks that all standable ground can
-// still be reached, jumps included.
-function groundLevelAt(x, y) {
-    let best = 0;
-    for (const t of TERRAIN) {
-        if (Math.abs(x - t.x) > t.hw || Math.abs(y - t.y) > t.hd) continue;
-        let h;
-        if (t.type === 'ramp') {
-            const lo = t.axis === 'x' ? t.x - t.hw : t.y - t.hd;
-            const hi = t.axis === 'x' ? t.x + t.hw : t.y + t.hd;
-            const v = t.axis === 'x' ? x : y;
-            const frac = Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
-            h = t.from + (t.to - t.from) * frac;
-        } else {
-            h = t.height;
-        }
-        if (h > best) best = h;
-    }
-    return best;
-}
-
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every
 // rematch) just got scene.remove()'d, leaking its geometry/material/texture
@@ -4078,10 +3629,6 @@ function removeAndDispose(obj) {
 // --- 3D arena, rebuilt per map by loadMap(). Every builder below takes
 // the map's accent color so each map reads as visually distinct. ---
 
-// --- Theme-aware tileable canvas textures. Each map's theme (see MAP_THEMES)
-// picks a wall + floor material so the arenas read as completely different
-// places (steel, sandstone, granite, marble, red rock, ice). ---
-const derivedCanvasCache = {};
 // The THREE textures wrapping those canvases, keyed by canvas AND tiling - see
 // the note on `mk` inside attachSurfaceMaps.
 function attachSurfaceMaps(mat, key, opts) {
@@ -4122,8 +3669,6 @@ function attachSurfaceMaps(mat, key, opts) {
     mat.needsUpdate = true;
     return mat;
 }
-// Offset ashlar-style block courses shared by stone/sandstone/marble/redrock.
-function _redStrata(g, bx, by, bw, bh) { g.fillStyle = 'rgba(80,40,25,0.16)'; for (let yy = by + 4; yy < by + bh; yy += 6) g.fillRect(bx, yy, bw, 2); }
 
 
 // ===========================================================================
@@ -4268,13 +3813,6 @@ function attachPhotoSurface(mat, kind, texId, rx, ry, opts) {
     return mat;
 }
 
-// The procedural canvas, reduced to just its accent-coloured pixels, as an
-// emissive overlay. This is what keeps each arena recognisable once a shared
-// photographic base is doing the heavy lifting: Voltaic Nexus' glowing seams,
-// Molten Foundry's lava cracks and the Colosseum's ivy are all painted in the
-// theme accent, and they are the map's signature. Everything that is not close
-// to the accent hue becomes black, and black is simply "not emitting".
-const wallTextureCache = {};
 // Batch 34: see the note in buildPlatformMesh. A clone is needed per distinct
 // `repeat`, not per mesh, so cache them by it.
 function getTiledWallTexture(theme, rx, ry) {
@@ -4289,80 +3827,6 @@ function getTiledWallTexture(theme, rx, ry) {
     return t;
 }
 
-function getWallTexture(theme) {
-    if (wallTextureCache[theme.id]) return wallTextureCache[theme.id];
-    const g = _canvas();
-    const acc = hexToCss(theme.accent, 0.85);
-    if (theme.wallTex === 'metal') {
-        g.fillStyle = '#28374f'; g.fillRect(0, 0, 256, 256);
-        for (let y = 0; y < 256; y += 64) for (let x = 0; x < 256; x += 64) {
-            const gr = g.createLinearGradient(x, y, x, y + 64); gr.addColorStop(0, '#38507a'); gr.addColorStop(1, '#243349');
-            g.fillStyle = gr; g.fillRect(x + 3, y + 3, 58, 58);
-            g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 2; g.strokeRect(x + 3, y + 3, 58, 58);
-        }
-        g.fillStyle = acc; g.fillRect(0, 125, 256, 4); g.fillRect(125, 0, 4, 256); // glowing seams
-        g.fillStyle = 'rgba(200,225,255,0.3)';
-        for (let y = 0; y <= 256; y += 64) for (let x = 0; x <= 256; x += 64) { g.beginPath(); g.arc(x, y, 2.5, 0, 6.283); g.fill(); }
-    } else if (theme.wallTex === 'ice') {
-        const gr = g.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, '#dceffa'); gr.addColorStop(1, '#a9d6ea');
-        g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
-        g.strokeStyle = 'rgba(255,255,255,0.4)'; g.lineWidth = 1;
-        for (let i = 0; i < 20; i++) { const x = Math.random() * 256, y = Math.random() * 256; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.random() * 60 - 30, y + Math.random() * 60 - 30); g.stroke(); }
-        g.strokeStyle = 'rgba(90,140,180,0.35)'; g.lineWidth = 1.5;
-        for (let i = 0; i < 8; i++) { let x = Math.random() * 256, y = 0; g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 5; s++) { x += Math.random() * 40 - 20; y += 52; g.lineTo(x, y); } g.stroke(); }
-        g.fillStyle = 'rgba(255,255,255,0.14)'; for (let i = 0; i < 40; i++) g.fillRect(Math.random() * 256, Math.random() * 256, 3, 3);
-    } else if (theme.wallTex === 'sandstone') {
-        _blockWall(g, ['#dcc088', '#d0b076', '#e0c894', '#cba86e'], '#8a6f4a', _speckle('#b89a68'));
-        g.fillStyle = hexToCss(theme.accent, 0.4); g.fillRect(0, 214, 256, 6);
-    } else if (theme.wallTex === 'marble') {
-        _blockWall(g, ['#ece4d2', '#e4dbc6', '#f0e8d8', '#dfd6c0'], '#c9bfa8', _marbleVeins);
-    } else if (theme.wallTex === 'redrock') {
-        _blockWall(g, ['#b0623a', '#a25631', '#bd6e42', '#98502e'], '#6f3a22', _redStrata);
-    } else if (theme.wallTex === 'basalt') {
-        _blockWall(g, ['#2e2a33', '#262230', '#332e3a', '#221e2a'], '#15121a', null);
-        g.strokeStyle = 'rgba(255,110,30,0.85)'; g.lineWidth = 2; // glowing lava seams
-        for (let i = 0; i < 6; i++) { let x = Math.random() * 256, y = Math.random() * 256; g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 4; s++) { x += Math.random() * 50 - 25; y += Math.random() * 50 - 25; g.lineTo(x, y); } g.stroke(); }
-        g.fillStyle = 'rgba(255,170,60,0.7)'; for (let i = 0; i < 22; i++) g.fillRect(Math.random() * 256, Math.random() * 256, 3, 3);
-    } else if (theme.wallTex === 'mossstone') {
-        _blockWall(g, ['#8f9878', '#849072', '#98a082', '#7c886c'], '#4a5240', _speckle('#6a7452'));
-        g.fillStyle = 'rgba(70,110,50,0.4)';
-        for (let i = 0; i < 10; i++) { g.beginPath(); g.ellipse(Math.random() * 256, Math.random() * 256, 10 + Math.random() * 14, 6 + Math.random() * 8, Math.random() * 3, 0, 6.283); g.fill(); }
-    } else if (theme.wallTex === 'cloudmarble') {
-        _blockWall(g, ['#f4eee0', '#efe8d8', '#f6f0e4', '#eae2d2'], '#d8cfba', (g, bx, by, bw, bh) => { g.strokeStyle = 'rgba(200,165,80,0.35)'; g.lineWidth = 1; g.beginPath(); g.moveTo(bx + Math.random() * bw, by); g.lineTo(bx + Math.random() * bw, by + bh); g.stroke(); });
-    } else if (theme.wallTex === 'coralstone') {
-        _blockWall(g, ['#e8b09a', '#dfa088', '#eeb8a2', '#d89680'], '#b07a68', _speckle('#c98a76'));
-        g.fillStyle = 'rgba(150,90,75,0.3)';
-        for (let i = 0; i < 40; i++) { g.beginPath(); g.arc(Math.random() * 256, Math.random() * 256, 1.5 + Math.random() * 2, 0, 6.283); g.fill(); }
-    } else { // ashlar granite
-        _blockWall(g, ['#9aa0a8', '#8f959e', '#a2a8b0', '#888e97'], '#5c626c', _speckle('#7a808a'));
-        g.fillStyle = hexToCss(theme.accent, 0.45); g.fillRect(0, 214, 256, 6);
-    }
-    const t = _tex(g.canvas, true);
-    wallTextureCache[theme.id] = t;
-    return t;
-}
-
-function addRimEdge(x, z, w, d, accent) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x2e3a59, emissive: accent, emissiveIntensity: 0.3 });
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, 5, d), mat);
-    m.position.set(x, 2.5, z);
-    m.receiveShadow = true;
-    mapGroup.add(m);
-    return m;
-}
-
-function addCornerGlow(x, z, accent) {
-    const group = new THREE.Group();
-    const glow = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 8), new THREE.MeshBasicMaterial({ color: accent }));
-    glow.position.y = 3;
-    group.add(glow);
-    const light = new THREE.PointLight(accent, 0.5, 150);
-    light.position.y = 20;
-    group.add(light);
-    group.position.set(x, 0, z);
-    mapGroup.add(group);
-    return group;
-}
 
 // A full-height obstacle "column" whose form varies by theme.column: carved
 // stone pillar, sleek energy pylon, fluted marble column, natural red-rock
@@ -4468,47 +3932,6 @@ function buildPillarMesh(ob, theme) {
     return group;
 }
 
-// A solid block: short ones read as jump-on cover platforms, tall ones as
-// full interior walls (collision is the same). Uses the theme wall texture
-// so interior cover matches the perimeter, with a glowing accent-trimmed top.
-// BUILD ONE OF EACH PAIR, CLONE THE OTHER.
-//
-// "The arenas should all have perfect 180 degree rotational symmetry, so that
-// both players have the exact same situation for every map."
-//
-// The map DATA has always been symmetric - symmetrycheck asserts it for all ten
-// arenas - but the builders decorate with Math.random(), so two calls for two
-// mirrored positions produce two different objects. That is what the report
-// "on one side there is a ramp and on the other side there are stairs" was.
-//
-// So: walk the authored list, build the first of each rotational pair, and
-// clone the second with its facing a half-turn further round. A clone shares
-// geometry and materials, so this is also cheaper than building both.
-//
-// `build` is expected to position its result and add it to mapGroup (which is
-// what the existing builders do), so the clone is placed and added here. Getting
-// that wrong left two of Voltaic Nexus's four pillars built but never in the
-// scene.
-function buildPairedFromData(list, build) {
-    const CX = (ARENA_LEFT + ARENA_RIGHT) / 2, CY = (ARENA_TOP + ARENA_BOTTOM) / 2;
-    const built = [];
-    for (const item of list) {
-        const twin = built.find(b => Math.abs(b.x - (2 * CX - item.x)) < 2
-                                  && Math.abs(b.y - (2 * CY - item.y)) < 2);
-        let mesh;
-        if (twin) {
-            mesh = twin.mesh.clone();
-            mesh.position.set(worldX(item.x), twin.mesh.position.y, worldZ(item.y));
-            mesh.rotation.y = twin.mesh.rotation.y + Math.PI;
-            mapGroup.add(mesh);
-        } else {
-            mesh = build(item);
-        }
-        built.push({ x: item.x, y: item.y, mesh });
-        mapEdgeObjects.push({ mesh, x: item.x, y: item.y });
-    }
-}
-
 function buildPlatformMesh(p, theme) {
     const group = new THREE.Group();
     // Batch 34: was `getWallTexture(theme).clone()` per platform. The clone
@@ -4562,82 +3985,6 @@ function buildPlatformMesh(p, theme) {
     return group;
 }
 
-// Solid stair block, floor-to-top — always walkable, no jump required.
-function buildStepMesh(t, theme) {
-    const group = new THREE.Group();
-    const slab = new THREE.Mesh(
-        new THREE.BoxGeometry(t.hw * 2, Math.max(6, t.height), t.hd * 2),
-        new THREE.MeshStandardMaterial({ color: theme.stepColor, roughness: 0.85 })
-    );
-    slab.position.y = t.height / 2;
-    slab.castShadow = true; slab.receiveShadow = true;
-    group.add(slab);
-
-    // A NOSING - the overhanging lip on the front of a real stair tread. On a
-    // step this is the whole difference between "a block" and "a stair": the
-    // lip catches the light while the riser below it falls into shadow, which
-    // is also what makes the step READABLE as something you can walk up.
-    group.add(edgeBand(t.hw * 2, t.hd * 2, 3, Math.max(6, t.height) - 1.5, 2.5,
-        getCachedMaterial('stepNose:' + theme.id, () => new THREE.MeshStandardMaterial({
-            color: theme.capColor, roughness: 0.8,
-        }))));
-
-    const trim = new THREE.Mesh(
-        new THREE.BoxGeometry(t.hw * 2 + 1.5, 1.5, t.hd * 2 + 1.5),
-        new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.5, transparent: true, opacity: 0.7 })
-    );
-    trim.position.y = t.height;
-    group.add(trim);
-
-    group.position.set(worldX(t.x), 0, worldZ(t.y));
-    mapGroup.add(group);
-    return group;
-}
-
-// Tilted slab approximating the linear from->to incline groundLevelAt()
-// computes for this footprint — always walkable, no jump required.
-// Solid stepped support (a handful of stacked blocks tracing the slope)
-// plus a thin sloped surface on top, so there's no open gap to see or
-// walk through underneath — only a real box primitive is used, since a
-// single hand-rolled wedge mesh risks inverted normals I can't preview.
-function buildRampMesh(t, theme) {
-    const group = new THREE.Group();
-    const length = t.axis === 'x' ? t.hw * 2 : t.hd * 2;
-    const width = t.axis === 'x' ? t.hd * 2 : t.hw * 2;
-    const angle = Math.atan2(t.to - t.from, length);
-    const supportMat = new THREE.MeshStandardMaterial({ color: theme.stepColor, roughness: 0.85 });
-
-    const SEGMENTS = 6;
-    for (let i = 0; i < SEGMENTS; i++) {
-        const segLen = length / SEGMENTS;
-        const frac0 = i / SEGMENTS, frac1 = (i + 1) / SEGMENTS;
-        const hHi = t.from + (t.to - t.from) * frac1;
-        if (hHi <= 1) continue; // near-zero end stays open as the ramp's entry
-        const offset = ((frac0 + frac1) / 2 - 0.5) * length;
-        const seg = new THREE.Mesh(
-            new THREE.BoxGeometry(t.axis === 'x' ? segLen : width, hHi, t.axis === 'x' ? width : segLen),
-            supportMat
-        );
-        if (t.axis === 'x') seg.position.set(offset, hHi / 2, 0);
-        else seg.position.set(0, hHi / 2, offset);
-        seg.castShadow = true; seg.receiveShadow = true;
-        group.add(seg);
-    }
-
-    const surface = new THREE.Mesh(
-        new THREE.BoxGeometry(length, 4, width),
-        new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.35, transparent: true, opacity: 0.85 })
-    );
-    surface.position.y = (t.from + t.to) / 2;
-    if (t.axis === 'x') surface.rotation.z = angle; else surface.rotation.x = -angle;
-    group.add(surface);
-
-    group.position.set(worldX(t.x), 0, worldZ(t.y));
-    mapGroup.add(group);
-    return group;
-}
-
-const mapGroup = new THREE.Group();
 scene.add(mapGroup);
 
 function clearMapGroup() {
@@ -4648,15 +3995,8 @@ function clearMapGroup() {
     }
 }
 
-let currentMap = null;
 
-// Arena Collapse tracking (see the constants/logic further down): the actual
-// map geometry at the shrinking edges falls away as the boundary sweeps past
-// it — "as if it never existed" per the brief. `floorMesh` is scaled/
-// repositioned every shrink tick, the four `outerWalls` slide inward, and
-// `mapEdgeObjects` (pillars/terrain/platforms/scenery, each tagged with its
-// game-space x/y) drop away once outside the current play bounds.
-let outerWalls = []; // {mesh, side, baseLen} — the 4 enclosing walls; syncArenaCollapse slides + scales them inward as the arena closes
+ // {mesh, side, baseLen} — the 4 enclosing walls; syncArenaCollapse slides + scales them inward as the arena closes
 
 // One enclosing perimeter wall along a side of the arena, open to the sky.
 // The wall BODY material + the TOP silhouette both vary by theme.wallStyle
@@ -4862,102 +4202,7 @@ function loadMap(map) {
     assertSpawnsClear(map);
 }
 
-// Slide + scale the four enclosing walls to the current (possibly shrinking)
-// play bounds, so during Arena Collapse the room's walls physically close in.
-function syncOuterWalls() {
-    const cx = worldX((playLeft + playRight) / 2), cz = worldZ((playTop + playBottom) / 2);
-    const xExt = Math.max(1, playRight - playLeft), zExt = Math.max(1, playBottom - playTop);
-    // Each wall is a group whose run is its LOCAL X (the left/right groups are
-    // rotated 90°), so scaling local X shrinks the run for every side. The
-    // group origin sits on the floor (children carry their own heights).
-    for (const w of outerWalls) {
-        if (w.side === 'left') { w.mesh.position.set(worldX(playLeft), 0, cz); w.mesh.scale.x = zExt / w.baseLen; }
-        else if (w.side === 'right') { w.mesh.position.set(worldX(playRight), 0, cz); w.mesh.scale.x = zExt / w.baseLen; }
-        else if (w.side === 'top') { w.mesh.position.set(cx, 0, worldZ(playTop)); w.mesh.scale.x = xExt / w.baseLen; }
-        else { w.mesh.position.set(cx, 0, worldZ(playBottom)); w.mesh.scale.x = xExt / w.baseLen; }
-    }
-}
-
-// --- Scenery: decorative + collidable props scattered around the arena so
-// it reads as a lived-in place, not an empty box. Braziers, crates, barrels,
-// urns and wall banners. Solid props (crates/barrels/urns/braziers) are
-// registered as circular OBSTACLES so you actually fight around them, and as
-// mapEdgeObjects so they fall away with the arena during collapse. ---
-const sceneryFlames = []; // {mesh, light, phase} — flickered each frame in updateScenery
-function buildCrate(accent) {
-    const g = new THREE.Group();
-    const size = 34 + Math.random() * 8;
-    const woodMat = getCachedMaterial('crateWood', () => new THREE.MeshStandardMaterial({ color: 0x9c6b3f, roughness: 0.85 }));
-    const box = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), woodMat);
-    box.position.y = size / 2; box.castShadow = true; box.receiveShadow = true;
-    g.add(box);
-    // A lid rim, overhanging like every other edge in this pass. It is what
-    // makes the crate look assembled rather than solid.
-    g.add(edgeBand(size, size, 3.5, size - 1.75, 1.6,
-        getCachedMaterial('crateLid', () => new THREE.MeshStandardMaterial({ color: 0x84562f, roughness: 0.85 }))));
-    const frameMat = getCachedMaterial('crateFrame', () => new THREE.MeshStandardMaterial({ color: 0x6b4522, roughness: 0.8 }));
-    for (const sy of [size * 0.5]) { // corner battens
-        for (const [ex, ez] of [[0.5, 0.5], [-0.5, 0.5], [0.5, -0.5], [-0.5, -0.5]]) {
-            const batten = new THREE.Mesh(new THREE.BoxGeometry(4, size + 1, 4), frameMat);
-            batten.position.set(ex * size, size / 2, ez * size); g.add(batten);
-        }
-    }
-    return g;
-}
-function buildBarrel(accent) {
-    const g = new THREE.Group();
-    const h = 36, r = 15;
-    // A TURNED profile rather than a tapered cylinder: a barrel bulges at the
-    // middle and closes at both ends, and that silhouette is the whole reason
-    // you read it as a barrel. Flat-shaded so the 14 facets are staves.
-    const woodMat = getCachedMaterial('barrelWood', () => new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 0.82, flatShading: true }));
-    const body = new THREE.Mesh(lathe([
-        [r * 0.78, 0], [r * 0.95, h * 0.16], [r, h * 0.5],
-        [r * 0.95, h * 0.84], [r * 0.78, h], [0, h],
-    ], 14), woodMat);
-    body.castShadow = true; body.receiveShadow = true; g.add(body);
-    const bandMat = getCachedMaterial('barrelBand', () => new THREE.MeshStandardMaterial({ color: 0x3f3a33, metalness: 0.6, roughness: 0.4 }));
-    for (const by of [h * 0.22, h * 0.78]) {
-        const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.02, r * 1.02, 3, 14), bandMat);
-        band.position.y = by; g.add(band);
-    }
-    return g;
-}
-function buildUrn(accent) {
-    const g = new THREE.Group();
-    const mat = getCachedMaterial(`urnMat:${accent}`, () => new THREE.MeshStandardMaterial({ color: 0xcdbb95, roughness: 0.7, metalness: 0.05 }));
-    // One turned profile for the whole amphora - foot, belly, shoulder, neck
-    // and lip - instead of a squashed sphere with a cone stuck on top. A single
-    // surface also means no seam where the neck used to meet the body.
-    const body = new THREE.Mesh(lathe([
-        [7, 0], [9, 3], [6, 7], [13, 16], [15.5, 26], [13, 36],
-        [8, 41], [7.2, 44], [9.5, 46], [8.6, 47.5], [0, 47.5],
-    ], 18), mat);
-    body.castShadow = true; body.receiveShadow = true; g.add(body);
-    const accMat = getCachedMaterial(`urnAcc:${accent}`, () => new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.4 }));
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(11, 1.6, 6, 14), accMat);
-    ring.rotation.x = Math.PI / 2; ring.position.y = 26; g.add(ring);
-    return g;
-}
-function buildBrazier(accent) {
-    const g = new THREE.Group();
-    const stoneMat = getCachedMaterial('brazierStone', () => new THREE.MeshStandardMaterial({ color: 0x8a7c60, roughness: 0.9 }));
-    const stand = new THREE.Mesh(new THREE.CylinderGeometry(6, 10, 40, 10), stoneMat);
-    stand.position.y = 20; stand.castShadow = true; g.add(stand);
-    // A turned bowl with a rim and a hollow, so the flame sits IN it rather
-    // than on top of a tapered disc.
-    const bowl = new THREE.Mesh(lathe([
-        [8, 38], [15, 46], [16.5, 50], [14.5, 50], [13, 46.5], [7, 40], [0, 40],
-    ], 14), stoneMat);
-    bowl.castShadow = true; g.add(bowl);
-    const flameMat = new THREE.MeshBasicMaterial({ color: 0xffa53c, transparent: true, opacity: 0.95, fog: false });
-    const flame = new THREE.Mesh(new THREE.ConeGeometry(9, 26, 10), flameMat);
-    flame.position.y = 60; g.add(flame);
-    const light = new THREE.PointLight(0xff9640, 1.1, 340);
-    light.position.y = 62; light.layers.enableAll(); g.add(light);
-    sceneryFlames.push({ mesh: flame, light, phase: Math.random() * 6.28, baseY: 60 });
-    return g;
-}
+ // {mesh, light, phase} — flickered each frame in updateScenery
 function buildBanner(side, accent) {
     // A hanging cloth on an inner wall face, decorative only.
     const g = new THREE.Group();
@@ -4970,19 +4215,6 @@ function buildBanner(side, accent) {
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 54, 8), trimMat);
     rod.rotation.z = Math.PI / 2; rod.position.y = WALL_HEIGHT * 0.55 + 62; g.add(rod);
     return g;
-}
-// --- Themed nature/tech props for the non-castle arenas ---
-function _makeProp(type, theme) {
-    switch (type) {
-        case 'barrel': return buildBarrel(theme.accent);
-        case 'urn': return buildUrn(theme.accent);
-        case 'bush': return buildBush(theme);
-        case 'rock': return buildRock(theme);
-        case 'boulder': return buildBoulder(theme);
-        case 'shard': return buildIceShard(theme);
-        case 'pylon': return buildTechPylon(theme);
-        default: return buildCrate(theme.accent);
-    }
 }
 function buildScenery(map, theme) {
     // Its own seed, because buildOuterWall now reseeds per wall pair and would
@@ -5067,30 +4299,6 @@ function buildScenery(map, theme) {
         }
     }
 }
-function updateScenery(dt) {
-    for (const f of sceneryFlames) {
-        f.phase += 0.15 * dt;
-        const flick = 0.8 + Math.sin(f.phase) * 0.12 + Math.sin(f.phase * 2.7) * 0.06;
-        f.mesh.scale.y = flick; f.mesh.scale.x = f.mesh.scale.z = 0.9 + (flick - 0.8) * 0.5;
-        f.light.intensity = 0.9 + flick * 0.5;
-    }
-}
-
-// --- Muzzle flash: a brief bright puff + light at a fighter's weapon tip when
-// it fires, so a shot visibly erupts from the weapon in BOTH players' views
-// (the shooter also gets a viewmodel flash). Kept as a tiny pooled system so
-// rapid fire doesn't churn meshes.
-// Inputs are GAME-space (gameX 60..1695, gameY 60..915) + a world height, the
-// same convention every call site and every other object uses; the game->world
-// conversion (worldX/worldZ, ground at Y=0) happens here. ---
-const muzzleFlashes = [];
-// Batch 30: HARD CAP. Every pool entry carries a PointLight, and changing the
-// number of lights in the scene makes three.js recompile every material's
-// shader - a multi-hundred-millisecond stall. An unbounded pool therefore turned
-// any sustained stream of flashes into a series of frame spikes. Measured during
-// the crush: shader programs went 11 -> 27 and one frame took 2.2 seconds.
-// Beyond the cap, recycle the flash closest to expiring instead of allocating.
-const MUZZLE_FLASH_MAX = 6;
 // ONE PROJECTILE'S VISUALS. Lifted out of syncProjectiles, which is a loop and
 // was no place for a builder - and, more to the point, so that a round can
 // build one of these per colour BEFORE the fight and compile it. See
@@ -5242,266 +4450,6 @@ function spawnMuzzleFlash(gameX, gameY, height, colorHex) {
     mf.life = mf.maxLife;
     mf.active = true;
 }
-function updateMuzzleFlashes(dt) {
-    for (const mf of muzzleFlashes) {
-        if (!mf.active) continue;
-        mf.life -= dt;
-        const t = Math.max(0, mf.life / mf.maxLife);
-        mf.mesh.material.opacity = t;
-        mf.mesh.scale.setScalar(0.6 + (1 - t) * 2.2); // pop outward as it fades
-        mf.light.intensity = t * 2.4;
-        if (mf.life <= 0) { mf.active = false; mf.mesh.visible = false; }
-    }
-}
-
-// Dev-time safety net: warns (doesn't throw) if a map's configured spawn
-// point overlaps a pillar or sits inside a platform's footprint, which
-// would otherwise silently eject a fighter on the very first frame.
-const MAPS = [
-    {
-        name: 'Voltaic Nexus',
-        accent: '#00f3ff', fogColor: '#0a0d14',
-        // Open duelling arena: a ring of columns and a central raised dais.
-        spawn1: { x: 280, y: 487 }, spawn2: { x: 1474, y: 487 },
-        obstacles: [
-            { x: 660, y: 300, r: 36, seed: 0.3 }, { x: 1094, y: 300, r: 36, seed: 1.6 },
-            { x: 660, y: 674, r: 36, seed: 2.7 }, { x: 1094, y: 674, r: 36, seed: 4.1 }
-        ],
-        terrain: [
-            { type: 'step', x: 877, y: 210, hw: 210, hd: 36, height: 26 },
-            { type: 'step', x: 877, y: 764, hw: 210, hd: 36, height: 26 }
-        ],
-        platforms: [
-            { x: 877, y: 487, hw: 95, hd: 78, height: 72 },
-            { x: 560, y: 487, hw: 46, hd: 130, height: 52 },
-            { x: 1194, y: 487, hw: 46, hd: 130, height: 52 }
-        ]
-    },
-    {
-        name: 'Sundered Stair',
-        accent: '#f59e0b', fogColor: '#140d08',
-        // Batch 26 REDESIGN. The theme is kept - a broken staircase climbing to
-        // a high throne - but it now climbs from BOTH spawns to one shared
-        // centre throne, rather than a staircase up the west side and a ramp on
-        // the east. Everything below is authored for one half and mirrored by
-        // rotSym, so the two approaches are identical.
-        //
-        // Climb: ground -> 22 -> 46 -> 70 -> 112 -> 200 -> 258 (throne). The
-        // largest gap is 88, inside a single jump's 96.4-unit ceiling
-        // (JUMP_VZ^2 / (2*GRAVITY)), so the whole climb needs no upgrade.
-        spawn1: { x: 220, y: 230 }, spawn2: { x: 1535, y: 745 },
-        obstacles: rotSym([
-            { x: 700, y: 300, r: 34, seed: 0.6 }
-        ]),
-        terrain: rotSym([
-            { type: 'step', x: 170, y: 320, hw: 62, hd: 130, height: 22 },
-            { type: 'step', x: 295, y: 320, hw: 62, hd: 130, height: 46 },
-            { type: 'step', x: 420, y: 320, hw: 62, hd: 130, height: 70 },
-            // A ramp near each spawn, so neither side has a walk-up the other lacks.
-            { type: 'ramp', x: 300, y: 700, hw: 120, hd: 130, axis: 'x', from: 0, to: 50 }
-        ]),
-        platforms: rotSym([
-            { x: 545, y: 320, hw: 60, hd: 112, height: 112 },
-            { x: 700, y: 320, hw: 52, hd: 100, height: 200 },
-            // The contested throne, dead centre: its own rotational twin.
-            { x: 877.5, y: 487.5, hw: 88, hd: 88, height: 258 }
-        ])
-    },
-    {
-        name: 'Twin Ramparts',
-        accent: '#a855f7', fogColor: '#0f0a1a',
-        // Two raised plateaus on either side, ramps up to them, and a tall
-        // central dividing wall you fight around.
-        spawn1: { x: 230, y: 180 }, spawn2: { x: 1524, y: 794 },
-        obstacles: [
-            { x: 877, y: 180, r: 30, seed: 0.9 }, { x: 877, y: 794, r: 30, seed: 5.0 }
-        ],
-        terrain: [
-            { type: 'ramp', x: 540, y: 487, hw: 95, hd: 170, axis: 'x', from: 0, to: 70 },
-            { type: 'ramp', x: 1214, y: 487, hw: 95, hd: 170, axis: 'x', from: 70, to: 0 }
-        ],
-        platforms: [
-            { x: 250, y: 487, hw: 110, hd: 150, height: 70 },
-            { x: 1504, y: 487, hw: 110, hd: 150, height: 70 },
-            // 285 -> 232 (Batch 15): brings the top within a COMFORTABLY-timed
-            // Double Jump (gap 162 from the height-70 platform beside it; the
-            // best-case air jump gains ~184, so this leaves a wide timing
-            // window instead of demanding a frame-perfect apex press). Still
-            // ~5x eye height, so its job as a sight-blocking lane divider is
-            // completely unchanged.
-            { x: 877, y: 487, hw: 30, hd: 160, height: 232 }
-        ]
-    },
-    {
-        name: 'The Colosseum Ring',
-        accent: '#22c55e', fogColor: '#081409',
-        // A raised perimeter ring with a sunken center, two central columns,
-        // and a pair of diagonal interior cover walls.
-        spawn1: { x: 300, y: 487 }, spawn2: { x: 1454, y: 487 },
-        obstacles: [
-            { x: 820, y: 487, r: 30, seed: 1.1 }, { x: 934, y: 487, r: 30, seed: 4.4 }
-        ],
-        terrain: [
-            { type: 'step', x: 877, y: 150, hw: 300, hd: 50, height: 30 },
-            { type: 'step', x: 877, y: 824, hw: 300, hd: 50, height: 30 },
-            { type: 'step', x: 170, y: 487, hw: 50, hd: 220, height: 30 },
-            { type: 'step', x: 1584, y: 487, hw: 50, hd: 220, height: 30 }
-        ],
-        platforms: [
-            { x: 560, y: 300, hw: 50, hd: 50, height: 62 },
-            { x: 1194, y: 674, hw: 50, hd: 50, height: 62 },
-            // 250 -> 225 (Batch 15): comfortable Double Jump reach from the
-            // height-62 cover blocks (gap 163). Still a full sight-blocker.
-            { x: 560, y: 674, hw: 26, hd: 110, height: 225 },
-            { x: 1194, y: 300, hw: 26, hd: 110, height: 225 }
-        ]
-    },
-    {
-        name: 'Skyreach Spire',
-        accent: '#f43f5e', fogColor: '#170a0d',
-        // Batch 26 REDESIGN. Still the vertical map - tiers climbing to a high
-        // central throne - but this was the worst offender: both spawns sat at
-        // y=750, the SAME side of the arena, and the tiers climbed from only one
-        // of them. spawn2 is now the true 180-degree opposite of spawn1 and each
-        // tier is mirrored, which turns the climb into a race instead of a head
-        // start.
-        //
-        // Tiers: ground -> 60 -> 140 -> 230 (throne). Largest gap 90, inside the
-        // 96.4-unit single-jump ceiling.
-        spawn1: { x: 230, y: 750 }, spawn2: { x: 1525, y: 225 },
-        obstacles: rotSym([
-            { x: 600, y: 780, r: 26, seed: 0.5 }
-        ]),
-        terrain: rotSym([
-            { type: 'step', x: 877, y: 820, hw: 130, hd: 45, height: 18 },
-            { type: 'ramp', x: 400, y: 720, hw: 90, hd: 70, axis: 'x', from: 0, to: 22 }
-        ]),
-        platforms: rotSym([
-            { x: 700, y: 700, hw: 95, hd: 78, height: 60 },
-            { x: 1000, y: 620, hw: 82, hd: 68, height: 140 },
-            { x: 480, y: 340, hw: 26, hd: 150, height: 265 },   // tall lane divider
-            { x: 877.5, y: 487.5, hw: 80, hd: 64, height: 230 } // the spire throne
-        ])
-    },
-    {
-        name: 'The Shattered Bridge',
-        accent: '#0ea5e9', fogColor: '#081019',
-        // Two shores linked by a chain of stepping-stones down the middle,
-        // with long interior walls dividing the north and south lanes.
-        spawn1: { x: 200, y: 487 }, spawn2: { x: 1554, y: 487 },
-        obstacles: [
-            { x: 420, y: 250, r: 24, seed: 0.3 }, { x: 420, y: 724, r: 24, seed: 1.8 },
-            { x: 1334, y: 250, r: 24, seed: 3.2 }, { x: 1334, y: 724, r: 24, seed: 4.6 }
-        ],
-        terrain: [],
-        platforms: [
-            { x: 640, y: 487, hw: 46, hd: 46, height: 55 },
-            { x: 790, y: 487, hw: 42, hd: 42, height: 95 },
-            { x: 965, y: 487, hw: 42, hd: 42, height: 95 },
-            { x: 1115, y: 487, hw: 46, hd: 46, height: 55 },
-            // 270 -> 255 (Batch 15): comfortable Double Jump reach from the
-            // height-95 stepping stones (gap 160). Still a full sight-blocker.
-            { x: 877, y: 250, hw: 230, hd: 26, height: 255 },
-            { x: 877, y: 724, hw: 230, hd: 26, height: 255 }
-        ]
-    },
-    {
-        name: 'Molten Foundry',
-        accent: '#ff6a00', fogColor: '#140a06',
-        // Basalt forge: a central dais flanked by two tall lava-wall dividers.
-        spawn1: { x: 260, y: 487 }, spawn2: { x: 1494, y: 487 },
-        obstacles: [
-            { x: 620, y: 280, r: 34, seed: 0.4 }, { x: 1134, y: 280, r: 34, seed: 1.7 },
-            { x: 620, y: 694, r: 34, seed: 2.9 }, { x: 1134, y: 694, r: 34, seed: 4.2 }
-        ],
-        terrain: [
-            { type: 'step', x: 877, y: 200, hw: 200, hd: 36, height: 30 },
-            { type: 'step', x: 877, y: 774, hw: 200, hd: 36, height: 30 }
-        ],
-        platforms: [
-            { x: 877, y: 487, hw: 100, hd: 80, height: 75 },
-            // 270 -> 238 (Batch 15): comfortable Double Jump reach from the
-            // height-75 central platform (gap 163). Still a full sight-blocker.
-            { x: 520, y: 487, hw: 26, hd: 130, height: 238 },
-            { x: 1234, y: 487, hw: 26, hd: 130, height: 238 }
-        ]
-    },
-    {
-        name: 'Overgrown Sanctuary',
-        accent: '#3ddc84', fogColor: '#0a1408',
-        // Jungle ruins: idol columns, two raised mossy platforms, and long
-        // lane-dividing walls north and south.
-        spawn1: { x: 220, y: 250 }, spawn2: { x: 1534, y: 724 },
-        obstacles: [
-            { x: 560, y: 300, r: 32, seed: 0.6 }, { x: 1194, y: 300, r: 32, seed: 2.0 },
-            { x: 560, y: 674, r: 32, seed: 3.3 }, { x: 1194, y: 674, r: 32, seed: 4.8 },
-            { x: 877, y: 487, r: 30, seed: 1.2 }
-        ],
-        // Batch 26: this ramp had no twin, so only one player had a walk-up.
-        terrain: rotSym([
-            { type: 'ramp', x: 340, y: 640, hw: 80, hd: 70, axis: 'x', from: 0, to: 30 }
-        ]),
-        platforms: [
-            { x: 400, y: 250, hw: 70, hd: 70, height: 60 },
-            { x: 1354, y: 724, hw: 70, hd: 70, height: 60 },
-            // 250 -> 222 (Batch 15). NOTE (Batch 26): the original note here
-            // claimed this was "comfortable Double Jump reach from the
-            // height-60 cover blocks (gap 162)". Only the HEIGHT gap is 162 -
-            // those blocks sit 227 units away horizontally, so this wall is not
-            // actually reachable from them by any jump. That is fine and
-            // intended: it is a lane divider, not a perch (see the MAPS header
-            // comment). mapscheck.js now asserts dividers stay unclimbable.
-            { x: 877, y: 250, hw: 180, hd: 26, height: 222 },
-            { x: 877, y: 724, hw: 180, hd: 26, height: 222 }
-        ]
-    },
-    {
-        name: 'Skyward Temple',
-        accent: '#ffd24a', fogColor: '#12100a',
-        // Bright gilded temple: a high central dais climbed via a ramp and
-        // low side platforms, ringed by columns.
-        spawn1: { x: 230, y: 487 }, spawn2: { x: 1524, y: 487 },
-        obstacles: [
-            { x: 700, y: 300, r: 30, seed: 0.5 }, { x: 1054, y: 300, r: 30, seed: 1.9 },
-            { x: 700, y: 674, r: 30, seed: 3.1 }, { x: 1054, y: 674, r: 30, seed: 4.5 }
-        ],
-        // Batch 26: the ramp onto the central dais existed only on the west
-        // side, so P1 could walk up while P2 had to jump. Mirrored.
-        terrain: rotSym([
-            { type: 'step', x: 877, y: 180, hw: 160, hd: 40, height: 30 },
-            { type: 'ramp', x: 400, y: 487, hw: 90, hd: 120, axis: 'x', from: 0, to: 45 }
-        ]),
-        // Batch 26: the side steps sat 142 units from the dais edge. Clearing
-        // that needs the full ~43-frame airtime AND a fast character - Kaelen
-        // covers ~145 units, Draven only ~81 - so the map's own documented
-        // "dais climbed via a ramp and low side platforms" was unclimbable for
-        // half the roster. Moved to a 42-unit gap, which every character makes.
-        platforms: rotSym([
-            { x: 877.5, y: 487.5, hw: 90, hd: 75, height: 120 },  // centre dais: its own twin
-            { x: 700, y: 487.5, hw: 45, hd: 45, height: 60 }      // step up to it
-        ])
-    },
-    {
-        name: 'Coral Hollow',
-        accent: '#ff7fb0', fogColor: '#0a1414',
-        // Reef hollow: coral columns at the corners, a stepping-stone chain
-        // across the middle, and two low cover pieces.
-        spawn1: { x: 200, y: 400 }, spawn2: { x: 1554, y: 574 },
-        obstacles: [
-            { x: 480, y: 250, r: 28, seed: 0.3 }, { x: 480, y: 724, r: 28, seed: 1.6 },
-            { x: 1274, y: 250, r: 28, seed: 3.0 }, { x: 1274, y: 724, r: 28, seed: 4.4 },
-            { x: 877, y: 300, r: 26, seed: 1.1 }, { x: 877, y: 674, r: 26, seed: 5.0 }
-        ],
-        terrain: [],
-        platforms: [
-            { x: 660, y: 487, hw: 45, hd: 45, height: 55 },
-            { x: 877, y: 487, hw: 42, hd: 42, height: 95 },
-            { x: 1094, y: 487, hw: 45, hd: 45, height: 55 },
-            { x: 560, y: 487, hw: 40, hd: 80, height: 65 },
-            { x: 1194, y: 487, hw: 40, hd: 80, height: 65 }
-        ]
-    }
-];
 
 loadMap(MAPS[Math.floor(Math.random() * MAPS.length)]);
 
@@ -5509,15 +4457,6 @@ loadMap(MAPS[Math.floor(Math.random() * MAPS.length)]);
 
 
 
-// Batch 24: a special's damage lives in character data (see CHARACTERS) rather
-// than as a literal inside its doSpecial case, because the shop and select
-// screen now display it — a number in the switch plus a number in the UI would
-// have been two copies free to drift apart.
-//
-// A function DECLARATION, not a const arrow: this is read from doSpecial, which
-// can't run before load finishes, but declarations hoist completely and so
-// can't join this file's long history of temporal-dead-zone regressions.
-const TELEPORT_VIS_MIN = 0;
 // The furthest the drawn body may lag behind the simulation. Uncapped, a
 // long chain of teleports could draw a fighter through a wall.
 function pickTarget(attacker, defaultOpponent) {
@@ -5602,30 +4541,6 @@ function pollGamepad(index) {
         special: justPressed[2], // X
         dodge: justPressed[3]    // Y
     };
-}
-
-// Basic bot obstacle avoidance: if a pillar sits close to the straight
-// line from (fromX, fromY) toward the desired (dirX, dirY) direction,
-// return a lateral push away from it so the bot slides around instead of
-// walking straight into the pillar and stalling there.
-function steerAroundObstacles(fromX, fromY, dirX, dirY) {
-    let steerX = 0, steerY = 0;
-    const dlen = Math.hypot(dirX, dirY) || 1;
-    const dx = dirX / dlen, dy = dirY / dlen;
-    for (const ob of OBSTACLES) {
-        const toObX = ob.x - fromX, toObY = ob.y - fromY;
-        const proj = toObX * dx + toObY * dy;
-        if (proj < 0 || proj > 140) continue; // behind, or too far ahead to matter yet
-        const closestX = fromX + dx * proj, closestY = fromY + dy * proj;
-        const lateral = Math.hypot(ob.x - closestX, ob.y - closestY);
-        if (lateral < ob.r + 30) {
-            const perpX = -dy, perpY = dx;
-            const side = ((ob.x - fromX) * perpX + (ob.y - fromY) * perpY) < 0 ? 1 : -1;
-            steerX += perpX * side;
-            steerY += perpY * side;
-        }
-    }
-    return { steerX, steerY };
 }
 
 class Fighter {
@@ -7305,188 +6220,6 @@ class Fighter {
 // Fighter at spawn. group.userData.bodyMats lists every material that
 // should react to hit-flash / invulnerability / death-fade each frame. ---
 
-// Batch 8: a floating P1/P2 tag above each fighter's head — the other half
-// of mirror-match readability alongside the P2 body tint above. depthTest
-// false so it stays legible even when a pillar or the opposing fighter is
-// between it and the camera.
-function makeNameSprite(text, color) {
-    const c = document.createElement('canvas');
-    c.width = 128; c.height = 32;
-    const ctx = c.getContext('2d');
-    ctx.font = announceFont(20, 700);   // the name sprite above a fighter
-    ctx.fillStyle = color;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, 64, 16);
-    const tex = new THREE.CanvasTexture(c);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-    sprite.scale.set(36, 9, 1);
-    sprite.position.y = 62;
-    return sprite;
-}
-
-// Batch 8: rim/outline pass. A real screen-space outline needs
-// EffectComposer/OutlinePass, which isn't part of the core three.min.js
-// build the brief pinned via jsDelivr — pulling those in would mean a
-// second external module source, against the brief's "Three.js stays the
-// one external dependency" rule. Classic inverted-hull technique instead:
-// for every shadow-casting mesh in a fighter's group (the real body/weapon
-// parts — rings and props don't cast shadows, so this skips them for
-// free), add a slightly-scaled BackSide clone sharing the same geometry.
-// Front faces of the real mesh still win the depth test everywhere except
-// right at the silhouette edge, which is exactly where a rim should show.
-// `opts.color` overrides the derived rim colour and `opts.scale` its thickness.
-// Both exist for Batch 17's boss: this shell is an UNLIT MeshBasicMaterial, so
-// it renders at flat full brightness regardless of scene lighting, and the
-// default (body colour lightened 25%) on a 1.5x-scaled boss with chunky limbs
-// produced a thick pale-cream border that swamped the actual stone body and made
-// the whole boss read as beige plastic. A dark, tighter rim instead gives it a
-// crisp silhouette that holds up on both pale and dark maps.
-function addRimOutline(group, colorHex, opts) {
-    opts = opts || {};
-    const outlineColor = opts.color !== undefined
-        ? new THREE.Color(opts.color).getHex()
-        : new THREE.Color(colorHex).offsetHSL(0, 0, 0.25).getHex();
-    const scale = opts.scale || 1.08;
-    const mat = getCachedMaterial(`rimOutline:${outlineColor}`, () => new THREE.MeshBasicMaterial({ color: outlineColor, side: THREE.BackSide }));
-    const targets = [];
-    // Batch 25: userData.noOutline skips Blender-authored characters. The
-    // inverted-hull trick clones a mesh's geometry into a plain Mesh, which for
-    // a SkinnedMesh would render an un-skinned shell frozen in the bind pose -
-    // and on a 23k-triangle body it would double the vertex count for it. Those
-    // characters read clearly on their own, so they simply don't get an outline.
-    // A rigged character opts out entirely: `noOutline` is inherited down the
-    // subtree, so marking the model root and each weapon holder covers the body
-    // and its props in one check.
-    const optedOut = o => { for (let n = o; n; n = n.parent) if (n.userData && n.userData.noOutline) return true; return false; };
-    group.traverse(node => {
-        if (node.isMesh && node.castShadow && !node.isSkinnedMesh && !optedOut(node)) targets.push(node);
-    });
-    for (const node of targets) {
-        const outline = new THREE.Mesh(node.geometry, mat);
-        outline.position.copy(node.position);
-        outline.rotation.copy(node.rotation);
-        outline.scale.copy(node.scale).multiplyScalar(scale);
-        node.parent.add(outline);
-    }
-}
-
-// makeMat lives in shared/props.js, with the materials it makes.
-
-// --- Humanoid rig shared by all six characters: two legs, a torso, a
-// head, and two shoulder-pivoted arms (each ending in a hand socket group)
-// that weapons attach to and animateWeapon() below swings for attacks.
-// Replaces the old per-character abstract bodies (a box/octahedron/sphere
-// "body" with a floating weapon prop bolted on) with an actual person-
-// shaped silhouette, on request. Local +X is forward, feet at Y=0, same
-// convention every other builder/animator in the file already assumes.
-// Arms hang straight down (-Y) at rest; rotating a shoulder pivot around
-// its local Z axis swings that arm through the X-Y plane — negative
-// swings it backward (wind-up), positive swings it forward (strike/raise).
-// buildHumanoidBase lives in shared/characters.js, with the bodies it builds.
-
-// Batch 28: the first-person arm.
-//
-// This used to be one BoxGeometry(3.4, 3.4, 11) - a bare rectangular stick in
-// the character's flat body colour. It is on screen every frame of every match,
-// so it was the single most-seen piece of art in the game and also the crudest,
-// and it looked nothing like the armoured arm the same character has in third
-// person now that the bodies are Blender-authored.
-//
-// It is now an armoured forearm: a tapered limb, a plated bracer with a raised
-// rim, an armoured glove with knuckle plates, and a thumb - built to read
-// correctly from the one angle a viewmodel is ever seen from. The palette is
-// taken from the fighter, and the plates use the same metal materials as the
-// rebuilt weapons so the hand and the thing it is holding belong together.
-
-// ===========================================================================
-// Batch 36: the first-person arm is CUT FROM THE CHARACTER'S OWN MESH.
-//
-// Requested as "make the arms for each character in first person view look
-// exactly like they do in third-person view, with the same hands and
-// everything else". The viewmodel arm was a hand-built assembly of primitives
-// - a tapered cylinder, a bracer, a box palm, four sphere knuckles - wearing
-// the character's accent colour. That is the best you can do with no model;
-// with a real rigged model in memory it is strictly worse than the truth, and
-// it means Draven's steel gauntlet and Lyra's sleeve look like the same arm
-// painted differently.
-//
-// So: take the loaded SkinnedMesh, keep only the triangles whose vertices are
-// weighted to the weapon-side arm chain, and bake them into a static mesh.
-// Static is correct here rather than a compromise: syncViewmodels animates the
-// viewmodel by moving and rotating the whole HOLDER, never by posing bones, so
-// a skinned arm would cost a skeleton per frame and buy nothing.
-//
-// The result carries the model's own materials, so the hand, the glove, the
-// sleeve and the skin tone are the same objects the opponent sees.
-// The bones whose geometry becomes the viewmodel arm.
-//
-// 'Shoulder' is deliberately NOT in here, and that is the fix for the reported
-// "sometimes look separated and weird". The viewmodel poses UpperArm, LowerArm
-// and Hand to swing the limb forward into view, and leaves Shoulder at rest -
-// it has to, because rotating the shoulder would drag the chest with it. So any
-// triangle weighted to Shoulder STAYS IN THE BIND POSE while everything around
-// it swings forward, and a pauldron or plate left behind in mid-air is exactly
-// what "separated" looked like. No distance or connectivity filter can fix
-// that, because the geometry is genuinely arm geometry - it is simply posed by
-// a bone we are not moving.
-//
-// Losing the pauldron costs nothing: in first person the shoulder is behind the
-// camera. ARM_POSE_CHAIN is what gets posed; ARM_CHAIN is what gets kept, and
-// they are now the same set for exactly this reason.
-// HOW THE WEAPON IS HELD, in the hand the arm actually ends in. Yaw turns the
-// blade inboard across the frame, pitch lifts the tip, roll tilts the flat of
-// the blade toward the light so it reads as a blade rather than a line.
-// How far the whole limb is tipped toward the bottom-right corner.
-const VM_ARM_ROLL = -0.52;
-const VM_PROP_TUNE = {
-    // A hammer is turned so its FACE is across the view, not pointing down it,
-    // and dropped slightly so the head is not level with the crosshair.
-    // yaw 0.34 -> 0.92. Reported as "Draven's weapon is backwards in first
-    // person", and measurable: the grip-to-head vector is the only one on the
-    // roster pointing OUTBOARD. Every other weapon sweeps inboard across the
-    // view - Kaelen -4.8, Nyx -7.1, Thorne -8.2, Voss -2.0, Aurelia -4.8 - and
-    // the hammer measured +4.1, off the right edge of the frame.
-    //
-    // The small yaw was a Batch 46 correction for a real problem (the head was
-    // being seen end-on, "a flat disc or washer on a thin stick") and it
-    // over-shot: turning the head into view also turned the whole weapon out of
-    // it. The roll is what keeps the face across the view, so the yaw can come
-    // back up.
-    // Measured against the rest of the roster rather than eyeballed. The
-    // weapon's own axis, in camera space, should point inboard and into the
-    // screen like everyone else's: Kaelen (0.39, 0.61), Nyx (0.38, 0.76),
-    // Thorne (0.60, 0.70), Voss (0.39, 0.61), Aurelia (0.44, 0.86). The hammer
-    // measured (-0.32, 0.25) with its axis 0.91 straight UP - held vertical and
-    // tipped out of frame, which is what "Draven's weapon is backwards in first
-    // person" was. At yaw 0.92 / roll 0.55 it measures (0.36, 0.58).
-    //
-    // The old roll of 1.35 was a real fix for a real thing - the head being
-    // seen end-on, "a flat disc or washer on a thin stick" - and it over-shot:
-    // rolling that far about the weapon's own axis swings the whole haft
-    // upright. The yaw carries the head across the view instead.
-    hammer: { yaw: 0.92, pitch: -0.12, roll: 0.55 },
-    // A scythe is mostly haft with the blade far out; less yaw keeps the blade
-    // in frame rather than swinging it off the left edge.
-    scythe: { yaw: 0.72, pitch: -0.22, roll: 0.45 },
-    // A whip hangs; rolling it does nothing but hide the coil.
-    whip: { yaw: 0.80, pitch: -0.10, roll: 0.10 },
-    // An orb or a staff head reads from any angle, so they keep it simple and
-    // sit where a caster would actually hold them: up and inboard.
-    orb: { yaw: 0.75, pitch: -0.45, roll: 0.0 },
-    shard: { yaw: 0.75, pitch: -0.45, roll: 0.0 },
-    bolt: { yaw: 0.55, pitch: -0.30, roll: 0.25 },
-};
-function vmPropAngles(atkType) {
-    const t = VM_PROP_TUNE[atkType] || {};
-    return {
-        yaw: t.yaw != null ? t.yaw : VM_PROP_YAW,
-        pitch: t.pitch != null ? t.pitch : VM_PROP_PITCH,
-        roll: t.roll != null ? t.roll : VM_PROP_ROLL,
-    };
-}
-
-const VM_ARM_LENGTH = 30;
 // Pushed further right than the arm needs, so the SEALED SHOULDER CUT leaves
 // the frame. The seal draws the limb's interior rather than the sky (Batch 42),
 // but a dark interior sitting in shot still reads as a hole - and the game's
@@ -7495,247 +6228,6 @@ const VM_ARM_LENGTH = 30;
 // The viewmodel's overall size in camera space, and the mirror that makes the
 // model's left arm read as the player's right one (see finishViewmodel).
 const VM_SCALE = 0.24;
-const VM_ARM_ANCHOR = new THREE.Vector3(3.6, -2.6, -13.6);
-
-// Which bones count as "the arm". Bone names arrive sanitised by three.js
-// (PropertyBinding.sanitizeNodeName strips '.'), so 'UpperArm.L' may be
-// 'UpperArmL' - match on prefix rather than on an exact name.
-function _armTriangles(skinned, side) {
-    const geo = skinned.geometry;
-    const pos = geo.attributes.position;
-    const skinIndex = geo.attributes.skinIndex;
-    const skinWeight = geo.attributes.skinWeight;
-    if (!pos || !skinIndex || !skinWeight || !skinned.skeleton) return null;
-    const armBones = _armBoneIndices(skinned.skeleton, side);
-    if (!armBones.size) return null;
-
-    // A vertex belongs to the arm when MOST of its weight does. Using "any
-    // weight at all" drags in half the chest, because auto-weighting bleeds a
-    // little shoulder influence a long way down the torso.
-    // getX/getY/getZ/getW, NOT getComponent(v, k): getComponent does not exist
-    // on BufferAttribute in three r128 (it was added later), and calling it
-    // throws rather than returning undefined.
-    const GET = ['getX', 'getY', 'getZ', 'getW'];
-    const isArm = new Uint8Array(pos.count);
-    for (let v = 0; v < pos.count; v++) {
-        let armW = 0, total = 0;
-        for (let k = 0; k < 4; k++) {
-            const w = skinWeight[GET[k]](v);
-            if (!(w > 0)) continue;
-            total += w;
-            if (armBones.has(skinIndex[GET[k]](v))) armW += w;
-        }
-        // 0.8, not 0.6. Automatic weighting is a smooth field, so the
-        // shoulder bone bleeds influence a long way down the torso - at 0.6 a
-        // patch of Draven's hip cleared the bar and came along as a floating
-        // shard. True arm vertices are weighted almost entirely to arm bones,
-        // so the threshold can be strict without losing anything real; the
-        // bone-proximity pass below is the backstop for what it still misses.
-        if (total > 0 && armW / total >= 0.8) isArm[v] = 1;
-    }
-
-    const index = geo.index;
-    const triCount = index ? index.count / 3 : pos.count / 3;
-    const keep = [];
-    for (let t = 0; t < triCount; t++) {
-        const a = index ? index.getX(t * 3) : t * 3;
-        const b = index ? index.getX(t * 3 + 1) : t * 3 + 1;
-        const c = index ? index.getX(t * 3 + 2) : t * 3 + 2;
-        // All three, not any: a triangle straddling the shoulder seam would
-        // otherwise stretch from the hand into the chest.
-        if (isArm[a] && isArm[b] && isArm[c]) keep.push(a, b, c);
-    }
-    if (keep.length < 60) return null;    // nothing recognisable was found
-
-    // Reject islands that are NOT ON THE ARM, by distance from the arm's own
-    // bone chain.
-    //
-    // The first attempt kept the largest connected component, on the theory
-    // that an arm is one piece. It is not: armour plates, a sleeve and a hand
-    // are separate shells, so "largest component" kept a single pauldron and
-    // threw the rest away - 5,150 triangles became 558. Measuring against the
-    // BONES instead keeps every shell that sits on the arm and rejects the
-    // stray patch of hip that the weight threshold let through.
-    const chain = [];
-    for (const part of ARM_CHAIN) {
-        for (const b of skinned.skeleton.bones) {
-            const n = b.name || '';
-            if (n.indexOf(part) !== 0) continue;
-            if (n.slice(part.length).replace(/[._]/g, '') !== side) continue;
-            b.updateWorldMatrix(true, false);
-            chain.push(new THREE.Vector3().setFromMatrixPosition(b.matrixWorld));
-            break;
-        }
-    }
-    if (chain.length >= 2) {
-        // Bone positions are in WORLD space; vertices are in the mesh's local
-        // space. Bring the chain into the mesh's space rather than the other
-        // way round - there are three bones and thousands of vertices.
-        skinned.updateWorldMatrix(true, false);
-        const toLocal = new THREE.Matrix4().copy(skinned.matrixWorld).invert();
-        const local = chain.map(v => v.clone().applyMatrix4(toLocal));
-        let chainLen = 0;
-        for (let i = 1; i < local.length; i++) chainLen += local[i].distanceTo(local[i - 1]);
-        // Deliberately loose: an arm's shells stand off the bone by a real
-        // amount, and a false reject is a HOLE in the model. Tightening this
-        // to 0.22 to chase the detached fragment cost Lyra two thirds of her
-        // sleeve and changed Draven by two triangles - which is what proved
-        // distance was never what made the fragment detach. See ARM_CHAIN.
-        const maxDist = Math.max(1e-4, chainLen * 0.45);
-        const _c = new THREE.Vector3(), _ab = new THREE.Vector3(), _ap = new THREE.Vector3();
-        const nearChain = (x, y, z) => {
-            _c.set(x, y, z);
-            let best = Infinity;
-            for (let i = 1; i < local.length; i++) {
-                const a = local[i - 1], b2 = local[i];
-                _ab.subVectors(b2, a);
-                const denom = _ab.dot(_ab);
-                const t = denom <= 1e-12 ? 0 : Math.max(0, Math.min(1, _ap.subVectors(_c, a).dot(_ab) / denom));
-                const d = _c.distanceTo(_ap.copy(a).addScaledVector(_ab, t));
-                if (d < best) best = d;
-            }
-            return best <= maxDist;
-        };
-        // ...and clip anything INBOARD OF THE SHOULDER.
-        //
-        // Two problems, one cut. The weight threshold and the proximity test
-        // together still left a small shard of torso hanging off the shoulder
-        // (it is genuinely close to the shoulder bone, so no distance test can
-        // reject it), and the deltoid end was a ragged hole where the triangles
-        // were sliced. Projecting onto the shoulder-to-hand axis and dropping
-        // everything behind the shoulder removes both - and costs nothing
-        // visually, because in first person the shoulder is behind the camera.
-        const axisA = local[0], axisB = local[local.length - 1];
-        const axis = new THREE.Vector3().subVectors(axisB, axisA);
-        const axisLen2 = Math.max(1e-9, axis.dot(axis));
-        const _pv = new THREE.Vector3();
-        const alongArm = (x, y, z) => _pv.set(x, y, z).sub(axisA).dot(axis) / axisLen2;
-
-        const filtered = [];
-        for (let i = 0; i < keep.length; i += 3) {
-            const a = keep[i], b2 = keep[i + 1], c = keep[i + 2];
-            const cx = (pos.getX(a) + pos.getX(b2) + pos.getX(c)) / 3;
-            const cy = (pos.getY(a) + pos.getY(b2) + pos.getY(c)) / 3;
-            const cz = (pos.getZ(a) + pos.getZ(b2) + pos.getZ(c)) / 3;
-            if (!nearChain(cx, cy, cz)) continue;
-            if (alongArm(cx, cy, cz) < 0.06) continue;   // behind the shoulder
-            filtered.push(a, b2, c);
-        }
-        if (filtered.length >= 60) { keep.length = 0; keep.push(...filtered); }
-
-        // NOTE ON WHAT IS **NOT** DONE HERE.
-        //
-        // Two component filters used to live at this point, both operating on
-        // BIND-POSE positions, and both were no-ops. Measuring the result is
-        // what explained it: the leftover fragment on Draven is a 256-triangle
-        // piece of his tasset that auto-weighting bound to the arm bones, and
-        // in the BIND pose - a T-pose, arm horizontal at shoulder height - it
-        // sits right beside the upper arm. There is nothing to distinguish it
-        // from real arm geometry until the arm is POSED, at which point the arm
-        // swings forward and the tasset stays behind.
-        //
-        // So the detached-piece prune happens after baking instead, on the
-        // posed geometry, where the separation is real and obvious. See
-        // _prunePosedComponents.
-    }
-
-    return keep;
-}
-
-// Builds a viewmodel arm from the character's loaded model, or returns null.
-// Poses the arm chain into a first-person carry, then BAKES THE SKINNED RESULT.
-//
-// The first version baked the BIND pose - a T-pose, arm straight out to the
-// side - and then rigidly rotated the whole slab of geometry to point it into
-// the screen. That is why the arms came out "backwards and sometimes separated
-// and weird": a rigid rotation carries the hand's orientation with it, so the
-// palm ended up facing outward, and the shoulder end was sheared across the
-// direction the deltoid was actually modelled in.
-//
-// Posing the skeleton first and reading the SKINNED vertex positions is the
-// difference between "the arm mesh, turned" and "the arm, held". The bone axes
-// are not guessed: art/pipeline.py built these rigs and documents them -
-//     swing  -> local X, NEGATIVE IS FORWARD, same sign on both sides
-//     spread -> local Z, mirrored on .R
-//     twist  -> local Y, mirrored on .R
-// so a first-person carry is a big negative X on the upper arm (swing it
-// forward), a bend at the elbow, and a little spread to bring it inboard.
-// WHERE THE LIMB SHOULD POINT, not how far to rotate each joint.
-//
-// The first attempt set euler angles on the bones, using art/pipeline.py's
-// documented convention ("swing -> local X, negative = forward"). That
-// convention is real, but it describes the rig's own REST pose, and these
-// characters are bound in a T-POSE: for an arm already pointing straight out
-// to the side, the bone's local X runs along the arm, so rotating about it
-// swings the limb up and down rather than forward. The result was an arm
-// hanging straight down.
-//
-// Directions do not have this problem. Each vector below is in the character's
-// own space - it faces local +X, which is what render3D relies on - and
-// _aimBone works out the rotation that gets there. No axis convention to be
-// wrong about, and it behaves identically on a rig bound in an A-pose.
-//
-// The shape being described is an ordinary first-person carry: upper arm
-// hanging down and a little forward, forearm swung forward into view with the
-// elbow bent, both tucked slightly inboard so the hand sits near the middle of
-// the frame rather than at the edge.
-function _aimBone(bone, child, targetWorldDir) {
-    if (!bone || !child) return;
-    bone.updateWorldMatrix(true, false);
-    child.updateWorldMatrix(true, false);
-    const a = new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld);
-    const b = new THREE.Vector3().setFromMatrixPosition(child.matrixWorld);
-    const from = b.clone().sub(a);
-    if (from.lengthSq() < 1e-10) return;
-    from.normalize();
-    const to = targetWorldDir.clone().normalize();
-    const q = new THREE.Quaternion().setFromUnitVectors(from, to);
-
-    const boneWorldQ = new THREE.Quaternion();
-    bone.matrixWorld.decompose(new THREE.Vector3(), boneWorldQ, new THREE.Vector3());
-    const want = q.multiply(boneWorldQ);          // the world rotation we want
-
-    const parentWorldQ = new THREE.Quaternion();
-    if (bone.parent) {
-        bone.parent.updateWorldMatrix(true, false);
-        bone.parent.matrixWorld.decompose(new THREE.Vector3(), parentWorldQ, new THREE.Vector3());
-    }
-    bone.quaternion.copy(parentWorldQ.invert().multiply(want));
-    bone.updateMatrixWorld(true);
-}
-
-// Bakes the CURRENT pose of a skinned mesh into a plain BufferGeometry,
-// keeping only the triangles listed in `keep`.
-//
-// SkinnedMesh.boneTransform(i, v) does the CPU skinning for one vertex - the
-// same weighted-matrix sum the vertex shader does - which is exactly what is
-// needed to freeze a pose. Normals are recomputed afterwards rather than
-// transformed: three offers no normal equivalent, and for a smooth-shaded limb
-// recomputing is both simpler and correct.
-// Drops connected pieces of a POSED arm that are not on the arm any more.
-//
-// This is the filter that actually removed the reported "sometimes look
-// separated and weird", and it has to run here rather than during triangle
-// selection - see the note in _armTriangles. `chainPts` are the posed bone
-// positions in the same space as the geometry; `radius` is about an arm radius.
-//
-// Vertices are welded by position first: a UV seam duplicates vertices at
-// identical coordinates, and without welding one continuous shell splits into
-// several that each look detached, which would make this filter delete the arm.
-function _sealArmCut(mesh) {
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    const inner = mats[0].clone();
-    inner.side = THREE.BackSide;
-    // Slightly darkened: it is the inside of a limb, not a lit exterior, and at
-    // full brightness the interior reads as a second surface rather than depth.
-    if (inner.color) inner.color.multiplyScalar(0.55);
-    inner.userData.keepMap = true;     // shares the source model's textures
-    const shell = new THREE.Mesh(mesh.geometry, inner);
-    shell.userData.noOutline = true;   // see addRimOutline
-    shell.renderOrder = (mesh.renderOrder || 0) - 1;
-    mesh.add(shell);
-    return shell;
-}
 
 function buildViewmodelArmFromModel(f) {
     const m = charModels[f.name];
@@ -8063,97 +6555,7 @@ function rebuildViewmodels() {
     if (player1) { vmP1 = buildViewmodel(player1, LAYER_P1_VM); camP1.add(vmP1); }
     if (player2) { vmP2 = buildViewmodel(player2, LAYER_P2_VM); camP2.add(vmP2); }
 }
-// Maps a weapon's attack type to a first-person viewmodel motion, so a sword
-// slashes across the view, a dagger jabs, a hammer comes down overhead, fists
-// piston in and out, and casters recoil — instead of one generic lunge.
-function syncViewmodels(dt) {
-    const pairs = [[vmP1, player1], [vmP2, player2]];
-    for (const [vm, f] of pairs) {
-        if (!vm || !f) continue;
-        const bob = Math.sin(arenaTime * 0.08) * 0.35;
-        const bx = vm.userData.baseX, by = vm.userData.baseY, bz = vm.userData.baseZ;
-        const acting = f.atkState !== 'idle' && f.atkKind;
-        const fd = acting ? FRAME_DATA[f.name][f.atkKind] : null;
-        const kind = vm.userData.animKind;
-        let px = bx, py = by + bob, pz = bz, rx = 0, ry = 0, rz = 0;
-        if (acting && fd) {
-            const su = Math.max(1, fd.startup), av = Math.max(1, fd.active), rc = Math.max(1, fd.recovery);
-            if (f.atkKind === 'special') {
-                // Each special has its own elaborate first-person motion.
-                let wind = 0, strike = 0, pg = 1;
-                if (f.atkState === 'startup') wind = 1 - f.atkStateTimer / su;
-                else if (f.atkState === 'active') { wind = 1; strike = 1 - f.atkStateTimer / av; }
-                else { wind = 1; strike = 1; pg = f.atkStateTimer / rc; }
-                const sp = vm.userData.special;
-                if (sp === 'dash') { pz = bz + wind * 3 - strike * 14 * pg; rx = -0.15 * pg; px = bx - strike * 1.5 * pg; } // explosive forward thrust
-                else if (sp === 'groundbreak' || sp === 'shockwave') { const raise = wind * (1 - strike); rx = (-1.2 * raise + 2.0 * strike) * pg; py = by + bob + (raise * 6 - strike * strike * 11) * pg; pz = bz - strike * 4 * pg; } // overhead slam
-                else if (sp === 'flurry') { const p = f.atkState === 'active' ? strike : 0; const reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 2 * 5); pz = bz - reach * 8 - (f.atkState === 'active' ? Math.max(0, 1 - strike * 3) * 4 : 0); px = bx + Math.sin(reach * Math.PI) * 2; } // blink-in stab storm
-                else if (sp === 'ward') { const r = (f.atkState === 'recovery') ? pg : (f.atkState === 'startup' ? wind : 1); rx = -r * 0.6; py = by + bob + r * 3.5; pz = bz + r; } // raise a glowing guard, hold
-                else if (sp === 'thunder') { if (f.atkState === 'active') { rx = -1.0 + strike * 1.6; py = by + bob + 4 - strike * 7; pz = bz - strike * 2; } else { rx = -1.0 * wind; py = by + bob + 4 * wind; pz = bz + wind; } } // point to sky, snap down
-                else if (sp === 'volley') { const r = (f.atkState === 'recovery') ? pg : (f.atkState === 'startup' ? wind : 1); rx = -r * 0.4; ry = (f.atkState === 'active') ? (-0.35 + 0.7 * strike) : 0; py = by + bob + r * 1.5; pz = bz + (f.atkState === 'active' ? Math.abs(Math.sin(strike * Math.PI * 5)) * 1.5 : r); } // sweep the fan
-                else if (sp === 'inferno') { if (f.atkState === 'startup') { pz = bz + wind * 3; py = by + bob - wind * 2; } else { pz = bz - strike * 9 * pg; py = by + bob + strike * 3 * pg; rx = -0.1; } } // draw in, then burst forward
-                else { const t = swingT(f, fd), u = (1 - t) / 2; rz = _vmLerp(1.0, -1.7, u); ry = _vmLerp(-0.55, 0.95, u); rx = _vmLerp(-0.5, 0.5, u); px = bx + _vmLerp(3.5, -4.5, u); py = by + bob + _vmLerp(2, -2.5, u); pz = bz - (f.atkState === 'active' ? 4 : 0); } // reap / bramble — big wide sweep
-            } else if (kind === 'swing') {
-                // Diagonal slash: wind up upper-right, sweep down-left across view.
-                const t = swingT(f, fd), u = (1 - t) / 2; // 0 = wind-up extreme, 1 = follow-through
-                rz = _vmLerp(0.7, -1.35, u); ry = _vmLerp(-0.4, 0.75, u); rx = _vmLerp(-0.45, 0.4, u);
-                px = bx + _vmLerp(2.5, -3.8, u); py = by + bob + _vmLerp(1.6, -2, u);
-                pz = bz - (f.atkState === 'active' ? 3.5 : 0);
-            } else if (kind === 'stab') {
-                let reach = 0;
-                if (f.atkState === 'active') { const p = 1 - f.atkStateTimer / av; reach = Math.max(0, Math.sin(p * Math.PI * 2)); } // two quick thrusts
-                else if (f.atkState === 'startup') reach = -0.25 * (1 - f.atkStateTimer / su); // cock back
-                else reach = 0.12 * (f.atkStateTimer / rc);
-                pz = bz - reach * 9; px = bx + reach * 1.4; rx = -0.1 - reach * 0.15;
-            } else if (kind === 'overhead') {
-                if (f.atkState === 'startup') { const r = 1 - f.atkStateTimer / su; rx = -r * 1.05; py = by + bob + r * 5.5; pz = bz + r * 1.5; }
-                else if (f.atkState === 'active') { const p = 1 - f.atkStateTimer / av; rx = -1.05 + p * 1.8; py = by + bob + 5.5 - p * 10; pz = bz - p * 4; }
-                else { const r = f.atkStateTimer / rc; rx = 0.55 * r; py = by + bob - 2.5 * r; }
-            } else if (kind === 'jab') {
-                let reach = 0;
-                if (f.atkState === 'active') { const p = 1 - f.atkStateTimer / av; reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 4); } // two piston jabs
-                pz = bz - reach * 7; px = bx + Math.sin(reach * Math.PI) * 1.4; rx = -0.06;
-            } else if (kind === 'cast') {
-                // Recoil kick: weapon snaps back + muzzle-up as the shot leaves.
-                if (f.atkState === 'startup') { const r = 1 - f.atkStateTimer / su; pz = bz + r * 2; rx = -r * 0.3; py = by + bob + r; }
-                else if (f.atkState === 'active') { const k = f.atkStateTimer / av; pz = bz + k * 3.5; rx = -k * 0.4; py = by + bob + k * 1.8; }
-                else { const r = f.atkStateTimer / rc; pz = bz + r; }
-            }
-        }
-        vm.position.set(px, py, pz);
-        // The arm's resting roll is part of the BASE, not a one-time setting.
-        // syncViewmodels ASSIGNS rotation every frame, so a roll applied at
-        // build time survives exactly until the first frame - which is how a
-        // carefully-tipped viewmodel ends up flat again in play and fine in
-        // every screenshot taken before the loop runs.
-        vm.rotation.set(rx, ry, rz + (vm.userData.baseRoll || 0));
-        const flash = vm.userData.flash;
-        if (flash) {
-            const t = Math.max(0, (f.muzzleFlash || 0) / 7);
-            flash.visible = t > 0;
-            flash.material.opacity = t;
-            flash.scale.setScalar(0.8 + (1 - t) * 1.8);
-            if (t > 0) flash.material.color.set(hexNum(f.color));
-        }
-        // Magical charge glow for casters: swells through the wind-up.
-        const charge = vm.userData.charge;
-        if (charge) {
-            let c = 0;
-            if (acting && fd) {
-                if (f.atkState === 'startup') c = 1 - f.atkStateTimer / Math.max(1, fd.startup);
-                else if (f.atkState === 'active') c = 1;
-                else c = (f.atkStateTimer / Math.max(1, fd.recovery)) * 0.4;
-            }
-            charge.visible = c > 0.03;
-            charge.material.opacity = 0.55 * c + (f.atkState === 'active' ? 0.3 * Math.abs(Math.sin(arenaTime * 0.5)) : 0);
-            charge.scale.setScalar(0.5 + c * 2.3);
-        }
-    }
-}
-
-// THE PROCEDURAL CHARACTER BODIES live in shared/characters.js, loaded
-// above: one copy, shared with the local build.
-const charModels = {};        // name -> { scene, animations, height }
+        // name -> { scene, animations, height }
 function ensureCharModel(name) {
     if (!name) return Promise.resolve(null);
     if (charModels[name]) return Promise.resolve(charModels[name]);
@@ -8435,220 +6837,6 @@ function buildRiggedCharacter(name) {
 // need exactly the same of it, and keeping one copy is what stopped it being
 // half-ported. See that file's header.
 
-function animateWeapon(f) {
-    const acting = f.atkState !== 'idle' && f.atkKind;
-    const anim = (acting && f.atkKind === 'special' && f.mesh.userData.specialAnim) ? f.mesh.userData.specialAnim : f.mesh.userData.weaponAnim;
-    const arms = armsOf(f);
-    const weapon = f.mesh.userData.weapon;
-    const ws = (weapon && weapon.scale) ? weapon : null; // dual-wielders store an array here — only a single mesh is scalable
-    if (ws) ws.scale.setScalar(1); // reset transient weapon scale each frame (additive body offsets are reset by render3D)
-    const chargeOrb = f.mesh.userData.chargeOrb || null; // set by the caster mesh builders
-    if (chargeOrb) chargeOrb.visible = false;
-    if (!anim) return;
-    const fd = acting ? FRAME_DATA[f.name][f.atkKind] : null;
-
-    // Per-phase amounts: wind (0->1 through startup, held), strike (0->1 across
-    // active), and poseGain that eases the whole pose back to rest in recovery.
-    let wind = 0, strike = 0, poseGain = 1;
-    if (acting && fd) {
-        const su = Math.max(1, fd.startup), av = Math.max(1, fd.active), rc = Math.max(1, fd.recovery);
-        if (f.atkState === 'startup') wind = 1 - f.atkStateTimer / su;
-        else if (f.atkState === 'active') { wind = 1; strike = 1 - f.atkStateTimer / av; }
-        else { wind = 1; strike = 1; poseGain = f.atkStateTimer / rc; }
-    }
-
-    // ---- Basic attack motions ----
-    if (anim.type === 'swing') {
-        const t = acting ? swingT(f, fd) : 0;
-        // The WIND-UP IS CAPPED AGAINST THE STRIKE, because an attack that
-        // travels further backward than forward reads as a swing behind the
-        // fighter however correct its axis is. Nyx is the case that found it:
-        // -60 back against a 105 forward that the shoulder clamp cuts to 95,
-        // and her arm rests further forward than anyone else's (a scythe
-        // carry), so she measured 20 units back against 10 forward.
-        //
-        // Capped rather than re-authored per character: the rule is what
-        // matters, and it holds for whatever the data says next.
-        const fwd = Math.min(SWING_MAX_FWD, anim.fwdDeg);
-        const back = Math.max(anim.backDeg, -SWING_BACK_FRAC * fwd);
-        const deg = t >= 0 ? t * back : -t * fwd;
-        _applyArms(arms, deg, f);
-        if (anim.twistDeg) f.mesh.rotation.y += t * anim.twistDeg * DEG;
-    } else if (anim.type === 'stab') {
-        let reach = 0;
-        if (acting) {
-            if (f.atkState === 'active') { const p = 1 - f.atkStateTimer / Math.max(1, fd.active); reach = 0.5 - 0.5 * Math.cos(p * Math.PI * 2 * readableJabs(anim.jabs, fd.active)); }
-            else if (f.atkState === 'startup') reach = -0.3 * wind;
-            else reach = 0.15 * poseGain;
-        }
-        _applyArms(arms, reach * anim.reachDeg, f);
-    } else if (anim.type === 'flurry') {
-        // A FLURRY THAT IS ACTUALLY DRAWN, which the old one was not.
-        //
-        // "ignis's attack is a snap that doesn't have a smooth animation": his
-        // active window is SIX FRAMES, and the old envelope spent half of each
-        // cycle clamped at zero (max(0, sin) parks an arm for its negative
-        // half) and reset to rest the instant the window ended. Net effect at
-        // 60fps: the arm appeared forward for two frames and was at rest for
-        // every other frame of the attack.
-        //
-        // Now the motion spans the WHOLE action - it leans in through startup,
-        // alternates arms with a half-sine each (no dead half, so every frame
-        // draws a different position), and eases back out through recovery.
-        // Same jab count, same timing data; it is just continuous.
-        // fd is null whenever the fighter is NOT mid-attack, and this branch
-        // runs every frame - reading fd.active unguarded threw on the very
-        // first idle frame and took the whole animation path down with it,
-        // which then made every later measurement in swingcheck a stale value.
-        const jabs = readableJabs(anim.jabs, fd ? fd.active : 1);
-        const halves = Math.max(1, jabs * arms.length);
-        let env = i => 0;
-        if (acting && f.atkState === 'active') {
-            const p = 1 - f.atkStateTimer / Math.max(1, fd.active);
-            const cyc = p * halves;                    // half-cycles elapsed
-            const owner = Math.floor(cyc) % Math.max(1, arms.length);
-            const frac = cyc - Math.floor(cyc);
-            env = i => (i === owner ? Math.sin(Math.PI * frac) : 0.12);
-        } else if (acting && f.atkState === 'startup') {
-            env = () => -0.22 * wind;                  // a small draw back
-        } else if (acting) {
-            env = () => 0.3 * poseGain;                // settle out of the last jab
-        }
-        _reachArms(arms, i => env(i) * anim.reachDeg, f);
-    } else if (anim.type === 'cast') {
-        let raise = 0;
-        if (acting) { if (f.atkState === 'startup') raise = wind; else if (f.atkState === 'active') raise = 1; else raise = poseGain; }
-        _applyArms(arms, raise * (anim.raiseDeg || 90), f);
-        if (ws) ws.scale.setScalar(1 + raise * ((anim.peakScale || 1.6) - 1));
-        _castCharge(chargeOrb, f, wind, strike, poseGain);
-    // ---- Special motions ----
-    } else if (anim.type === 'dash') {
-        _applyArms(arms, (-40 * wind + 120 * strike) * poseGain, f); // draw back, then drive the blade forward
-        const lunge = strike * strike * 26 * poseGain;
-        f.mesh.position.x += f.fx * lunge; f.mesh.position.z += f.fy * lunge;
-        f.mesh.position.y += Math.sin(strike * Math.PI) * 2 * poseGain;
-    } else if (anim.type === 'slam') {
-        const big = anim.big ? 1.25 : 1;
-        _applyArms(arms, (-95 * wind + 150 * strike) * big * poseGain, f); // hoist overhead, crash down
-        f.mesh.position.y += (wind * 5 - strike * strike * 9 * big) * poseGain;
-        if (ws) ws.scale.setScalar(1 + (0.25 * wind + 0.45 * strike) * big);
-    } else if (anim.type === 'reap') {
-        _applyArms(arms, (-60 * wind + 70 * strike) * poseGain, f);
-        f.mesh.rotation.y += -Math.PI * 2 * strike * poseGain; // full spinning reap
-        f.mesh.position.y += Math.sin(strike * Math.PI) * 5 * poseGain;
-        if (ws) ws.scale.setScalar(1 + 0.2 * Math.sin(strike * Math.PI));
-    } else if (anim.type === 'blinkflurry') {
-        const jabs = anim.jabs || 5, reachDeg = anim.reachDeg || 105;
-        const on = f.atkState === 'active';
-        const phase = on ? strike * Math.PI * 2 * jabs : 0;
-        _reachArms(arms, i => {
-            const sv = on ? Math.max(0, Math.sin(phase + i * Math.PI))
-                          : (f.atkState === 'startup' ? -0.3 * wind : 0);
-            return sv * reachDeg * (on ? 1 : poseGain);
-        }, f);
-        if (on) { const blink = Math.max(0, 1 - strike * 3); f.mesh.position.x += f.fx * 10 * blink; f.mesh.position.z += f.fy * 10 * blink; } // quick blink-in
-    } else if (anim.type === 'skybolt') {
-        const armDeg = (f.atkState === 'active') ? (-150 + 230 * strike) : -150 * wind; // point to sky, then snap down-forward
-        _applyArms(arms, armDeg * poseGain, f);
-        f.mesh.position.y += wind * 2 * poseGain;
-        if (ws) ws.scale.setScalar(1 + wind * 0.7 + Math.sin(strike * Math.PI) * 1.1);
-        _castCharge(chargeOrb, f, wind, strike, poseGain);
-    } else if (anim.type === 'flameburst') {
-        if (f.atkState === 'startup') { _applyArms(arms, -50 * wind, f); f.mesh.position.y -= 4 * wind; }
-        else { _applyArms(arms, (-50 + 160 * strike) * poseGain, f); f.mesh.position.y += (-4 + strike * 7) * poseGain; }
-        if (ws) ws.scale.setScalar(1 + strike * 0.7);
-    } else if (anim.type === 'volley') {
-        const raise = (f.atkState === 'recovery') ? poseGain : (f.atkState === 'startup' ? wind : 1);
-        _applyArms(arms, raise * 95, f);
-        if (f.atkState === 'active') f.mesh.rotation.y += (-0.35 + 0.7 * strike) * poseGain; // sweep the fan across
-        if (ws) ws.scale.setScalar(1 + 0.5 * Math.abs(Math.sin(strike * Math.PI * 5)) + raise * 0.3);
-        _castCharge(chargeOrb, f, wind, strike, poseGain);
-    } else if (anim.type === 'ward') {
-        const raise = (f.atkState === 'recovery') ? poseGain : (f.atkState === 'startup' ? wind : 1);
-        _applyArms(arms, raise * 82, f);
-        if (ws) { ws.scale.setScalar(1 + raise * 0.9); ws.rotation.y += 0.06 * raise; }
-        f.mesh.position.y += Math.sin(arenaTime * 0.12) * 0.6 * raise;
-        _castCharge(chargeOrb, f, wind, strike, poseGain);
-    } else if (anim.type === 'whipsweep') {
-        const t = acting ? swingT(f, fd) : 0;
-        const deg = t >= 0 ? t * -70 : -t * 130;
-        _applyArms(arms, deg, f);
-        f.mesh.rotation.y += t * 80 * DEG; // big body twist for the wide lash
-        f.mesh.position.y += Math.abs(t) * 2;
-    }
-}
-// Magical charge glow at a caster's weapon core: swells + brightens through
-// the wind-up, flickers bright on release, fades out through recovery.
-function createEffectMesh(e, originX, originY) {
-    if (e.type === 'streak') {
-        const dx = e.x2 - e.x1, dy = e.y2 - e.y1;
-        const mesh = new THREE.Mesh(
-            new THREE.BoxGeometry(Math.max(1, Math.hypot(dx, dy)), 3, 6),
-            new THREE.MeshBasicMaterial({ color: new THREE.Color(`rgb(${e.color})`), transparent: true, opacity: 1 })
-        );
-        mesh.position.set(worldX((e.x1 + e.x2) / 2), 8, worldZ((e.y1 + e.y2) / 2));
-        mesh.rotation.y = -Math.atan2(dy, dx);
-        scene.add(mesh);
-        return mesh;
-    }
-
-    if (e.type === 'shockwaveRing') {
-        const mesh = new THREE.Mesh(
-            getCachedGeometry('shockwaveRing', () => new THREE.RingGeometry(0.82, 1, 40)),
-            new THREE.MeshBasicMaterial({ color: new THREE.Color(`rgb(${e.color})`), transparent: true, opacity: 0.8, side: THREE.DoubleSide })
-        );
-        mesh.rotation.x = -Math.PI / 2;
-        mesh.position.set(worldX(originX), 2, worldZ(originY));
-        scene.add(mesh);
-        return mesh;
-    }
-
-    // Slash/dagger are attacker-centered sweeping cones — render the real
-    // arc (matching the hit cone's halfAngle) instead of a full ring, and
-    // orient it via rotateOnWorldAxis so composing the flattening rotation
-    // with the facing yaw can't land in an ambiguous combined-Euler state.
-    if (e.type === 'slash' || e.type === 'dagger' || e.type === 'scythe' || e.type === 'whip') {
-        const isDagger = e.type === 'dagger';
-        const radius = (e.range || (isDagger ? 55 : 65)) * (isDagger ? 0.55 : 0.75);
-        const bandInner = isDagger ? radius - 3 : radius - 8;
-        const segs = isDagger ? 16 : 24;
-        const geoKey = `arc:${bandInner.toFixed(2)}:${radius.toFixed(2)}:${segs}:${e.halfAngle.toFixed(4)}`;
-        const mesh = new THREE.Mesh(
-            getCachedGeometry(geoKey, () => new THREE.RingGeometry(Math.max(1, bandInner), radius, segs, 1, -e.halfAngle, e.halfAngle * 2)),
-            new THREE.MeshBasicMaterial({ color: new THREE.Color(`rgb(${effectColor(e)})`), transparent: true, opacity: 0.85, side: THREE.DoubleSide })
-        );
-        mesh.rotation.x = -Math.PI / 2;
-        mesh.position.set(worldX(originX), 6, worldZ(originY));
-        mesh.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), e.angle);
-        scene.add(mesh);
-        return mesh;
-    }
-
-    // Punch/hammer are offset impact bursts, not swept cones — a chunky
-    // low-segment ring (near-polygonal) reads as a burst rather than a
-    // smooth circle, and is cheap to tell apart from slash/dagger at a glance.
-    let px = originX, py = originY, radius, segments;
-    if (e.type === 'punch') { px += Math.cos(e.angle) * (e.range || 60) * 0.6; py += Math.sin(e.angle) * (e.range || 60) * 0.6; radius = 18; segments = 8; }
-    else if (e.type === 'hammer') { px += Math.cos(e.angle) * (e.range || 75) * 0.6; py += Math.sin(e.angle) * (e.range || 75) * 0.6; radius = 27; segments = 10; }
-    else { radius = 24; segments = 28; } // ward
-
-    const mesh = new THREE.Mesh(
-        getCachedGeometry(`burst:${e.type}:${radius}:${segments}`, () => new THREE.RingGeometry(Math.max(1, radius - 5), radius, segments)),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(`rgb(${effectColor(e)})`), transparent: true, opacity: 0.8, side: THREE.DoubleSide })
-    );
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(worldX(px), 2, worldZ(py));
-    scene.add(mesh);
-    return mesh;
-}
-
-// --- Menu setup: both players pick independently and simultaneously.
-// Picking a fighter doesn't lock it in — it opens a description panel
-// (stats + abilities) filling that player's half of the screen. Attack
-// confirms, Special backs out to the roster. The fight starts the moment
-// both sides have confirmed. ---
-
-let botDifficulty = 'normal';
 
 // Reflects each side's bot state into the UI: toggles the button label/
 // highlight, swaps that side's fighter grid for the "Bot Fighter (random
@@ -8758,15 +6946,6 @@ function refreshGridLocks() {
 // guest who does press Z still selects - nothing is taken away.
 buildGrid('p1-grid', P1_KEYS, 'p1');
 buildGrid('p2-grid', P1_KEYS, 'p2');
-
-function specialDamageText(c) {
-    if (c.specialKind === 'shield') return 'Shield';
-    const hits = c.specialHits || 1;
-    let t = String(specialDamageValue(c));
-    if (hits > 1) t += ` (${c.specialDmg}×${hits})`;
-    if (c.specialDot) t += ' incl. burn';
-    return t;
-}
 
 // The shared body of a character write-up. Rendered BOTH on the select screen
 // (wrapped in Confirm/Back by buildDetailHTML) and inside the Shop's pre-purchase
@@ -9204,26 +7383,6 @@ function buildShop() {
         list.appendChild(card);
     });
 }
-// --- Batch 19: game-mode select. A modal following the mapselect precedent
-// (opened mid-flow, closes back to whatever was underneath) rather than a new
-// top-level screen. Deliberately NOT a gate in front of fighter-select:
-// 'classic' is already a valid choice, so nothing needs to be blocked until a
-// mode is explicitly chosen — same flag-don't-block stance as the existing
-// mirror-match handling. ---
-// Every mode is available online now, co-op included.
-//
-// Batch 34 excluded the co-op modes with a real reason: their enemies are
-// AI-driven, AI was not part of the netcode, and two clients each running their
-// own boss from their own frame timing diverge on the first hit. The reason was
-// sound; the conclusion - leave them out - was only correct while nothing
-// owned the enemies.
-//
-// Batch 42 gives them an owner. The HOST simulates every co-op enemy and
-// broadcasts their state; the guest never runs enemy AI at all and draws them
-// from the wire, exactly as it already does for the opponent fighter. That is
-// the same authority model the rest of the netcode uses, applied to a third
-// party instead of a second one - see netCoopState / coopIsPuppet.
-function onlineModes() { return MATCH_MODES.slice(); }
 function buildModeSelect() {
     const list = document.getElementById('modeselect-list');
     if (!list) return;
@@ -10523,11 +8682,7 @@ document.getElementById('btn-quit-to-menu').addEventListener('click', (e) => {
     }
 });
 
-let matchStats = null; // built fresh by startMatch()
-function freshStats() {
-    return { damageDealt: 0, largestHit: 0, specialsUsed: 0 };
-}
-
+ // built fresh by startMatch()
 // Arena Collapse: advances the collapse-tick timer (stepping the target
 // fraction inward), smoothly eases the visible fraction toward that target
 // every frame, and flips on `crushing` once it passes CRUSH_AT_FRAC (see
@@ -10687,55 +8842,6 @@ function updateArenaShrink(dt) {
     syncCrushRigs(dt);
 }
 
-// Visual half of Arena Collapse: shrink the floor plane to the current play
-// bounds and drop any map geometry now outside them into the void, so the
-// arena visibly disappears from the edges inward. Replaces the old red wall
-// slabs (which obscured the fight); nothing is drawn "at" the boundary now —
-// the boundary is simply where the floor and props stop existing.
-function syncArenaCollapse(dt) {
-    dt = dt || 1;
-    if (!floorMesh) return;
-    const xExt = Math.max(1, playRight - playLeft);
-    const zExt = Math.max(1, playBottom - playTop);
-    floorMesh.scale.x = xExt / floorBaseSize.w;
-    floorMesh.scale.y = zExt / floorBaseSize.d; // plane's local Y maps to world Z after the -90° flip
-    floorMesh.position.set(worldX((playLeft + playRight) / 2), 0, worldZ((playTop + playBottom) / 2));
-    syncOuterWalls(); // the four enclosing walls physically slide inward with the bounds
-
-    // Each pillar/terrain/platform: once its game-space position is outside
-    // the shrinking bounds, it starts falling (drops straight down through
-    // where the floor used to be) and is hidden once well below — a clean
-    // per-instance transform, no shared-material opacity to worry about.
-    for (const o of mapEdgeObjects) {
-        if (!o.falling && (o.x < playLeft || o.x > playRight || o.y < playTop || o.y > playBottom)) {
-            o.falling = true;
-        }
-        if (o.falling && o.mesh.visible) {
-            o.mesh.position.y -= 3.5 * dt;
-            if (o.mesh.position.y < -180) o.mesh.visible = false;
-        }
-    }
-}
-
-// Pushbox: keeps the two fighters from ever standing exactly on top of
-// each other. Circle-to-circle against their footprint radius; ignored
-// if one is well above the other in height (mid-jump over/past them).
-function resolvePlayerCollision(a, b) {
-    if (Math.abs(a.z - b.z) > 40) return;
-    const ax = a.x + a.width / 2, ay = a.y + a.height / 2;
-    const bx = b.x + b.width / 2, by = b.y + b.height / 2;
-    const dx = bx - ax, dy = by - ay;
-    const dist = Math.hypot(dx, dy) || 1;
-    const minDist = a.width / 2 + b.width / 2 - 8; // small overlap allowance so melee doesn't feel like a wall
-    if (dist < minDist) {
-        const push = (minDist - dist) / 2;
-        const nx = dx / dist, ny = dy / dist;
-        a.x -= nx * push; a.y -= ny * push;
-        b.x += nx * push; b.y += ny * push;
-        a.clampToArena(); b.clampToArena();
-    }
-}
-
 // A "match" is best-of-ROUNDS_TO_WIN "rounds". startMatch() resets
 // everything match-scoped (round wins, stats, map) and starts round 1;
 // startRound() (called again between rounds by endRound()) resets only
@@ -10853,10 +8959,6 @@ function startMatchNow() {
     startRound(true); // the first round of a match opens with the drop-in intro cinematic
 }
 
-// --- Intro drop-in cinematic: at match start both fighters plummet from the
-// sky into the arena, frozen, then a "FIGHT!" flash unlocks control. In first
-// person each player's own view falls with them, right into the arena. ---
-let introTimer = 0, introPhase = 'drop';
 // The intro is timed in MILLISECONDS, not in accumulated frame-units.
 //
 // dt is clamped to 3 (see computeDt) so a long frame cannot fling the physics
@@ -11749,12 +9851,6 @@ function onBossDefeated() {
     endCoopMatch(true, `${BOSS_NAME} defeated with ${Math.max(0, Math.ceil(player1.hp))} and ${Math.max(0, Math.ceil(player2.hp))} HP left.`);
     return true;
 }
-
-// Who is allowed to run a fighter's respawn clock. The same rule as every
-// other piece of fighter state: each client owns its own, so two machines can
-// never disagree about whether you are back yet. The countdown the other side
-// SEES arrives on the wire (STATE.dn) and is display-only.
-function coopOwnsRespawn(f) { return !netActive() || isLocalSide(sideOf(f)); }
 
 // A KO in co-op. Everything in flight is dropped for the same reason respawn()
 // drops it: a body that comes back already on fire or mid-swing is the classic

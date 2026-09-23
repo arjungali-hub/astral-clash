@@ -85,6 +85,59 @@ def comment_start(text, i):
     return start
 
 
+def definition_span(text, start, chunk_end):
+    """Where a definition really ends: matched braces, or its semicolon.
+
+    Falls back to the whole chunk when the scan looks wrong (it does not
+    understand regex literals), because being wrong in the familiar way beats
+    being wrong in a new one. Mirrors art/sync_local.py, which is where this was
+    worked out and validated against 1,000 definitions.
+    """
+    i, n = start, len(text)
+    depth, seen_brace, quote = 0, False, None
+    is_block = text.startswith('function', start) or text.startswith('class', start)
+    end = None
+    while i < n:
+        c = text[i]
+        if quote:
+            if c == chr(92):
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+            i += 1
+            continue
+        if c == '/' and i + 1 < n and text[i + 1] == '/':
+            j = text.find(chr(10), i)
+            i = n if j < 0 else j + 1
+            continue
+        if c == '/' and i + 1 < n and text[i + 1] == '*':
+            j = text.find('*/', i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        if c in ('"', "'", '`'):
+            quote = c
+            i += 1
+            continue
+        if c == '{':
+            depth += 1
+            seen_brace = True
+        elif c == '}':
+            depth -= 1
+            if is_block and seen_brace and depth == 0:
+                end = i + 1
+                break
+        elif c == ';' and not is_block and depth == 0:
+            end = i + 1
+            break
+        i += 1
+    if end is None or end > chunk_end or end <= start or text[end - 1] not in '};':
+        return chunk_end
+    nl = text.find(chr(10), end)
+    if nl != -1 and not text[end:nl].strip():
+        return nl + 1
+    return end
+
 def definitions(text):
     """name -> (kind, source), for every column-0 definition.
 
@@ -104,7 +157,13 @@ def definitions(text):
     for k, m in enumerate(hits):
         name = m.group(1) or m.group(3) or m.group(5)
         kind = 'function' if m.group(1) else (m.group(2) or m.group(4))
-        end = starts[k + 1] if k + 1 < len(hits) else len(text)
+        chunk_end = starts[k + 1] if k + 1 < len(hits) else len(text)
+        # The definition ENDS where it ends. Running to the next one swept up
+        # whatever top-level statements sat between them, which made two
+        # identical functions look different because of the wiring after them -
+        # and, worse, moved that wiring across builds. randomPick is identical
+        # in both; its chunk was not.
+        end = definition_span(text, m.start(), chunk_end)
         out[name] = (kind, text[starts[k]:end])
     return out
 
