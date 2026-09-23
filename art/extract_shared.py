@@ -50,7 +50,7 @@ OUT = os.path.join(ROOT, 'shared', 'common.js')
 # is why steerAroundObstacles was reported as differing by 176 lines when the
 # difference was entirely in the class below it.
 DEF = re.compile(r'(?m)^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|'
-                 r'(const|let|var)\s+([A-Za-z_$][\w$]*)\s*=|'
+                 r'(const|let|var)\s+([A-Za-z_$][\w$]*)\s*[=;,]|'
                  r'(class)\s+([A-Za-z_$][\w$]*)\b)')
 IDENT = re.compile(r'\b([A-Za-z_$][\w$]*)\b')
 

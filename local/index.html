@@ -1870,7 +1870,6 @@ const DEFAULT_BINDINGS = {
     p1: { up: 'w', down: 's', left: 'a', right: 'd', jump: 'e', attack: 'f', special: 'g', dodge: 'shift', lookUp: 'r', lookDown: 'v' },
     p2: { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', jump: '/', attack: 'k', special: 'l', dodge: '.', lookUp: ';', lookDown: "'" }
 };
- // fighter-select "pick a random fighter" keys (not rebindable; named so the label/handler stay in sync)
 let BINDINGS;
 try {
     const saved = JSON.parse(safeLSGet('astralClashBindings'));
@@ -3354,6 +3353,168 @@ function showLocalPickerOnly() {
 // but plainly wrong once progression mode hides it entirely.
 refreshBotUI('p1'); refreshBotUI('p2');
 
+// ---- Batch 36: player names ----------------------------------------------
+// You name yourself, and that is what everyone sees. "Player 1" / "Player 2"
+// survive only as a fallback for someone who has NOT named themselves, per the
+// request: if neither player has a name the host is Player 1; if exactly one
+// has, the anonymous one is Player 1 (there is no ambiguity, because only one
+// side is wearing a number).
+//
+// Note this deliberately decouples the DISPLAY label from the fighter slot.
+// LOCAL_SIDE stays the mechanical p1/p2 - it decides spawns, HUD sides and
+// which fighter you drive - while the label is a separate presentation
+// concern. Conflating them is what made the old UI talk about "Player 2" when
+// it meant "the person on the other machine".
+function setMyName(raw) {
+    const next = sanitizeName(raw);
+    if (next === myPlayerName) return myPlayerName;
+    myPlayerName = next;
+    try {
+        sessionStorage.setItem(NAME_KEY, myPlayerName);   // this tab, now
+        localStorage.setItem(NAME_KEY, myPlayerName);     // the next new tab
+    } catch (e) {}
+    // Tell the opponent immediately: they are rendering our name on their
+    // screen, so a rename has to cross the wire like a pick does.
+    if (netActive()) netSend({ t: 'NAME', name: myPlayerName });
+    refreshMenuUI();
+    return myPlayerName;
+}
+
+// --- Mouse look and mouse buttons. ---------------------------------------
+// Pointer lock is requested by clicking the canvas during a fight, and released
+// automatically by Escape (the browser does that for us) or when the fight ends.
+function exitPointerLock() {
+    if (document.exitPointerLock) { try { document.exitPointerLock(); } catch (e) {} }
+}
+document.addEventListener('pointerlockchange', () => {
+    pointerLocked = !!document.pointerLockElement;
+    if (!pointerLocked) { mouseDX = 0; mouseDY = 0; }
+});
+document.addEventListener('mousemove', e => {
+    if (!pointerLocked) return;
+    mouseDX += e.movementX || 0;
+    mouseDY += e.movementY || 0;
+});
+// Mouse buttons as synthetic keys, so they reuse keys[]/pressed/consumePress.
+window.addEventListener('mousedown', e => {
+    const el = document.getElementById('gameCanvas');
+    if (wantsPointerLock() && (e.target === el || pointerLocked)) {
+        requestPointerLock();          // click-to-capture, the standard gesture
+        e.preventDefault();
+    }
+    const k = 'mouse' + e.button;
+    if (!keys[k]) pressed.add(k);
+    keys[k] = true;
+});
+window.addEventListener('mouseup', e => { keys['mouse' + e.button] = false; });
+// Right-click is the special, so suppress the context menu over the canvas.
+window.addEventListener('contextmenu', e => {
+    const el = document.getElementById('gameCanvas');
+    if (pointerLocked || e.target === el) e.preventDefault();
+});
+
+ // fighter-select "pick a random fighter" keys (not rebindable; named so the label/handler stay in sync)
+
+// --- Batch 12: meta-progression (coins, character unlocks, per-character
+// stat upgrades). Persisted with the same merge-over-defaults idiom as
+// BINDINGS above, so a save written before a field existed (or a corrupted
+// one) degrades to defaults instead of throwing. ---
+//
+// The roster, the economy and the frame data live in shared/roster.js,
+// which BOTH builds load - see the header there. They were here until
+// Batch 44; the port script used to copy them into the local build
+// after every batch, and that is exactly the kind of duplication that
+// produced "most of the changes seem to have not landed in the legacy
+// version".
+
+// The local player's account, for the many callers that mean "me" rather than
+// "some side".
+function myProg() { return prog(LOCAL_SIDE); }
+const localCamera = () => (LOCAL_SIDE === 'p1' ? camP1 : camP2);
+// Add the cameras to the scene graph so their attached viewmodels (children
+// of the camera) actually render — a child of a camera that isn't in the
+// scene is skipped by the renderer. The cameras themselves render nothing.
+scene.add(camP1, camP2);
+onWindowResize(); // establish real pixel size now that a camera-ish setup exists
+
+           // frames since the crush began; drives the whole sequence
+// ===========================================================================
+// THE SIDE-BY-SIDE CRUSH, AS ITS OWN SCENE.
+//
+// Batch 27 built this cinematic for split-screen, where each half already had
+// its own camera: each half showed one fighter alone with a wall behind, which
+// is what the original drawing asked for. Online there is ONE camera, so the
+// same code showed you only yourself and your opponent's death was invisible.
+//
+// Batch 39 tried staging both fighters onto marks inside the LIVE arena and was
+// reverted, for two reasons that between them say what the right design is:
+//
+//   1. The bodies would not stay put. `render3D` writes `mesh.position` from
+//      the simulation every frame, so anything that moves a fighter for
+//      presentation is overwritten before it is drawn.
+//   2. The arena is still there. Two 300-unit stages need ~640 units of gap,
+//      and at the camera distance that requires, the arena's own collapsing
+//      walls and floor are in shot behind the diorama.
+//
+// Both disappear if the cinematic stops borrowing the arena. So: a separate
+// THREE.Scene with its own lights, its own two stages, and the fighters
+// REPARENTED into it for the duration. Nothing in the main scene is touched,
+// nothing fights render3D (the reparent and the placement happen at RENDER
+// time, after every update has run), and the backdrop is whatever the
+// cinematic wants rather than whatever the level happens to look like.
+//
+// The simulation is completely unaffected: crush damage, the bounds and who
+// dies first are all computed from the real arena positions. This moves only
+// what is drawn.
+// ===========================================================================
+let crushScene = null;          // the cinematic's own scene
+
+// Moves an object into the cinematic scene, remembering where it came from.
+// three.js `add` reparents, so this is also how it is undone.
+function borrowForCrush(obj, parent) {
+    if (!obj) return;
+    crushBorrowed.push({ obj, parent: obj.parent || parent || scene });
+    crushScene.add(obj);
+}
+
+
+// Which mark a fighter stands on. p1 left of frame, p2 right, the same way
+// round on both machines so the two players see the same picture.
+function crushMarkX(f) {
+    return (sideOf(f) === 'p1' ? -1 : 1) * CRUSH_STAGE_HALF;
+}
+
+// The host's single start action: resolve Random to a CONCRETE map (sending
+// the intent would have each side roll its own), tell the guest, and go.
+function startOnline() {
+    if (!netIsHost()) return;
+    if (!(sideReady('p1') && sideReady('p2'))) return;
+    const chosen = selectedMap || MAPS[Math.floor(Math.random() * MAPS.length)];
+    netSend({
+        t: 'START',
+        p1: p1Choice, p2: p2Choice,
+        map: chosen.name, mode: matchMode, difficulty: botDifficulty,
+        // On START as well as on SETUP: a guest that joined late, or
+        // reconnected, has to learn the match is a sandbox from the message
+        // that starts it rather than from one it might have missed.
+        sandbox: sandboxMatch,
+    });
+    closeAllModals();
+    startMatch(chosen);
+}
+
+// A "match" is best-of-ROUNDS_TO_WIN "rounds". startMatch() resets
+// everything match-scoped (round wins, stats, map) and starts round 1;
+// startRound() (called again between rounds by endRound()) resets only
+// the fighters/hazard/pickup/timers, keeping the same map and score.
+// Every model this match needs, so the fighters are never built from a
+// procedural placeholder because a GLB was still in flight.
+function neededModelsReady(mode) {
+    return modelsNeededFor(mode).every(n => !CHAR_MODEL_URLS[n] || charModels[n]);
+}
+
+// Held alongside the bound keys, not instead of them.
+const ARROW_ALTS = { forward: 'arrowup', back: 'arrowdown', strafeLeft: 'arrowleft', strafeRight: 'arrowright' };
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every
 // rematch) just got scene.remove()'d, leaking its geometry/material/texture
@@ -7282,15 +7443,24 @@ document.getElementById('btn-random-p1').addEventListener('click', () => randomP
 document.getElementById('btn-random-p2').addEventListener('click', () => randomPick('p2'));
 
 function previewPick(side, name) {
+    // Batch 32: online, you pick for yourself only. The opponent's choice
+    // arrives as a PICK message.
+    if (netActive() && !isLocalSide(side)) return;
     if (side === 'p1' ? p1IsBot : p2IsBot) return; // bot sides don't get picked by hand
     if (!isCharUnlocked(side, name)) return; // not bought yet — the card's own click handler routes to the Shop
     const stage = side === 'p1' ? p1Stage : p2Stage;
     if (stage === 'confirmed') return; // locked in — must Back out first
     if (side === 'p1') { p1Preview = name; p1Stage = 'preview'; }
     else { p2Preview = name; p2Stage = 'preview'; }
+    // Start fetching this character's model now: previewing is the earliest
+    // moment anyone has expressed interest, and it buys the whole
+    // read-the-panel-and-confirm beat as lead time. See ensureCharModel.
+    ensureCharModel(name);
+    netAnnouncePick(side, name, 'preview');   // let them watch you browse
     showDetail(side, name, false);
     refreshMenuUI();
 }
+
 
 function confirmPick(side) {
     // Nothing previewed means nothing to confirm. The stage check below is not
@@ -7306,18 +7476,24 @@ function confirmPick(side) {
         p2Choice = p2Preview; p2Stage = 'confirmed';
         showDetail('p2', p2Choice, true);
     }
+    netAnnouncePick(side, side === 'p1' ? p1Choice : p2Choice, 'confirmed');
     refreshMenuUI();
-    // NO AUTO-START. Requested as "you should still have to press start fight
-    // after both players confirm in local mode", and the reason is the one
-    // thing this build has that the online one does not: two people at one
-    // keyboard. Auto-starting on the second confirm lets whoever confirms last
-    // decide when the other one is ready. The Start Fight button that
-    // refreshMenuUI() already reveals is now the only way in.
+    // Batch 34: confirming no longer starts anything. It used to auto-start
+    // when your confirm was the action that made both sides ready - which
+    // online means the match begins from whichever client confirmed second,
+    // bypassing the host's arena choice entirely. The host's Start button is
+    // now the only way in.
+    if (!netActive() && sideReady('p1') && sideReady('p2')) beginMatch();
 }
 
 function backToPick(side) {
     if (side === 'p1') { p1Stage = 'pick'; p1Preview = null; p1Choice = null; }
     else { p2Stage = 'pick'; p2Preview = null; p2Choice = null; }
+    // Batch 36: TELL THEM. Backing out used to be silent, so the opponent's
+    // screen kept showing you as ready with your old fighter until you happened
+    // to pick a different one - reported as "when you lock in and then go back,
+    // it still says you have chosen that character until you pick a new one".
+    netAnnouncePick(side, null, 'pick');
     showGrid(side);
     refreshMenuUI();
 }
@@ -7606,14 +7782,16 @@ function startRound(intro) {
     if (player1) player1.disposeMesh();
     if (player2) player2.disposeMesh();
     loadMap(matchMap);
-    // Before anyone can fire: a light added mid-fight recompiles every material
-    // in the scene. See warmCombatShaders.
-    warmCombatShaders([p1Choice && p1Choice.color, p2Choice && p2Choice.color]);
     player1 = new Fighter(p1Choice, matchMap.spawn1.x, matchMap.spawn1.y, true, p1IsBot);
     player2 = new Fighter(p2Choice, matchMap.spawn2.x, matchMap.spawn2.y, false, p2IsBot);
     player1.initMesh();
     player2.initMesh();
     rebuildViewmodels(); // first-person weapon in each player's own view
+    // ...and compile everything this fight will draw, before it draws any of
+    // it. See warmCombatShaders: the first of each material used to compile
+    // mid-fight, which measured as a single 9,858ms frame.
+    warmCombatShaders([player1.color, player2.color,
+                       ...coopEnemies.map(e => e && e.color)]);
     loser = null; winner = null; deathPhase = ''; deathTimer = 0; isDraw = false; deathCandidates = [];
     hitStopFrames = 0; cameraShakeMag = 0;
     damageNumbers = []; impactSparks = [];
@@ -7633,8 +7811,13 @@ function startRound(intro) {
     // group), so without this an explicit rematch would stack the new match's
     // enemies on top of the old ones.
     disposeBoss();
-    if (matchMode === 'boss') spawnBossForFight();
-    else if (matchMode === 'survival') spawnNextWave();
+    // Spawning is the host's, and it broadcasts what it made - otherwise the
+    // two machines roll different creatures for the same wave.
+    if (coopIsHost()) {
+        if (matchMode === 'boss') spawnBossForFight();
+        else if (matchMode === 'survival') spawnNextWave();
+        netBroadcastCoopSpawn();
+    }
     roundStartedAt = performance.now();
     if (intro) {
         player1.setFacing(player2.x - player1.x, player2.y - player1.y);
@@ -8702,7 +8885,6 @@ function gameLoop() {
     syncLockHint();
     lastDt = dt;
     fpsSmoothed = fpsSmoothed * 0.9 + (dt > 0.001 ? (60 / dt) : 60) * 0.1;
-    syncTouchUI();
 
     if (gameState === "PAUSED") {
         renderViews(dt); // keep showing the frozen frame under the pause overlay
@@ -8723,7 +8905,22 @@ function gameLoop() {
     updateHitFeedback(dt);
 
     const step = STATE_STEPS[gameState];
-    if (step) step(dt);
+    if (step) { step(dt); hudPainted = true; }   // every step() draws the HUD
+    else if (hudPainted) {
+        // Not a match state (MENU, or a state with no step) - wipe the stale
+        // HUD exactly once. See hudPainted.
+        hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+        hudPainted = false;
+    }
+
+    if (netActive()) {
+        netApplyRemote(dt);            // ease the opponent toward their last report
+        netTick(performance.now());    // and broadcast our own state
+    // ...and, if we own them, the co-op enemies. Same cadence: netTick has
+    // already rate-limited to NET_SEND_HZ, and sending these on a different
+    // clock would put the enemies and the fighters a frame out of step.
+    if (netActive() && netIsHost() && isCoopMode()) netBroadcastCoopState();
+    }
 
     decayCameraShake(dt);
     syncViewmodels(dt);

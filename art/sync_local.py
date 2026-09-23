@@ -43,7 +43,7 @@ SHARED_NAMES = set()
 # `class` included: without it `class Fighter` was invisible here too, and its
 # 1,681 lines were absorbed into the chunk of whatever preceded it.
 _DEF_RE = re.compile(r'(?m)^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|'
-                     r'(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=|'
+                     r'(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*[=;,]|'
                      r'class\s+([A-Za-z_$][\w$]*)\b)')
 
 
@@ -132,8 +132,6 @@ INTERFACE = {
     # only where there is somebody to announce a pick TO. Tried unifying them and
     # the sync refused by name, which is the check working.
     'chooseMap': 'calls the room UI and startOnline',
-    'confirmPick': 'announces the pick to the other client',
-    'previewPick': 'announces the pick to the other client',
 
     # Unified in CODE; the two copies differ only by the engine path, which the
     # rewrite above applies deterministically after the body is copied. Listed
@@ -191,11 +189,9 @@ INTERFACE = {
     'currentScreen': 'different screens exist',
     'startGame': 'entry point',
     'startMatch': 'match framework',
-    'startRound': 'match framework',
     'beginMatch': 'match framework',
     'endMatch': 'match framework',
     'endCoopMatch': 'match framework',
-    'backToPick': 'match framework',
     'togglePause': 'match framework',
     'refreshMenuUI': 'different menus',
     'refreshBotUI': 'bots are per side here',
@@ -206,7 +202,6 @@ INTERFACE = {
     # reference setSandboxMatch, which is online-only. The two-line inlined
     # version here says the same thing. Honest limitation of chunk boundaries,
     # recorded rather than papered over.
-    'gameLoop': 'drives two views and no network tick',
     'onBossDefeated': 'match framework',
 
     # --- progression and the store: one account vs two side-local purses
@@ -2707,7 +2702,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # copy shadows the shared one and silently reintroduces the drift.
     import re as _re
     for m in _re.finditer(r'(?m)^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|'
-                          r'const\s+([A-Za-z_$][\w$]*)\s*=)', common_src):
+                          r'const\s+([A-Za-z_$][\w$]*)\s*[=;,])', common_src):
         name = m.group(1) or m.group(2) or m.group(3)
         pat = ('function %s(' % name) if m.group(1) else ('const %s =' % name)
         if _re.search(r'(?m)^' + _re.escape(pat), dst):

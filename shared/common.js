@@ -4406,3 +4406,192 @@ let debugUnlockAll = safeLSGet(SANDBOX_KEY) === '1';
 // trap the moment anything else changes.
 function sandboxActive() { return sandboxMatch || (debugUnlockAll && !netActive()); }
 function matchIsSandbox() { return sandboxActive(); }
+
+// ---------------------------------------------------------------------------
+// THE NETWORK SEND PATH, shared.
+//
+// previewPick, confirmPick, backToPick, gameLoop and startRound each forked
+// over exactly one thing: a call into this layer. None of them disagreed about
+// behaviour - the local build had nothing to call, so its copy had the line
+// deleted and drifted from there.
+//
+// Sharing the layer is what stops that recurring. netSend opens with
+// `if (!netActive()) return false;`, and netActive() is false forever in a
+// build that never connects, so every one of these resolves to doing nothing -
+// no branch, no local variant, nothing to keep in step.
+//
+// None of these touch the DOM, which was checked before moving them: the lobby
+// markup is the one thing the local build genuinely lacks, and a net function
+// reaching for it would throw there.
+//
+// The lobby UI itself (refreshRoomUI, startOnline, refreshLobbyUI) is NOT here
+// for that reason, and four definitions still fork because of it.
+
+// Batch 31: which fighter and camera belong to THIS client. Both cameras are
+// still built, because LOCAL_SIDE can be either 'p1' (host) or 'p2' (joiner)
+// and each has the correct layer mask already - only one of them is ever
+// rendered. Functions rather than constants because the fighters are rebuilt
+// every round.
+const localFighter = () => (LOCAL_SIDE === 'p1' ? player1 : player2);
+
+const remoteFighter = () => (LOCAL_SIDE === 'p1' ? player2 : player1);
+
+// ===========================================================================
+// Batch 32: online play over PeerJS.
+//
+// NETCODE MODEL, and why it is not lockstep.
+//
+// The obvious reading of "send input packets and apply them to the opponent" is
+// deterministic lockstep: both clients run the same simulation from the same
+// inputs. That cannot work here, and it is worth writing down so nobody tries:
+//
+//   * `dt` is real elapsed time (computeDt), and every constant in this file is
+//     tuned in frame-units and multiplied by it. Two machines never produce the
+//     same dt sequence, so positions, cooldowns and turn angles diverge on the
+//     first frame.
+//   * `hitStopFrames` skips the simulation entirely for a few frames on hit,
+//     and it is driven by local damage events.
+//   * Pausing is per-client and halts the whole simulation.
+//   * REDUCED_MOTION changes the intro path.
+//   * Per-side progression feeds upgradeMult() into fighter construction, so
+//     two clients with different local saves build genuinely different stats
+//     for the same character.
+//
+// So instead: PEER STATE SYNC, each client authoritative for its own fighter.
+//
+//   * Your fighter is driven by your input, locally, with zero latency.
+//   * You broadcast your fighter's state (position, facing, pitch, action, hp)
+//     at NET_SEND_HZ. The opponent applies it to their copy of you.
+//   * The opponent's fighter on your screen is a puppet: its position comes
+//     from the wire and its local movement simulation is suppressed.
+//   * HITS ARE ATTACKER-AUTHORITATIVE. When your attack connects locally you
+//     see it immediately and send a HIT; the victim applies it to themselves.
+//     Damage is never resolved for an attack thrown by the remote fighter,
+//     because its owner is the one who decides whether it landed. This is the
+//     standard trade (it favours the attacker) and it is the only way to avoid
+//     both clients resolving the same swing and disagreeing.
+//   * Environmental damage (crush, burn) is applied by each client to its OWN
+//     fighter only, for the same reason - otherwise it lands twice.
+//   * The HOST is authoritative for match setup and round/match transitions.
+// ===========================================================================
+const NET_SEND_HZ = 30;
+
+const NET_SEND_MS = 1000 / NET_SEND_HZ;
+
+function netSend(msg) {
+    if (!netActive()) return false;
+    try { net.conn.send(msg); return true; }
+    catch (e) { console.warn('[net] send failed', e && e.message); return false; }
+}
+
+// Eases the puppet toward the last received state. Called every frame, after
+// the fighters have updated.
+//
+// A lerp rather than dead-reckoning on velocity: this game teleports a lot
+// (Kaelen's dash, Voss' blink, Nyx's pull, every dodge), and extrapolating
+// through a teleport predicts confidently in the wrong direction, which looks
+// far worse than arriving a frame or two late. Snapping outright when the gap
+// is large keeps a genuine teleport instant rather than sliding the fighter
+// across the arena.
+const NET_LERP = 0.35;
+
+const NET_SNAP_DIST = 220;
+
+function netApplyRemote(dt) {
+    const st = net.remoteState;
+    const f = remoteFighter();
+    if (!st || !f || !f.isNetPuppet()) return;
+    const k = Math.min(1, NET_LERP * dt);
+    if (Math.hypot(st.x - f.x, st.y - f.y) > NET_SNAP_DIST) {
+        f.x = st.x; f.y = st.y; f.z = st.z;
+    } else {
+        f.x += (st.x - f.x) * k;
+        f.y += (st.y - f.y) * k;
+        f.z += (st.z - f.z) * k;
+    }
+    // Facing is set outright: it is a direction, and easing it makes aim read
+    // as laggy in exactly the situation where you are judging where they point.
+    f.fx = st.fx; f.fy = st.fy;
+    f.pitch = st.pitch || 0;
+}
+
+// ===========================================================================
+// Batch 42: CO-OP OVER THE WIRE.
+//
+// Three messages, matching the three things the guest cannot work out for
+// itself:
+//
+//   COOP_SPAWN  the host made a wave (or a boss). Names, sizes and scaled hp,
+//               so the guest builds the same creatures rather than rolling its
+//               own - Survival picks randomly, so two independent rolls would
+//               produce different fights.
+//   COOP_STATE  where every enemy is and how much hp it has, at NET_SEND_HZ.
+//               The guest never runs enemy AI, so this is its only source.
+//   HIT_ENEMY   the guest's attack connected. Attacker-authoritative, exactly
+//               like the existing HIT for the opponent fighter: whoever swings
+//               decides on their own machine, and the owner applies it.
+//
+// Why the host and not "both simulate and hope": the AI reads `dt`, which is
+// real elapsed time on each machine, so two copies diverge on the first frame
+// and then disagree about position, hp and whether a wave is clear. One owner
+// is the only arrangement that cannot drift.
+// ===========================================================================
+function netBroadcastCoopSpawn() {
+    if (!netActive() || !netIsHost()) return;
+    netSend({
+        t: 'COOP_SPAWN',
+        wave: waveNumber,
+        boss: isBossWave,
+        enemies: coopEnemies.map(e => ({
+            n: e.name,
+            x: Math.round(e.x), y: Math.round(e.y),
+            w: e.width,                  // hitboxSize, for the oversized bodies
+            hp: Math.round(e.maxHp),
+            dmg: +e.attackDmg.toFixed(2),
+            tm: e.telegraphMult,
+        })),
+    });
+}
+
+function netBroadcastCoopState() {
+    if (!netActive() || !netIsHost() || !coopEnemies.length) return;
+    netSend({
+        t: 'COOP_STATE',
+        e: coopEnemies.map(e => ({
+            x: Math.round(e.x), y: Math.round(e.y), z: Math.round(e.z),
+            fx: +e.fx.toFixed(2), fy: +e.fy.toFixed(2),
+            hp: Math.round(e.hp),
+            a: e.atkState === 'idle' ? 0 : 1,
+        })),
+    });
+}
+
+function netTick(now) {
+    if (!netActive()) return;
+    if (now - net.lastSendAt < NET_SEND_MS) return;
+    const f = localFighter();
+    // No fighter means we are on a menu, and the heartbeat interval is already
+    // keeping the link alive - there is no state worth broadcasting.
+    if (!f) return;
+    net.lastSendAt = now;
+    netSend({
+        t: 'STATE',
+        x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10, z: Math.round(f.z * 10) / 10,
+        fx: Math.round(f.fx * 1000) / 1000, fy: Math.round(f.fy * 1000) / 1000,
+        pitch: Math.round((f.pitch || 0) * 1000) / 1000,
+        hp: Math.round(f.hp), meter: Math.round(f.specialMeter),
+        g: !!f.grounded,
+        // Co-op: frames until this fighter is back, 0 when up. Sent rather
+        // than inferred from hp, because hp 0 is also what a fighter looks
+        // like in the instant before their own client has downed them.
+        dn: f.downed ? Math.max(1, Math.round(f.respawnTimer)) : 0,
+    });
+}
+
+// `stage` is 'pick' (browsing, nothing chosen), 'preview' (hovering a fighter)
+// or 'confirmed' (ready). Sending all three is what lets the other player watch
+// you choose instead of seeing nothing until you commit - and it is what makes
+// backing out actually clear on their screen.
+function netAnnouncePick(side, name, stage) {
+    if (netActive() && isLocalSide(side)) netSend({ t: 'PICK', side, name: name || null, stage: stage || 'pick' });
+}
