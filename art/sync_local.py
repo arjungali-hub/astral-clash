@@ -212,7 +212,6 @@ INTERFACE = {
     'openShop': 'two purses',
     'showDetail': 'two purses',
     'buildDetailHTML': 'two purses',
-    'refreshGridLocks': 'two purses',
     'shopExpanded': 'two panels open at once',
     'syncLockHint': 'per side',
     'preloadCharModels': 'preloads both sides at once',

@@ -2279,7 +2279,7 @@ function isCoopMode() { return !!modeInfo().coop; }
 
     // filled by endCoopMatch for the game-over screen
 
-// Which player's account the Shop modal is currently showing. Declared HERE,
+// Which player's account the Armory modal is currently showing. Declared HERE,
 // not next to buildShop() far below, because refreshCoinDisplays() reads it and
 // runs during initial load — a `let` further down the file is still in its
 // temporal dead zone at that point and throws. (Same TDZ trap that has bitten
@@ -3314,6 +3314,31 @@ function warmModelsForMode(mode) {
     if (mode === 'boss') ensureCharModel('Karrigos');
     else if (mode === 'survival') ['Grint', 'Slagling', 'Hollowkin', 'Karrigos'].forEach(ensureCharModel);
 }
+
+// Only the local player picks, so only the local player's grid and detail
+// panel are ever visible. Both remain in the DOM: buildGrid() populates
+// `p1-grid` and `p2-grid` by id at load, the keyboard dispatcher addresses them
+// by id, and the detail panel is per-side - making those ids dynamic to save
+// two hidden divs would have touched far more code than it saved, and a host
+// and a joiner now run byte-identical logic.
+function showLocalPickerOnly() {
+    for (const side of SIDES) {
+        const wrap = document.getElementById(`picker-${side}`);
+        // The WRAPPER, not the grid and detail inside it: showDetail() writes
+        // display straight onto those two, so hiding them individually could be
+        // silently undone by any call that touched the remote side.
+        if (wrap) wrap.style.display = isLocalSide(side) ? 'flex' : 'none';
+    }
+}
+
+// Batch 34: the Difficulty cycler is gone with the bots. `botDifficulty` itself
+// stays - it is still sent in the START packet (harmless, and keeps the wire
+// format stable) and the local split-screen build still uses it.
+// Batch 24: reflect bot state into the panels on FIRST paint too. This used to
+// run only from setDebugUnlockAll/returnToMenu, so a fresh load showed whatever
+// the static HTML said — survivable while the toggle was just greyed out there,
+// but plainly wrong once progression mode hides it entirely.
+refreshBotUI('p1'); refreshBotUI('p2');
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every
@@ -6583,10 +6608,10 @@ function buildGrid(gridId, keyList, side) {
             `<span class="fface" style="background-color:${c.color};background-image:url('${faceUrl(c.name)}')"></span>`
             + `<span class="fmeta"><span><span class="fkey">${keyList[i].toUpperCase()}</span><span class="fname">${c.name}</span></span>`
             + `<span class="ftitle">${c.title}</span></span>`;
-        // A locked card opens the Shop instead of previewing — clicking the
+        // A locked card opens the Armory instead of previewing — clicking the
         // thing you want and being told where to get it beats a dead button.
         btn.addEventListener('click', () => {
-            // A locked card opens the Shop on THIS side's tab, so the fix for
+            // A locked card opens the Armory on THIS side's tab, so the fix for
             // "I can't pick this" is one click from the complaint.
             if (!isCharUnlocked(side, c.name)) { openShop(side); return; }
             previewPick(side, c.name);

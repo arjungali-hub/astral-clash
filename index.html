@@ -536,7 +536,7 @@
            pick is confirmed) — these two "locked" concepts are unrelated and
            must not collide on one class name. A locked card stays visible
            and readable (you should want it) but is desaturated, shows its
-           coin price, and routes clicks to the Shop instead of previewPick. */
+           coin price, and routes clicks to the Armory instead of previewPick. */
         .fighter-btn.roster-locked { border-color: #3b4661; filter: grayscale(0.75) brightness(0.75); }
         .fighter-btn.roster-locked .fname { color: #94a3b8; }
         .fighter-btn.roster-locked:hover { background: #1a2235; box-shadow: none; }
@@ -2424,7 +2424,7 @@ function isCoopMode() { return !!modeInfo().coop; }
 
     // filled by endCoopMatch for the game-over screen
 
-// Which player's account the Shop modal is currently showing. Declared HERE,
+// Which player's account the Armory modal is currently showing. Declared HERE,
 // not next to buildShop() far below, because refreshCoinDisplays() reads it and
 // runs during initial load — a `let` further down the file is still in its
 // temporal dead zone at that point and throws. (Same TDZ trap that has bitten
@@ -6884,10 +6884,10 @@ function buildGrid(gridId, keyList, side) {
             `<span class="fface" style="background-color:${c.color};background-image:url('${faceUrl(c.name)}')"></span>`
             + `<span class="fmeta"><span><span class="fkey">${keyList[i].toUpperCase()}</span><span class="fname">${c.name}</span></span>`
             + `<span class="ftitle">${c.title}</span></span>`;
-        // A locked card opens the Shop instead of previewing — clicking the
+        // A locked card opens the Armory instead of previewing — clicking the
         // thing you want and being told where to get it beats a dead button.
         btn.addEventListener('click', () => {
-            // A locked card opens the Shop on THIS side's tab, so the fix for
+            // A locked card opens the Armory on THIS side's tab, so the fix for
             // "I can't pick this" is one click from the complaint.
             if (!isCharUnlocked(side, c.name)) { openShop(side); return; }
             previewPick(side, c.name);
@@ -6910,7 +6910,7 @@ function refreshGridLocks() {
             const unlocked = isCharUnlocked(side, name);
             btn.classList.toggle('roster-locked', !unlocked);
             const cost = UNLOCK_COST[name];
-            btn.title = unlocked ? CHAR_MAP[name].desc : `Locked — ${cost} coins in the Shop`;
+            btn.title = unlocked ? CHAR_MAP[name].desc : `Locked — ${cost} coins in the Armory`;
             // Swap the hotkey pill for a price pill while locked: the hotkey
             // does nothing on a locked character anyway (previewPick refuses),
             // so showing the price is strictly more useful there.
