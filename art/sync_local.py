@@ -158,6 +158,10 @@ INTERFACE = {
     # one-line helper is not portable yet. Both write the same pill.
     'cycleHudScale': 'inlines refreshHudScaleUI, which cannot travel yet',
 
+    # The online body auto-starts when nobody is connected - a solo path there,
+    # and always-on here, where it skipped the Start Fight button entirely.
+    'confirmPick': 'must not auto-start; this build has a Start button',
+
     # --- rendering: one full-screen camera vs two split-screen viewports
     'renderer': 'split-screen sizing and scissor state',
     'PIXEL_RATIO': 'local pays for two viewports, so it caps lower',
@@ -2497,6 +2501,25 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     for wiring in ("document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());" + chr(10),
                    "document.getElementById('btn-rebind-close').addEventListener('click', closeRebind);" + chr(10)):
         dst = dst.replace(wiring, '')
+
+    # ------------------------------------------- the close X needs its own CSS
+    # ensureModalClose was ported here without it, so `.modal-x` lost to
+    # `.menu-section button` and the X rendered as a full-width cyan bar - the
+    # same specificity trap the online build documents fixing, in the build that
+    # never got the fix.
+    if '.modal-x' not in dst.split('</style>')[0]:
+        xcss = block(src, '        .menu-section .modal-x, .shop-panel .modal-x,',
+                     '        /* An armed destructive action.')
+        dst = rep(dst, '        .settings-list {', xcss + '        .settings-list {',
+                  'modal close X css', required=False)
+
+    # CONFIRMING MUST NOT START THE MATCH HERE. The online body ends with
+    #     if (!netActive() && sideReady('p1') && sideReady('p2')) beginMatch();
+    # which online means "nobody is connected, so there is no host to press
+    # Start". netActive() is false ALWAYS in this build, so both confirms started
+    # the match and the Start Fight button never got its turn.
+    dst = dst.replace(
+        "    if (!netActive() && sideReady('p1') && sideReady('p2')) beginMatch();" + chr(10), '')
 
     # ------------------------------------------------- CSS asset URLs, all of them
     # CSS url() resolves against the DOCUMENT, and this one is a directory down,

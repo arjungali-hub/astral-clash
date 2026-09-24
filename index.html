@@ -1912,6 +1912,12 @@ function ensureModalClose(el) {
     if (!el) return;
     const panel = el.querySelector('.menu-section, .shop-panel, .tutorial-panel');
     if (!panel || panel.querySelector('.modal-x')) return;
+    // NOT where the panel already has a labelled way out. The arena picker has
+    // "Back to Fighters" and the audio panel has "Back to Settings"; adding an X
+    // beside either gives one action two controls, which is the duplication this
+    // was meant to remove rather than create. The X exists for panels that have
+    // nothing else - it stops being an improvement the moment one is there.
+    if (panel.querySelector('.btn-back')) return;
     const x = document.createElement('button');
     x.className = 'modal-x';
     x.type = 'button';

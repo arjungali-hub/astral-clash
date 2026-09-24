@@ -736,6 +736,17 @@
             background: rgba(0, 243, 255, 0.14); border-color: #00f3ff; color: #00f3ff;
         }
         .menu-section .opt { width: 100%; }
+        .menu-section .modal-x, .shop-panel .modal-x, .tutorial-panel .modal-x {
+            position: absolute; top: 8px; right: 8px;
+            width: 30px; height: 30px; min-width: 0; padding: 0; margin: 0;
+            display: flex; align-items: center; justify-content: center;
+            background: transparent; color: #94a3b8;
+            border: 1px solid #2e3a59; border-radius: 6px;
+            font-size: 1.05rem; line-height: 1; box-shadow: none;
+        }
+        .menu-section .modal-x:hover, .shop-panel .modal-x:hover, .tutorial-panel .modal-x:hover {
+            background: #232d47; color: #e2e8f0; box-shadow: none;
+        }
         .settings-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
         .settings-list button { margin: 0; text-align: left; }
         .settings-check {
@@ -3312,6 +3323,12 @@ function ensureModalClose(el) {
     if (!el) return;
     const panel = el.querySelector('.menu-section, .shop-panel, .tutorial-panel');
     if (!panel || panel.querySelector('.modal-x')) return;
+    // NOT where the panel already has a labelled way out. The arena picker has
+    // "Back to Fighters" and the audio panel has "Back to Settings"; adding an X
+    // beside either gives one action two controls, which is the duplication this
+    // was meant to remove rather than create. The X exists for panels that have
+    // nothing else - it stops being an improvement the moment one is there.
+    if (panel.querySelector('.btn-back')) return;
     const x = document.createElement('button');
     x.className = 'modal-x';
     x.type = 'button';
@@ -7483,7 +7500,6 @@ function confirmPick(side) {
     // online means the match begins from whichever client confirmed second,
     // bypassing the host's arena choice entirely. The host's Start button is
     // now the only way in.
-    if (!netActive() && sideReady('p1') && sideReady('p2')) beginMatch();
 }
 
 function backToPick(side) {
