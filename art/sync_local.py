@@ -131,7 +131,6 @@ INTERFACE = {
     # requestResume are the room screen and the away-pause handshake, which exist
     # only where there is somebody to announce a pick TO. Tried unifying them and
     # the sync refused by name, which is the check working.
-    'chooseMap': 'calls the room UI and startOnline',
 
     # Unified in CODE; the two copies differ only by the engine path, which the
     # rewrite above applies deterministically after the body is copied. Listed
@@ -161,6 +160,14 @@ INTERFACE = {
     # The online body auto-starts when nobody is connected - a solo path there,
     # and always-on here, where it skipped the Start Fight button entirely.
     'confirmPick': 'must not auto-start; this build has a Start button',
+
+    # No-ops here on purpose. Both are reached only from `if (netActive())`
+    # branches, which never run in a build that cannot connect - they exist so
+    # the static checks can resolve the names, not to be called. The real ones
+    # paint lobby markup this build does not have, and moving them properly
+    # would drag 17 definitions of dead UI across to delete two forks.
+    'refreshRoomUI': 'a no-op here; there is no room to paint',
+    'startOnline': 'a no-op here; there is nobody to start a match with',
 
     # --- rendering: one full-screen camera vs two split-screen viewports
     'renderer': 'split-screen sizing and scissor state',
@@ -193,7 +200,6 @@ INTERFACE = {
     'currentScreen': 'different screens exist',
     'startGame': 'entry point',
     'startMatch': 'match framework',
-    'beginMatch': 'match framework',
     'endMatch': 'match framework',
     'endCoopMatch': 'match framework',
     'togglePause': 'match framework',
@@ -2520,6 +2526,34 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # the match and the Start Fight button never got its turn.
     dst = dst.replace(
         "    if (!netActive() && sideReady('p1') && sideReady('p2')) beginMatch();" + chr(10), '')
+
+    # ------------------------------------------------ the lobby that is not here
+    # beginMatch and chooseMap both contain
+    #     if (netActive()) { ...; refreshRoomUI(); return; }
+    # and netActive() is false forever here, so the branch never runs and the
+    # body falls through to exactly what this build already did. They forked
+    # only because the checks are static: the safety check will not copy a body
+    # whose names are missing, and the dangling-reference guard will not ship a
+    # build that mentions one. Neither can see that a branch is unreachable, and
+    # they are right not to try.
+    #
+    # Stubs rather than the real thing: moving refreshRoomUI properly drags 17
+    # definitions of lobby UI across, every one painting markup that does not
+    # exist here. Two no-ops is the honest trade.
+    if 'function refreshRoomUI(' not in dst:
+        anchor = 'function openMapSelect() {'
+        dst = rep(dst, anchor,
+                  '// THERE IS NO ROOM IN THIS BUILD. Both of these are reached only from'
+                  + chr(10) +
+                  '// `if (netActive())` branches, and netActive() is false here forever - so'
+                  + chr(10) +
+                  '// they exist to be resolvable, not to be called. Kept as no-ops rather'
+                  + chr(10) +
+                  '// than pulling the whole lobby UI across to paint markup that is absent.'
+                  + chr(10) +
+                  'function refreshRoomUI() { /* no room to paint */ }' + chr(10) +
+                  'function startOnline() { /* nobody to start a match with */ }' + chr(10) * 2
+                  + anchor, 'lobby no-ops')
 
     # ------------------------------------------------- CSS asset URLs, all of them
     # CSS url() resolves against the DOCUMENT, and this one is a directory down,

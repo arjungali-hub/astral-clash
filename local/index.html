@@ -3532,6 +3532,14 @@ function neededModelsReady(mode) {
 
 // Held alongside the bound keys, not instead of them.
 const ARROW_ALTS = { forward: 'arrowup', back: 'arrowdown', strafeLeft: 'arrowleft', strafeRight: 'arrowright' };
+// The confirm/back key hints, read live from the bindings so a rebind shows the
+// real key rather than a stale literal. Batch 34: one player, so this no longer
+// takes a side.
+function pickKeyHint() {
+    const b = BINDINGS;
+    return `${keyLabel(b.attack)} confirm / ${keyLabel(b.special)} back`;
+}
+
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every
 // rematch) just got scene.remove()'d, leaking its geometry/material/texture
@@ -7047,13 +7055,26 @@ function buildMapSelect() {
     });
     mapSelectBuilt = true;
 }
+// THERE IS NO ROOM IN THIS BUILD. Both of these are reached only from
+// `if (netActive())` branches, and netActive() is false here forever - so
+// they exist to be resolvable, not to be called. Kept as no-ops rather
+// than pulling the whole lobby UI across to paint markup that is absent.
+function refreshRoomUI() { /* no room to paint */ }
 function openMapSelect() {
     if (!mapSelectBuilt) buildMapSelect();
     openModal('mapselect'); // overlays the select screen; Back closes it and reveals fighters again
 }
 function chooseMap(map) {
     closeAllModals();
-    startMatch(map || undefined); // undefined = random; startRound() hides the overlay via hideOverlay()
+    // Batch 34: online, choosing an arena is a SETUP decision recorded in the
+    // room, not a start trigger. The host reviews it (and the guest sees it)
+    // before anyone commits. startOnline() does the committing.
+    if (netActive()) {
+        if (netIsHost()) selectedMap = map || null;   // null = Random
+        refreshRoomUI();
+        return;
+    }
+    startMatch(map || undefined); // offline (debug only); startRound() hides the overlay
 }
 document.getElementById('btn-map-random').addEventListener('click', () => chooseMap(null));
 document.getElementById('btn-mapselect-back').addEventListener('click', () => closeModal());
@@ -7244,7 +7265,17 @@ function beginMatch() {
     // effectively the full roster there — but the gate stays correct either way.)
     if (p1IsBot) { const pool = unlockedCharNames('p1'); p1Choice = pool[Math.floor(Math.random() * pool.length)]; }
     if (p2IsBot) { const pool = unlockedCharNames('p2'); p2Choice = pool[Math.floor(Math.random() * pool.length)]; }
-    openMapSelect(); // pick an arena, then the drop-in intro starts the match
+    // Batch 32: online, only the HOST chooses the arena and starts. The joiner
+    // waits for START. One decision-maker means the two clients cannot pick
+    // different maps or race each other into startMatch.
+    if (netActive()) {
+        // Batch 34: nothing happens automatically when both sides lock in any
+        // more. The host chooses the arena in the room and presses Start; the
+        // guest waits. refreshRoomUI() says which of those is true.
+        refreshRoomUI();
+        return;
+    }
+    openMapSelect(); // offline (debug only): pick an arena, then the intro starts
 }
 document.getElementById('btn-start-match').addEventListener('click', () => {
     if (sideReady('p1') && sideReady('p2')) beginMatch();
