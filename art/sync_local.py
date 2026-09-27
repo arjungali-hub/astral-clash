@@ -668,6 +668,65 @@ CSS_INTERFACE = {
 }
 
 
+# Elements that differ BETWEEN THE BUILDS ON PURPOSE. Same contract again: a
+# reason on every entry, and the sync reports any shared id that differs without
+# being listed.
+MARKUP_INTERFACE = {
+    'btn-mapselect-back': 'goes back to the fighter select here, to the room there',
+    'btn-play-again': 'plays again here; returns to the room there, and is styled as a back button for it',
+    # NOT resolved, and deliberately not resolved silently: the two builds call
+    # the same button "Start Fight" and "Start Match". Both are defensible and
+    # it is a wording choice rather than a mechanism gap, so it is left visible
+    # here instead of being changed on nobody's authority.
+    'btn-start-match': 'says "Start Fight" here and "Start Match" there - an open wording question',
+}
+
+
+def close_markup_drift(src, dst):
+    """Copy an element's attributes and label from the online build.
+
+    Only ids present in BOTH builds, and only whole - attributes and text
+    together. They are not independent: btn-play-again is "Back to the Room"
+    with a muted class in one build and "Play Again" in the other, so taking the
+    class without the label would style a primary action as a back button.
+
+    Elements only one build has are untouched. There are 58 of those online (the
+    lobby, the room slots) and 39 here (the per-side controls), and they are the
+    screens that genuinely differ.
+    """
+    def elements(text):
+        i, j = text.index('<body'), text.index('</body>')
+        body = text[i:j]
+        out = {}
+        for m in re.finditer(r'<(' + chr(92) + 'w+)([^>]*' + chr(92) + 'bid="([a-zA-Z][' + chr(92) + 'w-]*)"[^>]*)>', body):
+            tag, attrs, eid = m.group(1), m.group(2), m.group(3)
+            close = body.find('</%s>' % tag, m.end())
+            inner = body[m.end():close] if close != -1 else ''
+            out[eid] = (tag, attrs, inner, m.group(0), '<' in inner)
+        return out
+
+    on, lo = elements(src), elements(dst)
+    copied, undocumented = [], []
+    for eid, (tag, attrs, inner, full, has_children) in on.items():
+        if eid not in lo or eid in MARKUP_INTERFACE:
+            continue
+        l_tag, l_attrs, l_inner, l_full, l_kids = lo[eid]
+        if tag != l_tag or has_children or l_kids:
+            continue                      # containers: their children are their own
+        same_attrs = ' '.join(sorted(attrs.split())) == ' '.join(sorted(l_attrs.split()))
+        same_text = ' '.join(inner.split()) == ' '.join(l_inner.split())
+        if same_attrs and same_text:
+            continue
+        rebuilt = full + inner + '</%s>' % tag
+        old = l_full + l_inner + '</%s>' % l_tag
+        if dst.count(old) != 1:
+            undocumented.append(eid)
+            continue
+        dst = dst.replace(old, rebuilt, 1)
+        copied.append(eid)
+    return dst, copied, undocumented
+
+
 def close_css_drift(src, dst):
     """Copy the online declarations over the local ones, rule by rule.
 
@@ -2440,6 +2499,18 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     if BLOCK_MOVED:
         print('  %-34s %d step(s) now copy from shared/ and are inert: %s'
               % ('finished port steps', len(BLOCK_MOVED), ', '.join(sorted(set(BLOCK_MOVED)))))
+
+    # MARKUP DRIFT. The last of the three - behaviour, appearance, and now the
+    # elements themselves. Five buttons here were missing a styling class the
+    # online build gives them, and two said "Map" where the rest of this build
+    # says "arena" 138 times.
+    dst, mk_copied, mk_stuck = close_markup_drift(src, dst)
+    if mk_copied:
+        print('  %-34s %d elements took the online markup: %s'
+              % ('markup drift', len(mk_copied), ', '.join(sorted(mk_copied)[:5])))
+    if mk_stuck:
+        print('  %-34s %d could not be matched uniquely: %s'
+              % ('markup drift SKIPPED', len(mk_stuck), ', '.join(sorted(mk_stuck)[:4])))
 
     # CSS DRIFT, closed the same way and for the same reason. Behaviour was
     # being shared and appearance was not, which is where the full-width cyan
