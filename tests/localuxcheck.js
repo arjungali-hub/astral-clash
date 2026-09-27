@@ -8,6 +8,7 @@
 //   "in local there shouldn't be this nested scroll down thing. The only scroll
 //    downs should be for the whole page"
 //   "you should still have to press start fight after both players confirm"
+//     (the button says "Start Match" now - both builds use the same word)
 //   "when you select both characters to be bot in local mode, you should view
 //    from the top"
 //
@@ -143,7 +144,7 @@ const H = require('./harness');
     });
     check('it stays on the select screen', st.state === 'MENU', JSON.stringify(st));
     check('and offers an explicit Start Fight button',
-        st.startVisible === true && /start fight/i.test(st.label || ''), JSON.stringify(st));
+        st.startVisible === true && /start match/i.test(st.label || ''), JSON.stringify(st));
 
     section('Two bots: one camera, from above:');
     st = await page.evaluate(() => {

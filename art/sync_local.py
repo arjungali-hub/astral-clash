@@ -674,11 +674,6 @@ CSS_INTERFACE = {
 MARKUP_INTERFACE = {
     'btn-mapselect-back': 'goes back to the fighter select here, to the room there',
     'btn-play-again': 'plays again here; returns to the room there, and is styled as a back button for it',
-    # NOT resolved, and deliberately not resolved silently: the two builds call
-    # the same button "Start Fight" and "Start Match". Both are defensible and
-    # it is a wording choice rather than a mechanism gap, so it is left visible
-    # here instead of being changed on nobody's authority.
-    'btn-start-match': 'says "Start Fight" here and "Start Match" there - an open wording question',
 }
 
 
@@ -2833,7 +2828,9 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         # Batch 47's local-build requests.
         'function playerName(', 'function resetProgressClicked(',
         'function botsOnly(', 'id="name-p1"', 'id="btn-reset-progress"',
-        '>Start Fight<',
+        # Both builds say "Start Match" now - the two words for the same button
+        # were an open wording question, and it was answered.
+        '>Start Match<',
         # Gameplay + visuals, widened scope.
         'id="desktop-only"', 'This version needs a computer',
         'function buildViewmodelArmFromModel(', 'function _skelBone(',
