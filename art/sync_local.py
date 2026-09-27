@@ -638,6 +638,76 @@ def force_online_bodies(src, dst):
     return dst, [c for c in copied if c not in dict(needs_port)], needs_port
 
 
+# CSS rules that differ BETWEEN THE BUILDS ON PURPOSE. Same contract as
+# INTERFACE above: a reason on every entry, and the sync reports any selector
+# that differs without being listed.
+CSS_INTERFACE = {
+    # --- two shop panels side by side, so everything is tighter here
+    '.shop-card': 'two panels side by side; tighter padding and radius',
+    '.shop-card-head': 'two panels side by side; tighter gap',
+    '.shop-name': 'two panels side by side; smaller type',
+    '.shop-panel h3': 'two panels side by side; smaller heading',
+    '.shop-title': 'two panels side by side; smaller type',
+    '.shop-upgrades': 'two panels side by side; narrower grid columns',
+    '.upg-row': 'two panels side by side; tighter rows',
+    '#shop-screen': 'a side-by-side pair here, one centred modal there',
+
+    # --- the overlay scrolls here, so the panels do not
+    '.mapselect-panel': 'the overlay scrolls in this build, not the panel',
+    '.modeselect-panel': 'the overlay scrolls in this build, not the panel',
+    '.tutorial-panel': 'the overlay scrolls in this build, not the panel',
+    '#mapselect-screen, #shop-screen, #tutorial-screen, #settings-screen, '
+    '#audio-screen, #rebind-screen, #modeselect-screen':
+        'top-aligned and self-scrolling here',
+
+    # --- the rest
+    '#select-screen': 'the online build opens on a home screen; this one opens here',
+    '#lock-hint': 'positioned clear of two HUD panels rather than one',
+    '.ld-art': 'the asset path, rewritten for a build one directory down',
+    '.fighter-btn .fname': 'brightened for readability against this grid',
+}
+
+
+def close_css_drift(src, dst):
+    """Copy the online declarations over the local ones, rule by rule.
+
+    Leaves every rule exactly where it is. Moving them into a shared stylesheet
+    was tried twice and reverted twice: rules of equal specificity are decided by
+    order, and a rule that loads first loses ties it used to win. Copying has the
+    same effect on maintenance - nobody edits a rule twice - and none of the risk.
+    """
+    try:
+        import extract_css
+    except ImportError:
+        return dst, [], []
+    on, _ = extract_css.parse(src)
+    lo, _ = extract_css.parse(dst)
+    copied, undocumented = [], []
+    for sel, (on_decls, on_full) in on.items():
+        if sel not in lo:
+            continue
+        lo_decls, lo_full = lo[sel]
+        if [extract_css.norm(d) for d in on_decls] == [extract_css.norm(d) for d in lo_decls]:
+            continue
+        if sel in CSS_INTERFACE:
+            continue
+        undocumented.append(sel)
+        # Rebuild at the file's own indentation. The scanner hands back the rule
+        # starting at its first non-space character, so deriving the indent from
+        # that text gives '' and the declarations came out dedented to column 4
+        # under a selector at column 8. Read it from the line instead.
+        line_start = dst.rfind(chr(10), 0, dst.index(lo_full)) + 1
+        indent = dst[line_start:dst.index(lo_full)]
+        if indent.strip():
+            indent = ' ' * 8
+        body = chr(10).join('%s    %s;' % (indent, d) for d in on_decls)
+        rebuilt = '%s {%s%s%s%s}%s' % (sel, chr(10), body, chr(10), indent, chr(10))
+        if dst.count(lo_full) == 1:
+            dst = dst.replace(lo_full, rebuilt, 1)
+            copied.append(sel)
+    return dst, copied, [s for s in undocumented if s not in copied]
+
+
 def close_comment_drift(src, dst):
     """Rewrite local definitions whose code already matches, to pick up the notes.
 
@@ -2370,6 +2440,14 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     if BLOCK_MOVED:
         print('  %-34s %d step(s) now copy from shared/ and are inert: %s'
               % ('finished port steps', len(BLOCK_MOVED), ', '.join(sorted(set(BLOCK_MOVED)))))
+
+    # CSS DRIFT, closed the same way and for the same reason. Behaviour was
+    # being shared and appearance was not, which is where the full-width cyan
+    # close button and the hand-ported .opt rows both came from.
+    dst, css_copied, css_undoc = close_css_drift(src, dst)
+    if css_copied:
+        print('  %-34s %d rules took the online declarations'
+              % ('css drift', len(css_copied)))
 
     # COMMENT DRIFT, closed before the de-shadowing pass so anything it makes
     # identical is a candidate for shared/ on the next extraction run.
