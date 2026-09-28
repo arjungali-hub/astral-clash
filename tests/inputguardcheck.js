@@ -57,7 +57,7 @@ const BUILDS = [
                         preview: D.p1Preview || null,
                         held: Object.keys(D.keys).filter(k => D.keys[k]),
                         value: input.value,
-                        name: D.playerName('p1'),
+                        name: D.playerLabel('p1'),
                     };
                 }, build.nameField);
                 check('typing letters does not pick a fighter',

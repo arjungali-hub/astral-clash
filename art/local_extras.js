@@ -39,7 +39,6 @@ function cleanLocalName(v) {
     }
     return out.trim().slice(0, LOCAL_NAME_MAX);
 }
-const localNames = { p1: '', p2: '' };
 try {
     const raw = JSON.parse(localStorage.getItem(LOCAL_NAME_KEY) || '{}');
     if (raw && typeof raw === 'object') {
@@ -53,31 +52,21 @@ try {
 //
 // The fallback is a LOOKUP, not the ternary it obviously wants to be, and that
 // is load-bearing. The port replaces every `(side === 'p1' ? 'Player 1' :
-// 'Player 2')` in the build with `playerName(side)` - and the first run of it
+// 'Player 2')` in the build with `playerLabel(side)` - and the first run of it
 // rewrote this function's own body into `return localNames[side] ||
-// playerName(side)`. The local build died at load with "Maximum call stack
+// playerLabel(side)`. The local build died at load with "Maximum call stack
 // size exceeded".
-const DEFAULT_LOCAL_NAMES = { p1: 'Player 1', p2: 'Player 2' };
-function playerName(side) {
-    return localNames[side] || DEFAULT_LOCAL_NAMES[side] || String(side);
-}
-
 // What to PRINT for a side, which is not the same question.
 //
 // A BOT SIDE IS CALLED "Bot", whatever is in the name field: reported as "Bot
 // sides render as 'Krish [BOT]'", and the name belongs to the person rather
 // than to the slot the AI is driving.
 //
-// Separate from playerName() because of LOAD ORDER, not taste. playerName runs
+// Separate from playerLabel() because of LOAD ORDER, not taste. playerName runs
 // while the menu paints itself - before p1IsBot is declared - and reading a
 // `let` in its temporal dead zone throws even through `typeof`. This one is
 // only ever called from a match or a menu repaint, both of which happen after
 // the flags exist. Eighth instance of that trap in this file.
-function displayName(side) {
-    const isBot = side === 'p1' ? p1IsBot : p2IsBot;
-    return isBot ? 'Bot' : playerName(side);
-}
-
 function setLocalName(side, value) {
     localNames[side] = cleanLocalName(value);
     try { localStorage.setItem(LOCAL_NAME_KEY, JSON.stringify(localNames)); } catch (e) {}
@@ -91,9 +80,9 @@ function refreshLocalNames() {
         // The heading keeps its "(keys on cards)" hint, so the name goes in
         // its own span rather than replacing the whole h3's text.
         const head = document.getElementById('side-name-' + side);
-        if (head) head.textContent = playerName(side);
+        if (head) head.textContent = playerLabel(side);
         const title = document.getElementById('shop-title-' + side);
-        if (title) title.textContent = playerName(side) + ' — Shop';
+        if (title) title.textContent = playerLabel(side) + ' — Shop';
     }
 }
 

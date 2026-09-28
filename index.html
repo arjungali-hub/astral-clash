@@ -2109,11 +2109,6 @@ function setMyName(raw) {
 // The remote player's name lives on `net` so netTeardown clears it with
 // everything else - a stale opponent name outliving the connection would be
 // worse than no name.
-function nameForSide(side) {
-    if (isLocalSide(side)) return myPlayerName;
-    return (net && net.remoteName) || '';
-}
-
 // What to actually print for a side.
 // An opponent whose name has not arrived yet. Online the name comes in a HELLO
 // packet a moment after the channel opens, and until then their slot said
@@ -2122,26 +2117,7 @@ function remoteNamePending() {
     return netActive() && !net.remoteName;
 }
 
-function playerLabel(side) {
-    const own = nameForSide(side);
-    if (own) return own;
-    // Unnamed. If the OTHER side has a name, this is the only numbered player,
-    // so it is Player 1 regardless of which slot it holds. If neither is named,
-    // fall back to slot order - and the host always holds p1.
-    const theirs = nameForSide(otherSide(side));
-    if (theirs) return 'Player 1';
-    return side === 'p1' ? 'Player 1' : 'Player 2';
-}
-
 // Short form for the in-match HUD, which has ~420px and a big font.
-function playerLabelShort(side) {
-    const own = nameForSide(side);
-    if (own) return own;
-    const theirs = nameForSide(otherSide(side));
-    if (theirs) return 'P1';
-    return side === 'p1' ? 'P1' : 'P2';
-}
-
 // Batch 34: the connection state lives HERE, not down in the netcode module,
 // for the same reason LOCAL_SIDE does. The menu now asks "are we online, and am
 // I the host?" while it paints itself - refreshModeUI() and refreshBotUI() both
@@ -2188,7 +2164,6 @@ const mayResumeAway = () => !anyoneAway() && (!netActive() || netIsHost());
 // The host always drives p1 (netHost/netJoin set LOCAL_SIDE), so naming the
 // host is a matter of which side we are, not a separate piece of state.
 const hostSide = () => (netIsHost() ? LOCAL_SIDE : otherSide(LOCAL_SIDE));
-const otherSide = side => (side === 'p1' ? 'p2' : 'p1');
 
 
 window.addEventListener('keydown', e => {
@@ -3431,6 +3406,10 @@ function renderOneView(cam, viewer, x, y, vw, vh, dt) {
     // be essential: renderer.autoClear is true, so each half's clear had to be
     // confined to its own rect or the second render wiped the first.
     renderer.setViewport(x, y, vw, vh);
+    // Inert in this build - setScissorTest is never turned on here - and
+    // load-bearing in the split-screen one, which is why one function can
+    // serve both.
+    renderer.setScissor(x, y, vw, vh);
     cam.aspect = vw / vh;
     cam.updateProjectionMatrix();
     positionFpsCamera(cam, viewer, dt);
@@ -5782,17 +5761,6 @@ class Fighter {
         }
     }
 
-    // Builds this fighter's 3D mesh group plus the small reactive props
-    // (hit-flash light, shield ring, cooldown ring, P2 outline) attached
-    // to it. Called once, right after construction, from startRound().
-    // WHAT A FIGHTER IS CALLED ABOVE ITS HEAD. The only line of initMesh that
-    // differed between the builds, so it is the method instead and the other
-    // 68 lines are shared. One build names one local player and a remote one;
-    // the other names two people at the same keyboard, or two bots.
-    nameplateLabel() {
-        return playerLabelShort(this.isPlayerOne ? 'p1' : 'p2');
-    }
-
     initMesh() {
         // Batch 25: a Blender-authored skinned model when one is loaded for this
         // character, otherwise the original procedural mesh. Both satisfy the
@@ -5848,7 +5816,7 @@ class Fighter {
         // rather than P1/P2 — it belongs to neither side.
         group.add(this.isBossEntity
             ? makeNameSprite(this.name, '#f59e0b')
-            : makeNameSprite(this.nameplateLabel(),
+            : makeNameSprite(displayName(this.isPlayerOne ? 'p1' : 'p2'),
                              this.isPlayerOne ? '#00f3ff' : '#f472b6'));
 
         const flashLight = new THREE.PointLight(0xffffff, 0, 70);
@@ -9082,7 +9050,7 @@ function drawRoundStatus() {
         });
         hudCtx.font = hudFont(11);
         hudCtx.fillStyle = zoneHolder ? '#e2e8f0' : '#64748b';
-        hudCtx.fillText(zoneHolder ? `${playerLabelShort(zoneHolder)} holds the zone` : 'Zone contested', hudW() / 2, MODE_Y - 4);
+        hudCtx.fillText(zoneHolder ? `${displayName(zoneHolder)} holds the zone` : 'Zone contested', hudW() / 2, MODE_Y - 4);
         hudCtx.fillStyle = '#94a3b8';
         hudCtx.fillText(`${Math.floor(zoneScore.p1)}s`, leftX - 16, MODE_Y + BH);
         hudCtx.fillText(`${Math.floor(zoneScore.p2)}s`, rightX + BW + 16, MODE_Y + BH);
@@ -9295,10 +9263,10 @@ function drawHUDInner() {
     // having your own health jump to the right-hand slot would be a needless
     // difference between the two clients.
     const mine = localFighter(), theirs = remoteFighter();
-    // Names, not slots. playerLabelShort falls back to P1/P2 for anyone who
-    // has not typed one, so an unnamed match reads exactly as it did.
-    drawPlayerHUD(mine, 30, playerLabelShort(LOCAL_SIDE), true);
-    drawPlayerHUD(theirs, hudW() - 30 - 420, playerLabelShort(otherSide(LOCAL_SIDE)), false);
+    // Names, not slots. displayName falls back to Player 1/Player 2 for
+    // anyone who has not typed one, and says 'Bot' for a sandbox bot.
+    drawPlayerHUD(mine, 30, displayName(LOCAL_SIDE), true);
+    drawPlayerHUD(theirs, hudW() - 30 - 420, displayName(otherSide(LOCAL_SIDE)), false);
     // Batch 16: the co-op challenger gets a wide bar across the top centre —
     // the conventional boss-bar placement, and the one region the two
     // side panels leave free in both split and full-screen layouts.
@@ -9490,8 +9458,8 @@ function endMatch() {
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} coins &nbsp;·&nbsp; P2 +${earnedP2} coins</div>`;
     document.getElementById('match-summary').innerHTML =
-        `<div><b>${player1.name} (${playerLabelShort('p1')})</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
-        `<div><b>${player2.name} (${playerLabelShort('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
+        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
+        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
         `<div>Round times: ${roundTimesStr}</div>` +
         coinLine;
 
@@ -9564,8 +9532,8 @@ function endCoopMatch(won, detail) {
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">Each player +${earned} coins</div>`;
     document.getElementById('match-summary').innerHTML =
         `<div>${coopResultText}</div>` +
-        `<div><b>${player1.name} (${playerLabelShort('p1')})</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
-        `<div><b>${player2.name} (${playerLabelShort('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
+        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
+        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
         coinLine;
     showScreen('gameover');
     refreshGameOverUI();   // the guest gets no rematch buttons
@@ -10177,7 +10145,7 @@ if (DEBUG) {
         // Batch 34 room UI, for tests and for poking at states by hand.
         startOnline, hostRematch, enterRoom, goHome, refreshRoomUI, showLocalPickerOnly,
         // Batch 36 names
-        setMyName, sanitizeName, playerLabel, playerLabelShort, nameForSide, NAME_MAX,
+        setMyName, sanitizeName, playerLabel, displayName, nameForSide, NAME_MAX,
         // Batch 37 away-pause: the gate is a set of rules, so the rules have
         // to be inspectable from a test.
         setLocalAway, requestResume, pauseForAway, refreshPauseUI, mayResumeAway, hostSide,

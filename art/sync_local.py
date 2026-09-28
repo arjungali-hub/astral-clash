@@ -173,26 +173,38 @@ INTERFACE = {
     'renderer': 'split-screen sizing and scissor state',
     'PIXEL_RATIO': 'local pays for two viewports, so it caps lower',
     'renderViews': 'the split itself',
-    'renderOneView': 'per-viewport camera and scissor',
+    # renderOneView is SHARED now. The scissor rectangle is inert in a build
+    # that never turns the scissor test on, and renderWithBloom already falls
+    # back to a plain render when there is no composer - which is this
+    # build's permanent state, because it loads two vendor scripts, not
+    # eight. IF THAT EVER CHANGES, renderViews needs one composer per half
+    # before bloom can be turned on here: one composer is sized to the whole
+    # canvas and would paint over the other viewport.
     'hudViewports': 'two HUD panels here, one there',
     # drawHUD is SHARED now: both guard the restore() now.
     'drawHUDInner': 'draws two panels',
     # drawPlayerHUD is SHARED now: isMine is true for both panels where both are yours.
     'drawIntroOverlay': 'per-panel geometry',
-    'drawRoundStatus': 'per-panel geometry',
+    # drawRoundStatus is SHARED now. It was never per-panel: the two bodies
+    # differed by the hudPlate() backing behind the collapse warning and the
+    # shade of red under three seconds, both of which this build simply
+    # never got.
     'drawCoopDownHUD': 'per-panel geometry',
     'toggleBloom': 'the local build has no composer',
 
     # --- controls: two players at one keyboard vs one player and a mouse
     'DEFAULT_BINDINGS': 'two full key sets',
     'REBIND_ACTION_LABELS': 'labelled per side',
-    'keyLabel': 'labelled per side',
+    # keyLabel is SHARED now - not 'labelled per side': the local body is missing the mouse-button
+    # labels and the empty-binding guard.
     'controlsSummary': 'describes two players',
     'buildTutorialControls': 'describes two players',
     'buildRebindList': 'two lists',
     'saveBindings': 'two sides',
     # startCapture is SHARED now: the better prompt text reached one build only.
-    'pollGamepad': 'two pads',
+    # pollGamepad is SHARED now - not 'two pads' at all: the local body is missing lookX, the
+    # right-stick X axis - which applySoloControls already READS, so that
+    # stick has been dead here since the day it was added.
 
     # --- screens and flow: lobby and room code vs a local picker
     'SCREEN_EL': 'different screens exist',
@@ -205,14 +217,16 @@ INTERFACE = {
     'togglePause': 'match framework',
     'refreshMenuUI': 'different menus',
     'refreshBotUI': 'bots are per side here',
-    'resolveCoopMode': 'match framework',
+    # resolveCoopMode is SHARED now - the local body is missing the boss-HP line in the defeat
+    # text, and coopIsHost() is shared and answers true here.
     # Not per-side at all: the online body calls refreshHudScaleUI(), and that
     # helper cannot travel because a definition's CHUNK runs to the next
     # definition - so it sweeps up the listener statements below it, which
     # reference setSandboxMatch, which is online-only. The two-line inlined
     # version here says the same thing. Honest limitation of chunk boundaries,
     # recorded rather than papered over.
-    'onBossDefeated': 'match framework',
+    # onBossDefeated is SHARED now - the netActive() branch is inert in a build that cannot connect,
+    # so the online body awards exactly what the local one did.
 
     # --- progression and the store: one account vs two side-local purses
     'addCoins': 'two purses',
@@ -229,7 +243,8 @@ INTERFACE = {
     'refreshSandboxUI': 'sandbox is online-only',
     # refreshHudScaleUI is SHARED now: one line, and setOptState is shared.
     # buildCrushRigs is SHARED now: local was missing the photo-surface calls, not opting out.
-    'disposeCrushRigs': 'the crush cinematic is online-only',
+    # disposeCrushRigs is SHARED now - not 'online-only': the local body is the version from before
+    # the null guard and the parent-aware removal.
 }
 
 
@@ -533,7 +548,7 @@ def port_missing_definitions(src, dst):
         theirs = src_defs.get(name)
         if not theirs or theirs == chunk or name in INTERFACE:
             continue
-        wanted |= {r for r in set(_IDENT_RE.findall(theirs)) - {name}
+        wanted |= {r for r in set(_IDENT_RE.findall(_code_only(theirs))) - {name}
                    if r in src_defs and r not in have}
 
     # Close over what those need, and keep only what can travel safely.
@@ -547,7 +562,13 @@ def port_missing_definitions(src, dst):
             # something referenced them is exactly the move it exists to stop.
             if n in INTERFACE or is_online_only_business(n):
                 continue
-            refs = {r for r in set(_IDENT_RE.findall(src_defs[n])) - {n}
+            # CODE ONLY. A chunk carries its leading comment, and a comment
+            # that MENTIONS another function was being read as a dependency on
+            # it. ensureComposer's comment says "renderWithBloom reads it" and
+            # renderWithBloom calls ensureComposer, so the two deadlocked each
+            # other and neither could ever travel - a cycle that exists only in
+            # English.
+            refs = {r for r in set(_IDENT_RE.findall(_code_only(src_defs[n]))) - {n}
                     if r in src_defs and r not in have and r not in movable}
             if refs:
                 wanted |= refs          # try to bring them too
@@ -698,7 +719,7 @@ FIGHTER_INTERFACE = {
     # calls it except the network handlers, which this build does not run.
     # initMesh is SHARED now. Its one differing line - the nameplate - is
     # nameplateLabel(), which is 3 lines instead of 70.
-    'nameplateLabel': 'names two people at one keyboard here, a local and a remote player there',
+    # nameplateLabel is gone: both builds call displayName() inline now.
 }
 
 _FIGHTER_METHOD = re.compile(r'(?m)^    ([A-Za-z_$][' + chr(92) + 'w$]*)' + chr(92)
@@ -1827,7 +1848,9 @@ if (location.protocol === 'https:'
     # Names, a progress reset, an explicit Start Fight, no nested scrollbars,
     # and a spectator camera when both sides are bots. Local-build only: the
     # online build has one player per machine, so none of it applies there.
-    if 'function playerName(' not in dst:
+    # Keyed on cleanLocalName, not playerName: playerName moved to shared/
+    # and the guard has to name something this fragment still owns.
+    if 'function cleanLocalName(' not in dst:
         extras = io.open(os.path.join(HERE, 'local_extras.js'), encoding='utf-8').read()
         # After freshSideProgress/progression exist, and before anything can
         # call in. watchCam is a const built at load, so it needs THREE (which
@@ -1929,7 +1952,7 @@ if (location.protocol === 'https:'
                   "function renderOneView(cam, viewer, x, y, vw, vh, dt) {", 'local render helper')
         dst = rep(dst, "        openShop, buildShop, refreshBotUI,",
                   "        openShop, buildShop, refreshBotUI,\n"
-                  "        playerName, setLocalName, refreshLocalNames, resetProgressClicked,\n"
+                  "        playerLabel, displayName, setLocalName, refreshLocalNames, resetProgressClicked,\n"
                   "        botsOnly, soloHumanSide, positionWatchCamera,\n"
                   "        get localNames() { return localNames; },",
                   'local debug handles')
@@ -2137,7 +2160,7 @@ const WATCH_RING_SIDE = { p1: '#38bdf8', p2: '#fb923c' };""",
                 'side ring colours', required=False)
 
     # --------------------------------- the spectator camera follows the fight
-    # The extras fragment is injected once, guarded on `function playerName(`,
+    # The extras fragment is injected once, guarded on `function cleanLocalName(`,
     # so a change inside it never reaches a build that already has it. Rather
     # than keep a second copy of the new code here, the block is LIFTED OUT of
     # the fragment and swapped in - one source of truth, and idempotent.
@@ -2933,7 +2956,9 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         # to copy the roster and the economy across.
         'shared/roster.js', 'AC_ASSET_BASE',
         # Batch 47's local-build requests.
-        'function playerName(', 'function resetProgressClicked(',
+        # playerName is gone: it is playerLabel() in shared/common.js now, so
+        # requiring it HERE would require the shadow the move removed.
+        'function resetProgressClicked(',
         'function botsOnly(', 'id="name-p1"', 'id="btn-reset-progress"',
         # Both builds say "Start Match" now - the two words for the same button
         # were an open wording question, and it was answered.
@@ -2970,7 +2995,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
               'ensureUV2', 'fitKeyShadow', 'announceFont',
               'loadPhotoSet', 'tiledPhotoTexture', 'accentEmissiveTexture',
               'coopDown', 'coopRevive', 'drawCoopDownHUD', 'syncShopPanels',
-              'closeShopSide', 'playerName', 'resetProgressClicked',
+              'closeShopSide', 'resetProgressClicked',
               'refreshLocalNames', 'botsOnly', 'positionWatchCamera']
     # What must live in shared/roster.js, and must NOT be re-declared here. A
     # local copy would shadow the shared binding and silently restore exactly

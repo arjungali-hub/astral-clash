@@ -42,13 +42,39 @@ if [ "$PY_BIN" = "py" ]; then
 fi
 
 LOG="$(mktemp 2>/dev/null || echo /tmp/ac-sync-check.log)"
-$PY_BIN art/sync_local.py --check >"$LOG" 2>&1 && exit 0
+if ! $PY_BIN art/sync_local.py --check >"$LOG" 2>&1; then
+    echo
+    echo "COMMIT REFUSED: the local build is stale."
+    echo
+    tail -n 6 "$LOG"
+    echo
+    echo "  python art/sync_local.py     regenerates it"
+    echo "  git commit --no-verify       commits anyway, if you mean to"
+    exit 1
+fi
 
-echo
-echo "COMMIT REFUSED: the local build is stale."
-echo
-tail -n 6 "$LOG"
-echo
-echo "  python art/sync_local.py     regenerates it"
-echo "  git commit --no-verify       commits anyway, if you mean to"
-exit 1
+# DOES EACH BUILD STILL LOAD. Ten seconds, and it is the one question that
+# makes every other check meaningless if the answer is no.
+#
+# The sync can report complete success on a build that dies at load: its
+# dangling-reference guard is bounded by the ONLINE build's vocabulary, so a
+# leftover reference to a name only the LOCAL build ever had is invisible to
+# it. That shipped once - `playerName` left behind in an ACDebug export list
+# after the function moved to shared/ - and the only symptom was a blank page.
+#
+# Skipped, not failed, where puppeteer is not installed: tests/node_modules is
+# git-ignored, so a fresh clone has no browser to drive and a hook that refused
+# every commit there would be worse than no hook.
+if [ -d tests/node_modules ] && command -v node >/dev/null 2>&1; then
+    if ! node tests/bootcheck.js >"$LOG" 2>&1; then
+        echo
+        echo "COMMIT REFUSED: a build does not load."
+        echo
+        tail -n 8 "$LOG"
+        echo
+        echo "  node tests/bootcheck.js      runs it again"
+        echo "  git commit --no-verify       commits anyway, if you mean to"
+        exit 1
+    fi
+fi
+exit 0

@@ -32,13 +32,13 @@ const H = require('./harness');
             input.value = v;
             input.dispatchEvent(new Event('input', { bubbles: true }));
         };
-        const before = D.playerName('p1');
+        const before = D.playerLabel('p1');
         set('p1', 'Arjun');
         set('p2', 'Sam');
         D.openShop('p1');
         return {
             before,
-            p1: D.playerName('p1'), p2: D.playerName('p2'),
+            p1: D.playerLabel('p1'), p2: D.playerLabel('p2'),
             // The h3's own text: headingHTML() regenerates the heading on every
             // refreshMenuUI, so there is no stable inner element to read - and
             // a test that reads one is testing the markup rather than what the
@@ -59,7 +59,7 @@ const H = require('./harness');
     // ...and survives a reload, which is the point of persisting it.
     await H.boot(page, { path: '/local/index.html' });
     st = await page.evaluate(() => ({
-        p1: window.ACDebug.playerName('p1'),
+        p1: window.ACDebug.playerLabel('p1'),
         field: (document.getElementById('name-p1') || {}).value,
     }));
     check('and comes back after a reload', st.p1 === 'Arjun' && st.field === 'Arjun',
@@ -77,7 +77,7 @@ const H = require('./harness');
         armed.coinsAfterFirst = D.prog('p1').coins;
         btn.click();                       // confirms
         return { armed, coins: D.prog('p1').coins, label: btn.textContent,
-                 name: D.playerName('p1') };
+                 name: D.playerLabel('p1') };
     });
     check('one click only arms it, and says so',
         /again/i.test(st.armed.label || '') && st.armed.coinsAfterFirst === st.armed.coins,

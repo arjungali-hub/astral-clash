@@ -2390,6 +2390,60 @@ let LOCAL_SIDE = 'p1';
 // answer locally is always yes. Online this is exactly what it always was.
 const isLocalSide = side => !AC_ONE_SIDE_PER_CLIENT || side === LOCAL_SIDE;
 
+// ------------------------------------------------------------------ names
+// WHAT A SIDE IS CALLED. One answer for both builds.
+//
+// These four functions used to be four functions per question under two sets of
+// names, and every function that printed a player's name inherited the fork.
+// The behaviour was never in dispute; only the spelling was.
+//
+// The one real difference is where a name COMES FROM, and it lives in
+// nameForSide() alone.
+const otherSide = side => (side === 'p1' ? 'p2' : 'p1');
+
+// The local build's two typed-in names. Declared here rather than in
+// art/local_extras.js so nameForSide() can read it in both builds; online it
+// stays the empty pair it starts as, and nothing writes to it.
+const localNames = { p1: '', p2: '' };
+
+// The name a HUMAN gave this side, or '' if nobody did.
+function nameForSide(side) {
+    // Two people at one keyboard: each typed their own, and both are present.
+    if (!AC_ONE_SIDE_PER_CLIENT) return localNames[side] || '';
+    // One player per machine: mine, or whatever arrived in the other client's
+    // HELLO packet - which may not have arrived yet (see remoteNamePending).
+    return isLocalSide(side) ? myPlayerName : ((net && net.remoteName) || '');
+}
+
+// The long form, for menus, panel headings and the store title.
+function playerLabel(side) {
+    const own = nameForSide(side);
+    if (own) return own;
+    // ONLINE ONLY. If the other side has a name, this client's player is the
+    // only numbered one left, whichever slot it happens to hold. Two people at
+    // one keyboard are always Player 1 and Player 2, so this must not apply
+    // there - it would rename P2 to "Player 1" the moment P1 typed a name.
+    if (AC_ONE_SIDE_PER_CLIENT && nameForSide(otherSide(side))) return 'Player 1';
+    return side === 'p1' ? 'Player 1' : 'Player 2';
+}
+
+// What to PRINT for a side, which is not the same question.
+//
+// A BOT SIDE IS CALLED "Bot", whatever is in the name field: reported as "Bot
+// sides render as 'Krish [BOT]'", and the name belongs to the person rather
+// than to the slot the AI is driving.
+//
+// TWO BOTS NEED TWO NAMES. Reported from a mirror match: "both have identical
+// red rings and identical red health bars labeled 'Ignis (Bot)'" - with one bot
+// "Bot" is unambiguous, with two it is the same label twice on the only two
+// things on screen.
+function displayName(side) {
+    const isBot = side === 'p1' ? p1IsBot : p2IsBot;
+    if (!isBot) return playerLabel(side);
+    return (p1IsBot && p2IsBot) ? (side === 'p1' ? 'Bot 1' : 'Bot 2') : 'Bot';
+}
+
+
 // Moved with net, not left behind: shared coopIsHost() calls this, and a
 // function inside bootGame() is invisible from here - so every call threw a
 // ReferenceError and online multiplayer stopped leaving the menu. Caught by

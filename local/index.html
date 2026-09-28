@@ -1937,7 +1937,6 @@ function cleanLocalName(v) {
     }
     return out.trim().slice(0, LOCAL_NAME_MAX);
 }
-const localNames = { p1: '', p2: '' };
 try {
     const raw = JSON.parse(localStorage.getItem(LOCAL_NAME_KEY) || '{}');
     if (raw && typeof raw === 'object') {
@@ -1946,40 +1945,12 @@ try {
     }
 } catch (e) { /* a corrupt or blocked store just means the defaults */ }
 
-// The label for a side, everywhere a human is named: the select panels, the
-// shop title, the HUD, the result screen.
-//
-// The fallback is a LOOKUP, not the ternary it obviously wants to be, and that
-// is load-bearing. The port replaces every `(side === 'p1' ? 'Player 1' :
-// 'Player 2')` in the build with `playerName(side)` - and the first run of it
-// rewrote this function's own body into `return localNames[side] ||
-// playerName(side)`. The archived build died at load with "Maximum call stack
-// size exceeded".
-const DEFAULT_LOCAL_NAMES = { p1: 'Player 1', p2: 'Player 2' };
-function playerName(side) {
-    return localNames[side] || DEFAULT_LOCAL_NAMES[side] || String(side);
-}
-
-// What to PRINT for a side, which is not the same question.
-//
-// A BOT SIDE IS CALLED "Bot", whatever is in the name field: reported as "Bot
-// sides render as 'Krish [BOT]'", and the name belongs to the person rather
-// than to the slot the AI is driving.
-//
-// Separate from playerName() because of load order, not taste. playerName runs
-// while the menu paints itself - before p1IsBot is declared - and reading a
-// `let` in its temporal dead zone throws even through `typeof`. This one is
-// only ever called from a match or a menu repaint, both after the flags exist.
-function displayName(side) {
-    const isBot = side === 'p1' ? p1IsBot : p2IsBot;
-    if (!isBot) return playerName(side);
-    // TWO BOTS NEED TWO NAMES. Reported from a mirror match: "both have
-    // identical red rings and identical red health bars labeled 'Ignis (Bot)'"
-    // - with one bot, "Bot" is unambiguous; with two it is the same label
-    // twice, on the only two things on screen.
-    return (p1IsBot && p2IsBot) ? (side === 'p1' ? 'Bot 1' : 'Bot 2') : 'Bot';
-}
-
+// playerLabel() and displayName() used to live here. They are in
+// shared/common.js now, with the online build's two equivalents folded into
+// them - see "WHAT A SIDE IS CALLED" there. The load-order warning that used to
+// be attached to them is gone with the move: p1IsBot is declared in a shared
+// module that loads before this one runs, so there is no dead zone left to fall
+// into.
 function setLocalName(side, value) {
     localNames[side] = cleanLocalName(value);
     try { localStorage.setItem(LOCAL_NAME_KEY, JSON.stringify(localNames)); } catch (e) {}
@@ -1996,9 +1967,9 @@ function refreshLocalNames() {
         // The heading keeps its "(keys on cards)" hint, so the name goes in
         // its own span rather than replacing the whole h3's text.
         const head = document.getElementById('side-name-' + side);
-        if (head) head.textContent = playerName(side);
+        if (head) head.textContent = playerLabel(side);
         const title = document.getElementById('shop-title-' + side);
-        if (title) title.textContent = playerName(side) + ' — Armory';
+        if (title) title.textContent = playerLabel(side) + ' — Armory';
     }
 }
 
@@ -2463,6 +2434,12 @@ document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale
 refreshHudScaleUI();
 
 function keyLabel(k) {
+    if (!k) return '--';
+    // Batch 31: mouse buttons live in the same binding map as keys.
+    if (k === 'mouse0') return 'Left Click';
+    if (k === 'mouse1') return 'Middle Click';
+    if (k === 'mouse2') return 'Right Click';
+    if (k.startsWith('mouse')) return 'Mouse ' + k.slice(5);
     if (k === ' ') return 'Space';
     if (k === 'control') return 'Ctrl';
     if (k.startsWith('arrow')) return k.slice(5, 6).toUpperCase() + k.slice(6);
@@ -3003,8 +2980,12 @@ function resetCrush() {
 function disposeCrushRigs() {
     if (!crushRigs) return;
     for (const k of ['p1', 'p2']) {
-        scene.remove(crushRigs[k]);
-        disposeObject3D(crushRigs[k]);
+        const g = crushRigs[k];
+        if (!g) continue;
+        // `.parent`, not `scene`: the cinematic reparents these, and removing
+        // from the wrong parent leaves the object in the graph.
+        if (g.parent) g.parent.remove(g); else scene.remove(g);
+        disposeObject3D(g);
     }
     crushRigs = null;
 }
@@ -3079,7 +3060,7 @@ function renderViews(dt) {
         renderer.setScissorTest(false);
         renderer.setViewport(0, 0, W, H);
         positionWatchCamera(W / H);
-        renderWithBloomLocal(scene, watchCam);
+        renderWithBloom(scene, watchCam, dt);
         return;
     }
     const twoHumans = !player1.isBot && !player2.isBot;
@@ -3094,18 +3075,20 @@ function renderViews(dt) {
     }
     renderer.setScissorTest(false);
 }
-// The archived build renders directly - bloom is an online-build addition,
-// which one viewport is what made practical. Named rather than inlined so
-// the two builds' render paths read the same shape.
-function renderWithBloomLocal(scn, cam) { renderer.render(scn, cam); }
 
 function renderOneView(cam, viewer, x, y, vw, vh, dt) {
+    // The viewport is the whole canvas now, so no scissor is needed. It used to
+    // be essential: renderer.autoClear is true, so each half's clear had to be
+    // confined to its own rect or the second render wiped the first.
     renderer.setViewport(x, y, vw, vh);
+    // Inert in this build - setScissorTest is never turned on here - and
+    // load-bearing in the split-screen one, which is why one function can
+    // serve both.
     renderer.setScissor(x, y, vw, vh);
     cam.aspect = vw / vh;
     cam.updateProjectionMatrix();
     positionFpsCamera(cam, viewer, dt);
-    renderer.render(scene, cam);
+    renderWithBloom(scene, cam, dt);
 }
 
  // a floor under the shadows, nothing more
@@ -3576,6 +3559,168 @@ function pickKeyHint() {
     const b = BINDINGS;
     return `${keyLabel(b.attack)} confirm / ${keyLabel(b.special)} back`;
 }
+
+// BLOOM. See docs/arena-art-plan.md item 3 - and note this reverses the
+// earlier "no EffectComposer" decision on purpose, now that there is one
+// viewport instead of two.
+//
+// BLOOM_THRESHOLD is the whole tuning. At 0.86 only things that are already
+// nearly white on screen bloom: the emissive accent rails and cores, brazier
+// flames, the sun sprite, a lightning bolt. The sky, the marble arena and the
+// sand floor are bright but not that bright, and a lower threshold makes them
+// glow, which reads as fog rather than as light.
+// Tuned against screenshots, not guessed. At 0.86 the pale arenas - Voltaic
+// Nexus' white walls, the Colosseum's marble - sat above the threshold and the
+// entire frame glowed, which is bloom doing the one thing it must not do:
+// making a bright SURFACE look like a light SOURCE. 0.95 keeps it to things
+// that are genuinely near-white: emissive rails and cores, brazier flame, the
+// sun sprite, a lightning bolt.
+// Declared HERE, not next to its toggle further down: renderWithBloom reads it,
+// and a `let` below that function would be in its temporal dead zone for any
+// render that happened during load. Seventh instance of that trap in this file.
+function ensureComposer() {
+    if (composer || bloomFailed) return composer;
+    // Any missing script means no bloom, not a broken game.
+    if (typeof THREE.EffectComposer !== 'function' || typeof THREE.RenderPass !== 'function'
+        || typeof THREE.UnrealBloomPass !== 'function') {
+        bloomFailed = true;
+        return null;
+    }
+    try {
+        const size = renderer.getSize(new THREE.Vector2());
+        // sRGB render targets: see the encoding trap in this batch's notes.
+        // Without this the final raw-shader pass writes linear values straight
+        // to the canvas and the entire game renders pale.
+        const rt = new THREE.WebGLRenderTarget(
+            size.x * PIXEL_RATIO, size.y * PIXEL_RATIO,
+            { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+              format: THREE.RGBAFormat, encoding: THREE.sRGBEncoding });
+        rt.texture.encoding = THREE.sRGBEncoding;
+        composer = new THREE.EffectComposer(renderer, rt);
+        composer.setPixelRatio(PIXEL_RATIO);
+        composer.setSize(size.x, size.y);
+        bloomRenderPass = new THREE.RenderPass(scene, camP1);
+        composer.addPass(bloomRenderPass);
+        bloomPass = new THREE.UnrealBloomPass(
+            new THREE.Vector2(size.x, size.y), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
+        composer.addPass(bloomPass);
+        return composer;
+    } catch (e) {
+        console.warn('[astral] bloom unavailable:', e && e.message);
+        bloomFailed = true;
+        composer = null;
+        return null;
+    }
+}
+
+// Renders `scn` from `cam` through the bloom chain, or directly if bloom is
+// unavailable. Every full-scene render in this file goes through here so the
+// crush cinematic gets the same treatment as the arena.
+function renderWithBloom(scn, cam, dt) {
+    const c = bloomEnabled ? ensureComposer() : null;
+    if (!c) { renderer.render(scn, cam); return; }
+    bloomRenderPass.scene = scn;
+    bloomRenderPass.camera = cam;
+    c.render(dt || 0.016);
+}
+
+// Half the distance between the two marks. Each stage floor is a 300-unit box
+// (stageGeo in buildCrushRigs), so 190 leaves a clear gap between them without
+// needing an enormous pull-back.
+// 165, not 190: the floors overlap very slightly at their far corners, which is
+// invisible once each stage is yawed toward the camera (see renderCrushCinematic)
+// and lets the camera sit close enough for the fighters to be the subject.
+function buildCrushScene() {
+    if (crushScene) return crushScene;
+    crushScene = new THREE.Scene();
+    // A dark void rather than sky: the shot is a room closing, and a blue
+    // gradient behind it read as a floating diorama in the earlier attempt.
+    crushScene.background = new THREE.Color(0x05070c);
+    crushScene.fog = new THREE.Fog(0x05070c, 520, 1100);
+    // Lighting is deliberately theatrical and INDEPENDENT of the map's, so the
+    // cinematic looks the same on every arena: a hard key from above-front to
+    // model the figures, a dim fill so the far sides are not black, and a cold
+    // rim to separate them from the void.
+    const hemi = new THREE.HemisphereLight(0xdfe9ff, 0x0a0d14, 0.55);
+    hemi.layers.enableAll();
+    crushScene.add(hemi);
+    const key = new THREE.DirectionalLight(0xfff2dc, 2.2);
+    key.position.set(60, 220, 260);
+    key.layers.enableAll();
+    crushScene.add(key);
+    const rim = new THREE.DirectionalLight(0x7fb4ff, 1.1);
+    rim.position.set(-180, 90, -160);
+    rim.layers.enableAll();
+    crushScene.add(rim);
+    crushCam = new THREE.PerspectiveCamera(52, 1, 0.5, 4000);
+    crushCam.layers.enableAll();   // it must see both bodies and both rigs
+    return crushScene;
+}
+
+// Renders the cinematic. Called from renderViews INSTEAD of the normal view,
+// so it runs after every update and nothing can overwrite what it sets.
+function renderCrushCinematic(dt, W, HGT) {
+    if (!crushing) return false;
+    buildCrushScene();
+
+    const fighters = [player1, player2].filter(f => f && f.mesh);
+    if (!fighters.length) return false;
+
+    // Borrow the bodies and their crush rigs on the first frame of the shot.
+    if (!crushBorrowed.length) {
+        for (const f of fighters) borrowForCrush(f.mesh);
+        if (crushRigs) for (const k of ['p1', 'p2']) borrowForCrush(crushRigs[k]);
+    }
+
+    // The shot: centred between the two marks, easing back as the slabs close.
+    const t = Math.min(1, crushTime / CRUSH_CAM_IN);
+    const ease = 1 - Math.pow(1 - t, 3);
+    // Close enough that the fighters are the SUBJECT. At 300+220 the pair read
+    // as two dioramas with dolls in them; a fighter is ~74 units tall and needs
+    // to fill a useful part of its half of the frame, not 15% of the height.
+    const dist = 190 + 120 * ease;
+
+    // Place everything on its mark, and TURN EACH STAGE TO FACE THE CAMERA.
+    //
+    // The turn is the part that was missing. A slab is 30 wide, 208 tall and
+    // 260 DEEP, so each stage is a corridor running along Z with the fighter
+    // between the two slabs. From a single camera centred between two stages
+    // that sit at +/-190, each corridor is seen at an angle - and at that angle
+    // its own near slab hides the fighter inside it completely. The first
+    // render of this scene showed two neat boxes and no characters at all.
+    //
+    // Yawing each stage by atan(markX / dist) aims its corridor straight at the
+    // camera, so you look down it at the fighter, with the slabs closing in
+    // from left and right of frame - which is exactly the split-screen shot
+    // that worked, now twice in one view.
+    for (const f of fighters) {
+        const x = crushMarkX(f);
+        const yaw = -Math.atan2(x, dist);
+        f.mesh.position.set(x, 0, 0);
+        // Every rig's "forward" is local +X, so -PI/2 turns it onto +Z (toward
+        // the camera); the stage's own yaw is then added so the fighter keeps
+        // facing the viewer rather than facing along the turned corridor.
+        f.mesh.rotation.set(0, -Math.PI / 2 + yaw, 0);
+        const g = crushRigs && crushRigs[sideOf(f)];
+        if (g) { g.visible = true; g.position.set(x, 0, 0); g.rotation.set(0, yaw, 0); }
+    }
+    const shake = (REDUCED_MOTION ? 0.2 : 1) * (1.2 + 5.5 * ease);
+    crushCam.aspect = Math.max(0.2, W / Math.max(1, HGT));
+    crushCam.position.set(
+        (Math.random() - 0.5) * shake,
+        46 + 18 * ease + (Math.random() - 0.5) * shake * 0.6,
+        dist);
+    crushCam.updateProjectionMatrix();
+    // Chest height, not the floor - the fighters are the subject.
+    crushCam.lookAt(0, 30, 0);
+
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, W, HGT);
+    renderWithBloom(crushScene, crushCam, dt);
+    return true;
+}
+
+ // fixed pool per fighter; never grows (see buildCrushRigs)
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every
@@ -4505,6 +4650,9 @@ function pollGamepad(index) {
     // axes 2/3; a pad reporting fewer axes just yields 0 (no pitch), which is
     // exactly the pre-batch behavior.
     const ry = gp.axes[3] || 0;
+    // Batch 31: right stick X turns, now that left stick X strafes to match the
+    // keyboard's A/D. A pad reporting fewer axes yields 0, i.e. no turn.
+    const rx = gp.axes[2] || 0;
     // Face buttons are edge-triggered, same as the keyboard's consumePress
     // — otherwise holding a button fires the action every single frame.
     const now = [0, 1, 2, 3].map(i => !!(gp.buttons[i] && gp.buttons[i].pressed));
@@ -4514,6 +4662,7 @@ function pollGamepad(index) {
     return {
         moveX: Math.abs(ax) > GAMEPAD_DEADZONE ? ax : 0,
         moveY: Math.abs(ay) > GAMEPAD_DEADZONE ? ay : 0,
+        lookX: Math.abs(rx) > GAMEPAD_DEADZONE ? rx : 0,
         lookY: Math.abs(ry) > GAMEPAD_DEADZONE ? ry : 0,
         jump: justPressed[0],    // A
         attack: justPressed[1],  // B
@@ -5726,17 +5875,6 @@ class Fighter {
         }
     }
 
-    // Builds this fighter's 3D mesh group plus the small reactive props
-    // (hit-flash light, shield ring, cooldown ring, P2 outline) attached
-    // to it. Called once, right after construction, from startRound().
-    // WHAT A FIGHTER IS CALLED ABOVE ITS HEAD. The only line of initMesh that
-    // differed between the builds, so it is the method instead and the other
-    // 68 lines are shared. One build names one local player and a remote one;
-    // the other names two people at the same keyboard, or two bots.
-    nameplateLabel() {
-        return displayName(this.isPlayerOne ? 'p1' : 'p2');
-    }
-
     initMesh() {
         // Batch 25: a Blender-authored skinned model when one is loaded for this
         // character, otherwise the original procedural mesh. Both satisfy the
@@ -5785,7 +5923,7 @@ class Fighter {
         // rather than P1/P2 — it belongs to neither side.
         group.add(this.isBossEntity
             ? makeNameSprite(this.name, '#f59e0b')
-            : makeNameSprite(this.nameplateLabel(),
+            : makeNameSprite(displayName(this.isPlayerOne ? 'p1' : 'p2'),
                              this.isPlayerOne ? '#00f3ff' : '#f472b6'));
 
         const flashLight = new THREE.PointLight(0xffffff, 0, 70);
@@ -8088,8 +8226,13 @@ function drawRoundStatus() {
         if (collapsed || shrinkTimer <= 15) {
             hudCtx.save();
             hudCtx.globalAlpha = collapsed ? 1 : Math.max(0, Math.min(1, (15 - shrinkTimer) / 5));
-            hudCtx.fillStyle = shrinkTimer <= 3 ? "#ef4444" : "#e2e8f0";
-            hudCtx.fillText(`${collapsed ? 'Arena closing — next' : 'Arena collapses in'} ${Math.max(0, Math.ceil(shrinkTimer))}s`, hudW() / 2, 44);
+            const collapseText = `${collapsed ? 'Arena closing — next' : 'Arena collapses in'} ${Math.max(0, Math.ceil(shrinkTimer))}s`;
+            // Reported as "red on blue, also hard to read". The urgency stays -
+            // it is the one line that means hurry - but it gets something to be
+            // red AGAINST.
+            hudPlate(collapseText, hudW() / 2, 44);
+            hudCtx.fillStyle = shrinkTimer <= 3 ? "#ff7a7a" : "#e2e8f0";
+            hudCtx.fillText(collapseText, hudW() / 2, 44);
             hudCtx.restore();
         }
     }
@@ -8506,7 +8649,7 @@ function endMatch() {
     }
     addCoins('p1', earnedP1);
     addCoins('p2', earnedP2);
-    const coinLine = debugUnlockAll
+    const coinLine = matchIsSandbox()
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} coins &nbsp;·&nbsp; P2 +${earnedP2} coins</div>`;
     document.getElementById('match-summary').innerHTML =
@@ -8578,7 +8721,7 @@ function endCoopMatch(won, detail) {
     addCoins('p2', earned);
 
     const s1 = matchStats.p1, s2 = matchStats.p2;
-    const coinLine = debugUnlockAll
+    const coinLine = matchIsSandbox()
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">Each player +${earned} coins</div>`;
     document.getElementById('match-summary').innerHTML =
@@ -8705,17 +8848,22 @@ function spawnNextWave() {
 function onBossDefeated() {
     if (matchMode === 'survival') {
         waveNumber++;
-        addCoins('p1', COIN_AWARDS.survivalPerWave);
-        addCoins('p2', COIN_AWARDS.survivalPerWave);
+        if (netActive()) addCoins(LOCAL_SIDE, COIN_AWARDS.survivalPerWave);
+        else {
+            addCoins('p1', COIN_AWARDS.survivalPerWave);
+            addCoins('p2', COIN_AWARDS.survivalPerWave);
+        }
         // Partial heal for surviving the wave (see WAVE_HEAL_PCT). hpGhost is
         // snapped up too: it normally LAGS hp to draw the "you just lost this
         // much" trail on damage, so left alone it would render the heal as a
         // phantom missing chunk.
         let healed = 0;
         for (const p of [player1, player2]) {
-            // A downed teammate is NOT healed by the wave clear: hp above 0
-            // with `downed` still set is a fighter stuck on the floor for the
-            // rest of the run.
+            // A downed teammate is NOT healed by the wave clear. Topping up
+            // their hp while `downed` is still set would leave them alive on
+            // the health bar, unable to act, and past the hp <= 0 test that
+            // would otherwise put them down again - stuck on the floor for the
+            // rest of the run. Their way back is the respawn clock.
             if (p.downed) continue;
             const before = p.hp;
             p.hp = Math.min(p.maxHp, p.hp + p.maxHp * WAVE_HEAL_PCT);
@@ -8735,24 +8883,6 @@ function onBossDefeated() {
     endCoopMatch(true, `${BOSS_NAME} defeated with ${Math.max(0, Math.ceil(player1.hp))} and ${Math.max(0, Math.ceil(player2.hp))} HP left.`);
     return true;
 }
-
-// Co-op win/loss, checked every FIGHT frame. Deliberate scope cut: if EITHER
-// player goes down the run ends. A "downed but revivable" teammate mechanic
-// would need a new player-facing sub-state (spectating, revive timers, a revive
-// interaction) that doesn't exist anywhere in this file, which is a bigger
-// feature than the boss itself — flagged rather than half-built.
-// Co-op down-and-respawn for the ARCHIVED split-screen build, inserted by
-// art/port_to_legacy.py ahead of resolveCoopMode.
-//
-// Hand-written rather than lifted out of index.html because the online version
-// reasons about which client owns a fighter's respawn clock, and this build has
-// no netcode at all: there is one machine, and it owns both. Everything else -
-// the 25-second clock, the half-bar return, the wipe condition - is the same
-// rule, and lives in the constants the port copies across verbatim.
-//
-// It lives in its own file rather than as a string inside the port script so
-// that it is readable AS JavaScript: a 60-line JS function embedded in a Python
-// string literal is where escaping mistakes come from.
 
 // A KO in co-op. Everything in flight is dropped for the same reason respawn()
 // drops it: a body that comes back already on fire or mid-swing is the classic
@@ -8792,9 +8922,9 @@ function drawCoopDownHUD() {
 function resolveCoopMode(dt) {
     if (!isCoopMode()) return false;
 
-    // Newly downed, both checked before the wipe test, so a double KO on one
-    // frame reads as a wipe rather than as one player going down and the other
-    // dying alone a frame later.
+    // Newly downed. Checked for both fighters before the wipe test below, so a
+    // double KO on the same frame reads as a wipe rather than as one player
+    // going down and the other dying alone a frame later.
     for (const f of [player1, player2]) {
         if (f && !f.downed && f.hp <= 0) coopDown(f);
     }
@@ -8802,18 +8932,25 @@ function resolveCoopMode(dt) {
     if (player1.downed && player2.downed) {
         endCoopMatch(false, matchMode === 'survival'
             ? `Both fighters fell on wave ${waveNumber + 1}.  <b>Waves cleared: ${waveNumber}</b>`
-            : 'Both fighters fell.');
+            : `Both fighters fell. ${(() => {
+                const b = liveEnemies()[0];
+                return b ? `${b.name} had ${Math.max(0, Math.ceil(b.hp))} HP (${Math.round(100 * b.hp / b.maxHp)}%) left.` : '';
+            })()}`);
         return true;
     }
 
+    // The clock. Only the owner runs it; the other client is told.
     for (const f of [player1, player2]) {
         if (!f || !f.downed || !coopOwnsRespawn(f)) continue;
         f.respawnTimer -= dt;
         if (f.respawnTimer <= 0) coopRevive(f);
     }
-
     // Batch 23: the wave is cleared when EVERY enemy is down, not just one.
-    if (coopEnemies.length && !liveEnemies().length) return onBossDefeated();
+    // Wave/boss transitions are the host's call. The guest finding out by
+    // itself would mean two machines deciding independently when a wave is
+    // clear, and the guest's copy of enemy hp arrives a frame late - so it
+    // would regularly decide first, and wrongly.
+    if (coopIsHost() && coopEnemies.length && !liveEnemies().length) return onBossDefeated();
     return false;
 }
 
@@ -9152,7 +9289,7 @@ if (DEBUG) {
         DODGE_DIST, DODGE_IFRAMES, DODGE_COOLDOWN, STAT_MAX,
         specialHitDmg, specialDamageValue, specialDamageText, characterInfoHTML,
         openShop, buildShop, refreshBotUI,
-        playerName, setLocalName, refreshLocalNames, resetProgressClicked,
+        playerLabel, displayName, setLocalName, refreshLocalNames, resetProgressClicked,
         botsOnly, soloHumanSide, positionWatchCamera, syncWatchRings,
         get watchSpan() { return watchSpan; },
         get watchRings() { return watchRings; },

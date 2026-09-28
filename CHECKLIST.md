@@ -2856,6 +2856,118 @@ test is swept before and after (a timeout that orphans a Chrome must not poison
 what follows), and each has its own timeout. Verified by holding the lock and
 watching a second run refuse to start.
 
+## Batch 93 - the rest of the Fighter class
+
+`update()` was 94 identical lines against one differing branch: **who is holding
+the keys**. That branch is `readHumanInput()` now, supplied per build, and
+`update()` itself is shared. The local one also collapses a copy-paste inside
+its own file - its p1 and p2 paths were the same thirty lines with `.p1` swapped
+for `.p2` throughout.
+
+`initMesh` differed by its two-line nameplate call and `takeDamage` by its
+network routing. Both are shared:
+
+  * `takeDamage` asks "whose job is it to resolve this hit" with symbols that
+    all live in `shared/common.js` now, and `netActive()` is false forever in a
+    build that cannot connect - so the routing block falls straight through to
+    `applyDamage()`, which is exactly what the local body did by having no
+    routing at all.
+  * the nameplate became `nameplateLabel()` for about an hour, and then Batch 94
+    removed it: once both builds spelled the call the same way there was nothing
+    for it to abstract.
+
+**1612 of the class's 1705 lines are kept in step automatically.** What is left
+is `readHumanInput`, which is the real difference.
+
+### Seven that were drift, not design
+
+Reading the smallest diffs first, in the group where both builds carry a real
+body, most were never decisions:
+
+  * `loadThreeFallback` - `'three.min.js'` against `'../three.min.js'`. A PATH.
+    `AC_BASE` is declared beside `AC_ONE_SIDE_PER_CLIENT` now: one more fact
+    each build states about itself, rather than a forked function.
+  * `buildCrushRigs` - the local build was missing **every** `ensureUV2` and
+    `attachPhotoSurface` call, so the crush arena rendered untextured there. A
+    missing feature, not a different one. Its INTERFACE reason even said "the
+    crush cinematic is online-only", which was never true: the local build has
+    all 72 lines of it.
+  * `startCapture` - "Press a key..." reached one build and the other still
+    said "...".
+  * `drawHUD` - the `try/catch` around `restore()` goes to both.
+  * `cycleHudScale` - the local build inlined the one line of
+    `refreshHudScaleUI` because that function had never been ported. It is in
+    `shared/common.js` now, so neither build needs a copy.
+  * `drawPlayerHUD` - `isMine` is true for both panels where both are yours.
+  * `drawRoundStatus` - not "per-panel geometry" at all: the local build was
+    missing the `hudPlate()` backing behind the collapse warning and had an
+    older shade of red under three seconds.
+
+### The sync now says how much is left
+
+"49 names differ" was the number I had been quoting, and it was the wrong one.
+Twelve of those are a **stub** on one side - `refreshRoomUI` is 99 lines online
+and `{ /* no room to paint */ }` here - and a stub cannot drift, because there
+is only one implementation of it. Counting those as duplication made the pile
+look a quarter bigger than it was.
+
+So the sync prints the number that matters on every run: definitions with a real
+body on **both** sides, where a fix can reach one build and not the other, and
+the biggest five by name.
+
+A name declared twice in the local build is now said out loud, too. The cleanup
+that resolves it breaks the tie by POSITION - first one wins, whichever is
+correct - and it used to report that as routine `shared/` housekeeping. Found by
+accident while testing a new guard: a probe copy of `botsOnly()` inserted above
+the real one silently deleted the real one, and the sync reported success.
+
+## Batch 94 - four names for two questions
+
+The largest single cause of forked functions was not a disagreement about
+behaviour. It was **spelling**. Every place the game printed who a side is, it
+called a helper that existed under a different name in each build:
+
+| question | online | local |
+| --- | --- | --- |
+| long form, for menus | `playerLabel(side)` | `playerName(side)` |
+| what to print | `playerLabelShort(side)` | `displayName(side)` |
+
+Sixteen call sites online and twenty-eight locally. **A function containing any
+of them could never be shared, however identical the rest of it was** - which is
+why `drawHUDInner`, `drawRoundStatus`, `drawIntroOverlay`, `buildShop`,
+`endMatch`, both results panels and `initMesh` all sat on INTERFACE.
+
+What actually differs is one thing, and it is where a name COMES FROM: online
+there is one player per machine plus whatever the other client sent over; here
+two people share a keyboard and each typed their own. That is `nameForSide()`,
+and it is the only place in the group that reads the build flag.
+
+**Two visible changes, both in the online build, both deliberate:**
+
+  * the unnamed fallback on the HUD and the fighter nameplate reads "Player 1"
+    rather than "P1". The local build already read "Player 1" in all 21 of its
+    places, and a 420px bar has room for six more characters.
+  * a sandbox bot's panel says "Bot" instead of the account name of whoever is
+    watching it. That was reported as a bug in the local build and fixed there
+    ("Bot sides render as 'Krish [BOT]'"); the online build never got the fix,
+    because the function that had it was called something else.
+
+### A load check, because the reference guard has a blind spot
+
+Moving `playerName()` out left one reference behind, in the `ACDebug` export
+list: a bare `playerName,` in an object literal's shorthand. It is a READ, so
+the sync's dangling-reference guard should have caught it - except **that guard
+is bounded by the ONLINE build's vocabulary**, and `playerName` was a local-only
+name. It was never a candidate. The local build died at load and the sync
+reported success.
+
+`tests/bootcheck.js` answers the one question that makes every other checker
+meaningless if the answer is no: does each build load? Ten seconds, no gameplay.
+A load check has no vocabulary problem, because it runs the file. It is in the
+pre-commit hook now, alongside the staleness check, and skipped rather than
+failed where puppeteer is not installed. Verified by putting the bug back: it
+names the build, the missing identifier, and refuses.
+
 ### Still open
 
 Nothing is open in the sense of "a reported bug nobody has fixed", and nothing
