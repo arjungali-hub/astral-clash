@@ -1580,7 +1580,7 @@ if (location.protocol === 'https:'
 // started once THREE is actually present, from whichever source provided it.
 function loadThreeFallback() {
     var s = document.createElement('script');
-    s.src = '../three.min.js';
+    s.src = AC_BASE + 'three.min.js';   // '../' in the local build, which sits one directory down
     s.onload = function () { startGame(); };
     s.onerror = function () { document.getElementById('cdn-error').style.display = 'flex'; };
     document.head.appendChild(s);
@@ -1625,7 +1625,8 @@ function startGame() {
      isLocalSide(), coopIsHost(), coopOwnsRespawn() and stepFight() each used to
      fork - not because they disagreed, but because they read `net` and `net`
      was unreachable from shared/. -->
-<script>const AC_ONE_SIDE_PER_CLIENT = false;  // local: one keyboard drives BOTH sides</script>
+<script>const AC_ONE_SIDE_PER_CLIENT = false;  // local: one keyboard drives BOTH sides
+      const AC_BASE = '../';                   // local: this build sits one directory down</script>
 <!-- Shared with the online build; see each file's header. Pure data
      and timing, so these may load before the engine. -->
 <script src="../shared/roster.js"></script>
@@ -2076,7 +2077,6 @@ function soloHumanSide() {
 // camera, looking straight down at the whole arena, is a spectator view - and
 // it is the only mode in this game where you can see the whole layout at once.
 function botsOnly() { return p1IsBot && p2IsBot; }
-
 const watchCam = new THREE.PerspectiveCamera(46, 1, 1, 6000);
 watchCam.layers.enableAll();
 // Batch 52: IT FRAMES THE FIGHT, not the building.
@@ -2448,7 +2448,7 @@ function hudFont(px, bold) {
 function cycleHudScale() {
     HUD_TEXT_SCALE = HUD_TEXT_SCALE >= 1.3 ? 1 : 1.3;
     safeLSSet('astralClashHudScale', HUD_TEXT_SCALE);
-    setOptState('btn-hud-scale', HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal', HUD_TEXT_SCALE > 1);
+    refreshHudScaleUI();
 }
 function toggleBloom() {
     bloomEnabled = !bloomEnabled;
@@ -2460,7 +2460,7 @@ function toggleBloom() {
 }
 refreshBloomUI();
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
-setOptState('btn-hud-scale', HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal', HUD_TEXT_SCALE > 1);
+refreshHudScaleUI();
 
 function keyLabel(k) {
     if (k === ' ') return 'Space';
@@ -2504,7 +2504,7 @@ function buildRebindList() {
 function startCapture(side, action, btn) {
     if (rebindCapture) rebindCapture.buttonEl.classList.remove('listening'); // cancel any prior in-flight capture
     rebindCapture = { side, action, buttonEl: btn };
-    btn.textContent = '...';
+    btn.textContent = 'Press a key\u2026';   // "..." on its own said nothing
     btn.classList.add('listening');
 }
 // Rebind key capture is handled at the top of the single keyboard dispatcher
@@ -2883,10 +2883,15 @@ function buildCrushRigs() {
     const floorTex = theme ? getFloorTexture(theme) : null;
     const slabGeo = new THREE.BoxGeometry(30, WALL_HEIGHT * 0.8, 260);
     const stageGeo = new THREE.BoxGeometry(300, 10, 300);
+    // aoMap samples vUv2 in r128, so anything carrying the packed ORM needs a
+    // uv2 attribute or the AO channel reads garbage and the surface goes
+    // blotchy - subtle enough to survive a screenshot review.
+    ensureUV2(slabGeo); ensureUV2(stageGeo);
     // A wall BEHIND the fighter closes the box off. Without it the camera looks
     // straight past them into empty sky, which read as a floating diorama
     // rather than a room shutting on someone.
     const backGeo = new THREE.BoxGeometry(300, WALL_HEIGHT * 0.8, 26);
+    ensureUV2(backGeo);
     const dustGeo = new THREE.SphereGeometry(1, 6, 5);
     dustGeo.userData.shared = true;
     slabGeo.userData.shared = true;
@@ -2901,6 +2906,15 @@ function buildCrushRigs() {
             roughness: 0.9, metalness: 0.08,
         });
         stageMat.userData.keepMap = true;
+        // Batch 41: the photographic set, like every other surface.
+        //
+        // The crush was the ONE place still dressed in the 256px procedural
+        // canvases - which is perverse, because it is also the one moment the
+        // camera is a metre from a wall and the surface fills the frame. The
+        // arena got real PBR sets in Batch 34 and this was missed.
+        // The stage floor is 300 square, so ~6.5 lands near 45 units a tile.
+        if (theme) attachPhotoSurface(stageMat, 'floor', theme.floorTex, 6.5, 6.5,
+            { normalScale: 1.0, ao: 0.9, tintFade: themeTintFade(theme) });
         const stage = new THREE.Mesh(stageGeo, stageMat);
         stage.position.y = -5;
         stage.receiveShadow = true;
@@ -2912,6 +2926,17 @@ function buildCrushRigs() {
                 roughness: 0.85, metalness: 0.12,
             });
             m.userData.keepMap = true;   // textures are shared with the map
+            // Batch 41: photographic, like the arena walls. Tiled tighter than
+            // an arena wall (2.2 rather than ~1) because these slabs are close
+            // enough to the camera to show texel size - the whole point of the
+            // shot is a wall arriving in your face.
+            // 5.5, not 2.2. A slab face is 260 long and 208 tall, so 2.2
+            // repeats meant ~110 units per tile and the stone read as vertical
+            // streaks. Batch 34's tiling lesson applies here more than
+            // anywhere: this is the one surface the camera gets within a metre
+            // of. ~45 units per tile is the target, so 260/45 is about 5.5.
+            if (theme) attachPhotoSurface(m, 'wall', theme.wallTex, 5.5, 5.5,
+                { normalScale: 1.25, ao: 0.85, tintFade: themeTintFade(theme) });
             return m;
         };
         for (const sign of [-1, 1]) {
@@ -4974,6 +4999,61 @@ class Fighter {
         }
     }
 
+    // Never a puppet here: netActive() is false in a build that cannot connect,
+    // so this answers false and the shared update() runs its own physics, which
+    // is what this build always did.
+    isNetPuppet() {
+        return netActive() && !this.isBot && !isLocalSide(sideOf(this));
+    }
+
+    // WHO IS HOLDING THE KEYS. The one part of update() that genuinely differs
+    // between the builds: two players at one keyboard here, one with a mouse
+    // there.
+    //
+    // p1 and p2 used to be the same thirty lines with `.p1` swapped for `.p2`
+    // throughout, so this removes a copy-paste inside this file as well as the
+    // one between the two files.
+    readHumanInput(dt, target) {
+        // One human, so the reason for the split-keyboard scheme is gone - see
+        // applySoloControls.
+        if (soloHumanSide() === sideOf(this)) {
+            const r = applySoloControls(this, BINDINGS[sideOf(this)], dt, target);
+            return { moveX: r.moveX, moveY: r.moveY,
+                     jumpPressed: r.jumpPressed, jumpJustPressed: r.jumpJustPressed };
+        }
+        const side = this.isPlayerOne ? 'p1' : 'p2';
+        const b = BINDINGS[side];
+        let moveX = 0, moveY = 0, jumpPressed = false, jumpJustPressed = false;
+        // First-person controls: Left/Right TURN (look) instead of instantly
+        // snapping to face sideways; Up/Down walk forward/back along wherever
+        // you are currently facing, so "turn, then walk that way" is how you
+        // change direction - the same as a real FPS.
+        if (keys[b.left]) this.turnBy(-TURN_SPEED * dt);
+        if (keys[b.right]) this.turnBy(TURN_SPEED * dt);
+        if (keys[b.lookUp]) this.lookBy(LOOK_SPEED * dt);
+        if (keys[b.lookDown]) this.lookBy(-LOOK_SPEED * dt);
+        if (keys[b.up]) { moveX += this.fx; moveY += this.fy; }
+        if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
+        if (keys[b.jump]) jumpPressed = true;
+        if (consumePress(b.jump)) jumpJustPressed = true;
+        if (consumePress(b.attack)) this.tryStartAction('basic', target);
+        if (consumePress(b.special)) this.tryStartAction('special', target);
+        if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
+        const gp = pollGamepad(padSlots[side]);
+        if (gp) {
+            if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6); // stick X = turn rate
+            if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; } // stick Y = forward/back
+            if (gp.lookY) this.lookBy(-gp.lookY * LOOK_SPEED * dt * 1.6); // right stick Y = pitch
+            if (gp.jump) { jumpPressed = true; jumpJustPressed = true; } // pollGamepad already edge-triggers
+            if (gp.attack) this.tryStartAction('basic', target);
+            if (gp.special) this.tryStartAction('special', target);
+            if (gp.dodge) this.tryDodge(moveX, moveY);
+        }
+        if (touchTurn[side]) this.turnBy(touchTurn[side] * TURN_SPEED * dt); // analog joystick turn
+        if (touchLook[side]) this.lookBy(touchLook[side] * LOOK_SPEED * dt); // drag-to-look zone
+        return { moveX, moveY, jumpPressed, jumpJustPressed };
+    }
+
     update(opponent, dt) {
         this.decayVisualOffset(dt);
         this.vx = 0;
@@ -5010,73 +5090,38 @@ class Fighter {
 
         if (this.downed) {
             // Down in co-op: no input, no AI, no actions - but the rest of
-            // update() still runs, so gravity settles the body and the Death
-            // clip plays. Gating here rather than returning early is what
-            // keeps a downed fighter from hanging in mid-air.
+            // update() still runs, so gravity settles the body, the Death clip
+            // plays and the feedback FX keep ticking. Gating here rather than
+            // returning early is what keeps a downed fighter from hanging in
+            // mid-air where it was knocked out.
         } else if (this.isBot) {
             const decision = this.botDecide(target, dt);
             moveX = decision.moveX; moveY = decision.moveY; jumpPressed = decision.jumpPressed;
-        } else if (soloHumanSide() === sideOf(this)) {
-            // One human, so the reason for the split-keyboard scheme is
-            // gone - see applySoloControls.
-            const r = applySoloControls(this, BINDINGS[sideOf(this)], dt, target);
-            moveX = r.moveX; moveY = r.moveY;
-            jumpPressed = r.jumpPressed; jumpJustPressed = r.jumpJustPressed;
-        } else if (this.isPlayerOne) {
-            const b = BINDINGS.p1;
-            // First-person controls: Left/Right TURN (look) instead of
-            // instantly snapping to face sideways; Up/Down walk forward/back
-            // along wherever you're currently facing, so "turn, then walk
-            // that way" is how you change direction — same as a real FPS.
-            if (keys[b.left]) this.turnBy(-TURN_SPEED * dt);
-            if (keys[b.right]) this.turnBy(TURN_SPEED * dt);
-            if (keys[b.lookUp]) this.lookBy(LOOK_SPEED * dt);
-            if (keys[b.lookDown]) this.lookBy(-LOOK_SPEED * dt);
-            if (keys[b.up]) { moveX += this.fx; moveY += this.fy; }
-            if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
-            if (keys[b.jump]) jumpPressed = true;
-            if (consumePress(b.jump)) jumpJustPressed = true;
-            if (consumePress(b.attack)) this.tryStartAction('basic', target);
-            if (consumePress(b.special)) this.tryStartAction('special', target);
-            if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
-            const gp = pollGamepad(padSlots.p1);
-            if (gp) {
-                if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6); // stick X = turn rate
-                if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; } // stick Y = forward/back (up on stick is negative)
-                if (gp.lookY) this.lookBy(-gp.lookY * LOOK_SPEED * dt * 1.6); // right stick Y = pitch (up on stick is negative)
-                if (gp.jump) { jumpPressed = true; jumpJustPressed = true; } // pollGamepad already edge-triggers its buttons
-                if (gp.attack) this.tryStartAction('basic', target);
-                if (gp.special) this.tryStartAction('special', target);
-                if (gp.dodge) this.tryDodge(moveX, moveY);
-            }
-            if (touchTurn.p1) this.turnBy(touchTurn.p1 * TURN_SPEED * dt); // analog joystick turn, see setupTouchJoystick
-            if (touchLook.p1) this.lookBy(touchLook.p1 * LOOK_SPEED * dt); // drag-to-look zone, see setupTouchLookZone
         } else {
-            const b = BINDINGS.p2;
-            if (keys[b.left]) this.turnBy(-TURN_SPEED * dt);
-            if (keys[b.right]) this.turnBy(TURN_SPEED * dt);
-            if (keys[b.lookUp]) this.lookBy(LOOK_SPEED * dt);
-            if (keys[b.lookDown]) this.lookBy(-LOOK_SPEED * dt);
-            if (keys[b.up]) { moveX += this.fx; moveY += this.fy; }
-            if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
-            if (keys[b.jump]) jumpPressed = true;
-            if (consumePress(b.jump)) jumpJustPressed = true;
-            if (consumePress(b.attack)) this.tryStartAction('basic', target);
-            if (consumePress(b.special)) this.tryStartAction('special', target);
-            if (consumePress(b.dodge)) this.tryDodge(moveX, moveY);
-            const gp = pollGamepad(padSlots.p2);
-            if (gp) {
-                if (gp.moveX) this.turnBy(gp.moveX * TURN_SPEED * dt * 1.6);
-                if (gp.moveY) { moveX += -gp.moveY * this.fx; moveY += -gp.moveY * this.fy; }
-                if (gp.lookY) this.lookBy(-gp.lookY * LOOK_SPEED * dt * 1.6);
-                if (gp.jump) { jumpPressed = true; jumpJustPressed = true; }
-                if (gp.attack) this.tryStartAction('basic', target);
-                if (gp.special) this.tryStartAction('special', target);
-                if (gp.dodge) this.tryDodge(moveX, moveY);
+            // The one branch that differs between the builds, and the only
+            // reason update() used to be forked: who is holding the keys. This
+            // build has one local fighter and a mouse; the local build has two
+            // at one keyboard. Everything below here is the same in both.
+            const r = this.readHumanInput(dt, target);
+            if (r) {
+                moveX += r.moveX; moveY += r.moveY;
+                jumpPressed = jumpPressed || r.jumpPressed;
+                jumpJustPressed = jumpJustPressed || r.jumpJustPressed;
             }
-            if (touchTurn.p2) this.turnBy(touchTurn.p2 * TURN_SPEED * dt);
-            if (touchLook.p2) this.lookBy(touchLook.p2 * LOOK_SPEED * dt);
         }
+        // Anything else - the remote fighter in an online match - takes no local
+        // input at all. Its position and actions arrive over the network (see
+        // the netcode section); until a peer is connected it simply stands still.
+
+        // A network puppet's transform is authoritative on the OTHER machine.
+        // Running our own physics on it would fight the incoming state: gravity
+        // would pull it down between packets and then it would snap back, and
+        // resolveObstacles would shove it out of geometry its owner is standing
+        // in perfectly happily. So its velocities are zeroed and the
+        // integration and jump/gravity blocks below are skipped; netApplyRemote
+        // eases it toward the last state we received.
+        const puppet = this.isNetPuppet();
+        if (puppet) { this.vx = 0; this.vy = 0; this.vz = 0; }
 
         // Rooted (e.g. Thorne's Bramble Lash): can't move, but can still
         // turn and attack — a lockdown, not a full stun.
@@ -5114,13 +5159,15 @@ class Fighter {
             this.setFacing(this.botFaceX, this.botFaceY);
         }
 
-        const oldX = this.x, oldY = this.y;
-        this.x += this.vx * dt;
-        this.y += this.vy * dt;
-        this.resolveObstacles();
-        this.resolvePlatformWalls();
-        this.resolveTallTerrain(oldX, oldY);
-        this.clampToArena();
+        if (!puppet) {
+            const oldX = this.x, oldY = this.y;
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            this.resolveObstacles();
+            this.resolvePlatformWalls();
+            this.resolveTallTerrain(oldX, oldY);
+            this.clampToArena();
+        }
 
         if (jumpPressed && this.grounded && this.jumpCooldown <= 0) {
             this.vz = JUMP_VZ;
@@ -5145,8 +5192,9 @@ class Fighter {
 
         const footX = this.x + this.width / 2, footY = this.y + this.height / 2;
         const stepGround = groundLevelAt(footX, footY);
+        if (puppet) { this.grounded = true; }  // its owner decides; see netApplyState
         this.vz -= GRAVITY * dt;
-        const nextZ = this.z + this.vz * dt;
+        const nextZ = puppet ? this.z : this.z + this.vz * dt;
 
         // Steps/ramps give walkable ground, but only a rise up to
         // MAX_WALK_STEP_UP (30) can be climbed on foot in one go — see
@@ -5195,8 +5243,10 @@ class Fighter {
         this.updateActionState(dt);
 
         // Generic passive trickle for everyone (config-driven rate, not a
-        // name-check) — Gorgonok's meterRateMult keeps him the fastest
-        // passive charger without a special case in this loop.
+        // name-check) — a high meterRateMult keeps its owner the fastest
+        // passive charger without a special case in this loop. That is Draven
+        // since the Batch 44 stat swap; it was Gorgonok before, and the point
+        // of reading it from config is that this loop did not have to change.
         if (this.specialMeter < 100) {
             this.specialMeter = Math.min(100, this.specialMeter + METER_PASSIVE_RATE * this.meterRateMult * dt);
         }
@@ -5289,10 +5339,58 @@ class Fighter {
     // facing); a projectile passes its own normalized velocity, since the
     // shooter has usually turned since firing and its current facing would
     // knock you sideways. Dodge i-frames block only this path.
-    takeDamage(amount, attacker, dir) {
-        if (this.invulnFrames > 0) return;
-        // A downed co-op teammate is out of the fight, not a shield.
+    takeDamage(amount, attacker, dir, fromNet) {
+        if (this.invulnFrames > 0) return;   // a dodge beats an incoming hit, including a networked one
+        // A downed co-op teammate is out of the fight, not a shield. Without
+        // this the boss keeps swinging at the body (pickTarget falls back to
+        // its given opponent when nobody is alive), which both flashes hit FX
+        // on a corpse and lets it soak hits aimed at the player still up.
         if (this.downed) return;
+        // --- Batch 32: damage authority. ---------------------------------
+        // Hits are ATTACKER-authoritative: whoever threw the swing decides on
+        // their own machine whether it landed, and tells the victim. Without
+        // this gate both clients resolve the same swing independently and can
+        // disagree, which shows up as phantom damage or damage that never
+        // lands.
+        // --- Batch 42: a CO-OP ENEMY is not a side. --------------------
+        //
+        // The gate below reasons in terms of p1/p2 and `isLocalSide`, which a
+        // boss satisfies neither way: sideOf() returns nothing for it, so
+        // `iAmLocal` came out false and `attackerIsLocal` true whenever a local
+        // player hit it - and the code then sent a plain HIT, which the OPPONENT
+        // applies TO THEMSELVES. Hitting the boss would have damaged your
+        // teammate. It needs its own branch, before that reasoning runs.
+        if (netActive() && !fromNet && this.isBossEntity) {
+            if (netIsHost()) {
+                // We own the enemies: resolve it here, and the guest sees the
+                // result in the next COOP_STATE.
+                this.applyDamage(amount, { attacker: attacker || null, dir: dir || null });
+                return;
+            }
+            const attackerIsLocal = !!attacker && isLocalSide(sideOf(attacker));
+            if (!attackerIsLocal) return;   // not ours to resolve; the host owns it
+            const idx = coopEnemies.indexOf(this);
+            if (idx >= 0) netSend({ t: 'HIT_ENEMY', i: idx, dmg: amount });
+            // Applied locally too, for immediate feedback - the host's hp
+            // arrives a frame later and snaps, which is imperceptible on a hit
+            // you just landed and far better than a swing that looks like it
+            // missed.
+            this.applyDamage(amount, { attacker: attacker || null, dir: dir || null });
+            return;
+        }
+        if (netActive() && !fromNet) {
+            const iAmLocal = isLocalSide(sideOf(this));
+            const attackerIsLocal = !!attacker && isLocalSide(sideOf(attacker));
+            // Their attack on us: theirs to resolve. It arrives as a HIT.
+            if (iAmLocal && attacker && !attackerIsLocal) return;
+            // Anything on the puppet that we did not throw - crush, burn,
+            // their own environment - belongs to its owner. Its hp comes back
+            // to us in the next STATE packet.
+            if (!iAmLocal && !attackerIsLocal) return;
+            // Our attack on them: resolve locally for immediate feedback AND
+            // tell them, so they can apply it to themselves authoritatively.
+            if (!iAmLocal && attackerIsLocal) netSend({ t: 'HIT', dmg: amount });
+        }
         this.applyDamage(amount, { attacker: attacker || null, dir: dir || null });
     }
 
@@ -5631,6 +5729,14 @@ class Fighter {
     // Builds this fighter's 3D mesh group plus the small reactive props
     // (hit-flash light, shield ring, cooldown ring, P2 outline) attached
     // to it. Called once, right after construction, from startRound().
+    // WHAT A FIGHTER IS CALLED ABOVE ITS HEAD. The only line of initMesh that
+    // differed between the builds, so it is the method instead and the other
+    // 68 lines are shared. One build names one local player and a remote one;
+    // the other names two people at the same keyboard, or two bots.
+    nameplateLabel() {
+        return displayName(this.isPlayerOne ? 'p1' : 'p2');
+    }
+
     initMesh() {
         // Batch 25: a Blender-authored skinned model when one is loaded for this
         // character, otherwise the original procedural mesh. Both satisfy the
@@ -5679,7 +5785,8 @@ class Fighter {
         // rather than P1/P2 — it belongs to neither side.
         group.add(this.isBossEntity
             ? makeNameSprite(this.name, '#f59e0b')
-            : makeNameSprite(displayName(this.isPlayerOne ? 'p1' : 'p2'), this.isPlayerOne ? '#00f3ff' : '#f472b6'));
+            : makeNameSprite(this.nameplateLabel(),
+                             this.isPlayerOne ? '#00f3ff' : '#f472b6'));
 
         const flashLight = new THREE.PointLight(0xffffff, 0, 70);
         flashLight.position.y = 16;
@@ -8040,7 +8147,7 @@ function drawRoundStatus() {
     hudCtx.textAlign = "left";
 }
 
-function drawPlayerHUD(f, x, label) {
+function drawPlayerHUD(f, x, label, isMine) {
     const BW = 420; // bar width, scaled up for the bigger virtual space
     hudCtx.fillStyle = "#ffffff";
     hudCtx.font = hudFont(18, true);
@@ -8087,6 +8194,7 @@ function drawPlayerHUD(f, x, label) {
     // YOUR dash, not theirs. Your own cooldown is the thing you are about to
     // press; an opponent's is information the game has never given and should
     // not start giving as a side effect of a readability fix.
+    if (!isMine) return;
     const cd = Math.max(0, f.dodgeCooldown || 0);
     const ready = 1 - Math.min(1, cd / DODGE_COOLDOWN);
     // Clear of the "Special nn%" string to its left, which runs to about 200.
@@ -8188,9 +8296,13 @@ function drawIntroOverlay() {
     hudCtx.restore();
 }
 
-// Wrapped so the shadow state set inside cannot leak on an early return.
+// Wraps the HUD draw so the shadow state set inside it cannot leak, whichever
+// path it returns on.
 function drawHUD() {
     drawHUDInner();
+    // A restore() with no matching save() throws, and drawHUDInner has
+    // enough early returns that one can slip through. Cheaper to guard
+    // than to prove it cannot happen.
     try { hudCtx.restore(); } catch (e) {}
 }
 
@@ -8222,8 +8334,10 @@ function drawHUDInner() {
     hudCtx.save();
     hudVirtualTransform();
 
-    drawPlayerHUD(player1, 30, displayName('p1'));
-    drawPlayerHUD(player2, hudW() - 30 - 420, displayName('p2'));
+    // Both panels are this player's - one keyboard drives both sides - so
+    // both get the full panel including the dodge row.
+    drawPlayerHUD(player1, 30, displayName('p1'), true);
+    drawPlayerHUD(player2, hudW() - 30 - 420, displayName('p2'), true);
     // Batch 16: the co-op challenger gets a wide bar across the top centre —
     // the conventional boss-bar placement, and the one region the two
     // side panels leave free in both split and full-screen layouts.

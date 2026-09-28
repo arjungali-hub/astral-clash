@@ -137,7 +137,7 @@ INTERFACE = {
     # so the drift report stays empty and so nobody "fixes" it by copying the
     # online path over the top - which is exactly what happened once, and only
     # bites when the CDN is down.
-    'loadThreeFallback': 'same body; the engine sits one directory up',
+    # loadThreeFallback is SHARED now: AC_BASE carries the one-directory-down path now.
 
     # NOT the function - the STATEMENTS after it. A chunk runs to the next
     # definition, so copying randomPick also copied
@@ -155,7 +155,7 @@ INTERFACE = {
     # Same behaviour, reached differently: the online body calls
     # refreshHudScaleUI() and this one calls setOptState() directly, because that
     # one-line helper is not portable yet. Both write the same pill.
-    'cycleHudScale': 'inlines refreshHudScaleUI, which cannot travel yet',
+    # cycleHudScale is SHARED now: refreshHudScaleUI travels, so nothing needs inlining.
 
     # The online body auto-starts when nobody is connected - a solo path there,
     # and always-on here, where it skipped the Start Fight button entirely.
@@ -175,9 +175,9 @@ INTERFACE = {
     'renderViews': 'the split itself',
     'renderOneView': 'per-viewport camera and scissor',
     'hudViewports': 'two HUD panels here, one there',
-    'drawHUD': 'draws two panels',
+    # drawHUD is SHARED now: both guard the restore() now.
     'drawHUDInner': 'draws two panels',
-    'drawPlayerHUD': 'per-panel geometry',
+    # drawPlayerHUD is SHARED now: isMine is true for both panels where both are yours.
     'drawIntroOverlay': 'per-panel geometry',
     'drawRoundStatus': 'per-panel geometry',
     'drawCoopDownHUD': 'per-panel geometry',
@@ -191,7 +191,7 @@ INTERFACE = {
     'buildTutorialControls': 'describes two players',
     'buildRebindList': 'two lists',
     'saveBindings': 'two sides',
-    'startCapture': 'two sides',
+    # startCapture is SHARED now: the better prompt text reached one build only.
     'pollGamepad': 'two pads',
 
     # --- screens and flow: lobby and room code vs a local picker
@@ -227,8 +227,8 @@ INTERFACE = {
     'refreshPauseUI': 'pause offers different things',
     'refreshGameOverUI': 'results name two local players',
     'refreshSandboxUI': 'sandbox is online-only',
-    'refreshHudScaleUI': 'two HUD panels',
-    'buildCrushRigs': 'the crush cinematic is online-only',
+    # refreshHudScaleUI is SHARED now: one line, and setOptState is shared.
+    # buildCrushRigs is SHARED now: local was missing the photo-surface calls, not opting out.
     'disposeCrushRigs': 'the crush cinematic is online-only',
 }
 
@@ -682,9 +682,23 @@ MARKUP_INTERFACE = {
 # methods are actually why - and 939 of its lines are identical. Same contract:
 # a reason each, and the sync reports any method that differs without one.
 FIGHTER_INTERFACE = {
-    'update': 'reads per-side bindings here and mouse look plus a remote fighter there',
-    'takeDamage': 'reports the hit to the other client there; nobody to tell here',
-    'initMesh': "labels a fighter with this build's two-player naming",
+    # update() is SHARED now. Its one differing branch - who is holding the keys
+    # - was lifted into readHumanInput(), which is the method that differs
+    # instead. That moved 94 identical lines into the shared column, and
+    # collapsed this build's own p1/p2 copy-paste on the way.
+    'readHumanInput': 'two players at one keyboard here, one with a mouse there',
+    # takeDamage is SHARED now. It looked like a fork because the online body is
+    # mostly "whose job is it to resolve this hit" - and every symbol that
+    # question is asked with (netActive, netIsHost, isLocalSide, sideOf,
+    # coopEnemies, netSend) is in shared/common.js, so the local build can ask
+    # it too. netActive() is false forever in a build with no connection, so the
+    # whole routing block falls straight through to applyDamage, which is what
+    # this build's shorter body did by having no routing at all. Same answer,
+    # one copy. The extra `fromNet` parameter is never passed here; nothing
+    # calls it except the network handlers, which this build does not run.
+    # initMesh is SHARED now. Its one differing line - the nameplate - is
+    # nameplateLabel(), which is 3 lines instead of 70.
+    'nameplateLabel': 'names two people at one keyboard here, a local and a remote player there',
 }
 
 _FIGHTER_METHOD = re.compile(r'(?m)^    ([A-Za-z_$][' + chr(92) + 'w$]*)' + chr(92)
@@ -902,7 +916,7 @@ def strip_shared_duplicates(text, shared_sources):
         for m in _DEF_RE.finditer(src_text):
             shared_names.add(m.group(1) or m.group(2) or m.group(3))
 
-    removed = []
+    removed, local_dups = [], []
     while True:
         hits = list(_DEF_RE.finditer(text))
         # A name declared twice HERE is the same failure with a different
@@ -918,11 +932,11 @@ def strip_shared_duplicates(text, shared_sources):
                 continue
             end = hits[k + 1].start() if k + 1 < len(hits) else len(text)
             text = text[:m.start()] + text[end:]
-            removed.append(name)
+            (local_dups if dup_here else removed).append(name)
             break
         else:
             break
-    return text, removed
+    return text, removed, local_dups
 
 
 def comment_start(text, i):
@@ -2837,12 +2851,18 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
 
     # NOTHING THE SHARED MODULES DEFINE MAY ALSO BE DEFINED HERE. Run last, so
     # it cleans up after every step above rather than racing them.
-    dst, deduped = strip_shared_duplicates(
+    dst, deduped, local_dups = strip_shared_duplicates(
         dst, [shared_src, anim_src, props_src, chars_src, common_src])
     if deduped:
         print('  %-34s %d removed (%s%s)'
               % ('re-declared from shared/', len(deduped), ', '.join(sorted(set(deduped))[:4]),
                  ', ...' if len(set(deduped)) > 4 else ''))
+    # Not housekeeping. Two declarations of the same name in this build mean a
+    # step inserted something that was already here, and the tie is broken by
+    # POSITION - the first one wins, whichever is correct.
+    if local_dups:
+        print('  %-34s DUPLICATE in the local build, later copy dropped: %s'
+              % ('declared twice here', ', '.join(sorted(set(local_dups)))))
 
     # SHARED CODE MAY NOT REACH INTO bootGame(). The rule that makes shared/
     # work, and the one hand-moving code skips: the extractor enforces it with
@@ -3011,7 +3031,24 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     undefined = [c for c in CALLED
                  if ('function %s(' % c) not in everywhere
                  and ('const %s' % c) not in everywhere]
-    if missing or undefined or shared_missing or shadowed:
+    # NOTHING DECLARED TWICE. art/local_extras.js is injected once, guarded on
+    # "does the build already have this function"; move that function and the
+    # guard reads false again and the whole fragment goes in a second time.
+    # That is two declarations of setLocalName, botsOnly, watchCam and
+    # applySoloControls, and a build that dies at load with "has already been
+    # declared" - and the fixed-point check cannot see it, because the second
+    # run finds the guard satisfied and the two outputs agree.
+    #
+    # Also the shape of the BINDINGS incident: a ported definition landing on
+    # top of one the build already had.
+    seen, twice = set(), []
+    for m in _DEF_RE.finditer(dst):
+        name = m.group(1) or m.group(2) or m.group(3)
+        if name in seen:
+            twice.append(name)
+        seen.add(name)
+
+    if missing or undefined or shared_missing or shadowed or twice:
         print('')
         print('PORT INCOMPLETE - refusing to write:')
         for m in missing:
@@ -3022,6 +3059,8 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
             print('   missing from shared/roster.js: ' + m)
         for d in shadowed:
             print('   SHADOWS the shared definition (must be removed here): ' + d)
+        for d in sorted(set(twice)):
+            print('   DECLARED TWICE at top level (a fragment went in twice?): ' + d)
         return 1
     print('  %-34s %d local, %d shared, %d calls resolved'
           % ('verified', len(REQUIRED),
@@ -3042,9 +3081,73 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         print('   Run: python art/sync_local.py')
         return 1
 
+    stubs, both = duplication_tally(src, dst)
+    print('  %-34s %d differ with a real body on both sides, %d where one is a stub'
+          % ('duplication left', len(both), stubs))
+    if both:
+        worst = ', '.join('%s(%d)' % (n, c) for c, n in sorted(both, reverse=True)[:5])
+        print('  %-34s %s' % ('biggest', worst))
+
     io.open(DST, 'w', encoding='utf-8', newline='').write(dst)
     print('\nlocal build: %d -> %d bytes' % (before, len(dst)))
     return check_fixed_point()
+
+
+# How much of the duplication is real, for the report at the end of every run.
+# A definition whose body is a stub on one side is not duplication: there is one
+# implementation and the other build declines to have one, so nothing can drift.
+# A definition with a real body on BOTH sides is a place a fix can reach one
+# build and not the other, and that is the number worth watching.
+STUB_LINES = 3
+
+
+def _bodies(text):
+    """name -> its source, using this file's own definition scanner."""
+    hits = list(_DEF_RE.finditer(text))
+    starts = [h.start() for h in hits]
+    out = {}
+    for k, m in enumerate(hits):
+        chunk_end = starts[k + 1] if k + 1 < len(hits) else len(text)
+        name = m.group(1) or m.group(2) or m.group(3)
+        out[name] = text[m.start():definition_span(text, m.start(), chunk_end)]
+    return out
+
+
+def duplication_tally(src, dst):
+    src_defs = _bodies(src)
+    dst_defs = _bodies(dst)
+
+    def code(t):
+        return [l.strip() for l in t.splitlines()
+                if l.strip() and not l.strip().startswith('//')]
+
+    stubs, both = 0, []
+    for name in sorted(set(src_defs) & set(dst_defs)):
+        a, b = code(src_defs[name]), code(dst_defs[name])
+        if a == b:
+            continue
+        if len(a) <= STUB_LINES or len(b) <= STUB_LINES:
+            stubs += 1
+        else:
+            both.append((min(len(a), len(b)), name))
+    # The Fighter class is ONE definition to the scanner and would report its
+    # whole thousand lines, but close_fighter_drift keeps all but the methods on
+    # FIGHTER_INTERFACE in step. Count only those, or the headline number stays
+    # pinned to a class that is almost entirely shared.
+    both = [(c, n) for c, n in both if n != 'Fighter']
+    stuck = fighter_unsynced(src)
+    if stuck:
+        both.append((stuck, 'Fighter.' + '/'.join(sorted(FIGHTER_INTERFACE))))
+    return stubs, both
+
+
+def fighter_unsynced(src):
+    """Lines of Fighter that nothing keeps in step: the FIGHTER_INTERFACE ones."""
+    span = _class_body(src, 'Fighter')
+    if not span:
+        return 0
+    ms = _methods(src[span[0]:span[1]])
+    return sum(len(t.splitlines()) for n, t in ms.items() if n in FIGHTER_INTERFACE)
 
 
 def check_fixed_point():

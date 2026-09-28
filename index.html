@@ -1805,7 +1805,7 @@
 // started once THREE is actually present, from whichever source provided it.
 function loadThreeFallback() {
     var s = document.createElement('script');
-    s.src = 'three.min.js';
+    s.src = AC_BASE + 'three.min.js';   // '../' in the local build, which sits one directory down
     s.onload = function () { startGame(); };
     s.onerror = function () { document.getElementById('cdn-error').style.display = 'flex'; };
     document.head.appendChild(s);
@@ -1873,7 +1873,8 @@ function startGame() {
      isLocalSide(), coopIsHost(), coopOwnsRespawn() and stepFight() each used to
      fork - not because they disagreed, but because they read `net` and `net`
      was unreachable from shared/. -->
-<script>const AC_ONE_SIDE_PER_CLIENT = true;   // online: a client drives p1 OR p2</script>
+<script>const AC_ONE_SIDE_PER_CLIENT = true;   // online: a client drives p1 OR p2
+      const AC_BASE = '';                      // online: files at the repo root sit next to this one</script>
 <!-- Shared with the local build; see the header in that file. -->
 <script src="shared/roster.js"></script>
 <script src="shared/animation.js"></script>
@@ -2591,9 +2592,6 @@ function cycleHudScale() {
     HUD_TEXT_SCALE = HUD_TEXT_SCALE >= 1.3 ? 1 : 1.3;
     safeLSSet('astralClashHudScale', HUD_TEXT_SCALE);
     refreshHudScaleUI();
-}
-function refreshHudScaleUI() {
-    setOptState('btn-hud-scale', HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal', HUD_TEXT_SCALE > 1);
 }
 document.getElementById('btn-sandbox').addEventListener('click', () => setSandboxMatch(!sandboxMatch));
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
@@ -5007,50 +5005,20 @@ class Fighter {
         }
     }
 
-    update(opponent, dt) {
-        this.decayVisualOffset(dt);
-        this.vx = 0;
-        this.vy = 0;
-        let moveX = 0, moveY = 0;
-        let jumpPressed = false;
-        // Batch 15: the ground jump reads a HELD key (fine — `grounded` is what
-        // stops it re-triggering), but a mid-air second jump can't: the same
-        // physical press that started jump 1 is usually still down on the very
-        // next frame, so a held-state check would auto-spend the double jump
-        // one frame after takeoff with no second press from the player. This
-        // tracks a genuine key-DOWN edge instead. Nothing else consumes the
-        // jump key's press, so consumePress is free to use here.
-        let jumpJustPressed = false;
+    // WHO IS HOLDING THE KEYS. The one part of update() that genuinely differs
+    // between the two builds: here it is the single fighter this client owns,
+    // aimed with the mouse; in the local build it is two at one keyboard.
+    //
+    // Returns its values rather than writing to update()'s locals. A method that
+    // reaches into four of its caller's variables reads fine until it moves.
+    //
+    // Returns null for a fighter that takes no local input at all - the remote
+    // one in an online match - which is what the empty else-branch used to say
+    // by omission.
+    readHumanInput(dt, target) {
+        if (!isLocalSide(sideOf(this))) return null;
+        let moveX = 0, moveY = 0, jumpPressed = false, jumpJustPressed = false;
 
-        // Special-inflicted status effects (Batch: creative-specials pass).
-        // Root blocks movement (handled below); burn drains HP over time as
-        // plain damage (like the arena crush — no i-frames/hitstun, and it
-        // still routes into the existing hp<=0 -> loss check).
-        if (this.rootedFrames > 0) this.rootedFrames -= dt;
-        if (this.burnFrames > 0) {
-            this.burnFrames -= dt;
-            this.applyDamage(this.burnDps * dt / 60, {}); // no attacker: shield-reduced + ghost trail, but no knockback/hitstun/sfx
-            if (Math.random() < 0.4) this.effects.push({ type: 'shockwaveRing', r: 4, max: 26, color: '248,113,73' }); // little flame flickers
-        }
-        this.updateFeedbackFx(dt); // hp-ghost trail + low-HP smoke/heartbeat — SIMULATION, moved out of render3D so "pause" truly freezes
-
-        // Batch 16: in co-op the fighter handed to us as `opponent` is actually
-        // our TEAMMATE, so every attack/AI decision below has to aim at the
-        // resolved target instead. Resolved once here rather than at each of the
-        // ~9 action call sites, so there's a single place this can be wrong.
-        // Outside co-op pickTarget returns `opponent` untouched.
-        const target = pickTarget(this, opponent);
-
-        if (this.downed) {
-            // Down in co-op: no input, no AI, no actions - but the rest of
-            // update() still runs, so gravity settles the body, the Death clip
-            // plays and the feedback FX keep ticking. Gating here rather than
-            // returning early is what keeps a downed fighter from hanging in
-            // mid-air where it was knocked out.
-        } else if (this.isBot) {
-            const decision = this.botDecide(target, dt);
-            moveX = decision.moveX; moveY = decision.moveY; jumpPressed = decision.jumpPressed;
-        } else if (isLocalSide(sideOf(this))) {
             // Batch 31: the one fighter this client controls. Replaces the two
             // mirrored 30-line blocks that read BINDINGS.p1 and BINDINGS.p2.
             const b = BINDINGS;
@@ -5132,6 +5100,63 @@ class Fighter {
                 if (netPrevDodge <= 0 && this.dodgeCooldown > 0) {
                     netSend({ t: 'EVENT', e: 'dodge' });
                 }
+            }
+        return { moveX, moveY, jumpPressed, jumpJustPressed };
+    }
+
+    update(opponent, dt) {
+        this.decayVisualOffset(dt);
+        this.vx = 0;
+        this.vy = 0;
+        let moveX = 0, moveY = 0;
+        let jumpPressed = false;
+        // Batch 15: the ground jump reads a HELD key (fine — `grounded` is what
+        // stops it re-triggering), but a mid-air second jump can't: the same
+        // physical press that started jump 1 is usually still down on the very
+        // next frame, so a held-state check would auto-spend the double jump
+        // one frame after takeoff with no second press from the player. This
+        // tracks a genuine key-DOWN edge instead. Nothing else consumes the
+        // jump key's press, so consumePress is free to use here.
+        let jumpJustPressed = false;
+
+        // Special-inflicted status effects (Batch: creative-specials pass).
+        // Root blocks movement (handled below); burn drains HP over time as
+        // plain damage (like the arena crush — no i-frames/hitstun, and it
+        // still routes into the existing hp<=0 -> loss check).
+        if (this.rootedFrames > 0) this.rootedFrames -= dt;
+        if (this.burnFrames > 0) {
+            this.burnFrames -= dt;
+            this.applyDamage(this.burnDps * dt / 60, {}); // no attacker: shield-reduced + ghost trail, but no knockback/hitstun/sfx
+            if (Math.random() < 0.4) this.effects.push({ type: 'shockwaveRing', r: 4, max: 26, color: '248,113,73' }); // little flame flickers
+        }
+        this.updateFeedbackFx(dt); // hp-ghost trail + low-HP smoke/heartbeat — SIMULATION, moved out of render3D so "pause" truly freezes
+
+        // Batch 16: in co-op the fighter handed to us as `opponent` is actually
+        // our TEAMMATE, so every attack/AI decision below has to aim at the
+        // resolved target instead. Resolved once here rather than at each of the
+        // ~9 action call sites, so there's a single place this can be wrong.
+        // Outside co-op pickTarget returns `opponent` untouched.
+        const target = pickTarget(this, opponent);
+
+        if (this.downed) {
+            // Down in co-op: no input, no AI, no actions - but the rest of
+            // update() still runs, so gravity settles the body, the Death clip
+            // plays and the feedback FX keep ticking. Gating here rather than
+            // returning early is what keeps a downed fighter from hanging in
+            // mid-air where it was knocked out.
+        } else if (this.isBot) {
+            const decision = this.botDecide(target, dt);
+            moveX = decision.moveX; moveY = decision.moveY; jumpPressed = decision.jumpPressed;
+        } else {
+            // The one branch that differs between the builds, and the only
+            // reason update() used to be forked: who is holding the keys. This
+            // build has one local fighter and a mouse; the local build has two
+            // at one keyboard. Everything below here is the same in both.
+            const r = this.readHumanInput(dt, target);
+            if (r) {
+                moveX += r.moveX; moveY += r.moveY;
+                jumpPressed = jumpPressed || r.jumpPressed;
+                jumpJustPressed = jumpJustPressed || r.jumpJustPressed;
             }
         }
         // Anything else - the remote fighter in an online match - takes no local
@@ -5760,6 +5785,14 @@ class Fighter {
     // Builds this fighter's 3D mesh group plus the small reactive props
     // (hit-flash light, shield ring, cooldown ring, P2 outline) attached
     // to it. Called once, right after construction, from startRound().
+    // WHAT A FIGHTER IS CALLED ABOVE ITS HEAD. The only line of initMesh that
+    // differed between the builds, so it is the method instead and the other
+    // 68 lines are shared. One build names one local player and a remote one;
+    // the other names two people at the same keyboard, or two bots.
+    nameplateLabel() {
+        return playerLabelShort(this.isPlayerOne ? 'p1' : 'p2');
+    }
+
     initMesh() {
         // Batch 25: a Blender-authored skinned model when one is loaded for this
         // character, otherwise the original procedural mesh. Both satisfy the
@@ -5815,7 +5848,7 @@ class Fighter {
         // rather than P1/P2 — it belongs to neither side.
         group.add(this.isBossEntity
             ? makeNameSprite(this.name, '#f59e0b')
-            : makeNameSprite(playerLabelShort(this.isPlayerOne ? 'p1' : 'p2'),
+            : makeNameSprite(this.nameplateLabel(),
                              this.isPlayerOne ? '#00f3ff' : '#f472b6'));
 
         const flashLight = new THREE.PointLight(0xffffff, 0, 70);
@@ -9219,7 +9252,10 @@ function drawIntroOverlay() {
 // path it returns on.
 function drawHUD() {
     drawHUDInner();
-    hudCtx.restore();
+    // A restore() with no matching save() throws, and drawHUDInner has
+    // enough early returns that one can slip through. Cheaper to guard
+    // than to prove it cannot happen.
+    try { hudCtx.restore(); } catch (e) {}
 }
 
 function drawHUDInner() {

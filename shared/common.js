@@ -2206,6 +2206,14 @@ function setOptState(id, text, on) {
     el.classList.toggle('is-on', !!on);
 }
 
+// The HUD scale button's own label. Shared because both names it reads
+// are here already - and because the local build was inlining this one
+// line rather than calling it, which is how cycleHudScale came to differ
+// between the builds over a function neither of them disagreed about.
+function refreshHudScaleUI() {
+    setOptState('btn-hud-scale', HUD_TEXT_SCALE > 1 ? 'Large' : 'Normal', HUD_TEXT_SCALE > 1);
+}
+
 let rebindNoteTimer = 0;
 
 function rebindNote(text) {
