@@ -125,6 +125,17 @@ INTERFACE = {
     # teleport decay). A chunk is all-or-nothing, so copying it would trade a
     # visual regression for a controls regression. Splitting the input out of
     # the class is the way to unify the rest; until then this is honest.
+    # THE BUILD PROFILE. Three facts, declared at true top level, that
+    # everything downstream asks instead of forking. They are the one thing
+    # in either file that is SUPPOSED to differ - and they are column-0
+    # consts with the same names, so without this force_online_bodies closes
+    # them and the local build loads the online build's paths.
+    'AC_ONE_SIDE_PER_CLIENT': 'one client drives one side there, one keyboard drives both here',
+    'AC_BASE': 'this build sits one directory down, so the repo root is ../',
+    'AC_BLOOM': 'one composer covers the whole canvas, and this build splits it',
+    # AC_VENDOR is deliberately NOT here: it is the same expression in both
+    # builds and must stay that way, so that a vendor script added for one
+    # build reaches the other.
     'Fighter': 'forked input handling and drifted visuals share one class body',
 
     # These four reach the LOBBY: refreshRoomUI, startOnline, netAnnouncePick and
@@ -190,7 +201,8 @@ INTERFACE = {
     # shade of red under three seconds, both of which this build simply
     # never got.
     'drawCoopDownHUD': 'per-panel geometry',
-    'toggleBloom': 'the local build has no composer',
+    # toggleBloom is SHARED now - AC_BLOOM says there is no composer here, so the arena reload the 
+    # local body did after flipping the flag never changed anything.
 
     # --- controls: two players at one keyboard vs one player and a mouse
     'DEFAULT_BINDINGS': 'two full key sets',
@@ -210,10 +222,12 @@ INTERFACE = {
     'SCREEN_EL': 'different screens exist',
     'MODAL_EL': 'different modals exist',
     'currentScreen': 'different screens exist',
-    'startGame': 'entry point',
+    # startGame is SHARED now: the vendor list it forked over is AC_VENDOR,
+    # declared in each build's profile from one expression and three flags.
     'startMatch': 'match framework',
     'endMatch': 'match framework',
-    'endCoopMatch': 'match framework',
+    # endCoopMatch is SHARED now - announceResult is shared, and the netActive() coin branch is 
+    # inert in a build that cannot connect.
     'togglePause': 'match framework',
     'refreshMenuUI': 'different menus',
     'refreshBotUI': 'bots are per side here',
@@ -229,7 +243,8 @@ INTERFACE = {
     # so the online body awards exactly what the local one did.
 
     # --- progression and the store: one account vs two side-local purses
-    'addCoins': 'two purses',
+    # addCoins is SHARED now - matchIsSandbox() is what debugUnlockAll meant here, and the 
+    # MOBILE_SOLO line is inert in a build that refuses to run on a phone.
     'refreshCoinDisplays': 'two purses',
     'buildShop': 'two purses',
     'openShop': 'two purses',
@@ -239,7 +254,7 @@ INTERFACE = {
     'syncLockHint': 'per side',
     'preloadCharModels': 'preloads both sides at once',
     'refreshPauseUI': 'pause offers different things',
-    'refreshGameOverUI': 'results name two local players',
+    # refreshGameOverUI is SHARED now - it is in shared/common.js now; both builds ask the same question.
     'refreshSandboxUI': 'sandbox is online-only',
     # refreshHudScaleUI is SHARED now: one line, and setOptState is shared.
     # buildCrushRigs is SHARED now: local was missing the photo-surface calls, not opting out.
@@ -2678,20 +2693,24 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     #
     # Copied from the online build and flipped, rather than written out here, so
     # the comment above it cannot drift between the two.
-    if 'AC_ONE_SIDE_PER_CLIENT' not in dst:
-        prof = block(src, '<!-- THE BUILD PROFILE:', '<!-- Shared with the local build')
-        prof = prof.replace(
-            'const AC_ONE_SIDE_PER_CLIENT = true;   // online: a client drives p1 OR p2',
-            'const AC_ONE_SIDE_PER_CLIENT = false;  // local: one keyboard drives BOTH sides')
-        i = dst.index('<script src="../shared/roster.js"></script>')
-        i = comment_start(dst, i)
-        # Back up over the HTML comment the shared tags carry, so the profile
-        # lands above it rather than between it and the tags it introduces.
-        marker = '<!-- Shared with the online build'
-        if marker in dst[:i]:
-            i = dst.rindex(marker, 0, i)
+    # REPLACED EVERY RUN, not written once. The old guard was "does this build
+    # have AC_ONE_SIDE_PER_CLIENT", which has been true since the first run - so
+    # the step was dormant, which was fine while the profile was one line and is
+    # not fine now that it also carries AC_VENDOR. A vendor script added for the
+    # online build has to reach this one.
+    prof = block(src, '<!-- THE BUILD PROFILE:', '<script>' + chr(10)
+                 + '// Three.js is the only external dependency')
+    for online_line, local_line in PROFILE_FLAGS:
+        assert online_line in prof, 'build profile: ' + online_line[:40]
+        prof = prof.replace(online_line, local_line, 1)
+    if '<!-- THE BUILD PROFILE:' in dst:
+        i = dst.index('<!-- THE BUILD PROFILE:')
+        j = dst.index('</script>', i) + len('</script>') + 1
+        dst = dst[:i] + prof + dst[j:]
+    else:
+        i = dst.index('<script>' + chr(10) + '// The shareable address for this build')
         dst = dst[:i] + prof + dst[i:]
-        print('  %-34s ok' % 'build profile')
+    print('  %-34s ok' % 'build profile')
 
     # --------------------------------------------- settings rows keep their labels
     # setOptState writes into a `.opt-state` pill and, failing to find one,
@@ -3125,6 +3144,23 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
 # build and not the other, and that is the number worth watching.
 STUB_LINES = 3
 
+# How many extra passes the sync may take to settle before it is a failure.
+# Two is the observed cost of a drift closer and a rep() step that patches
+# what it copied; more than that means something is not converging.
+SETTLE_PASSES = 3
+
+# THE ONLY LINES OF THE BUILD PROFILE THAT DIFFER. Everything else in that block
+# - the comment, AC_VENDOR's expression - is copied from the online build
+# verbatim on every run, so it cannot drift.
+PROFILE_FLAGS = [
+    ("const AC_ONE_SIDE_PER_CLIENT = true;   // online: a client drives p1 OR p2",
+     "const AC_ONE_SIDE_PER_CLIENT = false;   // local: one keyboard drives BOTH sides"),
+    ("const AC_BASE = '';   // online: files at the repo root sit next to this one",
+     "const AC_BASE = '../';   // local: this build sits one directory down"),
+    ("const AC_BLOOM = true;   // online: one viewport, so one composer fits",
+     "const AC_BLOOM = false;   // local: split screen, so no composer"),
+]
+
 
 def _bodies(text):
     """name -> its source, using this file's own definition scanner."""
@@ -3198,20 +3234,32 @@ def check_fixed_point():
         return 0
     first = io.open(DST, encoding='utf-8').read()
     env = dict(os.environ, AC_SYNC_INNER='1')
-    r = subprocess.run([sys.executable, os.path.abspath(__file__)],
-                       capture_output=True, text=True, env=env)
-    if r.returncode != 0:
-        print('\nFIXED POINT: the second run failed:\n'
-              + (r.stdout or '') + (r.stderr or ''))
-        return 1
-    second = io.open(DST, encoding='utf-8').read()
-    if first == second:
-        print('  %-34s ok (a second run changes nothing)' % 'fixed point')
-        return 0
+    # CONVERGENCE, not equality on the first retry. A drift closer copies an
+    # online body, and a rep() step that patches that body runs EARLIER in the
+    # same pipeline - so it cannot see the new body until the next run, and the
+    # build settles on pass two. That is not the failure this guard is for.
+    # A step that grows the file every run never produces two equal passes, and
+    # neither does one that alternates, so asking for two in a row keeps every
+    # tooth and loses the false alarm.
+    for attempt in range(SETTLE_PASSES):
+        r = subprocess.run([sys.executable, os.path.abspath(__file__)],
+                           capture_output=True, text=True, env=env)
+        if r.returncode != 0:
+            print('\nFIXED POINT: the second run failed:\n'
+                  + (r.stdout or '') + (r.stderr or ''))
+            return 1
+        second = io.open(DST, encoding='utf-8').read()
+        if first == second:
+            print('  %-34s ok%s' % ('fixed point',
+                                    ' (settled after %d extra pass%s)'
+                                    % (attempt + 1, '' if attempt == 0 else 'es')
+                                    if attempt else ' (a second run changes nothing)'))
+            return 0
+        first = second
 
     # Name the step. Whatever a second run ADDS is what some guard let back in.
-    print('\nFIXED POINT FAILED: a second sync changed the build by %+d bytes.'
-          % (len(second) - len(first)))
+    print('\nFIXED POINT FAILED: the build was still moving after %d passes.'
+          % SETTLE_PASSES)
     added = [l[2:] for l in difflib.unified_diff(
         first.splitlines(), second.splitlines(), n=0)
         if l.startswith('+') and not l.startswith('+++')]

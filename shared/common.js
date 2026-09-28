@@ -2318,6 +2318,14 @@ function paintSlotPortrait(el, name) {
 // lobby (host = 1, joiner = 2) and is worth stating in the UI, because it
 // decides your spawn and which HUD bar is yours.
 
+// A PHONE OR A TABLET. The same question in both builds; only the local one
+// ever asked it, because the online build refuses to run on a touch device
+// at all (see #desktop-only) while this one offers a one-player mobile mode.
+// Shared so that addCoins can be one function rather than two that agree.
+const MOBILE_SOLO = !!(window.matchMedia
+    && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches)
+    && navigator.maxTouchPoints > 0);
+
 function announceResult(text, isDrawResult) {
     const el = document.getElementById('winner-title');
     if (!el) return;
@@ -2327,6 +2335,18 @@ function announceResult(text, isDrawResult) {
     void el.offsetWidth;            // force a reflow so the removal takes effect
     el.classList.add('emphasise');
 }
+
+// MAY THIS CLIENT START ANOTHER MATCH. Shared because every name in it
+// already was: locally the answer is always yes, and both lookups are
+// guarded, so the build with no rematch-wait element simply skips it.
+function refreshGameOverUI() {
+    const canRematch = !netActive() || netIsHost();
+    const actions = document.getElementById('gameover-actions');
+    const wait = document.getElementById('gameover-wait');
+    if (actions) actions.style.display = canRematch ? '' : 'none';
+    if (wait) wait.style.display = canRematch ? 'none' : '';
+}
+
 
 function inLiveMatch() {
     return gameState === 'FIGHT' || gameState === 'INTRO'

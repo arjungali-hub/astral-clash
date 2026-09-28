@@ -1554,6 +1554,38 @@
         </div>
     </div>
 
+<!-- THE BUILD PROFILE: everything this build declares about itself.
+     Everything downstream is shared and asks these rather than forking.
+
+     FIRST, ahead of every other script, for two reasons. Shared code can only
+     see it at top level - classic scripts share one global lexical scope, while
+     the game lives inside bootGame(), a closure that shuts shared code out; that
+     single fact is why netActive(), isLocalSide(), coopIsHost(),
+     coopOwnsRespawn() and stepFight() each used to fork, not because they
+     disagreed but because they read `net`. And loadThreeFallback reads AC_BASE
+     from the CDN tag's own onerror handler, which fires during THAT tag - so
+     anything it needs has to be declared before it. -->
+<script>
+const AC_ONE_SIDE_PER_CLIENT = false;   // local: one keyboard drives BOTH sides
+const AC_BASE = '../';   // local: this build sits one directory down
+// ONE COMPOSER IS SIZED TO THE WHOLE CANVAS. The local build draws two
+// viewports into that canvas, so a composer there paints the second half over
+// the first - bloom needs one composer per half before it can be turned on.
+// Loading the six bloom scripts in a build that cannot use them would be worse
+// than useless: ensureComposer() would succeed.
+const AC_BLOOM = false;   // local: split screen, so no composer
+// WHAT THIS BUILD LOADS FROM vendor/. The same expression in both builds, so
+// the sync keeps it in step: add a script for the online build and this one
+// gets it too. Only the three flags above differ.
+const AC_VENDOR = ['vendor/GLTFLoader.js', 'vendor/SkeletonUtils.js']
+    .concat(AC_BLOOM ? ['vendor/EffectComposer.js', 'vendor/CopyShader.js',
+                        'vendor/ShaderPass.js', 'vendor/RenderPass.js',
+                        'vendor/LuminosityHighPassShader.js',
+                        'vendor/UnrealBloomPass.js'] : [])
+    .map(function (u) { return AC_BASE + u; })
+    // PeerJS only where there is a peer. Absolute, so AC_BASE does not apply.
+    .concat(AC_ONE_SIDE_PER_CLIENT ? ['https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js'] : []);
+</script>
 <script>
 // The shareable address for this build is /local. Anyone who arrives at the
 // file path gets moved there, so links, bookmarks and the browser's own history
@@ -1610,23 +1642,14 @@ function loadScriptsThen(srcs, done) {
 }
 function startGame() {
     if (typeof THREE === 'undefined') return;
-    loadScriptsThen(['../vendor/GLTFLoader.js', '../vendor/SkeletonUtils.js'], function () { bootGame(); });
+    // PeerJS rides the same chain. Its onerror only warns, so if the CDN is
+    // blocked the game still boots - it just cannot go online, and the lobby
+    // says so rather than the whole page dying over a network dependency.
+    loadScriptsThen(AC_VENDOR, function () { bootGame(); });
 }
 </script>
 <!-- Shared with the online build; see the header in that file. -->
 <!-- After three.js: these build THREE objects. -->
-<!-- THE BUILD PROFILE: the one thing this build declares about itself.
-     Everything downstream is shared and asks this rather than forking.
-
-     It sits in its own script at top level, BEFORE the shared modules, because
-     that is the only place shared code can see it: classic scripts share one
-     global lexical scope, while everything in the game lives inside bootGame(),
-     a closure that shuts shared code out. That single fact is why netActive(),
-     isLocalSide(), coopIsHost(), coopOwnsRespawn() and stepFight() each used to
-     fork - not because they disagreed, but because they read `net` and `net`
-     was unreachable from shared/. -->
-<script>const AC_ONE_SIDE_PER_CLIENT = false;  // local: one keyboard drives BOTH sides
-      const AC_BASE = '../';                   // local: this build sits one directory down</script>
 <!-- Shared with the online build; see each file's header. Pure data
      and timing, so these may load before the engine. -->
 <script src="../shared/roster.js"></script>
@@ -2319,20 +2342,17 @@ function isDoubleJumpUnlocked(side) { return sandboxActive() || !!prog(side).dou
 function upgradeMult(side, name, trait) { return 1 + UPGRADE_STAT_BONUS * upgradeLevel(side, name, trait); }
 function unlockedCharNames(side) { return CHARACTERS.filter(c => isCharUnlocked(side, c.name)).map(c => c.name); }
 // Convenience for the Fighter class, which knows isPlayerOne rather than a side key.
-const MOBILE_SOLO = !!(window.matchMedia
-    && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches)
-    && navigator.maxTouchPoints > 0);
-
 function addCoins(side, n) {
     if (!n) return;
     // Never bank coins while the sandbox override is on: everything is already
     // unlocked there, and since the override deliberately doesn't touch the
     // real save, letting it *pay into* that save would turn the sandbox into a
     // farming shortcut for the progression it exists to bypass.
-    if (debugUnlockAll) return;
-    // Mobile is forced single-player-vs-bot (see refreshBotUI), and bot matches
-    // are not a coin source anywhere else either - otherwise "play on a phone"
-    // would be the cheapest way to farm the progression.
+    // No banking in a sandbox - the host-declared kind or the local override.
+    if (matchIsSandbox()) return;
+    // Inert here - this build shows #desktop-only on a touch device rather
+    // than running - and load-bearing in the build that offers a one-player
+    // mobile mode, where the whole match is against an AI.
     if (MOBILE_SOLO) return;
     prog(side).coins = Math.max(0, prog(side).coins + n);
     saveProgression();
@@ -2425,9 +2445,6 @@ function toggleBloom() {
     bloomEnabled = !bloomEnabled;
     safeLSSet('astralClashBloom', bloomEnabled ? '1' : '0');
     refreshBloomUI();
-    // Repaint the arena so the change is visible immediately rather than on
-    // the next map load.
-    if (currentMap) loadMap(currentMap);
 }
 refreshBloomUI();
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
@@ -8710,15 +8727,15 @@ function endCoopMatch(won, detail) {
     disposeZoneMesh();
     isDraw = false; winner = null; loser = null;
     coopResultText = detail || '';
-    document.getElementById('winner-title').innerText = won ? 'Victory!' : 'Defeat';
+    announceResult(won ? 'Victory!' : 'Defeat', false);
 
     // Coins are a TEAM payout here — both players did the same fight, so both
     // get the same amount. (No-op while the sandbox override is on.)
     let earned;
     if (matchMode === 'survival') earned = waveNumber * COIN_AWARDS.survivalPerWave;
     else earned = won ? COIN_AWARDS.bossWin : COIN_AWARDS.bossLoss;
-    addCoins('p1', earned);
-    addCoins('p2', earned);
+    if (netActive()) addCoins(LOCAL_SIDE, earned);
+    else { addCoins('p1', earned); addCoins('p2', earned); }
 
     const s1 = matchStats.p1, s2 = matchStats.p2;
     const coinLine = matchIsSandbox()
@@ -8730,6 +8747,7 @@ function endCoopMatch(won, detail) {
         `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
         coinLine;
     showScreen('gameover');
+    refreshGameOverUI();   // the guest gets no rematch buttons
 }
 
 // --- Batch 16/23: spawning/retiring co-op enemies. ---

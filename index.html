@@ -1797,6 +1797,38 @@
         </div>
     </div>
 
+<!-- THE BUILD PROFILE: everything this build declares about itself.
+     Everything downstream is shared and asks these rather than forking.
+
+     FIRST, ahead of every other script, for two reasons. Shared code can only
+     see it at top level - classic scripts share one global lexical scope, while
+     the game lives inside bootGame(), a closure that shuts shared code out; that
+     single fact is why netActive(), isLocalSide(), coopIsHost(),
+     coopOwnsRespawn() and stepFight() each used to fork, not because they
+     disagreed but because they read `net`. And loadThreeFallback reads AC_BASE
+     from the CDN tag's own onerror handler, which fires during THAT tag - so
+     anything it needs has to be declared before it. -->
+<script>
+const AC_ONE_SIDE_PER_CLIENT = true;   // online: a client drives p1 OR p2
+const AC_BASE = '';   // online: files at the repo root sit next to this one
+// ONE COMPOSER IS SIZED TO THE WHOLE CANVAS. The local build draws two
+// viewports into that canvas, so a composer there paints the second half over
+// the first - bloom needs one composer per half before it can be turned on.
+// Loading the six bloom scripts in a build that cannot use them would be worse
+// than useless: ensureComposer() would succeed.
+const AC_BLOOM = true;   // online: one viewport, so one composer fits
+// WHAT THIS BUILD LOADS FROM vendor/. The same expression in both builds, so
+// the sync keeps it in step: add a script for the online build and this one
+// gets it too. Only the three flags above differ.
+const AC_VENDOR = ['vendor/GLTFLoader.js', 'vendor/SkeletonUtils.js']
+    .concat(AC_BLOOM ? ['vendor/EffectComposer.js', 'vendor/CopyShader.js',
+                        'vendor/ShaderPass.js', 'vendor/RenderPass.js',
+                        'vendor/LuminosityHighPassShader.js',
+                        'vendor/UnrealBloomPass.js'] : [])
+    .map(function (u) { return AC_BASE + u; })
+    // PeerJS only where there is a peer. Absolute, so AC_BASE does not apply.
+    .concat(AC_ONE_SIDE_PER_CLIENT ? ['https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js'] : []);
+</script>
 <script>
 // Three.js is the only external dependency (all audio is synthesized, no asset
 // files). It loads from the CDN, but if that's blocked/offline we fall back to
@@ -1838,43 +1870,10 @@ function startGame() {
     // PeerJS rides the same chain. Its onerror only warns, so if the CDN is
     // blocked the game still boots - it just cannot go online, and the lobby
     // says so rather than the whole page dying over a network dependency.
-    loadScriptsThen([
-        'vendor/GLTFLoader.js',
-        'vendor/SkeletonUtils.js',
-        // Batch 45: the bloom chain. Vendored, and entirely optional -
-        // ensureComposer() checks for THREE.EffectComposer and the renderer
-        // falls back to a plain render if any of these failed to load.
-        //
-        // THE ORDER IS LOAD-BEARING and not the obvious one. EffectComposer.js
-        // is what DEFINES THREE.Pass (at its bottom), and every other pass is
-        // `class X extends THREE.Pass` - so listing CopyShader/ShaderPass
-        // first, as a dependency order would suggest, throws "Class extends
-        // value undefined is not a constructor" and takes the whole page with
-        // it. EffectComposer only NEEDS ShaderPass when a composer is
-        // constructed, which happens long after all of these have run.
-        'vendor/EffectComposer.js',
-        'vendor/CopyShader.js',
-        'vendor/ShaderPass.js',
-        'vendor/RenderPass.js',
-        'vendor/LuminosityHighPassShader.js',
-        'vendor/UnrealBloomPass.js',
-        'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js',
-    ], function () { bootGame(); });
+    loadScriptsThen(AC_VENDOR, function () { bootGame(); });
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" onerror="loadThreeFallback()"></script>
-<!-- THE BUILD PROFILE: the one thing this build declares about itself.
-     Everything downstream is shared and asks this rather than forking.
-
-     It sits in its own script at top level, BEFORE the shared modules, because
-     that is the only place shared code can see it: classic scripts share one
-     global lexical scope, while everything in the game lives inside bootGame(),
-     a closure that shuts shared code out. That single fact is why netActive(),
-     isLocalSide(), coopIsHost(), coopOwnsRespawn() and stepFight() each used to
-     fork - not because they disagreed, but because they read `net` and `net`
-     was unreachable from shared/. -->
-<script>const AC_ONE_SIDE_PER_CLIENT = true;   // online: a client drives p1 OR p2
-      const AC_BASE = '';                      // online: files at the repo root sit next to this one</script>
 <!-- Shared with the local build; see the header in that file. -->
 <script src="shared/roster.js"></script>
 <script src="shared/animation.js"></script>
@@ -2481,6 +2480,10 @@ function addCoins(side, n) {
     // farming shortcut for the progression it exists to bypass.
     // No banking in a sandbox - the host-declared kind or the local override.
     if (matchIsSandbox()) return;
+    // Inert here - this build shows #desktop-only on a touch device rather
+    // than running - and load-bearing in the build that offers a one-player
+    // mobile mode, where the whole match is against an AI.
+    if (MOBILE_SOLO) return;
     prog(side).coins = Math.max(0, prog(side).coins + n);
     saveProgression();
     refreshCoinDisplays();
@@ -8338,14 +8341,6 @@ document.getElementById('btn-reroll-map').addEventListener('click', () => hostRe
 // Sets the result line and replays its grow animation. Re-adding the class is
 // required: a CSS animation does not restart when the same class is already
 // present, so a rematch would have shown the second result with no animation.
-function refreshGameOverUI() {
-    const canRematch = !netActive() || netIsHost();
-    const actions = document.getElementById('gameover-actions');
-    const wait = document.getElementById('gameover-wait');
-    if (actions) actions.style.display = canRematch ? '' : 'none';
-    if (wait) wait.style.display = canRematch ? 'none' : '';
-}
-
 // --- Pause (Batch 5): Escape toggles a full stop of the update loop
 // (still renders the frozen frame) with Resume / Return to Menu options.
 // The only way out of a fight before this was reloading the page. ---
