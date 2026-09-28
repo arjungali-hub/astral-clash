@@ -677,6 +677,83 @@ MARKUP_INTERFACE = {
 }
 
 
+# Fighter METHODS that differ between the builds on purpose. The class as a
+# whole is on INTERFACE and always will be, but only three of its thirty-five
+# methods are actually why - and 939 of its lines are identical. Same contract:
+# a reason each, and the sync reports any method that differs without one.
+FIGHTER_INTERFACE = {
+    'update': 'reads per-side bindings here and mouse look plus a remote fighter there',
+    'takeDamage': 'reports the hit to the other client there; nobody to tell here',
+    'initMesh': "labels a fighter with this build's two-player naming",
+}
+
+_FIGHTER_METHOD = re.compile(r'(?m)^    ([A-Za-z_$][' + chr(92) + 'w$]*)' + chr(92)
+                             + r's*' + chr(92) + r'([^)]*' + chr(92) + r')' + chr(92) + r's*{')
+
+
+def _class_body(text, name):
+    """(start, end) of `class NAME { ... }`, brace-matched."""
+    key = 'class %s {' % name
+    if key not in text:
+        return None
+    i = text.index(key)
+    depth, j = 0, i
+    while j < len(text):
+        if text[j] == '{':
+            depth += 1
+        elif text[j] == '}':
+            depth -= 1
+            if depth == 0:
+                return i, j + 1
+        j += 1
+    return None
+
+
+def _methods(body):
+    hits = list(_FIGHTER_METHOD.finditer(body))
+    out = {}
+    for k, m in enumerate(hits):
+        end = hits[k + 1].start() if k + 1 < len(hits) else len(body)
+        out[m.group(1)] = body[m.start():end]
+    return out
+
+
+def close_fighter_drift(src, dst):
+    """Copy the online body of any Fighter method that is not deliberately forked.
+
+    The class is one definition to force_online_bodies, so it is all-or-nothing
+    there and had to stay whole on INTERFACE. Method by method it splits: three
+    of thirty-five are the fork, and the rest were simply drifting.
+    """
+    a = _class_body(src, 'Fighter')
+    b = _class_body(dst, 'Fighter')
+    if not a or not b:
+        return dst, [], []
+    on = _methods(src[a[0]:a[1]])
+    lo = _methods(dst[b[0]:b[1]])
+
+    def code(t):
+        return [l.strip() for l in t.splitlines()
+                if l.strip() and not l.strip().startswith('//')]
+
+    copied, undocumented = [], []
+    body = dst[b[0]:b[1]]
+    for name, on_text in on.items():
+        if name not in lo or name in FIGHTER_INTERFACE:
+            continue
+        lo_text = lo[name]
+        if code(on_text) == code(lo_text):
+            continue
+        if body.count(lo_text) != 1:
+            undocumented.append(name)
+            continue
+        body = body.replace(lo_text, on_text, 1)
+        copied.append(name)
+    if copied:
+        dst = dst[:b[0]] + body + dst[b[1]:]
+    return dst, copied, undocumented
+
+
 def close_markup_drift(src, dst):
     """Copy an element's attributes and label from the online build.
 
@@ -2494,6 +2571,16 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     if BLOCK_MOVED:
         print('  %-34s %d step(s) now copy from shared/ and are inert: %s'
               % ('finished port steps', len(BLOCK_MOVED), ', '.join(sorted(set(BLOCK_MOVED)))))
+
+    # DRIFT INSIDE THE FIGHTER CLASS. It is one definition to the machinery and
+    # is on INTERFACE for good reasons, which left 939 identical lines inside it
+    # with nothing keeping them in step - 61% of all remaining duplication.
+    dst, f_copied, f_stuck = close_fighter_drift(src, dst)
+    if f_copied:
+        print('  %-34s %d methods took the online body: %s'
+              % ('Fighter drift', len(f_copied), ', '.join(sorted(f_copied))))
+    if f_stuck:
+        print('  %-34s %s' % ('Fighter methods not matched', ', '.join(sorted(f_stuck))))
 
     # MARKUP DRIFT. The last of the three - behaviour, appearance, and now the
     # elements themselves. Five buttons here were missing a styling class the

@@ -4559,7 +4559,7 @@ class Fighter {
         this.shieldReduction = 0.5;
         this.shieldColor = 0xfacc15; // Batch 8: tint applied whenever a shield is granted (currently only Seraphine's Astral Ward special)
         this.invulnFrames = 0;
-        // Co-op only: down and counting, rather than dead.
+        // Co-op only: down and counting, rather than dead. See resolveCoopMode.
         this.downed = false;
         this.respawnTimer = 0;
         this.muzzleFlash = 0; // frames left on the viewmodel muzzle flash after firing
@@ -4584,28 +4584,6 @@ class Fighter {
         // ~6 frames and catches up, which is what sells the travel.
         this.visOffX = 0;
         this.visOffY = 0;
-        this.queue = [];
-        this.deathParticles = [];
-        this.lowHpParticles = [];
-        this.lowHpSpawnTimer = 0;
-        // Facing is a direction vector, not a single -1/0/1 scalar, so
-        // "moving up" and "moving down" are no longer indistinguishable.
-        this.fx = isPlayerOne ? 1 : -1;
-        this.fy = 0;
-        // Batch 20: vertical aim, in radians. Positive = looking UP. Kept
-        // separate from fx/fy (which stay a purely horizontal facing vector,
-        // so all the existing 2D movement/melee/bot math is untouched) and
-        // consumed by positionFpsCamera for the view and by fireProjectile
-        // for a shot's launch angle. Bots leave it at 0 forever, which makes
-        // every bot-fired shot bit-for-bit identical to before this batch.
-        this.pitch = 0;
-
-        // Height above whatever terrain sits under (x, y) right now — the
-        // arena floor by default, or a step/ramp's height if spawning on
-        // one (maps vary, so the spawn point isn't guaranteed clear).
-        this.z = groundLevelAt(x + this.width / 2, y + this.height / 2);
-        this.vz = 0;
-        this.grounded = true;
         this.queue = [];
         this.deathParticles = [];
         this.lowHpParticles = [];
@@ -4809,9 +4787,10 @@ class Fighter {
         // two lines are purely what the eye is shown on the way.
         const movedX = this.x - fromX, movedY = this.y - fromY;
         const moved = Math.hypot(movedX, movedY);
-        // Short shoves (a small knockback nudge) are not teleports and must not
-        // acquire a smear - it would make ordinary hits feel mushy.
-        if (moved < TELEPORT_VIS_MIN) return;
+        // Every move is drawn, however small - see TELEPORT_VIS_MIN. The only
+        // thing a tiny move skips is the streak effect below, which on a
+        // four-unit nudge would be a puff of dust for a shuffle.
+        if (moved <= 0.01) return;
         // Draw the body where it came from, then let render3D decay the offset.
         // ADD rather than assign: two teleports in the same frame (a dodge
         // cancelled into a special) should compose, not overwrite.
@@ -4826,6 +4805,11 @@ class Fighter {
         // A motion streak along the path, reusing the existing pooled effect
         // type rather than inventing one - no new material or shader, so this
         // cannot reintroduce the Batch 30 compile stall.
+        //
+        // Only for real travel. A knockback now gets the visual slide (above)
+        // but not the streak: a dust trail behind a four-unit shuffle reads as
+        // a special, and the streak is how a dash announces itself.
+        if (moved < TELEPORT_STREAK_MIN) return;
         const cx = this.x + this.width / 2, cy = this.y + this.height / 2;
         this.effects.push({
             type: 'streak', life: 7, maxLife: 7,
@@ -4974,7 +4958,13 @@ class Fighter {
     decayVisualOffset(dt) {
         if (!this.visOffX && !this.visOffY) return;
         if (REDUCED_MOTION) { this.visOffX = this.visOffY = 0; return; }
-        const keep = Math.pow(TELEPORT_VIS_DECAY, dt || 1);
+        // The catch-up speed depends on how far behind the drawing is, so one
+        // mechanism serves an 8-unit shove and a 130-unit pull without either
+        // feeling like the other.
+        const lag = Math.hypot(this.visOffX, this.visOffY);
+        const t = Math.min(1, lag / TELEPORT_VIS_FULL);
+        const rate = TELEPORT_VIS_DECAY_NEAR + (TELEPORT_VIS_DECAY - TELEPORT_VIS_DECAY_NEAR) * t;
+        const keep = Math.pow(rate, dt || 1);
         this.visOffX *= keep;
         this.visOffY *= keep;
         // Snap the last sliver to zero so the view cannot sit permanently a
@@ -5813,65 +5803,17 @@ class Fighter {
     syncProjectiles() {
         for (const p of this.projectiles) {
             if (!p.mesh) {
-                // An actual energy bolt, not a dot: a stretched crystalline
-                // core (elongated along travel via a scaled octahedron) with
-                // a soft trailing tail and a faint glow halo, oriented to
-                // point the way it's flying.
-                // Batch 37: a lit 3D bolt, and NOTHING allocated per shot.
-                //
-                // Two reports, one cause each. "Lyra's attack animation is
-                // still 2d" was literally true: the glow was a RingGeometry -
-                // a flat annulus - so from first person it read as a paper
-                // disc stuck in the air. It is a SPHERE now, shaded, with a
-                // second additive sphere for the glow.
-                //
-                // "Lyra's attack lags a lot" was the other half: three
-                // MeshStandardMaterial/MeshBasicMaterial objects were built
-                // and later disposed FOR EVERY PROJECTILE. Lyra fires on a
-                // 16-frame cooldown and her special is a five-shard volley, so
-                // that is a constant churn of GPU objects - the same shape of
-                // problem as the Batch 30 crush stutter. Materials are cached
-                // per colour now: a projectile allocates one Group and three
-                // Meshes, and no GPU resources at all.
-                const key = (p.color || '#00f3ff');
-                const c = new THREE.Color(key);
-                const grp = new THREE.Group();
-                const scale = p.big ? 1.7 : 1;
-                const coreMat = getCachedMaterial('projCore:' + key, () =>
-                    new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 1.1, roughness: 0.25, metalness: 0.0 }));
-                const core = new THREE.Mesh(
-                    getCachedGeometry('projCoreSphere', () => new THREE.SphereGeometry(4, 16, 12)), coreMat);
-                core.scale.set(1.9 * scale, 0.95 * scale, 0.95 * scale); // stretched along travel, still a solid
-                const tailMat = getCachedMaterial('projTail:' + key, () =>
-                    new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.5 }));
-                const tail = new THREE.Mesh(getCachedGeometry('projTail', () => new THREE.ConeGeometry(2.6, 14, 6)), tailMat);
-                tail.rotation.z = Math.PI / 2; tail.position.x = -9; // points backward
-                tail.scale.setScalar(scale);
-                // The glow: a real sphere, additively blended and depth-write
-                // off so it reads as light around the core rather than as a
-                // second solid object. DoubleSide is deliberate - you see the
-                // inside of the far hemisphere through the near one.
-                const haloMat = getCachedMaterial('projHalo:' + key, () =>
-                    new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.28,
-                        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-                const halo = new THREE.Mesh(
-                    getCachedGeometry('projHaloSphere', () => new THREE.SphereGeometry(6.6, 12, 10)), haloMat);
-                halo.scale.setScalar(scale);
-                grp.add(core, tail, halo);
-                // NO shadow from a projectile. Every shadow caster costs a
-                // pass over the shadow map, and Lyra fires on a 16-frame
-                // cooldown with a five-shard volley - so at any moment there
-                // can be six bolts each re-rendering the map for a 4-unit
-                // glowing sphere whose shadow nobody can see against a lit
-                // floor. This is the other half of "Lyra's attack lags a lot";
-                // the first half was the per-projectile material churn above.
-                core.castShadow = false;
-                p.mesh = grp;
-                p.halo = halo;
-                scene.add(grp);
+                const v = buildProjectileVisual(p);
+                p.mesh = v.grp;
+                p.halo = v.halo;
+                scene.add(v.grp);
             }
             p.mesh.position.set(worldX(p.x), p.z, worldZ(p.y));
             p.mesh.rotation.y = -Math.atan2(p.vy, p.vx); // face travel direction (X→X, Y→Z world mapping)
+            // The shimmer scales the halo instead of fading a material: the
+            // materials are shared per colour now, so writing opacity here
+            // would make every bolt on screen pulse in lockstep - and would
+            // write the same value once per projectile per frame for nothing.
             const flick = 0.92 + Math.sin(arenaTime * 0.6 + p.x) * 0.08;
             if (p.halo) p.halo.scale.setScalar(flick * (p.big ? 1.7 : 1));
         }
@@ -5928,7 +5870,19 @@ class Fighter {
         // NOTE: render3D only READS fighter state and updates meshes. The
         // hp-ghost decay, low-HP smoke and heartbeat that used to live here are
         // simulation and now run in update()/updateFeedbackFx (see Change 2a).
-        this.mesh.position.set(worldX(this.x + this.width / 2), this.z, worldZ(this.y + this.height / 2));
+        // Batch 34: the visual-lag offset (see visOffX in the constructor and
+        // teleportTo). It decays geometrically so the catch-up is fast and
+        // front-loaded - most of the distance is covered in the first two
+        // frames, which reads as a dash rather than a drift. Under
+        // REDUCED_MOTION it is skipped entirely: a smear is exactly the kind of
+        // large unrequested movement that setting exists to suppress.
+        // The offset is DECAYED in update() (decayVisualOffset), not here - the
+        // camera reads it too, and applying the factor in both places would
+        // halve the smear's duration. This only reads it.
+        this.mesh.position.set(
+            worldX(this.x + this.width / 2 + this.visOffX),
+            this.z,
+            worldZ(this.y + this.height / 2 + this.visOffY));
         // Local +X is "forward" for every character mesh; this is the one
         // place that maps the 2D facing vector to a world-space yaw.
         this.mesh.rotation.y = Math.atan2(-this.fy, this.fx);
@@ -5982,6 +5936,10 @@ class Fighter {
             // a vertical needle - non-uniform scaling that hard reads as rubber,
             // not force. The walls stopping AT body width, the brace pose and
             // the shake carry the violence instead.
+            // Batch 34: relative to the builder's own scale (meshBaseScale),
+            // not absolute. Assigning 1-ish values here shrank Karrigos from
+            // 1.5x to roughly 1x the moment the crush started - a bigger visual
+            // jump than the squash it was trying to render.
             const bs = this.meshBaseScale;
             this.mesh.scale.x = bs * (1 - 0.30 * t + tremor);
             this.mesh.scale.z = bs * (1 - 0.06 * t);
