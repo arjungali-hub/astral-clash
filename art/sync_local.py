@@ -193,14 +193,19 @@ INTERFACE = {
     # canvas and would paint over the other viewport.
     'hudViewports': 'two HUD panels here, one there',
     # drawHUD is SHARED now: both guard the restore() now.
-    'drawHUDInner': 'draws two panels',
+    # drawHUDInner is SHARED now. It did draw two panels - both builds do -
+    # and the three things that actually differed are fighterFor(),
+    # hudLeftSide() and splitScreen(). Each build was ahead of the other in
+    # places, so the merge went both ways.
     # drawPlayerHUD is SHARED now: isMine is true for both panels where both are yours.
-    'drawIntroOverlay': 'per-panel geometry',
+    # drawIntroOverlay is SHARED now - not per-panel geometry - the local body was a superset, and its 
+    # extra block is inert where localNames stays empty.
     # drawRoundStatus is SHARED now. It was never per-panel: the two bodies
     # differed by the hudPlate() backing behind the collapse warning and the
     # shade of red under three seconds, both of which this build simply
     # never got.
-    'drawCoopDownHUD': 'per-panel geometry',
+    # drawCoopDownHUD is SHARED now - "you" names somebody only where one person is at the machine, 
+    # and that is one conditional rather than two functions.
     # toggleBloom is SHARED now - AC_BLOOM says there is no composer here, so the arena reload the 
     # local body did after flipping the flag never changed anything.
 
@@ -225,7 +230,9 @@ INTERFACE = {
     # startGame is SHARED now: the vendor list it forked over is AC_VENDOR,
     # declared in each build's profile from one expression and three flags.
     'startMatch': 'match framework',
-    'endMatch': 'match framework',
+    # endMatch is SHARED now - announceResult and refreshGameOverUI are shared, the netActive() coin
+    # branch is inert here, and the winner-first score this build already had
+    # went the other way.
     # endCoopMatch is SHARED now - announceResult is shared, and the netActive() coin branch is 
     # inert in a build that cannot connect.
     'togglePause': 'match framework',
@@ -245,13 +252,16 @@ INTERFACE = {
     # --- progression and the store: one account vs two side-local purses
     # addCoins is SHARED now - matchIsSandbox() is what debugUnlockAll meant here, and the 
     # MOBILE_SOLO line is inert in a build that refuses to run on a phone.
-    'refreshCoinDisplays': 'two purses',
-    'buildShop': 'two purses',
+    # refreshCoinDisplays is SHARED now - one body with every lookup guarded: the home screen and the 
+    # two side purses each skip the build they do not belong to.
+    # buildShop is SHARED now. Three helpers - shopSidesOpen, shopListEl and
+    # shopOwnerPhrase - name the one-panel-or-two difference once, and its
+    # eighty-nine lines stop being two copies that agree.
     'openShop': 'two purses',
     'showDetail': 'two purses',
     'buildDetailHTML': 'two purses',
     'shopExpanded': 'two panels open at once',
-    'syncLockHint': 'per side',
+    # syncLockHint is SHARED now - wantsPointerLock() asks soloHumanSide() now, and both are shared.
     'preloadCharModels': 'preloads both sides at once',
     'refreshPauseUI': 'pause offers different things',
     # refreshGameOverUI is SHARED now - it is in shared/common.js now; both builds ask the same question.
@@ -2978,7 +2988,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         # playerName is gone: it is playerLabel() in shared/common.js now, so
         # requiring it HERE would require the shadow the move removed.
         'function resetProgressClicked(',
-        'function botsOnly(', 'id="name-p1"', 'id="btn-reset-progress"',
+'id="name-p1"', 'id="btn-reset-progress"',
         # Both builds say "Start Match" now - the two words for the same button
         # were an open wording question, and it was answered.
         '>Start Match<',

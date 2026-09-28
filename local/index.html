@@ -2056,11 +2056,6 @@ function resetProgressClicked() {
 // one board. `soloHumanSide()` returns that side, and the input code uses it
 // to switch to the online scheme: mouse look, WASD strafing, left click to
 // attack, on whichever side the human is actually playing.
-function soloHumanSide() {
-    if (p1IsBot && !p2IsBot) return 'p2';
-    if (p2IsBot && !p1IsBot) return 'p1';
-    return null;
-}
 
 // ------------------------------------------------------ bots only: watch
 // "When you select both characters to be bot in local mode, you should view
@@ -2070,7 +2065,6 @@ function soloHumanSide() {
 // halves of a fight nobody is playing is the least useful way to show it. One
 // camera, looking straight down at the whole arena, is a spectator view - and
 // it is the only mode in this game where you can see the whole layout at once.
-function botsOnly() { return p1IsBot && p2IsBot; }
 const watchCam = new THREE.PerspectiveCamera(46, 1, 1, 6000);
 watchCam.layers.enableAll();
 // Batch 52: IT FRAMES THE FIGHT, not the building.
@@ -2325,6 +2319,48 @@ let shopSide = 'p1';
 // reopens part-way through a wall of expanded cards. Declared up here with
 // shopSide for the same TDZ reason spelled out above it.
 const shopExpanded = { p1: new Set(), p2: new Set() };
+
+// Batch 13 sets this; declared here because the accessors below are the
+// single gate every unlock/upgrade check in the game goes through, and they
+// have to read the override. Persisted under its OWN key, never inside
+// `progression` — that's what makes toggling it off restore the real save
+// exactly, since nothing ever writes into `progression` while it's on.
+// THE KEY IS PER BUILD, and that is the fix for a real report: "I have
+// everything unlocked in the online version. This might be a result of me
+// playing in the sandbox version in local".
+//
+// It was. Both builds are served from the same origin, so they share
+// localStorage - which is deliberate for PROGRESSION (your coins and unlocks
+// should follow you between the two) and wrong for the sandbox override. The
+// local build still offers the unlock-everything toggle; this one dropped it
+// in Batch 34. So flipping it there unlocked the online build too, and there
+// was no longer any UI here to flip it back: a one-way trapdoor into a
+// permanently unlocked online game.
+//
+// Scoping the key fixes it in both directions and needs no migration - the old
+// unscoped key simply stops being read here, so an online build that is
+// currently unlocked goes back to the real save on its next load.
+
+// WHEN IS EVERYTHING UNLOCKED?
+//
+// Two separate things can say yes, and the difference is who knows about it:
+//
+//   debugUnlockAll   The LOCAL override. Per-machine, privately flipped, and
+//                    invisible to an opponent - so it is ignored the moment
+//                    you are connected. It grants MAX_UPGRADE_LEVEL on every
+//                    stat, which against someone who earned theirs is not a
+//                    match. (Batch 44, after it leaked in from /local.)
+//
+//   sandboxMatch     A host-declared SANDBOX MATCH. Set by the host, carried
+//                    on SETUP and START, applied by both clients, and shown to
+//                    both in a banner. Symmetric and announced, so the
+//                    fairness objection above does not apply - and Batch 47
+//                    got this wrong by treating the two as the same thing.
+//                    Reported as "Sandbox: On leaves fighters locked... in the
+//                    local build, sandbox unlocks everything", which is fair:
+//                    a sandbox that cannot let you try the fighter you have
+//                    not bought is not a sandbox.
+
 // Which stores are open right now. BOTH may be: see syncShopPanels.
 const shopOpen = { p1: false, p2: false };
 
@@ -2359,15 +2395,23 @@ function addCoins(side, n) {
     refreshCoinDisplays();
 }
 function refreshCoinDisplays() {
+    // EVERY LOOKUP IS GUARDED, which is what lets one function serve both
+    // builds: the home screen exists in one, the two side purses in the other,
+    // and each build simply skips the elements it does not have.
+    const el = document.getElementById('home-coins');
+    if (el) el.textContent = String(myProg().coins);
+    const roster = document.getElementById('home-roster');
+    if (roster) {
+        const owned = myProg().unlockedChars.length;
+        roster.textContent = `\u00b7 ${owned} of ${CHARACTERS.length} fighters`;
+    }
     for (const side of SIDES) {
-        const el = document.getElementById(`${side}-coins`);
-        if (el) el.textContent = String(prog(side).coins);
+        const purse = document.getElementById(`${side}-coins`);
+        if (purse) purse.textContent = String(prog(side).coins);
+        const panel = document.getElementById('shop-coin-balance-' + side);
+        if (panel) panel.textContent = String(prog(side).coins);
     }
-    for (const s of SIDES) {
-        const el2 = document.getElementById('shop-coin-balance-' + s);
-        if (el2) el2.textContent = String(prog(s).coins);
-    }
-    const shopEl = null;
+    const shopEl = document.getElementById('shop-coin-balance');
     if (shopEl) shopEl.textContent = String(prog(shopSide).coins);
 }
 function buyUnlock(side, name) {
@@ -7311,6 +7355,28 @@ function chooseMap(map) {
 document.getElementById('btn-map-random').addEventListener('click', () => chooseMap(null));
 document.getElementById('btn-mapselect-back').addEventListener('click', () => closeModal());
 
+// WHOSE STORE IS ON SCREEN. One panel here, serving whichever side this client
+// owns; two panels side by side there, one per player at the keyboard. Naming
+// the difference once is what lets buildShop's eighty-nine lines be one
+// function instead of two that agree.
+function shopSidesOpen() {
+    return AC_ONE_SIDE_PER_CLIENT ? [shopSide] : SIDES;
+}
+
+// That side's list element. The single-panel build has no per-side ids, so it
+// falls back to the one panel it does have.
+function shopListEl(side) {
+    return document.getElementById('shop-list-' + side)
+        || document.getElementById('shop-list');
+}
+
+// Whose fighters a store-wide upgrade applies to. Saying somebody's own name
+// back to them is worse than "your"; with two purses on screen the card has to
+// say which one it spends.
+function shopOwnerPhrase(side) {
+    return AC_ONE_SIDE_PER_CLIENT ? 'your' : displayName(side) + '\u2019s';
+}
+
 // --- Batch 12: Shop. Rebuilt from scratch on every open/purchase (rather
 // than diffed) — it's a small list and only ever rendered while the game is
 // paused on a menu, so simplicity beats incremental updates here.
@@ -7320,11 +7386,11 @@ document.getElementById('btn-mapselect-back').addEventListener('click', () => cl
 // (`shopSide` itself is declared up with the progression state — it's read by
 // refreshCoinDisplays, which runs during load, long before this point.) ---
 function buildShop(only) {
-    // No argument: rebuild BOTH stores, which is what every purchase
-    // wants. openShop passes the one side it just opened.
-    if (!only) { for (const s of SIDES) buildShop(s); return; }
+    // Called with no side, it does every side whose store is open - which is
+    // one of them here and both of them in the split-screen build.
+    if (!only) { for (const s of shopSidesOpen()) buildShop(s); return; }
     const side = only;
-    const list = document.getElementById('shop-list-' + side);
+    const list = shopListEl(side);
     if (!list) return;
     list.innerHTML = '';
 
@@ -7335,7 +7401,7 @@ function buildShop(only) {
     djCard.style.setProperty('--accent', '#22d3ee');
     const djOwned = isDoubleJumpUnlocked(side);
     djCard.innerHTML = `<div class="shop-card-head">
-            <div><span class="shop-name">Double Jump</span> <span class="shop-title">— all of ${displayName(side)}'s fighters</span></div>
+            <div><span class="shop-name">Double Jump</span> <span class="shop-title">— all of ${shopOwnerPhrase(side)} fighters</span></div>
             <button class="shop-buy${djOwned ? ' maxed' : ''}" ${djOwned ? 'disabled' : ''} data-dj="1">${djOwned ? 'Owned' : DOUBLE_JUMP_COST + ' coins'}</button>
         </div>
         <div class="upg-row"><span>Jump a second time in mid-air — reaches the highest platforms.</span></div>`;
@@ -8372,9 +8438,13 @@ function drawPlayerHUD(f, x, label, isMine) {
 // halves when split-screen, else screen center). Drawn in raw canvas pixels
 // (not the virtual-space transform) so it's always a crisp, correctly-
 // centered reticle regardless of aspect.
-function drawCrosshairs(twoHumans) {
+// One crosshair per VIEWPORT, which is not the same as one per human: two
+// humans on two machines each see one whole viewport. Named for the thing it
+// actually decides, after `twoHumans` sent a hardcoded false through it for a
+// year in the build where two humans never share a screen.
+function drawCrosshairs(twoViewports) {
     const W = hudCanvas.width, H = hudCanvas.height;
-    const centers = twoHumans ? [W * 0.25, W * 0.75] : [W * 0.5];
+    const centers = twoViewports ? [W * 0.25, W * 0.75] : [W * 0.5];
     const s = Math.max(6, W * 0.006), gap = s * 0.45;
     hudCtx.save();
     hudCtx.strokeStyle = 'rgba(220,240,255,0.7)';
@@ -8416,8 +8486,9 @@ function drawIntroOverlay() {
         hudCtx.font = announceFont(W * 0.02, 500);
         hudCtx.fillStyle = '#cbd5e1';
         hudCtx.fillText(`${player1.name}`, W * 0.5 - W * 0.10, H * 0.235 + W * 0.045);
-        // ...and whose fighter it is, under the name. Only when somebody has
-        // actually typed a name: "Player 1" under "Kaelen" is noise.
+        // WHO IS PLAYING, under who they PICKED. Inert where nobody can type
+        // a name - localNames is shared and stays empty in the build with one
+        // player per machine, whose name goes on the HUD bar instead.
         if (localNames.p1 || localNames.p2) {
             hudCtx.save();
             hudCtx.font = announceFont(W * 0.0125, 500);
@@ -8466,48 +8537,52 @@ function drawHUD() {
     try { hudCtx.restore(); } catch (e) {}
 }
 
+// A SIDE'S FIGHTER. Both builds open drawHUDInner by picking two of them and
+// neither had this as a function, so each spelled the choice its own way.
+function fighterFor(side) { return side === 'p1' ? player1 : player2; }
+
+// WHOSE BAR IS ON THE LEFT. Yours, wherever you happen to be sitting, in the
+// build where exactly one of the two is yours - having your own health jump to
+// the right-hand slot because you joined as p2 is a needless difference between
+// two clients watching the same fight. With both players at one keyboard, left
+// is p1, which is where they are both looking.
+function hudLeftSide() { return AC_ONE_SIDE_PER_CLIENT ? LOCAL_SIDE : 'p1'; }
+
+// TWO VIEWPORTS, which is what drawCrosshairs' argument has always meant. It
+// was called `twoHumans` and the online build passed a hardcoded false, because
+// two humans there are on two machines looking at one viewport each.
+function splitScreen() {
+    return !AC_ONE_SIDE_PER_CLIENT && !!player1 && !!player2
+        && !player1.isBot && !player2.isBot;
+}
+
 function drawHUDInner() {
+    hudCtx.setTransform(1, 0, 0, 1, 0, 0);
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
-    // NOTHING while there is no match. Reported as "after Return to Menu, the
-    // previous match's HUD bars stay faintly visible behind the menu" - the
-    // last frame's HUD was simply never cleared again once the loop stopped
-    // calling this with a live match.
     if (gameState === 'MENU' || !player1 || !player2) return;
-    if (gameState === "INTRO") { drawIntroOverlay(); return; } // cinematic — no combat HUD/crosshairs
-    // A DARK HALO UNDER EVERYTHING - see the same change in the online build.
-    // The HUD is small white text over whatever the arena is, and on the pale
-    // ones it disappeared.
+    // BEFORE the save, not after: this returns, and a save with no matching
+    // restore leaves the context transformed for whoever draws next.
+    if (gameState === "INTRO") { drawIntroOverlay(); return; } // cinematic - no combat HUD/crosshairs
     hudCtx.save();
     hudCtx.shadowColor = 'rgba(4, 6, 12, 0.92)';
-    hudCtx.shadowBlur = 5;
+    hudCtx.shadowBlur = 6;
     hudCtx.shadowOffsetY = 1;
-    const twoHumans = player1 && player2 && !player1.isBot && !player2.isBot;
-    // No crosshair in the two-bot spectator view: nobody is aiming, and a
-    // reticle in the middle of a top-down shot invites you to try.
-    if (!botsOnly()) drawCrosshairs(twoHumans);
-
-    // Everything below is written in the fixed virtual space and scaled to
-    // fill the canvas. The per-player HP/meter panels sit left and right; the
-    // SHARED centered elements (map name, collapse timer + pips, round banner,
-    // footer) are drawn once at center in full-screen, or TWICE — centered in
-    // each half — in split-screen, so nothing lands on the seam (B10).
+    if (!botsOnly()) drawCrosshairs(splitScreen());
     hudCtx.save();
     hudVirtualTransform();
-
-    // Both panels are this player's - one keyboard drives both sides - so
-    // both get the full panel including the dodge row.
-    drawPlayerHUD(player1, 30, displayName('p1'), true);
-    drawPlayerHUD(player2, hudW() - 30 - 420, displayName('p2'), true);
-    // Batch 16: the co-op challenger gets a wide bar across the top centre —
-    // the conventional boss-bar placement, and the one region the two
-    // side panels leave free in both split and full-screen layouts.
+    const leftSide = hudLeftSide(), rightSide = otherSide(leftSide);
+    drawPlayerHUD(fighterFor(leftSide), 30, displayName(leftSide), isLocalSide(leftSide));
+    drawPlayerHUD(fighterFor(rightSide), hudW() - 30 - 420, displayName(rightSide),
+                  isLocalSide(rightSide));
     if (isCoopMode()) drawCoopDownHUD();
     if (coopEnemies.length) drawBossHUD();
     else if (matchMode === 'survival' && waveBreakTimer > 0) drawWaveBreakHUD();
-
-    const botNote = [player1.isBot ? 'P1 Bot' : null, player2.isBot ? 'P2 Bot' : null].filter(Boolean).join(' / ');
+    const botNote = [player1.isBot ? 'P1 Bot' : null, player2.isBot ? 'P2 Bot' : null]
+        .filter(Boolean).join(' / ');
     const drawShared = () => {
         if (currentMap) {
+            // A PLATE AND LIGHT TEXT, not dark text with a dark shadow. #64748b
+            // on a bright sky is what "unreadable at the top center" was.
             hudCtx.font = hudFont(15); hudCtx.textAlign = "center";
             hudPlate(currentMap.name, hudW() / 2, 24);
             hudCtx.fillStyle = "#dbe6f5";
@@ -8517,7 +8592,21 @@ function drawHUDInner() {
         if (gameState === "ROUND_END") {
             hudCtx.textAlign = "center";
             hudCtx.font = hudFont(34, true); hudCtx.fillStyle = "#00f3ff";
-            hudCtx.fillText(isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`, hudW() / 2, 300);
+            // Batch 36: bigger, and it grows in over the first ~10 frames.
+            // This is the between-rounds beat, so it wants the same emphasis
+            // the final result gets - it was previously the same size as the
+            // "Round 3 starting..." line underneath it.
+            // roundEndTimer counts UP from 0 to 90 (startRound fires at 90),
+            // so progress is t/12 - not 1 - t/60, which would have started the
+            // grow at full size and shrunk it.
+            const rt = Math.min(1, roundEndTimer / 12);
+            const grow = REDUCED_MOTION ? 1 : (0.6 + 0.4 * (1 - Math.pow(1 - rt, 3)));
+            hudCtx.save();
+            hudCtx.translate(hudW() / 2, 300);
+            hudCtx.scale(grow, grow);
+            hudCtx.font = hudFont(34, true);
+            hudCtx.fillText(isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`, 0, 0);
+            hudCtx.restore();
             hudCtx.font = hudFont(18); hudCtx.fillStyle = "#94a3b8";
             hudCtx.fillText(`Round ${currentRound} starting...`, hudW() / 2, 336);
             hudCtx.textAlign = "left";
@@ -8526,7 +8615,10 @@ function drawHUDInner() {
         hudCtx.fillText(`Esc for controls / pause${botNote ? '  |  ' + botNote : ''}`, hudW() / 2, hudH() - 20);
         hudCtx.textAlign = "left";
     };
-    if (twoHumans) {
+    // Once per viewport. splitScreen() is what the local `twoHumans` meant and
+    // what drawCrosshairs' argument means: two halves to draw into, not two
+    // people playing - two people on two machines each see one whole viewport.
+    if (splitScreen()) {
         hudCtx.save(); hudCtx.translate(-hudW() / 4, 0); drawShared(); hudCtx.restore(); // centered in the left half
         hudCtx.save(); hudCtx.translate(hudW() / 4, 0); drawShared(); hudCtx.restore(); // and the right half
     } else {
@@ -8627,22 +8719,21 @@ function endMatch() {
     if (isDraw) {
         winnerText = "Draw!";
     } else {
-        // displayName, not playerName: the summary below uses displayName, and
-        // the two disagreed - reported as "the title says 'Gorgonok (Arjun)
-        // Wins' while the stats line says 'Gorgonok (Bot)'".
+        // WINNER FIRST, in the score as well as the sentence. "2-0" beside a
+        // name is read as that player's score, so a fixed p1-p2 order prints
+        // "Wins (0-2)" whenever p2 won. The split-screen build has read it
+        // winner-relative for a while; this build had not.
         const winnerSide = winner === player1 ? 'p1' : 'p2';
-        const loserSide = winnerSide === 'p1' ? 'p2' : 'p1';
+        const loserSide = otherSide(winnerSide);
         const winnerLabel = displayName(winnerSide);
         // Batch 19: each mode reports its own score, not round pips it never used.
         let score;
-        // FROM THE WINNER'S SIDE. Fixed P1-P2 order meant a P2 win was announced
-        // as "(0-2)", which reads as a loss - reported.
         if (matchMode === 'zone') score = `${Math.floor(zoneScore[winnerSide])}s-${Math.floor(zoneScore[loserSide])}s held`;
         else if (matchMode === 'timeattack') score = `${koTally[winnerSide]}-${koTally[loserSide]} KOs`;
         else score = `${roundWins[winnerSide]}-${roundWins[loserSide]}`;
         winnerText = `${winner.name} (${winnerLabel}) Wins ${modeInfo().name}! (${score})`;
     }
-    document.getElementById('winner-title').innerText = winnerText;
+    announceResult(winnerText, isDraw);
 
     const s1 = matchStats.p1, s2 = matchStats.p2;
     const roundTimesStr = roundDurations.map((d, i) => `R${i + 1} ${d.toFixed(1)}s`).join(', ');
@@ -8664,8 +8755,16 @@ function endMatch() {
     } else {
         earnedP1 = COIN_AWARDS[lossKey]; earnedP2 = COIN_AWARDS[winKey];
     }
-    addCoins('p1', earnedP1);
-    addCoins('p2', earnedP2);
+    // Batch 32: online, each client owns exactly one purse. Crediting both
+    // would pay the local machine for the opponent's result too - the progression
+    // is per-side and stored locally, so the remote player's coins are theirs to
+    // record on their own machine.
+    if (netActive()) {
+        addCoins(LOCAL_SIDE, LOCAL_SIDE === 'p1' ? earnedP1 : earnedP2);
+    } else {
+        addCoins('p1', earnedP1);
+        addCoins('p2', earnedP2);
+    }
     const coinLine = matchIsSandbox()
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} coins &nbsp;·&nbsp; P2 +${earnedP2} coins</div>`;
@@ -8676,6 +8775,7 @@ function endMatch() {
         coinLine;
 
     showScreen('gameover');
+    refreshGameOverUI();   // the guest gets no rematch buttons
 }
 
 // Change 2b: the per-state work is a table of step functions keyed by
@@ -8919,16 +9019,27 @@ function coopDown(f) {
     f.queue.length = 0;
 }
 
+// The respawn clock, for both players: the one on the floor needs to know how
+// long, and the one still standing needs to know how long they are alone.
 function drawCoopDownHUD() {
     const down = [player1, player2].filter(f => f && f.downed);
     if (!down.length) return;
+    // "YOU" NAMES SOMEBODY only where one person is at this machine. With two
+    // players at one keyboard it names neither of them, so there is no `mine`
+    // and every line below reads as the fighter's name - which is what the
+    // split-screen build always showed.
+    const mine = AC_ONE_SIDE_PER_CLIENT
+        ? down.find(f => coopOwnsRespawn(f) && (!netActive() || f === localFighter()))
+        : null;
     hudCtx.textAlign = 'center';
     let y = coopEnemies.length ? 196 : 150;
     for (const f of down) {
         const secs = Math.max(1, Math.ceil(f.respawnTimer / 60));
         hudCtx.font = hudFont(17, true);
-        hudCtx.fillStyle = '#fbbf24';
-        hudCtx.fillText(f.name + ' is down — back in ' + secs + 's', hudW() / 2, y);
+        hudCtx.fillStyle = f === mine ? '#fca5a5' : '#fbbf24';
+        hudCtx.fillText(f === mine ? `You are down — back in ${secs}s`
+                                   : `${f.name} is down — back in ${secs}s`,
+                        hudW() / 2, y);
         y += 22;
     }
     hudCtx.font = hudFont(12);
@@ -9161,9 +9272,14 @@ const STATE_STEPS = {
 function syncLockHint() {
     const el = document.getElementById('lock-hint');
     if (!el) return;
-    const wantIt = !!soloHumanSide() && !soloMouse.locked
+    const wantIt = wantsPointerLock() && !pointerLocked
         && (gameState === 'FIGHT' || gameState === 'INTRO');
     el.style.display = wantIt ? 'block' : 'none';
+    // The clock starts when it appears and resets when it goes away, so the
+    // hint is loud again next time it is genuinely news.
+    if (!wantIt) { lockHintShownAt = 0; el.classList.remove('faded'); return; }
+    if (!lockHintShownAt) lockHintShownAt = performance.now();
+    el.classList.toggle('faded', performance.now() - lockHintShownAt > LOCK_HINT_FADE_MS);
 }
 
 function gameLoop() {

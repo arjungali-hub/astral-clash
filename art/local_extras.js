@@ -133,11 +133,9 @@ function resetProgressClicked() {
 // one board. `soloHumanSide()` returns that side, and the input code uses it
 // to switch to the online scheme: mouse look, WASD strafing, left click to
 // attack, on whichever side the human is actually playing.
-function soloHumanSide() {
-    if (p1IsBot && !p2IsBot) return 'p2';
-    if (p2IsBot && !p1IsBot) return 'p1';
-    return null;
-}
+// soloHumanSide() itself is in shared/common.js: both flags it reads were
+// already there, and wantsPointerLock() has to ask it. This fragment keeps
+// only what is genuinely local-build-only.
 
 // ------------------------------------------------------ bots only: watch
 // "When you select both characters to be bot in local mode, you should view
@@ -147,7 +145,8 @@ function soloHumanSide() {
 // halves of a fight nobody is playing is the least useful way to show it. One
 // camera, looking straight down at the whole arena, is a spectator view - and
 // it is the only mode in this game where you can see the whole layout at once.
-function botsOnly() { return p1IsBot && p2IsBot; }
+// botsOnly() itself is in shared/common.js: drawHUDInner asks it in both
+// builds, and both flags it reads were already shared.
 
 const watchCam = new THREE.PerspectiveCamera(46, 1, 1, 6000);
 watchCam.layers.enableAll();

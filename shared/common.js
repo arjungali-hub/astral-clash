@@ -2175,8 +2175,29 @@ let pointerLocked = false;
 // it must NOT be scaled by dt - doing so makes sensitivity depend on framerate.
 
 let mouseDX = 0, mouseDY = 0;
+// EXACTLY ONE HUMAN, or nobody. With a bot on the other side there is one
+// person playing, so the split-keyboard scheme that exists to fit two people on
+// one board has nothing to do - the solo path uses the mouse-and-strafe scheme
+// instead. Shared because both flags it reads already are, and because
+// wantsPointerLock() has to ask it.
+function soloHumanSide() {
+    if (p1IsBot && !p2IsBot) return 'p2';
+    if (p2IsBot && !p1IsBot) return 'p1';
+    return null;
+}
+
+// NOBODY IS PLAYING. Beside soloHumanSide because it asks the same two
+// flags, and shared because drawHUDInner asks it in both builds: there is no
+// crosshair to draw for a fight neither side is aiming. Both flags stay false
+// in the build where bots only exist in the sandbox, so it answers false there
+// unless somebody has deliberately set up two of them.
+function botsOnly() { return p1IsBot && p2IsBot; }
+
 
 function wantsPointerLock() {
+    // Two people at one keyboard have nothing to point with, so there is
+    // nothing to lock unless a bot has left exactly one of them playing.
+    if (!AC_ONE_SIDE_PER_CLIENT && !soloHumanSide()) return false;
     return gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH';
 }
 

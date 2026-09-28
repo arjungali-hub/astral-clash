@@ -1,55 +1,98 @@
-// Do both builds LOAD? Thirty seconds, no gameplay, no assertions about play.
+// Do both builds LOAD, and does a FRAME of a real fight run clean?
 //
 //     node tests/bootcheck.js
 //
 // WHY THIS EXISTS SEPARATELY FROM smoke.js. smoke boots the online build and
-// then plays it, which takes 75-170 seconds; localstartcheck does the same for
-// the local one. Both would catch a build that fails to load - eventually, and
-// only if you were already planning to run them. This is the check you can
-// afford to run after every edit, and it answers the one question that makes
-// every other checker meaningless if the answer is no.
+// then plays it, which takes 100-200 seconds; localcombatcheck fires every
+// character's attack in the local build and takes 200-500. Both would catch
+// what this catches - eventually, and only if you were already planning to run
+// them. This is the check you can afford after every edit, and it answers the
+// questions that make every other checker meaningless if the answer is no.
 //
-// THE BUG IT WAS WRITTEN FOR. Moving playerName() into shared/common.js left
-// one reference behind, in the ACDebug export list:
+// IT ASKS TWO, because they fail differently.
 //
-//     playerName, setLocalName, refreshLocalNames, ...
+// DOES IT LOAD. Moving playerName() into shared/common.js left one reference
+// behind, in the ACDebug export list: a bare `playerName,` in an object
+// literal's shorthand. It is a READ, so the sync's dangling-reference guard
+// should have caught it - except that guard is bounded by the ONLINE build's
+// vocabulary, and playerName was a local-only name, so it was never a
+// candidate. The local build died at load and the sync reported success.
 //
-// A bare identifier in an object literal's shorthand. It is a READ, so the
-// sync's dangling-reference guard should have caught it - except that guard is
-// bounded by the ONLINE build's vocabulary, and playerName was a local-only
-// name. It was not in the online build's list of definitions, so it was never
-// a candidate. The local build died at load with "playerName is not defined"
-// and the sync reported success.
+// DOES A FRAME RUN. Merging drawHUDInner removed a `const twoHumans` that a
+// line ninety further down still read. The build loaded perfectly - the throw
+// needs a HUD drawn in FIGHT state - and the first version of this file passed
+// it. A function-local const is invisible to a column-0 definition scanner, so
+// no static guard here can see that class of bug; running a frame can.
 //
-// A load check has no vocabulary problem: it runs the file.
+// A load check has no vocabulary problem, because it runs the file. A frame
+// check has no scope problem, because it runs the frame.
 const H = require('./harness');
 
 const BUILDS = [
-    ['online', u => u],
-    ['local', u => u.replace('/index.html', '/local/index.html')],
+    ['online', '/index.html'],
+    ['local', '/local/index.html'],
 ];
+
+// Pick two fighters and get into the arena. Deliberately the shortest path that
+// reaches gameState FIGHT - this is not a gameplay test, it is "does the frame
+// throw", and the fastest way to draw one real frame is the point.
+async function enterAFight(page) {
+    await page.evaluate(() => window.ACDebug.setDebugUnlockAll(true));
+    for (const side of ['p1', 'p2']) {
+        const picked = await page.evaluate((s) => {
+            const b = document.querySelector('#' + s + '-grid .fighter-btn');
+            if (!b) return false;
+            b.click();
+            const c = document.querySelector('#' + s + '-detail .btn-confirm');
+            if (c) c.click();
+            return true;
+        }, side);
+        if (!picked) return 'no fighter card on ' + side;
+    }
+    // One build starts from a Start Match button, the other may already be in
+    // the arena picker; clicking both in order works either way.
+    await page.evaluate(() => {
+        const s = document.getElementById('btn-start-match');
+        if (s) s.click();
+    });
+    await page.evaluate(() => {
+        const c = document.querySelectorAll('#mapselect-grid .map-card')[0];
+        if (c) c.click();
+    });
+    const live = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 60000);
+    return live ? null : 'never reached FIGHT';
+}
 
 (async () => {
     const browser = await H.launch();
     await H.startServer();
     let failed = 0;
-    for (const [name, urlOf] of BUILDS) {
+    for (const [name, path] of BUILDS) {
         const page = await H.newPage(browser);
         const errs = [];
         page.on('pageerror', e => errs.push(String(e.stack || e.message || e)));
         page.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
-        await page.goto(urlOf(H.GAME_URL), { waitUntil: 'load' });
+
+        await page.goto(H.GAME_URL.replace('/index.html', path), { waitUntil: 'load' });
         // ACDebug is published at the END of bootGame(), so its presence means
         // the whole closure ran rather than throwing somewhere in the middle.
-        // 2.5s covers the shared modules and three.js on a loaded machine.
         await H.sleep(2500);
         const booted = await page.evaluate(() => !!window.ACDebug).catch(() => false);
-        if (booted && !errs.length) {
-            console.log('  ' + name + ' build: loads clean');
+
+        let why = booted ? null : 'ACDebug never appeared';
+        if (booted) {
+            errs.length = 0;          // load is clean; judge the fight on its own
+            why = await enterAFight(page).catch(e => 'threw: ' + e.message);
+            // Long enough for the intro cinematic to hand over and the combat
+            // HUD to draw, which is where the last regression lived.
+            if (!why) await H.sleep(4000);
+        }
+
+        if (!why && !errs.length) {
+            console.log('  ' + name + ' build: loads clean, a fight runs clean');
         } else {
             failed++;
-            console.log('  ' + name + ' build: FAILED'
-                + (booted ? '' : ' (ACDebug never appeared)'));
+            console.log('  ' + name + ' build: FAILED' + (why ? ' (' + why + ')' : ''));
             for (const e of errs.slice(0, 3)) console.log('      ' + e.split('\n')[0]);
         }
         await page.close();
