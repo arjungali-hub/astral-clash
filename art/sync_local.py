@@ -776,6 +776,11 @@ CSS_PORT_MARK = '/* --- rules ported from the online build by art/sync_local.py 
 # reason on every entry, and the sync reports any shared id that differs without
 # being listed.
 MARKUP_INTERFACE = {
+    # Whole SCREENS that say different things because the builds do different
+    # things. Listed so the near-match report stops naming them every run and
+    # a genuinely new one stands out.
+    'modeselect-screen': 'the host owns the mode there; here either player picks it',
+    'tutorial-screen': 'one explains hosting and joining, the other two people at one keyboard',
     'btn-mapselect-back': 'goes back to the fighter select here, to the room there',
     'btn-play-again': 'plays again here; returns to the room there, and is styled as a back button for it',
 }
@@ -872,6 +877,70 @@ def close_fighter_drift(src, dst):
     return dst, copied, undocumented
 
 
+# Tags that are part of a label rather than a thing of their own. A child of one
+# of these carrying an ID is still a thing, so the id test is separate.
+_INLINE_TAGS = ('span', 'b', 'i', 'em', 'strong', 'small', 'code', 'br')
+
+
+def _has_real_children(inner):
+    """Does this element contain anything that is not part of its own label?"""
+    if '<' not in inner:
+        return False
+    if 'id="' in inner:
+        return True                      # a child with an id is its own element
+    for m in re.finditer(r'<' + chr(92) + r's*(' + chr(92) + r'w+)', inner):
+        if m.group(1).lower() not in _INLINE_TAGS:
+            return True
+    return False
+
+
+def markup_container_drift(src, dst, alike=0.75):
+    """Shared containers whose subtrees are NEARLY the same but not the same.
+
+    Not closed - #select-screen holds different panels in the two builds and
+    copying one over the other would be nonsense. REPORTED, because "nearly the
+    same" is what drift looks like from outside, and this surface had none: the
+    rebind screen was missing the element rebindNote() writes into and the
+    sentence describing the key swap, and the audio screen was missing all three
+    volume readouts, for as long as nobody happened to read them side by side.
+
+    Whole subtrees, so a container is judged on everything it holds.
+    """
+    def subtree(text, eid):
+        m = re.search(r'<(' + chr(92) + r'w+)([^>]*' + chr(92) + r'bid="%s"[^>]*)>'
+                      % re.escape(eid), text)
+        if not m:
+            return None
+        tag, depth, i = m.group(1), 1, m.end()
+        rx = re.compile(r'<(/?)%s' % re.escape(tag) + chr(92) + 'b')
+        while depth and i < len(text):
+            mm = rx.search(text, i)
+            if not mm:
+                break
+            depth += -1 if mm.group(1) else 1
+            i = mm.end()
+        return [l.strip() for l in text[m.start():i].splitlines() if l.strip()]
+
+    def body(text):
+        i = text.index('<body')
+        return text[i:text.index('<script', i)]
+
+    a, b = body(src), body(dst)
+    ids = (set(re.findall(r'id="([a-zA-Z][' + chr(92) + r'w-]*)"', a))
+           & set(re.findall(r'id="([a-zA-Z][' + chr(92) + r'w-]*)"', b)))
+    out = []
+    for eid in sorted(ids):
+        if eid in MARKUP_INTERFACE:
+            continue
+        x, y = subtree(a, eid), subtree(b, eid)
+        if not x or not y or x == y or len(x) < 3:
+            continue
+        r = difflib.SequenceMatcher(None, x, y).ratio()
+        if r >= alike:
+            out.append((eid, round(100 * r)))
+    return out
+
+
 def close_markup_drift(src, dst):
     """Copy an element's attributes and label from the online build.
 
@@ -883,6 +952,17 @@ def close_markup_drift(src, dst):
     Elements only one build has are untouched. There are 58 of those online (the
     lobby, the room slots) and 39 here (the per-side controls), and they are the
     screens that genuinely differ.
+
+    A CONTAINER OF INLINE, ID-LESS CHILDREN COUNTS AS A LEAF. "Containers: their
+    children are their own" is right about #select-screen, which holds different
+    panels in the two builds, and far too blunt about
+
+        <button id="btn-audio-mute" class="opt">Mute<span class="opt-state">Off</span></button>
+
+    whose span is part of the label rather than a thing in its own right. Every
+    settings row in the game has that shape, and not one of them was synced -
+    which is how this button came to say "Mute / Off" in one build and
+    "Sound / On" in the other, the same state under opposite conventions.
     """
     def elements(text):
         i, j = text.index('<body'), text.index('</body>')
@@ -892,7 +972,7 @@ def close_markup_drift(src, dst):
             tag, attrs, eid = m.group(1), m.group(2), m.group(3)
             close = body.find('</%s>' % tag, m.end())
             inner = body[m.end():close] if close != -1 else ''
-            out[eid] = (tag, attrs, inner, m.group(0), '<' in inner)
+            out[eid] = (tag, attrs, inner, m.group(0), _has_real_children(inner))
         return out
 
     on, lo = elements(src), elements(dst)
@@ -3347,6 +3427,15 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # above. Reported rather than closed: six of the eight that differ do so for
     # reasons, and overwriting those would put the online lobby's buttons in a
     # build that has no lobby.
+    # NEARLY-IDENTICAL CONTAINERS. Not closed, because the two builds' screens
+    # genuinely hold different panels - but named, because this surface had no
+    # report at all and was carrying four faults.
+    near = markup_container_drift(src, dst)
+    if near:
+        print('  %-34s %s'
+              % ('markup nearly matching',
+                 ', '.join('%s %d%%' % (e, r) for e, r in near)))
+
     undocumented = wiring_drift(src, dst)
     if undocumented:
         print('  %-34s %d wired differently with no reason on WIRING_INTERFACE: %s'

@@ -1244,6 +1244,25 @@
             opacity: 0.4;
             transform: translateX(-50%) scale(0.82);
         }
+                .rebind-note {
+            min-height: 1.2em;
+            margin: 6px 0 0;
+            font-size: 0.74rem;
+            color: #4ade80;
+            opacity: 0;
+            transition: opacity 180ms ease;
+        }
+        .rebind-note.show {
+            opacity: 1;
+        }
+        .audio-row .audio-value {
+            flex: none;
+            width: 42px;
+            text-align: right;
+            font-size: 0.76rem;
+            color: #cbd5e1;
+            font-variant-numeric: tabular-nums;
+        }
         </style>
 </head>
 <body>
@@ -1389,7 +1408,8 @@
                 <div class="menu-section">
                     <h3>Rebind Keys</h3>
                     <div id="rebind-list"></div>
-                    <p class="rebind-hint">Click a key, then press its replacement. Esc cancels.</p>
+                    <p class="rebind-hint">Click a key, then press its replacement. Esc cancels. Two actions cannot share a key &mdash; they swap.</p>
+                    <p id="rebind-note" class="rebind-note" aria-live="polite"></p>
                     <button id="btn-rebind-reset" class="btn-tertiary">Reset to Defaults</button>
                 </div>
             </div>
@@ -1400,16 +1420,19 @@
                     <div class="audio-row">
                         <label for="vol-master">Master</label>
                         <input type="range" id="vol-master" min="0" max="1" step="0.01">
+                        <span class="audio-value" id="vol-master-value">0%</span>
                     </div>
                     <div class="audio-row">
                         <label for="vol-sfx">SFX</label>
                         <input type="range" id="vol-sfx" min="0" max="1" step="0.01">
+                        <span class="audio-value" id="vol-sfx-value">0%</span>
                     </div>
                     <div class="audio-row">
                         <label for="vol-music">Music</label>
                         <input type="range" id="vol-music" min="0" max="1" step="0.01">
+                        <span class="audio-value" id="vol-music-value">0%</span>
                     </div>
-                    <button id="btn-audio-mute" class="opt">Sound<span class="opt-state">On</span></button>
+                    <button id="btn-audio-mute" class="opt">Mute<span class="opt-state">Off</span></button>
                     <button id="btn-audio-close" class="btn-back">Back to Settings</button>
                 </div>
             </div>
@@ -1461,7 +1484,7 @@
                         </div>
                         <div class="tutorial-card">
                             <h4>Movement &amp; Jumping</h4>
-                            <p>Movement is covered under <b>Controls</b> above.. Jumping reaches platforms and cover, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges and walls aren't. Use columns and interior walls for cover. Buy <b>Double Jump</b> in the Armory and you can press jump again in mid-air, once per airborne stretch, to reach the tallest perches.</p>
+                            <p>Movement is covered under <b>Controls</b> above. Jumping reaches platforms and cover, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges and walls aren't. Use columns and interior walls for cover. Buy <b>Double Jump</b> in the Armory and you can press jump again in mid-air, once per airborne stretch, to reach the tallest perches.</p>
                         </div>
                         <div class="tutorial-card">
                             <h4>Basic vs. Special</h4>
