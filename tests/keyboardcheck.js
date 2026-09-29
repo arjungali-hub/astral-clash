@@ -42,6 +42,14 @@ const H = require('./harness');
             // Containers legitimately carry these names; only flag leaves that
             // look like the thing you press.
             if (el.children.length) continue;
+            // INSIDE a real control is reachable. `<button class="opt">HUD Text
+            // <span class="opt-state">Normal</span></button>` put a span whose
+            // class matches /opt/ inside a button - Tab reaches the button and
+            // the span comes with it. Flagging the span was this check crying
+            // wolf at its own naming convention, which is how a check gets
+            // switched off rather than fixed.
+            if (el.closest(NATIVE.join(',') + ',[tabindex]') !== el
+                && el.closest(NATIVE.join(',') + ',[tabindex]')) continue;
             bad.push((el.tagName + '.' + String(el.className || '')).slice(0, 60));
         }
         return bad;

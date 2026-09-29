@@ -2175,17 +2175,19 @@ window.addEventListener('keydown', e => {
         const { side, action, buttonEl } = rebindCapture;
         rebindCapture = null;
         buttonEl.classList.remove('listening');
-        if (e.key === 'Escape') { buttonEl.textContent = keyLabel(BINDINGS[action]); return; }
+        if (e.key === 'Escape') { buttonEl.textContent = keyLabel(BINDINGS[side][action]); return; }
         const want = e.key.toLowerCase();
         // TWO ACTIONS CANNOT SHARE A KEY. Reported: "binding Forward to D left
         // Forward = D AND Strafe R = D" - a control that did two things at
         // once, with nothing on screen to say so. The action that held the key
         // takes the one being vacated, which is the only outcome that leaves
-        // every action bound.
-        const previous = BINDINGS[action];
-        const clash = Object.keys(BINDINGS).find(a => a !== action && BINDINGS[a] === want);
-        BINDINGS[action] = want;
-        if (clash) BINDINGS[clash] = previous;
+        // every action bound. Within THIS SIDE only: the two players at one
+        // keyboard are allowed to disagree about what W does.
+        const set = BINDINGS[side];
+        const previous = set[action];
+        const clash = Object.keys(set).find(a => a !== action && set[a] === want);
+        set[action] = want;
+        if (clash) set[clash] = previous;
         saveBindings();
         buildRebindList();   // both rows changed, so repaint rather than one button
         rebindNote(clash
@@ -2241,8 +2243,8 @@ window.addEventListener('keydown', e => {
         // Batch 31: one local player, so the confirm/back keys act on our own
         // side. `attack` is bound to the mouse by default, so a keyboard
         // fallback (Enter / Backspace) is provided for menu use.
-        if (k === BINDINGS.attack || k === 'enter') confirmPick(LOCAL_SIDE);
-        if (k === BINDINGS.special || k === 'backspace') backToPick(LOCAL_SIDE);
+        if (k === BINDINGS[LOCAL_SIDE].attack || k === 'enter') confirmPick(LOCAL_SIDE);
+        if (k === BINDINGS[LOCAL_SIDE].special || k === 'backspace') backToPick(LOCAL_SIDE);
         if (k === RANDOM_KEYS.p1) randomPick('p1');
         if (k === RANDOM_KEYS.p2) randomPick('p2');
     }
@@ -2278,36 +2280,53 @@ window.addEventListener('blur', () => {
 // Arrow keys are hardcoded alternates rather than bindings: the request was for
 // WASD *and* arrows to both work, which is two keys per action, and the binding
 // model is one key per action. They are applied alongside the bound keys.
-const DEFAULT_BINDINGS = {
-    forward: 'w',
-    back: 's',
-    strafeLeft: 'a',
-    strafeRight: 'd',
-    jump: ' ',
-    dodge: 'shift',
-    attack: 'mouse0',
-    special: 'mouse2',
-    // Batch 36: no keyboard pitch. Batch 31 kept R/V as a fallback for when
-    // pointer lock is refused, but in practice the mouse aims vertically
-    // whether or not the pointer is locked (mousemove still arrives), so they
-    // were only ever a slower way to do the same thing - and they cost two
-    // bindings and two rows of the rebind screen. Reported as "because looking
-    // around is now with cursor, r and v are unnecessary".
-};
+// ONE SET OF KEYS, held under both side names. This build has one player per
+// machine, and which slot they hold is decided by who hosted - so the keys
+// cannot depend on it. Storing the same set twice is eight strings, and it
+// means every function that reads a binding reads it the same way in both
+// builds.
+//
+// Batch 36: no keyboard pitch here. R/V existed as a fallback for when pointer
+// lock is refused, but the mouse aims vertically whether or not the pointer is
+// locked, so they were a slower way to do the same thing and cost two rows of
+// the rebind screen. The split-screen build keeps lookUp/lookDown, because its
+// second player has no mouse at all.
+const DEFAULT_BINDINGS = { p1: { forward: 'w', back: 's', left: 'a', right: 'd', jump: ' ', dodge: 'shift', attack: 'mouse0', special: 'mouse2' }, p2: { forward: 'w', back: 's', left: 'a', right: 'd', jump: ' ', dodge: 'shift', attack: 'mouse0', special: 'mouse2' } };
 // Held alongside the bound keys, not instead of them.
-const ARROW_ALTS = { forward: 'arrowup', back: 'arrowdown', strafeLeft: 'arrowleft', strafeRight: 'arrowright' };
+const ARROW_ALTS = { forward: 'arrowup', back: 'arrowdown', left: 'arrowleft', right: 'arrowright' };
 let BINDINGS;
+// A THIRD storage key. The two builds each had their own, with their own action
+// names - 'up'/'down' in one and 'strafeLeft'/'strafeRight' in the other - and
+// both are gone. Merging either over these defaults would leave a set holding
+// dead entries beside an action with no key, so the old values are read once
+// and translated: somebody who bound Strafe L to Q keeps Q on Left.
+const BINDINGS_KEY = 'astralClashBindingsV3';
+const BINDINGS_OLD_NAMES = { up: 'forward', down: 'back',
+                             strafeLeft: 'left', strafeRight: 'right' };
+
+function mergeBindings(saved) {
+    const out = {};
+    for (const side of SIDES) {
+        out[side] = Object.assign({}, DEFAULT_BINDINGS[side]);
+        const from = saved && (saved[side] || (saved.attack ? saved : null));
+        if (!from) continue;
+        for (const key in from) {
+            const action = BINDINGS_OLD_NAMES[key] || key;
+            if (action in out[side]) out[side][action] = from[key];
+        }
+    }
+    return out;
+}
+
 try {
-    // A NEW storage key on purpose. The old value is a { p1:{...}, p2:{...} }
-    // blob whose action names ('up'/'left') no longer exist, so merging it over
-    // these defaults would silently produce a binding set with dead entries.
-    const saved = JSON.parse(safeLSGet('astralClashBindingsV2'));
-    BINDINGS = Object.assign({}, DEFAULT_BINDINGS, saved);
+    const raw = safeLSGet(BINDINGS_KEY)
+        || safeLSGet('astralClashBindingsV2') || safeLSGet('astralClashBindings');
+    BINDINGS = mergeBindings(raw ? JSON.parse(raw) : null);
 } catch (e) {
-    BINDINGS = Object.assign({}, DEFAULT_BINDINGS);
+    BINDINGS = mergeBindings(null);
 }
 function saveBindings() {
-    safeLSSet('astralClashBindingsV2', JSON.stringify(BINDINGS));
+    safeLSSet(BINDINGS_KEY, JSON.stringify(BINDINGS));
 }
 
 // --- Mouse look and mouse buttons. ---------------------------------------
@@ -2599,29 +2618,56 @@ function keyLabel(k) {
 // Used by both the flat HUD strip and the pause-screen reminder, so a
 // rebind (see the pause-screen key-capture UI further down) shows up in
 // both places without them drifting out of sync with each other.
-function controlsSummary() {
-    const b = BINDINGS;
-    return `${keyLabel(b.forward)}${keyLabel(b.strafeLeft)}${keyLabel(b.back)}${keyLabel(b.strafeRight)} / Arrows Move + Strafe | Mouse Look | ${keyLabel(b.attack)} Attack | ${keyLabel(b.special)} Special | ${keyLabel(b.jump)} Jump | ${keyLabel(b.dodge)} Dash`;
+function controlsSummary(side) {
+    const b = BINDINGS[side];
+    const parts = [`${keyLabel(b.forward)}/${keyLabel(b.back)} Fwd/Back`,
+                   `${keyLabel(b.left)}/${keyLabel(b.right)} `
+                   + (AC_ONE_SIDE_PER_CLIENT ? 'Strafe' : 'Turn')];
+    // Vertical aim: a mouse where there is one, and two keys where the keyboard
+    // is shared and there is no second mouse to give the second player.
+    parts.push(AC_ONE_SIDE_PER_CLIENT
+        ? 'Mouse Look'
+        : `${keyLabel(b.lookUp)}/${keyLabel(b.lookDown)} Look Up/Down`);
+    parts.push(`${keyLabel(b.attack)}/${keyLabel(b.special)} Atk/Spc`);
+    parts.push(`${keyLabel(b.jump)} Jump`);
+    parts.push(`${keyLabel(b.dodge)} Dash`);
+    return parts.join(' | ');
 }
 
+// WHAT EACH BOUND KEY DOES, which depends on the scheme it is in: the same two
+// keys strafe beside a mouse and turn without one.
 const REBIND_ACTION_LABELS = {
-    forward: 'Forward', back: 'Back', strafeLeft: 'Strafe L', strafeRight: 'Strafe R',
+    forward: 'Forward', back: 'Back',
+    left: AC_ONE_SIDE_PER_CLIENT ? 'Strafe L' : 'Turn L',
+    right: AC_ONE_SIDE_PER_CLIENT ? 'Strafe R' : 'Turn R',
     jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash',
+    lookUp: 'Look Up', lookDown: 'Look Down',
 };
+
+// WHOSE KEYS THE REBIND SCREEN SHOWS. One set where one person is at this
+// machine, whichever slot they hold; both where two people share the keyboard.
+function rebindSides() { return AC_ONE_SIDE_PER_CLIENT ? [LOCAL_SIDE] : SIDES; }
 function buildRebindList() {
     const list = document.getElementById('rebind-list');
     list.innerHTML = '';
-    {
-        const side = null; // Batch 31: a single local binding set, no sides
-        for (const action in DEFAULT_BINDINGS) {
+    const sides = rebindSides();
+    for (const side of sides) {
+        // No heading where there is only one set to show: a lone "Player 1"
+        // above the only list on screen answers a question nobody asked.
+        if (sides.length > 1) {
+            const header = document.createElement('div');
+            header.style.cssText = 'margin-top:8px;font-weight:bold;color:#e2e8f0;';
+            header.textContent = playerLabel(side);
+            list.appendChild(header);
+        }
+        for (const action in DEFAULT_BINDINGS[side]) {
             const row = document.createElement('div');
             row.className = 'rebind-row';
             const label = document.createElement('span');
-            label.className = 'rebind-action';
             label.textContent = REBIND_ACTION_LABELS[action] || action;
             const btn = document.createElement('button');
             btn.className = 'rebind-key';
-            btn.textContent = keyLabel(BINDINGS[action]);
+            btn.textContent = keyLabel(BINDINGS[side][action]);
             btn.addEventListener('click', () => startCapture(side, action, btn));
             row.appendChild(label);
             row.appendChild(btn);
@@ -2655,7 +2701,7 @@ document.getElementById('btn-pause-rebind').addEventListener('click', openRebind
 // Says so, rather than appearing to do nothing to a panel that was already
 // showing the defaults.
 document.getElementById('btn-rebind-reset').addEventListener('click', () => {
-    BINDINGS = Object.assign({}, DEFAULT_BINDINGS);
+    BINDINGS = mergeBindings(null);
     saveBindings();
     buildRebindList();
     rebindNote('Reset to defaults');
@@ -2683,12 +2729,28 @@ syncDebugUnlockUI(); // reflect a persisted override on load
 // (same helper the pause-screen reminder uses) so a rebind shows up here
 // too instead of drifting out of sync with a hardcoded control list.
 function buildTutorialControls() {
-    document.getElementById('tutorial-controls').innerHTML =
-        `<div class="tutorial-controls-row">${controlsSummary()}</div>` +
-        `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> left stick move/strafe, right stick look, A jump, B attack, X special, Y dash</div>` +
-        // The one key that is not in controlsSummary(), because it is not a
-        // combat binding - and the only way out of a match. Reported as missing.
-        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>Esc</b> pauses, and opens Rebind Keys and Settings. Click the arena once to capture the mouse.</div>`;
+    const sides = rebindSides();
+    // Name whose keys these are only when there are two sets to tell apart.
+    const rows = sides.map(side => sides.length > 1
+        ? `<div class="tutorial-controls-row"><b>${displayName(side)}:</b> ${controlsSummary(side)}</div>`
+        : `<div class="tutorial-controls-row">${controlsSummary(side)}</div>`);
+    rows.push(`<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> `
+        + (AC_ONE_SIDE_PER_CLIENT
+            ? `left stick move/strafe, right stick look, `
+            : `stick move/turn, `)
+        + `A jump, B attack, X special, Y dash</div>`);
+    // Only the split-screen build has two layouts to explain, because only it
+    // can put one player or two in front of the same arena.
+    if (!AC_ONE_SIDE_PER_CLIENT) {
+        rows.push(`<div class="tutorial-controls-row" style="margin-top:6px;"><b>Alone against a bot:</b> you get the whole screen and the online scheme \u2014 mouse look, <b>A/D</b> to strafe, left click to attack. Click the arena once to capture the mouse.</div>`);
+        rows.push(`<div class="tutorial-controls-row" style="margin-top:4px;"><b>Two players:</b> the screen splits and each side uses its own keys, above \u2014 turn to look, then walk in the direction you face.</div>`);
+    }
+    // The one key that is not in controlsSummary(), because it is not a combat
+    // binding - and the only way out of a match. Reported as missing.
+    rows.push(`<div class="tutorial-controls-row" style="margin-top:4px;"><b>Esc</b> pauses, and opens Rebind Keys and Settings.`
+        + (AC_ONE_SIDE_PER_CLIENT ? ` Click the arena once to capture the mouse.` : ``)
+        + `</div>`);
+    document.getElementById('tutorial-controls').innerHTML = rows.join('');
 }
 // `auto` is true only when the game opened this by itself on first load.
 //
@@ -5011,7 +5073,7 @@ class Fighter {
 
             // Batch 31: the one fighter this client controls. Replaces the two
             // mirrored 30-line blocks that read BINDINGS.p1 and BINDINGS.p2.
-            const b = BINDINGS;
+            const b = BINDINGS[sideOf(this)];
             // Batch 32: snapshot so a started action / spent dodge can be
             // detected below and announced. Watching the resulting STATE
             // transition is more reliable than trying to intercept every
@@ -5060,8 +5122,8 @@ class Fighter {
             // direction now.
             if (held('forward')) { moveX += this.fx; moveY += this.fy; }
             if (held('back'))    { moveX -= this.fx; moveY -= this.fy; }
-            if (held('strafeRight')) { moveX -= this.fy; moveY += this.fx; }
-            if (held('strafeLeft'))  { moveX += this.fy; moveY -= this.fx; }
+            if (held('right')) { moveX -= this.fy; moveY += this.fx; }
+            if (held('left'))  { moveX += this.fy; moveY -= this.fx; }
 
             if (keys[b.jump]) jumpPressed = true;
             if (consumePress(b.jump)) jumpJustPressed = true;
@@ -6995,8 +7057,8 @@ function buildDetailHTML(side, c, confirmKey, backKey, confirmed) {
 // null just clears the highlight.
 function showDetail(side, name, confirmed) {
     const c = CHAR_MAP[name];
-    const confirmKey = keyLabel(BINDINGS.attack); // attack = confirm, special = back — read live so rebinds show correctly
-    const backKey = keyLabel(BINDINGS.special);
+    const confirmKey = keyLabel(BINDINGS[side].attack); // attack = confirm, special = back — read live so rebinds show correctly
+    const backKey = keyLabel(BINDINGS[side].special);
     const detail = document.getElementById(`${side}-detail`);
     detail.style.setProperty('--accent', c.color);
     detail.innerHTML = buildDetailHTML(side, c, confirmKey, backKey, confirmed);
@@ -8302,7 +8364,13 @@ function confirmPick(side) {
     // online means the match begins from whichever client confirmed second,
     // bypassing the host's arena choice entirely. The host's Start button is
     // now the only way in.
-    if (!netActive() && sideReady('p1') && sideReady('p2')) beginMatch();
+    // Offline in a build with ONE player per machine there is nobody left to
+    // wait for, so a confirmed pair starts. Two people at one keyboard get the
+    // Start Match button instead - reported as "when both players confirm, it
+    // automatically starts match instead of waiting for you to click start
+    // match", and the second player was still reading their card.
+    if (AC_ONE_SIDE_PER_CLIENT && !netActive()
+        && sideReady('p1') && sideReady('p2')) beginMatch();
 }
 
 function backToPick(side) {
@@ -8370,6 +8438,16 @@ function hostRematch(map) {
 document.getElementById('btn-rematch').addEventListener('click', () => hostRematch(currentMap));
 document.getElementById('btn-reroll-map').addEventListener('click', () => hostRematch(null));
 
+// THE CONTROLS REMINDER ON THE PAUSE SCREEN. One line where one person is at
+// this machine, two where the keyboard is shared - and the name only where
+// there are two to tell apart.
+function pauseControlsHTML() {
+    const sides = rebindSides();
+    return sides.map(side => sides.length > 1
+        ? `${displayName(side)}: ${controlsSummary(side)}`
+        : controlsSummary(side)).join('<br>');
+}
+
 // Only the host is offered a rematch; the guest is told what it is waiting for.
 // Sets the result line and replays its grow animation. Re-adding the class is
 // required: a CSS animation does not restart when the same class is already
@@ -8386,14 +8464,17 @@ function togglePause() {
         // forward by however long we were paused.
         roundStartedAt += performance.now() - pauseStartedAt;
         hideOverlay();
-    } else if (gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH' || gameState === 'ROUND_END') {
+    } else if (inLiveMatch()) {
         pausedFromState = gameState;
         pauseStartedAt = performance.now();
         cameraShakeMag = 0; // don't leave a frozen shake running under the pause overlay
         gameState = 'PAUSED';
-        document.getElementById('pause-controls-reminder').innerHTML = controlsSummary();
+        document.getElementById('pause-controls-reminder').innerHTML = pauseControlsHTML();
         showScreen('pause');
-        refreshPauseUI();   // says what is blocking the resume, if anything
+        // What is blocking the resume, if anything - a question only a
+        // networked match can answer with anything but "nothing", which is why
+        // the whole away-pause subsystem lives in the build that has a peer.
+        if (typeof refreshPauseUI === 'function') refreshPauseUI();
     }
 }
 // --- Away-pause (Batch 37) -------------------------------------------------
@@ -9917,7 +9998,7 @@ function stepDeath(dt) {
     // Either side's attack key, or Space/Enter as a universal fallback
     // (read from the live bindings, not hardcoded 'f'/'k').
     const skipRequested = deathTimer >= DEATH_SKIP_AFTER &&
-        (consumePress(BINDINGS.attack) || consumePress(' ') || consumePress('enter'));
+        (consumePress(BINDINGS[LOCAL_SIDE].attack) || consumePress(' ') || consumePress('enter'));
 
     // Batch 19: in the continuous modes a knockout is a setback, not the end of
     // the match — the KO animation still plays in full (it's good feel and the

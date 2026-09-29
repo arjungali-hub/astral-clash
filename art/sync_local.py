@@ -170,7 +170,8 @@ INTERFACE = {
 
     # The online body auto-starts when nobody is connected - a solo path there,
     # and always-on here, where it skipped the Start Fight button entirely.
-    'confirmPick': 'must not auto-start; this build has a Start button',
+    # confirmPick is SHARED now - one conditional: offline with one player per machine there is 
+    # nobody to wait for, and two at one keyboard have a Start button.
 
     # No-ops here on purpose. Both are reached only from `if (netActive())`
     # branches, which never run in a build that cannot connect - they exist so
@@ -210,14 +211,22 @@ INTERFACE = {
     # local body did after flipping the flag never changed anything.
 
     # --- controls: two players at one keyboard vs one player and a mouse
-    'DEFAULT_BINDINGS': 'two full key sets',
-    'REBIND_ACTION_LABELS': 'labelled per side',
+    # DEFAULT_BINDINGS stays, and it is the only one of this group that
+    # should: WHICH KEYS is real data. One player per machine gets one set
+    # with the mouse on attack and special; two at one keyboard get two, and
+    # the second needs keys for vertical aim because there is no second
+    # mouse. The SHAPE is identical now, which is what the six functions
+    # above were really forking over.
+    'DEFAULT_BINDINGS': 'which keys, which is data; the shape is shared',
+    # REBIND_ACTION_LABELS is SHARED now - one table, and the two labels that depend on the scheme say 
+    # so: the same keys strafe beside a mouse and turn without one.
     # keyLabel is SHARED now - not 'labelled per side': the local body is missing the mouse-button
     # labels and the empty-binding guard.
-    'controlsSummary': 'describes two players',
-    'buildTutorialControls': 'describes two players',
-    'buildRebindList': 'two lists',
-    'saveBindings': 'two sides',
+    # controlsSummary is SHARED now - it takes a side in both builds now.
+    # buildTutorialControls is SHARED now - rebindSides() decides how many sets to describe, and the two-layout paragraphs belong to the build that has two.
+    # buildRebindList is SHARED now - rebindSides() says whose keys to show, and the heading appears 
+    # only when there is more than one set on screen.
+    # saveBindings is SHARED now - one storage key, one shape.
     # startCapture is SHARED now: the better prompt text reached one build only.
     # pollGamepad is SHARED now - not 'two pads' at all: the local body is missing lookX, the
     # right-stick X axis - which applySoloControls already READS, so that
@@ -229,13 +238,16 @@ INTERFACE = {
     'currentScreen': 'different screens exist',
     # startGame is SHARED now: the vendor list it forked over is AC_VENDOR,
     # declared in each build's profile from one expression and three flags.
-    'startMatch': 'match framework',
+    # startMatch is SHARED now - the local body inlined what startMatchNow() does, written before 
+    # that function existed and never caught up.
     # endMatch is SHARED now - announceResult and refreshGameOverUI are shared, the netActive() coin
     # branch is inert here, and the winner-first score this build already had
     # went the other way.
     # endCoopMatch is SHARED now - announceResult is shared, and the netActive() coin branch is 
     # inert in a build that cannot connect.
-    'togglePause': 'match framework',
+    # togglePause is SHARED now - inLiveMatch() is the state list, pauseControlsHTML() is the 
+    # reminder, and refreshPauseUI is guarded by typeof because the 
+    # away-pause subsystem it needs has no meaning without a peer.
     'refreshMenuUI': 'different menus',
     'refreshBotUI': 'bots are per side here',
     # resolveCoopMode is SHARED now - the local body is missing the boss-HP line in the defeat
@@ -258,8 +270,9 @@ INTERFACE = {
     # shopOwnerPhrase - name the one-panel-or-two difference once, and its
     # eighty-nine lines stop being two copies that agree.
     'openShop': 'two purses',
-    'showDetail': 'two purses',
-    'buildDetailHTML': 'two purses',
+    # showDetail is SHARED now - the local build had no "Locked in" state and never warmed the 
+    # fighter model while you read the card.
+    # buildDetailHTML is SHARED now - same: the confirmed state reached one build only.
     'shopExpanded': 'two panels open at once',
     # syncLockHint is SHARED now - wantsPointerLock() asks soloHumanSide() now, and both are shared.
     'preloadCharModels': 'preloads both sides at once',

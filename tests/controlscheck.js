@@ -13,30 +13,42 @@ const H = require('./harness');
     const { check, section, finish } = H.makeChecker();
     await H.boot(page, { clearStorage: true, models: true });
 
-    section('Bindings are a single local set, mouse-first:');
+    // Batch 97: the bindings are keyed by SIDE in both builds now, holding the
+    // same set under both names here. That is a spelling change and nothing
+    // else - one player per machine still gets one set of keys, whichever slot
+    // they hold - so these assertions read it the new way and go on checking
+    // the behaviour they were written for.
+    section('Bindings are one set per side, mouse-first:');
     const b = await page.evaluate(() => {
         const D = window.ACDebug;
+        const set = D.DEFAULT_BINDINGS.p1;
         return {
-            actions: Object.keys(D.DEFAULT_BINDINGS),
-            attack: D.DEFAULT_BINDINGS.attack,
-            special: D.DEFAULT_BINDINGS.special,
-            jump: D.DEFAULT_BINDINGS.jump,
-            dodge: D.DEFAULT_BINDINGS.dodge,
+            actions: Object.keys(set),
+            perSideShape: !!(D.BINDINGS.p1 && D.BINDINGS.p2),
+            // Both sides hold the same keys: which slot you get is decided by
+            // who hosted, so the keys cannot depend on it.
+            sidesAgree: JSON.stringify(D.DEFAULT_BINDINGS.p1)
+                     === JSON.stringify(D.DEFAULT_BINDINGS.p2),
+            attack: set.attack,
+            special: set.special,
+            jump: set.jump,
+            dodge: set.dodge,
             arrows: D.ARROW_ALTS,
-            perSide: !!(D.BINDINGS.p1 || D.BINDINGS.p2),
             localSide: D.LOCAL_SIDE,
         };
     });
-    check('no per-side binding sets remain', b.perSide === false, b.actions.join(','));
-    check('strafe actions replaced the turn actions',
-        b.actions.includes('strafeLeft') && b.actions.includes('strafeRight')
-        && !b.actions.includes('left') && !b.actions.includes('right'), b.actions.join(','));
+    check('bindings are keyed by side', b.perSideShape === true, b.actions.join(','));
+    check('both sides hold the same keys', b.sidesAgree === true, b.actions.join(','));
+    check('left and right are the strafe keys, and there are no separate turn keys',
+        b.actions.includes('left') && b.actions.includes('right')
+        && !b.actions.includes('strafeLeft') && !b.actions.includes('lookUp'),
+        b.actions.join(','));
     check('attack is left click', b.attack === 'mouse0', b.attack);
     check('special is right click', b.special === 'mouse2', b.special);
     check('jump is Space', b.jump === ' ', JSON.stringify(b.jump));
     check('dash is Shift', b.dodge === 'shift', b.dodge);
     check('arrow keys alternate for all four move actions',
-        ['forward', 'back', 'strafeLeft', 'strafeRight'].every(a => b.arrows[a]),
+        ['forward', 'back', 'left', 'right'].every(a => b.arrows[a]),
         JSON.stringify(b.arrows));
     check('this client starts as p1', b.localSide === 'p1', b.localSide);
 
@@ -104,12 +116,12 @@ const H = require('./harness');
                 f.hitstunTimer = 0; f.rootedFrames = 0; f.atkState = 'idle';
                 await step();
                 const x0 = f.x, y0 = f.y, yaw0 = Math.atan2(f.fy, f.fx);
-                D.keys[D.BINDINGS[act]] = true;
+                D.keys[D.BINDINGS[D.LOCAL_SIDE][act]] = true;
                 for (let i = 0; i < 10; i++) {
                     f.hitstunTimer = 0; f.rootedFrames = 0;   // keep it un-stunned
                     await step();
                 }
-                D.keys[D.BINDINGS[act]] = false;
+                D.keys[D.BINDINGS[D.LOCAL_SIDE][act]] = false;
                 const dx = f.x - x0, dy = f.y - y0;
                 const dist = Math.hypot(dx, dy);
                 // Component of the displacement along the facing, and across it.
@@ -124,7 +136,7 @@ const H = require('./harness');
     }
 
     section('A/D strafe sideways instead of turning:');
-    const strafe = await sweep(page, 'strafeRight');
+    const strafe = await sweep(page, 'right');
     const strafeMoved = strafe.filter(r => r.dist > 2);
     check('strafing produces movement in most directions', strafeMoved.length >= 2,
         JSON.stringify(strafe));
@@ -153,7 +165,7 @@ const H = require('./harness');
         // broken" when it is only "movement is obstructed".
         const facings = [[1, 0], [-1, 0], [0, 1], [0, -1]];
         const out = [];
-        for (const action of ['strafeRight', 'strafeLeft']) {
+        for (const action of ['right', 'left']) {
             for (const [fx, fy] of facings) {
                 f.x = 850; f.y = 480; f.vx = 0; f.vy = 0; f.z = 0; f.vz = 0;
                 f.fx = fx; f.fy = fy;
@@ -165,9 +177,9 @@ const H = require('./harness');
                 // re-deriving here would have reproduced it and passed.
                 const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0).normalize();
                 const x0 = f.x, y0 = f.y;
-                D.keys[D.BINDINGS[action]] = true;
+                D.keys[D.BINDINGS[D.LOCAL_SIDE][action]] = true;
                 for (let i = 0; i < 12; i++) { f.hitstunTimer = 0; f.rootedFrames = 0; await step(); }
-                D.keys[D.BINDINGS[action]] = false;
+                D.keys[D.BINDINGS[D.LOCAL_SIDE][action]] = false;
                 // The 2D plane maps x -> world X and y -> world Z (worldX/worldZ).
                 const moved = new THREE.Vector3(f.x - x0, 0, f.y - y0);
                 const dist = moved.length();
@@ -179,8 +191,8 @@ const H = require('./harness');
         }
         return out;
     });
-    const rights = dirCheck.filter(r => r.action === 'strafeRight' && r.dist > 2);
-    const lefts = dirCheck.filter(r => r.action === 'strafeLeft' && r.dist > 2);
+    const rights = dirCheck.filter(r => r.action === 'right' && r.dist > 2);
+    const lefts = dirCheck.filter(r => r.action === 'left' && r.dist > 2);
     check('strafe-right moves you toward SCREEN right, from every facing',
         rights.length >= 2 && rights.every(r => r.dot > 0.9), JSON.stringify(rights));
     check('strafe-left moves you toward SCREEN left, from every facing',
@@ -252,7 +264,7 @@ const H = require('./harness');
     const looks = await page.evaluate(() => {
         const D = window.ACDebug;
         return {
-            actions: Object.keys(D.BINDINGS),
+            actions: Object.keys(D.BINDINGS[D.LOCAL_SIDE]),
             rebindRows: document.querySelectorAll('#rebind-list .rebind-row').length,
         };
     });

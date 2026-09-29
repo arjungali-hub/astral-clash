@@ -1820,9 +1820,23 @@ window.addEventListener('keydown', e => {
         rebindCapture = null;
         buttonEl.classList.remove('listening');
         if (e.key === 'Escape') { buttonEl.textContent = keyLabel(BINDINGS[side][action]); return; }
-        BINDINGS[side][action] = e.key.toLowerCase();
+        const want = e.key.toLowerCase();
+        // TWO ACTIONS CANNOT SHARE A KEY. Reported: "binding Forward to D left
+        // Forward = D AND Strafe R = D" - a control that did two things at
+        // once, with nothing on screen to say so. The action that held the key
+        // takes the one being vacated, which is the only outcome that leaves
+        // every action bound. Within THIS SIDE only: the two players at one
+        // keyboard are allowed to disagree about what W does.
+        const set = BINDINGS[side];
+        const previous = set[action];
+        const clash = Object.keys(set).find(a => a !== action && set[a] === want);
+        set[action] = want;
+        if (clash) set[clash] = previous;
         saveBindings();
-        buttonEl.textContent = keyLabel(BINDINGS[side][action]);
+        buildRebindList();   // both rows changed, so repaint rather than one button
+        rebindNote(clash
+            ? `Swapped with ${REBIND_ACTION_LABELS[clash] || clash}`
+            : `${REBIND_ACTION_LABELS[action] || action} \u2192 ${keyLabel(want)}`);
         return;
     }
     // (0) TYPING WINS. A keystroke aimed at a text field is not a game input:
@@ -1866,10 +1880,10 @@ window.addEventListener('keydown', e => {
         if (i1 !== -1) previewPick('p1', CHARACTERS[i1].name);
         const i2 = P2_KEYS.indexOf(k);
         if (i2 !== -1) previewPick('p2', CHARACTERS[i2].name);
-        if (k === BINDINGS.p1.attack) confirmPick('p1');
-        if (k === BINDINGS.p1.special) backToPick('p1');
-        if (k === BINDINGS.p2.attack) confirmPick('p2');
-        if (k === BINDINGS.p2.special) backToPick('p2');
+        for (const side of SIDES) {
+            if (k === BINDINGS[side].attack) confirmPick(side);
+            if (k === BINDINGS[side].special) backToPick(side);
+        }
         if (k === RANDOM_KEYS.p1) randomPick('p1');
         if (k === RANDOM_KEYS.p2) randomPick('p2');
     }
@@ -1914,24 +1928,42 @@ const DEFAULT_BINDINGS = {
     // right beside its existing K/L/. cluster. Both rebindable like everything
     // else. (P1's 'r' doubles as the menu-only random-pick shortcut, the same
     // harmless menu-vs-fight overlap P2's '/' jump already has.)
-    p1: { up: 'w', down: 's', left: 'a', right: 'd', jump: 'e', attack: 'f', special: 'g', dodge: 'shift', lookUp: 'r', lookDown: 'v' },
-    p2: { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', jump: '/', attack: 'k', special: 'l', dodge: '.', lookUp: ';', lookDown: "'" }
+    p1: { forward: 'w', back: 's', left: 'a', right: 'd', jump: 'e', attack: 'f', special: 'g', dodge: 'shift', lookUp: 'r', lookDown: 'v' },
+    p2: { forward: 'arrowup', back: 'arrowdown', left: 'arrowleft', right: 'arrowright', jump: '/', attack: 'k', special: 'l', dodge: '.', lookUp: ';', lookDown: "'" }
 };
 let BINDINGS;
+// A THIRD storage key. The two builds each had their own, with their own action
+// names - 'up'/'down' in one and 'strafeLeft'/'strafeRight' in the other - and
+// both are gone. Merging either over these defaults would leave a set holding
+// dead entries beside an action with no key, so the old values are read once
+// and translated: somebody who bound Strafe L to Q keeps Q on Left.
+const BINDINGS_KEY = 'astralClashBindingsV3';
+const BINDINGS_OLD_NAMES = { up: 'forward', down: 'back',
+                             strafeLeft: 'left', strafeRight: 'right' };
+
+function mergeBindings(saved) {
+    const out = {};
+    for (const side of SIDES) {
+        out[side] = Object.assign({}, DEFAULT_BINDINGS[side]);
+        const from = saved && (saved[side] || (saved.attack ? saved : null));
+        if (!from) continue;
+        for (const key in from) {
+            const action = BINDINGS_OLD_NAMES[key] || key;
+            if (action in out[side]) out[side][action] = from[key];
+        }
+    }
+    return out;
+}
+
 try {
-    const saved = JSON.parse(safeLSGet('astralClashBindings'));
-    // Merge over the defaults rather than trust the saved blob outright —
-    // covers both a stale save from before an action existed and a
-    // corrupted/partial value.
-    BINDINGS = {
-        p1: Object.assign({}, DEFAULT_BINDINGS.p1, saved && saved.p1),
-        p2: Object.assign({}, DEFAULT_BINDINGS.p2, saved && saved.p2)
-    };
+    const raw = safeLSGet(BINDINGS_KEY)
+        || safeLSGet('astralClashBindingsV2') || safeLSGet('astralClashBindings');
+    BINDINGS = mergeBindings(raw ? JSON.parse(raw) : null);
 } catch (e) {
-    BINDINGS = { p1: Object.assign({}, DEFAULT_BINDINGS.p1), p2: Object.assign({}, DEFAULT_BINDINGS.p2) };
+    BINDINGS = mergeBindings(null);
 }
 function saveBindings() {
-    safeLSSet('astralClashBindings', JSON.stringify(BINDINGS));
+    safeLSSet(BINDINGS_KEY, JSON.stringify(BINDINGS));
 }
 
 // --- Batch 12: meta-progression (coins, character unlocks, per-character
@@ -2210,8 +2242,8 @@ function applySoloControls(f, b, dt, target) {
     // forward x up. Getting this sign wrong is what made strafing reversed in
     // the online build for a release (Batch 36).
     const rx = -f.fy, ry = f.fx;
-    if (keys[b.up]) { out.moveX += f.fx; out.moveY += f.fy; }
-    if (keys[b.down]) { out.moveX -= f.fx; out.moveY -= f.fy; }
+    if (keys[b.forward]) { out.moveX += f.fx; out.moveY += f.fy; }
+    if (keys[b.back]) { out.moveX -= f.fx; out.moveY -= f.fy; }
     if (keys[b.left]) { out.moveX -= rx; out.moveY -= ry; }
     if (keys[b.right]) { out.moveX += rx; out.moveY += ry; }
     // The keyboard pitch keys stay available, for when pointer lock is refused.
@@ -2511,23 +2543,50 @@ function keyLabel(k) {
 // both places without them drifting out of sync with each other.
 function controlsSummary(side) {
     const b = BINDINGS[side];
-    return `${keyLabel(b.up)}/${keyLabel(b.down)} Fwd/Back, ${keyLabel(b.left)}/${keyLabel(b.right)} Turn | ${keyLabel(b.lookUp)}/${keyLabel(b.lookDown)} Look Up/Down | ${keyLabel(b.jump)} Jump | ${keyLabel(b.attack)}/${keyLabel(b.special)} Atk/Spc | ${keyLabel(b.dodge)} Dash`;
+    const parts = [`${keyLabel(b.forward)}/${keyLabel(b.back)} Fwd/Back`,
+                   `${keyLabel(b.left)}/${keyLabel(b.right)} `
+                   + (AC_ONE_SIDE_PER_CLIENT ? 'Strafe' : 'Turn')];
+    // Vertical aim: a mouse where there is one, and two keys where the keyboard
+    // is shared and there is no second mouse to give the second player.
+    parts.push(AC_ONE_SIDE_PER_CLIENT
+        ? 'Mouse Look'
+        : `${keyLabel(b.lookUp)}/${keyLabel(b.lookDown)} Look Up/Down`);
+    parts.push(`${keyLabel(b.attack)}/${keyLabel(b.special)} Atk/Spc`);
+    parts.push(`${keyLabel(b.jump)} Jump`);
+    parts.push(`${keyLabel(b.dodge)} Dash`);
+    return parts.join(' | ');
 }
 
-const REBIND_ACTION_LABELS = { up: 'Up', down: 'Down', left: 'Left', right: 'Right', jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash', lookUp: 'Look Up', lookDown: 'Look Down' };
+// WHAT EACH BOUND KEY DOES, which depends on the scheme it is in: the same two
+// keys strafe beside a mouse and turn without one.
+const REBIND_ACTION_LABELS = {
+    forward: 'Forward', back: 'Back',
+    left: AC_ONE_SIDE_PER_CLIENT ? 'Strafe L' : 'Turn L',
+    right: AC_ONE_SIDE_PER_CLIENT ? 'Strafe R' : 'Turn R',
+    jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash',
+    lookUp: 'Look Up', lookDown: 'Look Down',
+};
+
+// WHOSE KEYS THE REBIND SCREEN SHOWS. One set where one person is at this
+// machine, whichever slot they hold; both where two people share the keyboard.
+function rebindSides() { return AC_ONE_SIDE_PER_CLIENT ? [LOCAL_SIDE] : SIDES; }
 function buildRebindList() {
     const list = document.getElementById('rebind-list');
     list.innerHTML = '';
-    for (const side of ['p1', 'p2']) {
-        const header = document.createElement('div');
-        header.style.cssText = 'margin-top:8px;font-weight:bold;color:#e2e8f0;';
-        header.textContent = side === 'p1' ? 'Player 1' : 'Player 2';
-        list.appendChild(header);
+    const sides = rebindSides();
+    for (const side of sides) {
+        // No heading where there is only one set to show: a lone "Player 1"
+        // above the only list on screen answers a question nobody asked.
+        if (sides.length > 1) {
+            const header = document.createElement('div');
+            header.style.cssText = 'margin-top:8px;font-weight:bold;color:#e2e8f0;';
+            header.textContent = playerLabel(side);
+            list.appendChild(header);
+        }
         for (const action in DEFAULT_BINDINGS[side]) {
             const row = document.createElement('div');
             row.className = 'rebind-row';
             const label = document.createElement('span');
-            label.className = 'rebind-action';
             label.textContent = REBIND_ACTION_LABELS[action] || action;
             const btn = document.createElement('button');
             btn.className = 'rebind-key';
@@ -2563,7 +2622,7 @@ document.getElementById('btn-pause-settings').addEventListener('click', () => {
 });
 document.getElementById('btn-pause-rebind').addEventListener('click', openRebind);
 document.getElementById('btn-rebind-reset').addEventListener('click', () => {
-    BINDINGS = { p1: Object.assign({}, DEFAULT_BINDINGS.p1), p2: Object.assign({}, DEFAULT_BINDINGS.p2) };
+    BINDINGS = mergeBindings(null);
     saveBindings();
     buildRebindList();
 });
@@ -2590,13 +2649,28 @@ syncDebugUnlockUI(); // reflect a persisted override on load
 // (same helper the pause-screen reminder uses) so a rebind shows up here
 // too instead of drifting out of sync with a hardcoded control list.
 function buildTutorialControls() {
-    document.getElementById('tutorial-controls').innerHTML =
-        `<div class="tutorial-controls-row"><b>${displayName('p1')}:</b> ${controlsSummary('p1')}</div>` +
-        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>${displayName('p2')}:</b> ${controlsSummary('p2')}</div>` +
-        `<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> stick move/turn, A jump, B attack, X special, Y dash</div>` +
-        `<div class="tutorial-controls-row" style="margin-top:6px;"><b>Alone against a bot:</b> you get the whole screen and the online scheme — mouse look, <b>A/D</b> to strafe, left click to attack. Click the arena once to capture the mouse.</div>` +
-        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>Two players:</b> the screen splits and each side uses its own keys, above — turn to look, then walk in the direction you face.</div>` +
-        `<div class="tutorial-controls-row" style="margin-top:4px;"><b>Esc</b> pauses, and opens Rebind Keys and Settings.</div>`;
+    const sides = rebindSides();
+    // Name whose keys these are only when there are two sets to tell apart.
+    const rows = sides.map(side => sides.length > 1
+        ? `<div class="tutorial-controls-row"><b>${displayName(side)}:</b> ${controlsSummary(side)}</div>`
+        : `<div class="tutorial-controls-row">${controlsSummary(side)}</div>`);
+    rows.push(`<div class="tutorial-controls-row" style="margin-top:4px;color:#64748b;"><b>Gamepad:</b> `
+        + (AC_ONE_SIDE_PER_CLIENT
+            ? `left stick move/strafe, right stick look, `
+            : `stick move/turn, `)
+        + `A jump, B attack, X special, Y dash</div>`);
+    // Only the split-screen build has two layouts to explain, because only it
+    // can put one player or two in front of the same arena.
+    if (!AC_ONE_SIDE_PER_CLIENT) {
+        rows.push(`<div class="tutorial-controls-row" style="margin-top:6px;"><b>Alone against a bot:</b> you get the whole screen and the online scheme \u2014 mouse look, <b>A/D</b> to strafe, left click to attack. Click the arena once to capture the mouse.</div>`);
+        rows.push(`<div class="tutorial-controls-row" style="margin-top:4px;"><b>Two players:</b> the screen splits and each side uses its own keys, above \u2014 turn to look, then walk in the direction you face.</div>`);
+    }
+    // The one key that is not in controlsSummary(), because it is not a combat
+    // binding - and the only way out of a match. Reported as missing.
+    rows.push(`<div class="tutorial-controls-row" style="margin-top:4px;"><b>Esc</b> pauses, and opens Rebind Keys and Settings.`
+        + (AC_ONE_SIDE_PER_CLIENT ? ` Click the arena once to capture the mouse.` : ``)
+        + `</div>`);
+    document.getElementById('tutorial-controls').innerHTML = rows.join('');
 }
 // `auto` is true only when the game opened this by itself on first load.
 //
@@ -3612,7 +3686,7 @@ function neededModelsReady(mode) {
 }
 
 // Held alongside the bound keys, not instead of them.
-const ARROW_ALTS = { forward: 'arrowup', back: 'arrowdown', strafeLeft: 'arrowleft', strafeRight: 'arrowright' };
+const ARROW_ALTS = { forward: 'arrowup', back: 'arrowdown', left: 'arrowleft', right: 'arrowright' };
 // The confirm/back key hints, read live from the bindings so a rebind shows the
 // real key rather than a stale literal. Batch 34: one player, so this no longer
 // takes a side.
@@ -3782,6 +3856,24 @@ function renderCrushCinematic(dt, W, HGT) {
 }
 
  // fixed pool per fighter; never grows (see buildCrushRigs)
+
+function startMatchNow() {
+    awaitingModels = false;
+    roundWins = { p1: 0, p2: 0 };
+    currentRound = 1;
+    matchStats = { p1: freshStats(), p2: freshStats() };
+    roundDurations = [];
+    // Batch 19: per-mode match state. Reset here (not in startRound) because in
+    // the continuous modes the whole match IS one round — resetting per round
+    // would wipe the score every knockout.
+    zoneScore = { p1: 0, p2: 0 };
+    koTally = { p1: 0, p2: 0 };
+    zoneHolder = null;
+    waveNumber = 0;
+    waveBreakTimer = 0;
+    coopResultText = '';
+    startRound(true); // the first round of a match opens with the drop-in intro cinematic
+}
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every
@@ -5242,8 +5334,8 @@ class Fighter {
         if (keys[b.right]) this.turnBy(TURN_SPEED * dt);
         if (keys[b.lookUp]) this.lookBy(LOOK_SPEED * dt);
         if (keys[b.lookDown]) this.lookBy(-LOOK_SPEED * dt);
-        if (keys[b.up]) { moveX += this.fx; moveY += this.fy; }
-        if (keys[b.down]) { moveX -= this.fx; moveY -= this.fy; }
+        if (keys[b.forward]) { moveX += this.fx; moveY += this.fy; }
+        if (keys[b.back]) { moveX -= this.fx; moveY -= this.fy; }
         if (keys[b.jump]) jumpPressed = true;
         if (consumePress(b.jump)) jumpJustPressed = true;
         if (consumePress(b.attack)) this.tryStartAction('basic', target);
@@ -7152,18 +7244,26 @@ function characterInfoHTML(side, c) {
         <div class="detail-ability"><span class="ability-label">Special &mdash; ${c.specialName}</span><p>${c.specialDesc}</p></div>`;
 }
 
-function buildDetailHTML(side, c, confirmKey, backKey) {
+function buildDetailHTML(side, c, confirmKey, backKey, confirmed) {
     // Batch 24: the write-up is wrapped in its own bounded scroll box and the
     // Confirm/Back buttons sit OUTSIDE it. The richer descriptions plus a fourth
     // stat row and a second ability block grew this panel past the viewport, and
     // since #ui-overlay is the only scroll container, Confirm ended up below the
     // fold — nothing was clipped, but you had to scroll to finish picking. The
     // full text stays; the buttons stay put.
+    // A LOCKED-IN PICK DOES NOT OFFER "Confirm". Reported: "Confirm (Left
+    // Click) and Back (Right Click) stay visible after the host is Ready" -
+    // this panel already knew (it toggles .confirmed on itself) and went on
+    // showing the button that got you here anyway. Back stays, renamed to what
+    // it now does, because changing your mind before the match starts is
+    // allowed.
+    const actions = confirmed
+        ? `<span class="detail-locked">\u2713 Locked in</span>
+           <button class="btn-back">Change Fighter (${backKey})</button>`
+        : `<button class="btn-confirm">Confirm (${confirmKey})</button>
+           <button class="btn-back">Back (${backKey})</button>`;
     return `<div class="detail-scroll">${characterInfoHTML(side, c)}</div>` + `
-        <div class="detail-actions">
-            <button class="btn-confirm">Confirm (${confirmKey})</button>
-            <button class="btn-back">Back (${backKey})</button>
-        </div>`;
+        <div class="detail-actions">${actions}</div>`;
 }
 
 // B13: highlight the chosen card in the grid (clearing any previous). Passing
@@ -7174,9 +7274,12 @@ function showDetail(side, name, confirmed) {
     const backKey = keyLabel(BINDINGS[side].special);
     const detail = document.getElementById(`${side}-detail`);
     detail.style.setProperty('--accent', c.color);
-    detail.innerHTML = buildDetailHTML(side, c, confirmKey, backKey);
+    detail.innerHTML = buildDetailHTML(side, c, confirmKey, backKey, confirmed);
     detail.classList.toggle('confirmed', confirmed);
-    detail.querySelector('.btn-confirm').addEventListener('click', () => confirmPick(side));
+    // Confirm is absent once the pick is locked in, so this is a lookup rather
+    // than an assumption.
+    const confirmBtn = detail.querySelector('.btn-confirm');
+    if (confirmBtn) confirmBtn.addEventListener('click', () => confirmPick(side));
     detail.querySelector('.btn-back').addEventListener('click', () => backToPick(side));
     // B13: keep the roster grid visible beside the detail instead of replacing
     // it; mark the chosen card, and lock (dim) the grid once the pick is
@@ -7186,6 +7289,14 @@ function showDetail(side, name, confirmed) {
     grid.classList.toggle('locked', confirmed);
     markSelected(side, name);
     detail.style.display = 'block';
+    // PREVIEWING A FIGHTER FETCHES ITS MODEL. That is a real wait on a cold
+    // load - a multi-megabyte GLB - and the panel used to sit there looking
+    // finished while it happened. The mark goes on the Confirm row, because
+    // that is the thing you are waiting to be able to use.
+    const actions = detail.querySelector('.detail-actions');
+    if (actions && typeof ensureCharModel === 'function' && !charModels[name]) {
+        busyWhile(actions, Promise.resolve(ensureCharModel(name)).catch(() => null), 'Loading fighter');
+    }
 }
 
 function headingHTML(num, stage) {
@@ -7593,7 +7704,7 @@ function randomPick(side) {
 // virtual joystick (turn/move, mirroring the keyboard's turn-then-walk FPS
 // controls) + a button cluster (jump/attack/special/dash) per human side,
 // laid on top of the same `keys`/`pressed` state the keyboard dispatcher
-// already drives — so update()'s `keys[b.up]`/`consumePress(b.attack)` etc.
+// already drives — so update()'s `keys[b.forward]`/`consumePress(b.attack)` etc.
 // need no changes at all; touch is just another writer of the same state,
 // keyed off the *live* BINDINGS (so a rebind — even though the touch pads
 // are fixed-function — still reads the right key string).
@@ -7642,13 +7753,13 @@ function setupTouchJoystick(zoneEl, side) {
         const b = BINDINGS[side];
         const nx = dx / MAX_R, ny = dy / MAX_R;
         touchTurn[side] = Math.abs(nx) > TURN_DEADZONE ? nx : 0;
-        touchKeySet(b.up, ny < -MOVE_DEADZONE); // dragging the knob up = walk forward
-        touchKeySet(b.down, ny > MOVE_DEADZONE);
+        touchKeySet(b.forward, ny < -MOVE_DEADZONE); // dragging the knob up = walk forward
+        touchKeySet(b.back, ny > MOVE_DEADZONE);
     }
     function reset() {
         const b = BINDINGS[side];
         touchTurn[side] = 0;
-        touchKeySet(b.up, false); touchKeySet(b.down, false);
+        touchKeySet(b.forward, false); touchKeySet(b.back, false);
         knob.style.transform = 'translate(0px, 0px)';
     }
     // getBoundingClientRect() forces a synchronous layout — fine once per
@@ -7829,6 +7940,13 @@ function confirmPick(side) {
     // online means the match begins from whichever client confirmed second,
     // bypassing the host's arena choice entirely. The host's Start button is
     // now the only way in.
+    // Offline in a build with ONE player per machine there is nobody left to
+    // wait for, so a confirmed pair starts. Two people at one keyboard get the
+    // Start Match button instead - reported as "when both players confirm, it
+    // automatically starts match instead of waiting for you to click start
+    // match", and the second player was still reading their card.
+    if (AC_ONE_SIDE_PER_CLIENT && !netActive()
+        && sideReady('p1') && sideReady('p2')) beginMatch();
 }
 
 function backToPick(side) {
@@ -7870,6 +7988,20 @@ document.getElementById('btn-reroll-map').addEventListener('click', () => {
     startMatch(); // same fighters, explicit new random map
 });
 
+// THE CONTROLS REMINDER ON THE PAUSE SCREEN. One line where one person is at
+// this machine, two where the keyboard is shared - and the name only where
+// there are two to tell apart.
+function pauseControlsHTML() {
+    const sides = rebindSides();
+    return sides.map(side => sides.length > 1
+        ? `${displayName(side)}: ${controlsSummary(side)}`
+        : controlsSummary(side)).join('<br>');
+}
+
+// Only the host is offered a rematch; the guest is told what it is waiting for.
+// Sets the result line and replays its grow animation. Re-adding the class is
+// required: a CSS animation does not restart when the same class is already
+// present, so a rematch would have shown the second result with no animation.
 // --- Pause (Batch 5): Escape toggles a full stop of the update loop
 // (still renders the frozen frame) with Resume / Return to Menu options.
 // The only way out of a fight before this was reloading the page. ---
@@ -7882,14 +8014,17 @@ function togglePause() {
         // forward by however long we were paused.
         roundStartedAt += performance.now() - pauseStartedAt;
         hideOverlay();
-    } else if (gameState === 'FIGHT' || gameState === 'DEATH' || gameState === 'ROUND_END') {
+    } else if (inLiveMatch()) {
         pausedFromState = gameState;
         pauseStartedAt = performance.now();
         cameraShakeMag = 0; // don't leave a frozen shake running under the pause overlay
         gameState = 'PAUSED';
-        document.getElementById('pause-controls-reminder').innerHTML =
-            `${displayName('p1')}: ${controlsSummary('p1')}<br>${displayName('p2')}: ${controlsSummary('p2')}`;
+        document.getElementById('pause-controls-reminder').innerHTML = pauseControlsHTML();
         showScreen('pause');
+        // What is blocking the resume, if anything - a question only a
+        // networked match can answer with anything but "nothing", which is why
+        // the whole away-pause subsystem lives in the build that has a peer.
+        if (typeof refreshPauseUI === 'function') refreshPauseUI();
     }
 }
 // (Escape → close-modal-or-pause is handled in the single keyboard dispatcher,
@@ -8080,36 +8215,23 @@ function updateArenaShrink(dt) {
     syncCrushRigs(dt);
 }
 
-// A "match" is best-of-ROUNDS_TO_WIN "rounds". startMatch() resets
-// everything match-scoped (round wins, stats, map) and starts round 1;
-// startRound() (called again between rounds by endRound()) resets only
-// the fighters/hazard/pickup/timers, keeping the same map and score.
-// Every model this match needs, so the fighters are never built from a
-// procedural placeholder because a GLB was still in flight.
 function startMatch(mapOverride) {
     closeAllModals();
     hideOverlay(); // the match takes over the viewport — no menu/gameover screen behind it
     matchMap = mapOverride || MAPS[Math.floor(Math.random() * MAPS.length)];
-    roundWins = { p1: 0, p2: 0 };
-    currentRound = 1;
-    matchStats = { p1: freshStats(), p2: freshStats() };
-    roundDurations = [];
-    // Batch 19: per-mode match state. Reset here (not in startRound) because in
-    // the continuous modes the whole match IS one round — resetting per round
-    // would wipe the score every knockout.
-    zoneScore = { p1: 0, p2: 0 };
-    koTally = { p1: 0, p2: 0 };
-    zoneHolder = null;
-    waveNumber = 0;
-    waveBreakTimer = 0;
-    coopResultText = '';
-    // Behind the loading screen: the models, the arena's photographs and the
-    // first-draw shader compiles all happen here rather than as visible hitches
-    // once the fight has started. See withLoading.
-    withLoading(matchMap.name, () => matchAssetsReady(
-        [p1Choice, p2Choice].filter(Boolean).map(c => c.name), matchMap)
+    // EVERYTHING WAITS HERE, behind the screen.
+    //
+    // This used to fire the model requests, poll every 60ms with "Loading
+    // fighters..." on the setup panel, give up after MODEL_WAIT_MS, and build
+    // the arena with procedural textures while the photographs arrived
+    // whenever. Three things could land late and all three showed - reported as
+    // "the old art loads and then the new art loads on top of it".
+    //
+    // Awaiting the promises the loaders already return is both simpler and
+    // exact. The timeout only existed because nothing was awaiting them.
+    withLoading(matchMap.name, () => matchAssetsReady(modelsNeededFor(matchMode), matchMap)
         .then(() => {
-            startRound(true);   // opens with the drop-in intro cinematic
+            startMatchNow();
             return oneRenderedFrame();
         }));
 }
@@ -9208,7 +9330,7 @@ function stepDeath(dt) {
     // Either side's attack key, or Space/Enter as a universal fallback
     // (read from the live bindings, not hardcoded 'f'/'k').
     const skipRequested = deathTimer >= DEATH_SKIP_AFTER &&
-        (consumePress(BINDINGS.attack) || consumePress(' ') || consumePress('enter'));
+        (consumePress(BINDINGS[LOCAL_SIDE].attack) || consumePress(' ') || consumePress('enter'));
 
     // Batch 19: in the continuous modes a knockout is a setback, not the end of
     // the match — the KO animation still plays in full (it's good feel and the
