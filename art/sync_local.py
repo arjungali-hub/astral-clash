@@ -707,31 +707,69 @@ def force_online_bodies(src, dst):
 # CSS rules that differ BETWEEN THE BUILDS ON PURPOSE. Same contract as
 # INTERFACE above: a reason on every entry, and the sync reports any selector
 # that differs without being listed.
+# CSS rules that differ on purpose, and WHICH DECLARATIONS do.
+#
+# Per-property, not per-rule. #lock-hint differs in two declarations and agrees
+# on fourteen, and an all-or-nothing exemption froze all sixteen - so a colour
+# fix in a rule on this list was two edits. Same contract as FIGHTER_INTERFACE:
+# the container is exempt, the parts are not, and the sync reports any property
+# that differs without being named here.
 CSS_INTERFACE = {
-    # --- two shop panels side by side, so everything is tighter here
-    '.shop-card': 'two panels side by side; tighter padding and radius',
-    '.shop-card-head': 'two panels side by side; tighter gap',
-    '.shop-name': 'two panels side by side; smaller type',
-    '.shop-panel h3': 'two panels side by side; smaller heading',
-    '.shop-title': 'two panels side by side; smaller type',
-    '.shop-upgrades': 'two panels side by side; narrower grid columns',
-    '.upg-row': 'two panels side by side; tighter rows',
-    '#shop-screen': 'a side-by-side pair here, one centred modal there',
-
-    # --- the overlay scrolls here, so the panels do not
-    '.mapselect-panel': 'the overlay scrolls in this build, not the panel',
-    '.modeselect-panel': 'the overlay scrolls in this build, not the panel',
-    '.tutorial-panel': 'the overlay scrolls in this build, not the panel',
+    '.shop-card':
+        ('two panels side by side; tighter padding and radius',
+         ['border-radius', 'margin-bottom', 'padding']),
+    '.shop-card-head':
+        ('two panels side by side; tighter gap',
+         ['gap', 'margin-bottom']),
+    '.shop-name':
+        ('two panels side by side; smaller type', ['font-size']),
+    '.shop-panel h3':
+        ('two panels side by side; smaller heading', ['font-size', 'margin']),
+    '.shop-title':
+        ('two panels side by side; smaller type', ['font-size']),
+    '.shop-upgrades':
+        ('two panels side by side; narrower grid columns',
+         ['gap', 'grid-template-columns']),
+    '.upg-row':
+        ('two panels side by side; tighter rows',
+         ['font-size', 'gap', 'line-height']),
+    '#shop-screen':
+        ('a side-by-side pair here, one centred modal there',
+         ['align-items', 'background', 'justify-content', 'overflow-y',
+          'padding', 'pointer-events']),
+    '.mapselect-panel':
+        ('the overlay scrolls in this build, not the panel',
+         ['max-height', 'overflow-y']),
+    '.modeselect-panel':
+        ('the overlay scrolls in this build, not the panel',
+         ['max-height', 'overflow-y']),
+    '.tutorial-panel':
+        ('the overlay scrolls in this build, not the panel',
+         ['max-height', 'overflow-y']),
     '#mapselect-screen, #shop-screen, #tutorial-screen, #settings-screen, '
     '#audio-screen, #rebind-screen, #modeselect-screen':
-        'top-aligned and self-scrolling here',
-
-    # --- the rest
-    '#select-screen': 'the online build opens on a home screen; this one opens here',
-    '#lock-hint': 'positioned clear of two HUD panels rather than one',
-    '.ld-art': 'the asset path, rewritten for a build one directory down',
-    '.fighter-btn .fname': 'brightened for readability against this grid',
+        ('top-aligned and self-scrolling here',
+         ['align-items', 'overflow-y', 'padding-bottom', 'padding-top']),
+    '#select-screen':
+        ('the online build opens on a home screen; this one opens here', ['display']),
+    # `transition` is NOT here on purpose: it was missing rather than different,
+    # so the fade syncLockHint drives had nothing to animate.
+    '#lock-hint':
+        ('positioned clear of two HUD panels rather than one', ['bottom']),
+    '.ld-art':
+        ('the asset path, rewritten for a build one directory down',
+         ['background-image']),
+    '.fighter-btn .fname':
+        ('brightened for readability against this grid', ['filter']),
 }
+
+# A rule TRAVELS to the local build when every class and id its selector names
+# appears somewhere in that build or in shared/ - which is a test rather than a
+# list, and so cannot fall behind the way a list does.
+_CSS_TOKEN = re.compile(r'[.#]([A-Za-z_][' + chr(92) + 'w-]*)')
+# Appended under this marker, so a second run finds them and does not stack.
+CSS_PORT_MARK = '/* --- rules ported from the online build by art/sync_local.py --- */'
+
 
 
 # Elements that differ BETWEEN THE BUILDS ON PURPOSE. Same contract again: a
@@ -879,45 +917,201 @@ def close_markup_drift(src, dst):
     return dst, copied, undocumented
 
 
-def close_css_drift(src, dst):
-    """Copy the online declarations over the local ones, rule by rule.
+def _css_prop(decl, extract_css):
+    """The property a declaration sets, or None for something unparseable."""
+    n = extract_css.norm(decl)
+    return n.split(':', 1)[0].strip() if ':' in n else None
 
-    Leaves every rule exactly where it is. Moving them into a shared stylesheet
-    was tried twice and reverted twice: rules of equal specificity are decided by
-    order, and a rule that loads first loses ties it used to win. Copying has the
-    same effect on maintenance - nobody edits a rule twice - and none of the risk.
+
+_CSS_TOGGLE = re.compile(r"classList" + chr(92) + r".(?:add|toggle|remove)" + chr(92)
+                         + r"(" + chr(92) + r"s*'([A-Za-z_][" + chr(92) + r"w-]*)'")
+_CSS_CLASSATTR = re.compile(r'class="([^"${}]+)"')
+
+
+def _css_orphans(dst, shared_texts, lo_rules):
+    """Classes this build USES and has no rule for.
+
+    The need, stated exactly. Sharing a function shares what it toggles, and a
+    class toggled into a void is silent - a missing CSS rule throws nothing.
+    announceResult replays a flourish with `emphasise`, syncLockHint fades with
+    `faded`, buildDetailHTML writes a `detail-locked` span; none of the three had
+    a rule here.
+    """
+    styled = set()
+    for sel in lo_rules:
+        styled |= set(_CSS_TOKEN.findall(sel))
+    text = dst + ''.join(shared_texts)
+    used = set(_CSS_TOGGLE.findall(text))
+    for m in _CSS_CLASSATTR.findall(text):
+        used |= set(m.split())
+    return {c for c in used if c not in styled}
+
+
+def _css_rule_wanted(sel, haystack, orphans):
+    """Should a rule this build does not carry travel to it?
+
+    THREE TESTS, and the loose version of this broke the select screen. "Every
+    token appears somewhere" let through a rule naming seven selectors at once,
+    which - appended at the end, where it gets the last word - overrode the
+    panel rules this build differs from ON PURPOSE. P2's half of the screen went
+    dead and the Start Match button disappeared.
+
+      * ONE SELECTOR. A comma-separated rule is several rules sharing a body,
+        and any one of them can collide with something already here.
+      * IT HOUSES AN ORPHAN. Not "might be useful" - it gives a home to a class
+        this build actually uses and has no rule for.
+      * EVERY TOKEN EXISTS HERE. `.picker-side .detail-scroll` houses an orphan
+        and is still useless: `.picker-side` is a container this build has never
+        had, so the rule could never match.
+    """
+    if ',' in sel:
+        return False
+    toks = set(_CSS_TOKEN.findall(sel))
+    if not toks or not (toks & orphans):
+        return False
+    return all(t in haystack for t in toks)
+
+
+def close_css_drift(src, dst, shared_texts=()):
+    """Bring the local rules into line, declaration by declaration.
+
+    Leaves every rule where it is and only ever APPENDS new ones. Moving them
+    into a shared stylesheet was tried twice and reverted twice: rules of equal
+    specificity are decided by order, and a rule that loads first loses ties it
+    used to win. Copying has the same effect on maintenance - nobody edits a
+    rule twice - and none of the risk.
     """
     try:
         import extract_css
     except ImportError:
-        return dst, [], []
-    on, _ = extract_css.parse(src)
+        return dst, [], [], []
+    on, on_order = extract_css.parse(src)
     lo, _ = extract_css.parse(dst)
-    copied, undocumented = [], []
+    copied, undocumented, ported = [], [], []
+
     for sel, (on_decls, on_full) in on.items():
         if sel not in lo:
             continue
         lo_decls, lo_full = lo[sel]
-        if [extract_css.norm(d) for d in on_decls] == [extract_css.norm(d) for d in lo_decls]:
+        if ([extract_css.norm(d) for d in on_decls]
+                == [extract_css.norm(d) for d in lo_decls]):
             continue
-        if sel in CSS_INTERFACE:
-            continue
-        undocumented.append(sel)
+
+        entry = CSS_INTERFACE.get(sel)
+        lo_by_prop = {}
+        for d in lo_decls:
+            pr = _css_prop(d, extract_css)
+            if pr:
+                lo_by_prop[pr] = d
+        if entry is None:
+            new_decls = list(on_decls)
+            undocumented.append(sel)
+        else:
+            _, exempt = entry
+            exempt = set(exempt)
+            # Online's declarations, in online's order, except the exempted
+            # properties - which keep this build's value, or ARE DROPPED where
+            # this build has none.
+            #
+            # Omission is a value. #select-screen exempts `display` because the
+            # other build opens on a home screen and hides this one; here it is
+            # the first screen and simply has no display declaration. Treating
+            # "absent" as "copy theirs" handed it `display: none`, and the whole
+            # select screen went missing - caught by cssparitycheck, which
+            # reported it as `select-screen: gone`.
+            new_decls = []
+            for d in on_decls:
+                pr = _css_prop(d, extract_css)
+                if pr in exempt:
+                    if pr in lo_by_prop:
+                        new_decls.append(lo_by_prop[pr])
+                    continue          # this build leaves it unset on purpose
+                new_decls.append(d)
+            # ...and an exempted property only this build has survives.
+            on_props = {_css_prop(d, extract_css) for d in on_decls}
+            new_decls += [d for d in lo_decls
+                          if _css_prop(d, extract_css) in exempt
+                          and _css_prop(d, extract_css) not in on_props]
+            # Anything that STILL differs and is not named is a new difference.
+            for pr, d in lo_by_prop.items():
+                if pr in exempt:
+                    continue
+                theirs = next((x for x in on_decls
+                               if _css_prop(x, extract_css) == pr), None)
+                if theirs is not None and extract_css.norm(theirs) != extract_css.norm(d):
+                    undocumented.append('%s { %s }' % (sel, pr))
+            if [extract_css.norm(d) for d in new_decls] == \
+                    [extract_css.norm(d) for d in lo_decls]:
+                continue
+
         # Rebuild at the file's own indentation. The scanner hands back the rule
         # starting at its first non-space character, so deriving the indent from
         # that text gives '' and the declarations came out dedented to column 4
         # under a selector at column 8. Read it from the line instead.
+        #
+        # AND IT RE-ADDS THE SEMICOLON. split_decls() splits ON the semicolon and
+        # does not keep it, so joining the declarations back without one produces
+        # a rule that no longer parses - which then looked like a rule this build
+        # did not have, and the port below appended it again every run.
         line_start = dst.rfind(chr(10), 0, dst.index(lo_full)) + 1
         indent = dst[line_start:dst.index(lo_full)]
         if indent.strip():
             indent = ' ' * 8
-        body = chr(10).join('%s    %s;' % (indent, d) for d in on_decls)
-        rebuilt = '%s {%s%s%s%s}%s' % (sel, chr(10), body, chr(10), indent, chr(10))
-        if dst.count(lo_full) == 1:
-            dst = dst.replace(lo_full, rebuilt, 1)
-            copied.append(sel)
-    return dst, copied, [s for s in undocumented if s not in copied]
+        rebuilt = _css_rule_text(sel, new_decls, indent)
+        if dst.count(lo_full) != 1:
+            continue
+        dst = dst.replace(lo_full, rebuilt, 1)
+        copied.append(sel)
 
+    # RULES THIS BUILD DOES NOT HAVE AT ALL. Skipped entirely until now, which
+    # is how sharing the JS broke the CSS under it: four classes that shared
+    # code toggles here had no rule to drive them.
+    haystack = dst + ''.join(shared_texts)
+    orphans = _css_orphans(dst, shared_texts, lo)
+    # EVERY SELECTOR THIS BUILD CARRIES, including the ones parse() drops.
+    # It returns None for a selector that appears TWICE - "order matters, skip
+    # both" - so `sel not in lo` is true both for a rule this build lacks and
+    # for one it has two of. Porting in the second case appends a third.
+    a0, b0 = extract_css.style_block(dst)
+    present = {sel for sel, _b, _f in extract_css.scan_rules(dst, a0, b0)}
+    fresh = []
+    for sel in on_order:
+        if sel not in on or sel in lo or sel in present:
+            continue
+        if not _css_rule_wanted(sel, haystack, orphans):
+            continue
+        fresh.append(on[sel][1])
+        ported.append(sel)
+    if fresh:
+        # APPENDED, never inserted. A rule this build does not have cannot
+        # collide with itself, and the end of the block is the one position that
+        # cannot take a tie away from anything already there.
+        a, b = extract_css.style_block(dst)
+        block = ''
+        if CSS_PORT_MARK not in dst:
+            block += chr(10) + '        ' + CSS_PORT_MARK + chr(10)
+        for sel in ported:
+            # The indent goes in front of the SELECTOR too: _css_rule_text
+            # starts at the selector because the in-place rebuild replaces a
+            # match that does, and an appended rule has no such match.
+            block += ' ' * 8 + _css_rule_text(sel, on[sel][0], ' ' * 8)
+        dst = dst[:b] + block + '        ' + dst[b:]
+    return dst, copied, undocumented, ported
+
+
+def _css_rule_text(sel, decls, indent):
+    """A rule as source, with the semicolons split_decls() ate put back.
+
+    AND A TRAILING NEWLINE. The scanner's match ends at the closing brace, so a
+    replacement without one glues the next rule onto that line:
+
+        }        .fighter-btn.locked .fname { filter: none; }
+
+    which is valid CSS and unreadable, and hides the rule from anyone scanning
+    the file by eye.
+    """
+    body = chr(10).join('%s    %s;' % (indent, d.strip().rstrip(';')) for d in decls)
+    return '%s {%s%s%s%s}%s' % (sel, chr(10), body, chr(10), indent, chr(10))
 
 def close_comment_drift(src, dst):
     """Rewrite local definitions whose code already matches, to pick up the notes.
@@ -2658,10 +2852,22 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # CSS DRIFT, closed the same way and for the same reason. Behaviour was
     # being shared and appearance was not, which is where the full-width cyan
     # close button and the hand-ported .opt rows both came from.
-    dst, css_copied, css_undoc = close_css_drift(src, dst)
+    # The shared modules are part of the haystack: a class that only SHARED code
+    # toggles - announceResult's `emphasise`, syncLockHint's `faded` - is
+    # mentioned nowhere in this build's own text, and skipping those is how they
+    # came to be toggled into a void.
+    dst, css_copied, css_undoc, css_ported = close_css_drift(
+        src, dst, (shared_src, anim_src, props_src, chars_src, common_src))
     if css_copied:
         print('  %-34s %d rules took the online declarations'
               % ('css drift', len(css_copied)))
+    if css_ported:
+        print('  %-34s %d rules this build lacked but uses: %s%s'
+              % ('css ported', len(css_ported), ', '.join(css_ported[:4]),
+                 ', ...' if len(css_ported) > 4 else ''))
+    if css_undoc:
+        print('  %-34s %d differ with no reason on CSS_INTERFACE: %s'
+              % ('css undocumented', len(css_undoc), ', '.join(sorted(set(css_undoc))[:4])))
 
     # COMMENT DRIFT, closed before the de-shadowing pass so anything it makes
     # identical is a candidate for shared/ on the next extraction run.

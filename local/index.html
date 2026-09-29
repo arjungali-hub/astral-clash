@@ -454,8 +454,9 @@
            a disabled control looks like, so an unlocked fighter read as locked.
            The accent still tints it; it just cannot go dim. */
         .fighter-btn .fname {
-            font-weight: bold; font-size: 0.95rem;
+            font-weight: bold;
             color: var(--accent, #00f3ff);
+            font-size: 0.95rem;
             filter: brightness(1.45) saturate(1.15);
         }
         .fighter-btn.locked .fname { filter: none; }   /* locked SHOULD look dim */
@@ -558,13 +559,20 @@
         .mode-card .mode-current { float: right; font-size: 0.64rem; color: #a855f7; font-weight: bold; }
         #shop-screen {
             display: none;
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             /* NO scrim and NO pointer capture: the half of the screen this shop
                is not on belongs to the other player, who is still picking a
                fighter. Only the panels themselves take clicks. */
             background: none;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 30;
+            padding: 20px;
             pointer-events: none;
-            align-items: center; justify-content: space-between; z-index: 30; padding: 20px;
         }
         #shop-screen .shop-panel { pointer-events: auto; }
         #shop-panel-p1 { margin-right: auto; }
@@ -1181,15 +1189,62 @@
         @media (prefers-reduced-motion: reduce) {
             .ld-seg { animation-duration: 3s; }
         }        #lock-hint {
-            position: absolute; left: 50%; bottom: 14%;
+            /* 14% -> 22%: at 14% it sat over the weapon in the lower centre of
+               the frame, which is both the busiest part of the picture and the
+               part you are trying to look at. */
+            position: absolute;
+            left: 50%;
+            bottom: 14%;
             transform: translateX(-50%);
-            padding: 8px 16px; border-radius: 999px;
-            background: rgba(10, 13, 20, 0.82); border: 1px solid #00f3ff;
-            color: #e2e8f0; font-size: 0.82rem; letter-spacing: 0.03em;
-            pointer-events: none; z-index: 12; display: none;
+            padding: 8px 16px;
+            border-radius: 999px;
+            background: rgba(10, 13, 20, 0.82);
+            border: 1px solid #00f3ff;
+            color: #e2e8f0;
+            font-size: 0.82rem;
+            letter-spacing: 0.03em;
+            pointer-events: none;
+            z-index: 12;
+            display: none;
             box-shadow: 0 0 18px rgba(0, 243, 255, 0.25);
+            transition: opacity 600ms ease, transform 600ms ease;
         }
-    </style>
+    
+        /* --- rules ported from the online build by art/sync_local.py --- */
+        .ld-busy-label {
+            font-size: 0.72rem;
+            color: #64748b;
+            letter-spacing: 0.04em;
+        }
+        .detail-locked {
+            color: #4ade80;
+            font-weight: bold;
+            font-size: 0.8rem;
+            align-self: center;
+            padding: 0 8px;
+            white-space: nowrap;
+        }
+        #winner-title.emphasise {
+            animation: resultGrow 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        #winner-title.draw {
+            color: #fbbf24;
+            text-shadow: 0 0 22px rgba(251,191,36,0.45);
+        }
+        .ld-mark.sm {
+            gap: 3px;
+            display: inline-flex;
+            vertical-align: middle;
+        }
+        .ld-mark.sm .ld-seg {
+            width: 4px;
+            height: 11px;
+        }
+        #lock-hint.faded {
+            opacity: 0.4;
+            transform: translateX(-50%) scale(0.82);
+        }
+        </style>
 </head>
 <body>
 
