@@ -2968,6 +2968,104 @@ pre-commit hook now, alongside the staleness check, and skipped rather than
 failed where puppeteer is not installed. Verified by putting the bug back: it
 names the build, the missing identifier, and refuses.
 
+## Batches 95-99 - down to one
+
+At the start of this run the two builds had **49 definitions with the same name
+and a different body**. Reading them apart rather than trusting the reason
+beside each one, twelve were a stub on one side - `refreshRoomUI` is 99 lines
+online and `{ /* no room to paint */ }` here - and a stub cannot drift, because
+there is only one implementation of it. That left 37 places where a fix could
+reach one build and not the other.
+
+**There is one.** `Fighter.readHumanInput`: two people at one keyboard turn with
+Left/Right and walk where they face, one person with a mouse strafes with them
+and looks with the mouse. That is the difference the two builds exist to have,
+and it is eight lines.
+
+### What the other 36 turned out to be
+
+Almost none of them were decisions.
+
+**Spelling.** The largest single cause. Four helper names for two questions -
+`playerLabel`/`playerName` and `playerLabelShort`/`displayName` - meant every
+function that printed a player's name inherited a fork, however identical the
+rest of it was. Same for the bindings: one build read `BINDINGS.attack` and the
+other `BINDINGS[side].attack`, and seven functions forked over a subscript. And
+`up`/`down` against `forward`/`back` for the same key.
+
+**Data that was written as code.** `startGame` forked over a list of eight
+vendor scripts against two with `../` in front. That is `AC_VENDOR` now, one
+expression driven by three flags, so a script added for one build reaches the
+other.
+
+**Elements one build does not have.** `refreshCoinDisplays`, `refreshBotUI`,
+`openShop`, `syncShopPanels`: each body's DOM lookups are guarded already, so
+the union of the two runs correctly in both and each build skips what it does
+not have.
+
+**One build being behind.** `buildCrushRigs` was missing every
+`attachPhotoSurface` call, so the crush arena rendered untextured. `pollGamepad`
+was missing `lookX` - which `applySoloControls` already READ, so the right stick
+had been dead in that build since the day it was added. `showDetail` never
+warmed the fighter's model. `drawRoundStatus` had an older shade of red.
+
+### Bugs this found
+
+  * the local build's press-to-continue prompt read `BINDINGS.attack` on a
+    per-side object - **undefined, every time**. Only Space and Enter dismissed
+    it; the key the player had bound to attack did nothing.
+  * **the online build's gamepad strafe was inverted.** Its keyboard strafes
+    right along `(-fy, fx)`, which Batch 36 fixed and documented at length; its
+    left stick moved along `(fy, -fx)`, the negation. Pushing the stick right
+    strafed left, and had since Batch 36 renumbered the keyboard.
+  * the local build ran **two mouse-look systems in parallel** - `soloMouse`
+    with its own three listeners, beside the shared `mouseDX`/`mouseDY` the same
+    file also installs. Both accumulated deltas from the same events; one was
+    never drained.
+  * the online build's results screen printed the score `p1-p2` regardless of
+    who won, so `2-0` read as `Wins (0-2)` whenever p2 won.
+  * a sandbox bot's HUD panel showed the account name of whoever was watching.
+
+### What got better about the machinery
+
+  * **the sync reports the number that matters** on every run: definitions with
+    a real body on both sides, and the biggest five by name. "49 differ" was the
+    number I had been quoting and it was a quarter too big.
+  * **the fixed-point check asks for convergence**, not first-pass equality. A
+    drift closer copies a body, and a `rep()` step that patches that body runs
+    earlier in the same pipeline - so the build settles on pass two. It failed
+    three times in an afternoon on builds one pass from stable, and the fix each
+    time was to type the same command again. Unbounded growth and alternation
+    still fail, because neither ever produces two equal passes in a row.
+  * **the port machinery stopped deadlocking on comments.** It scanned each
+    definition's whole chunk for dependencies, comment included, so
+    `ensureComposer` - whose comment says "renderWithBloom reads it" - and
+    `renderWithBloom`, which calls it, blocked each other forever.
+  * **`tests/bootcheck.js`**: does each build load, and does a frame of a real
+    fight run clean? Ten seconds, both builds. Two of my own regressions in this
+    run were invisible to every static guard here - a leftover reference to a
+    local-only name, which the dangling-reference guard cannot see because it is
+    bounded by the online build's vocabulary, and a dropped function-local
+    `const`, which a column-0 definition scanner cannot see at all. It is in the
+    pre-commit hook.
+  * **a duplicate declaration is said out loud.** The cleanup that resolves one
+    breaks the tie by POSITION - first one wins, whichever is correct - and
+    reported it as routine housekeeping. Found by accident: a probe copy of
+    `botsOnly()` above the real one deleted the real one and the sync reported
+    success.
+
+### What legitimately stays apart
+
+`Fighter.readHumanInput`, and thirteen definitions where one side is a stub. The
+three build-profile flags - `AC_ONE_SIDE_PER_CLIENT`, `AC_BASE`, `AC_BLOOM` -
+are on that list by design: they are what each build declares about itself, and
+they are column-0 consts with the same names, so without an explicit exemption
+the drift closer would close them. It did, once, and the local build asked for
+`/local/vendor/GLTFLoader.js` and eight bloom scripts, 404 on every one.
+`DEFAULT_BINDINGS` stays too, because WHICH KEYS is data: one player per machine
+gets one set with the mouse on attack and special, two at one keyboard get two,
+and the second needs keys for vertical aim because there is no second mouse.
+
 ### Still open
 
 Nothing is open in the sense of "a reported bug nobody has fixed", and nothing

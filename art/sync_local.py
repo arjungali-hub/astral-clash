@@ -184,7 +184,11 @@ INTERFACE = {
     # --- rendering: one full-screen camera vs two split-screen viewports
     'renderer': 'split-screen sizing and scissor state',
     'PIXEL_RATIO': 'local pays for two viewports, so it caps lower',
-    'renderViews': 'the split itself',
+    # renderViews is SHARED now. The split IS the difference and splitScreen()
+    # answers it; what was really holding the function apart is that the
+    # overhead spectator camera existed in one build only, so a sandbox match
+    # between two bots was rendered from one of the bots' eyes. It is in both
+    # now - one copy, kept in step from here.
     # renderOneView is SHARED now. The scissor rectangle is inert in a build
     # that never turns the scissor test on, and renderWithBloom already falls
     # back to a plain render when there is no composer - which is this
@@ -2200,34 +2204,11 @@ if (location.protocol === 'https:'
 const WATCH_RING_SIDE = { p1: '#38bdf8', p2: '#fb923c' };""",
                 'side ring colours', required=False)
 
-    # --------------------------------- the spectator camera follows the fight
-    # The extras fragment is injected once, guarded on `function cleanLocalName(`,
-    # so a change inside it never reaches a build that already has it. Rather
-    # than keep a second copy of the new code here, the block is LIFTED OUT of
-    # the fragment and swapped in - one source of truth, and idempotent.
-    if 'function syncWatchRings(' not in dst:
-        extras_src = io.open(os.path.join(HERE, 'local_extras.js'), encoding='utf-8').read()
-        END = chr(10) + "// ------------------------------------------- the solo human's controls"
-        new_cam = block(extras_src, '// Batch 52: IT FRAMES THE FIGHT', END, 'watch camera (new)')
-        old_cam = block(dst, 'function positionWatchCamera(aspect) {', END, 'watch camera (old)')
-        dst = dst.replace(old_cam, new_cam, 1)
-        # One call, at the top of renderViews rather than inside its watch
-        # branch: the rings have to be HIDDEN when the view is not the watch
-        # view, and a call that only runs in that branch can never do that.
-        dst = rep(dst, """    renderer.getSize(_rendSize);
-    const W = _rendSize.x, H = _rendSize.y;
-    // Nobody is playing: one camera, from above.""",
-                  """    syncWatchRings(botsOnly());
-    renderer.getSize(_rendSize);
-    const W = _rendSize.x, H = _rendSize.y;
-    // Nobody is playing: one camera, from above.""",
-                  'watch ring sync')
-        dst = rep(dst, '        botsOnly, soloHumanSide, positionWatchCamera,',
-                  '        botsOnly, soloHumanSide, positionWatchCamera, syncWatchRings,' + chr(10)
-                  + '        get watchSpan() { return watchSpan; },' + chr(10)
-                  + '        get watchRings() { return watchRings; },',
-                  'watch debug surface')
-        print('  %-34s ok' % 'spectator camera follows the fight')
+    # THE SPECTATOR CAMERA IS SHARED NOW, so the step that used to lift it out
+    # of art/local_extras.js and swap it in is gone. It lives in index.html
+    # and travels here as an ordinary definition - which is also why the
+    # online build finally has an overhead view for a sandbox match between
+    # two bots, instead of rendering one from a bot's eyes.
 
     # --------------------------------------------- the same type as the main build
     # "The local build uses Arial almost everywhere" - measured at 147 visible
