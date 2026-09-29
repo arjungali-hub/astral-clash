@@ -1352,7 +1352,9 @@ def main():
         touch_anchor = 'const TOUCH_UI = !!(window.matchMedia'
         if touch_anchor in dst and "getElementById('desktop-only')" not in dst:
             k = dst.index(chr(10), dst.index(touch_anchor)) + 1
-            wiring = (
+            # Named for what it is. It used to be `wiring`, which shadowed the
+            # module-level wiring() helper for the rest of main().
+            touch_notice = (
                 '// Batch 41: a touch device gets the notice and nothing else. The touch',
                 '// control scheme is still in this build, but it is not good enough to',
                 '// send anyone to - which is why the main build stopped offering it.',
@@ -1361,7 +1363,7 @@ def main():
                 "    if (dOnly) dOnly.style.display = 'flex';",
                 '}',
             )
-            dst = dst[:k] + chr(10).join(wiring) + chr(10) + dst[k:]
+            dst = dst[:k] + chr(10).join(touch_notice) + chr(10) + dst[k:]
             print('  %-34s ok' % 'desktop-only notice wiring')
 
     # ------------------------------------------------- gameplay + visuals
@@ -2798,9 +2800,12 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         if markup in dst:
             dst = dst.replace(markup, '')
             print('  %-34s ok' % 'duplicate Close removed')
-    for wiring in ("document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());" + chr(10),
-                   "document.getElementById('btn-rebind-close').addEventListener('click', closeRebind);" + chr(10)):
-        dst = dst.replace(wiring, '')
+    # `line`, not `wiring`: a loop variable of that name shadowed the
+    # module-level wiring() helper for the rest of main(), which is the same
+    # trap as the touch notice above and cost two runs to find.
+    for line in ("document.getElementById('btn-settings-close').addEventListener('click', () => closeModal());" + chr(10),
+                 "document.getElementById('btn-rebind-close').addEventListener('click', closeRebind);" + chr(10)):
+        dst = dst.replace(line, '')
 
     # ------------------------------------------- the close X needs its own CSS
     # ensureModalClose was ported here without it, so `.modal-x` lost to
@@ -3132,6 +3137,18 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         print('   Run: python art/sync_local.py')
         return 1
 
+    # THE WIRING, which is not a definition and so is invisible to everything
+    # above. Reported rather than closed: six of the eight that differ do so for
+    # reasons, and overwriting those would put the online lobby's buttons in a
+    # build that has no lobby.
+    undocumented = wiring_drift(src, dst)
+    if undocumented:
+        print('  %-34s %d wired differently with no reason on WIRING_INTERFACE: %s'
+              % ('button wiring', len(undocumented), ', '.join(undocumented)))
+    else:
+        print('  %-34s ok (%d ids wired in both, all agreeing or documented)'
+              % ('button wiring', len(set(wiring(src)) & set(wiring(dst)))))
+
     stubs, both = duplication_tally(src, dst)
     print('  %-34s %d differ with a real body on both sides, %d where one is a stub'
           % ('duplication left', len(both), stubs))
@@ -3216,6 +3233,59 @@ def fighter_unsynced(src):
         return 0
     ms = _methods(src[span[0]:span[1]])
     return sum(len(t.splitlines()) for n, t in ms.items() if n in FIGHTER_INTERFACE)
+
+
+# WHAT THE BUTTONS ARE WIRED TO. The last surface nothing compared.
+#
+# Every other mechanism here keys on a definition, a CSS selector, a markup id
+# or a Fighter method. A top-level `document.getElementById('x')
+# .addEventListener(...)` is none of those - but the id IS a key, and twenty of
+# them are wired in both builds.
+#
+# Same contract as INTERFACE: a reason on every entry, and the sync reports any
+# id wired differently without one. Reading the first eight found two that were
+# drift - the rebind reset said nothing, and Return to Menu had no confirmation
+# in the build where a stray press is likelier.
+WIRING_INTERFACE = {
+    'btn-play-again': 'goes back to the ROOM if the peer is still there; there is no room here',
+    'btn-quit-to-menu': 'same, plus this build has both rosters to repaint on the way out',
+    'btn-resume': 'requestResume negotiates with a peer that left the tab; nobody to ask here',
+    'btn-start-match': 'startOnline hands the arena choice to the host; here it just begins',
+    'btn-rematch': 'hostRematch tells the other client; here it is the same two fighters again',
+    'btn-reroll-map': 'rerolling is the host\'s to announce online, and nobody\'s here',
+    'btn-open-modeselect': 'the mode picker is reached from the room there and the menu here',
+}
+
+_WIRE_RE = re.compile(r"getElementById\('([^']+)'\)")
+
+
+def wiring(text):
+    """id -> the top-level statement that wires it."""
+    out = {}
+    lines = text.splitlines()
+    for k, line in enumerate(lines):
+        if not line or line.startswith((' ', chr(9), '<', '//')):
+            continue
+        m = _WIRE_RE.search(line)
+        if not m:
+            continue
+        chunk, depth = [], 0
+        for l in lines[k:]:
+            chunk.append(l)
+            depth += l.count('(') + l.count('{') - l.count(')') - l.count('}')
+            if depth <= 0 and (l.rstrip().endswith(';') or l.rstrip().endswith('}')):
+                break
+            if len(chunk) > 30:
+                break
+        out.setdefault(m.group(1), chr(10).join(chunk))
+    return out
+
+
+def wiring_drift(src, dst):
+    """Ids wired in both builds but wired differently, minus the documented ones."""
+    a, b = wiring(src), wiring(dst)
+    return sorted(i for i in set(a) & set(b)
+                  if a[i] != b[i] and i not in WIRING_INTERFACE)
 
 
 def check_fixed_point():

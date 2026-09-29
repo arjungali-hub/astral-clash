@@ -8784,12 +8784,6 @@ document.getElementById('btn-resume').addEventListener('click', requestResume);
 // dialog cannot be styled and stops the frame loop, and this is the pattern the
 // local build's progress reset already uses. Clicking anything else disarms
 // it, and so does closing the pause menu.
-function disarmQuit() {
-    if (!quitArmed) return;
-    quitArmed = 0;
-    const b = document.getElementById('btn-quit-to-menu');
-    if (b) { b.textContent = 'Return to Menu'; b.classList.remove('btn-danger'); }
-}
 document.getElementById('btn-quit-to-menu').addEventListener('click', (e) => {
     // Only a LIVE match needs the guard - from a menu there is nothing to lose.
     const inMatch = gameState !== 'MENU' && player1 && player2;

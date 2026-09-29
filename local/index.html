@@ -2542,10 +2542,13 @@ document.getElementById('btn-pause-settings').addEventListener('click', () => {
     openModal('settings');
 });
 document.getElementById('btn-pause-rebind').addEventListener('click', openRebind);
+// Says so, rather than appearing to do nothing to a panel that was already
+// showing the defaults.
 document.getElementById('btn-rebind-reset').addEventListener('click', () => {
     BINDINGS = mergeBindings(null);
     saveBindings();
     buildRebindList();
+    rebindNote('Reset to defaults');
 });
 
 document.getElementById('btn-open-audio').addEventListener('click', () => {
@@ -8093,7 +8096,17 @@ function closeTopModalByEscape() {
 
 document.getElementById('btn-resume').addEventListener('click', togglePause);
 
-document.getElementById('btn-quit-to-menu').addEventListener('click', () => {
+document.getElementById('btn-quit-to-menu').addEventListener('click', (e) => {
+    // Only a LIVE match needs the guard - from a menu there is nothing to lose.
+    const inMatch = gameState !== 'MENU' && player1 && player2;
+    if (inMatch && !quitArmed) {
+        quitArmed = 1;
+        const b = e.currentTarget;
+        b.textContent = 'End match? Click again';
+        b.classList.add('btn-danger');
+        return;
+    }
+    disarmQuit();
     pausedFromState = null;
     closeAllModals();
     p1Stage = 'pick'; p2Stage = 'pick'; p1Preview = null; p2Preview = null;
@@ -8104,6 +8117,7 @@ document.getElementById('btn-quit-to-menu').addEventListener('click', () => {
     showScreen('select');
     gameState = 'MENU';
     stopAmbientPad();
+    exitPointerLock();
 });
 
  // built fresh by startMatch()

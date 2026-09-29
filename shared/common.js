@@ -2376,6 +2376,17 @@ function inLiveMatch() {
 
 let quitArmed = 0;
 
+// Return to Menu during a live match throws the match away, so it ARMS:
+// the first press says what it is about to do and the second does it. Shared
+// because quitArmed already was, and because the build with two people at one
+// keyboard is the one where a stray press is likelier, not less.
+function disarmQuit() {
+    if (!quitArmed) return;
+    quitArmed = 0;
+    const b = document.getElementById('btn-quit-to-menu');
+    if (b) { b.textContent = 'Return to Menu'; b.classList.remove('btn-danger'); }
+}
+
 function modelsNeededFor(mode) {
     const names = [];
     if (p1Choice) names.push(p1Choice);
