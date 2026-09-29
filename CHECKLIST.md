@@ -3066,6 +3066,85 @@ the drift closer would close them. It did, once, and the local build asked for
 gets one set with the mouse on attack and special, two at one keyboard get two,
 and the second needs keys for vertical aim because there is no second mouse.
 
+## Batch 103 - a coverage map, and the surfaces with no key
+
+"Does anything still need fixing twice?" was asked four times. Three of my
+answers were wrong, and each time the gap was the same shape: a surface with **no
+key** - nothing for a mechanism to match on. Statements with no name. Markup with
+no id. Declarations inside a rule exempted whole. Blocks the scanner steps over.
+
+So this stopped being a question I answer by reading and became one the repo
+answers by running. `art/coverage.py` classifies **every line** of the local
+build by what keeps it in step - or by nothing - and prints what falls through.
+
+    python art/coverage.py            the summary
+    python art/coverage.py --lines    every unkeyed line, with its region
+
+The first run said 962 duplicated lines with no key at all. Reading them by
+region found four more surfaces and five more faults.
+
+### What had no key
+
+**Top-level event listeners**, including the single keyboard dispatcher that
+routes rebind capture, menu hotkeys and pause. Thirteen of them; twelve happened
+to be identical, which is luck rather than a mechanism. They key on TARGET AND
+EVENT, and `window.keydown` differed by two things - one genuine, one a
+capability this build had quietly lost: **Enter and Backspace no longer confirmed
+or backed out of a fighter pick.**
+
+**Top-level statements**, which have no name at all. `renderer.shadowMap.type`,
+the try/catch that migrates BINDINGS, the calls that paint the menu at load. No
+key per statement is possible - but the SET of them is comparable, which catches
+every way the region can drift and needs no key. That found **the online build
+never calling `refreshBloomUI()` at load**, so after a reload its Glow button
+read "On" whatever the saved setting was. This build had the fix.
+
+**@keyframes and @media**, which `scan_rules` steps over deliberately and
+correctly - a rule inside `@media` applies conditionally and lifting it out
+changes when. But nothing then looked inside, and two things were hiding there:
+`@keyframes resultGrow`, which Batch 101's `#winner-title.emphasise` names and
+this build did not have (so the flourish animated nothing), and the
+reduced-motion rule that turns that same animation OFF, which matters more.
+**Somebody who had asked their system for less motion was going to get it
+anyway.**
+
+**The document head.** Seven lines of boilerplate, and boilerplate drifts like
+anything else: a viewport meta or a title is one edit in each file.
+
+### Three faults in the machinery, found while closing those
+
+  * `subtree()` searched for `</input>`, which does not exist, and ran to the end
+    of the document - so the three volume sliders reported as 62% alike when
+    each is one self-contained line.
+  * a block opening with a comment parsed as one rule whose selector was the
+    comment plus the real selector, matching nothing. That is why the
+    reduced-motion rule kept not travelling.
+  * `wiring` was a local variable in two places inside `main()`, shadowing the
+    module-level helper of that name for the rest of the function.
+
+### Where it landed
+
+Every surface now reports on every run, and every one says ok:
+
+    markup containers      ok (all agreeing or documented)
+    document head          ok (7 lines match)
+    top-level statements   ok (70 match, either side)
+    event listeners        ok (11 registered in both, all agreeing or documented)
+    button wiring          ok (20 ids wired in both, all agreeing or documented)
+    duplication left       1 differ with a real body on both sides, 13 stubs
+
+Each was proved by breaking it on purpose and watching it name the break.
+
+The coverage map is down from 962 unkeyed duplicated lines to 88, of which 85
+are `window.ACDebug` - the debug surface each build exports for its own
+checkers. That one is documented rather than guarded, and deliberately: the two
+lists differ by design, and a missing export fails a checker loudly
+("D.foo is not a function") rather than the game quietly. That is exactly how
+`playerName` was caught.
+
+**What is left that genuinely needs two edits: nothing that is the same in both
+builds.** `Fighter.readHumanInput` is eight lines and is two control schemes.
+
 ### Still open
 
 Nothing is open in the sense of "a reported bug nobody has fixed", and nothing

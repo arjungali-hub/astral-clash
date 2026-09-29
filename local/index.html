@@ -1188,6 +1188,7 @@
         }
         @media (prefers-reduced-motion: reduce) {
             .ld-seg { animation-duration: 3s; }
+            #winner-title.emphasise { animation: none; }
         }        #lock-hint {
             /* 14% -> 22%: at 14% it sat over the weapon in the lower centre of
                the frame, which is both the busiest part of the picture and the
@@ -1262,6 +1263,11 @@
             font-size: 0.76rem;
             color: #cbd5e1;
             font-variant-numeric: tabular-nums;
+        }
+                @keyframes resultGrow {
+            0%   { transform: scale(0.55); opacity: 0; letter-spacing: -0.04em; }
+            55%  { transform: scale(1.06); opacity: 1; letter-spacing: 0.035em; }
+            100% { transform: scale(1);    opacity: 1; letter-spacing: 0.02em; }
         }
         </style>
 </head>
@@ -1947,6 +1953,14 @@ window.addEventListener('keydown', e => {
     // a fighter-select action even if some action were rebound to it.
     if (e.key === 'Escape') {
         if (modalOpen()) closeTopModalByEscape();
+        // Batch 37: requestResume, not togglePause. Escape must not lift an
+        // away-pause - that is the whole point of one (see `localAway`). It
+        // still pauses and unpauses an ordinary Escape pause normally.
+        //
+        // Resuming is a NEGOTIATION where there is a peer who may also be away,
+        // so it ASKS rather than acts. Guarded by typeof rather than porting the
+        // whole away-pause subsystem into a build with nobody to wait for.
+        else if (gameState === 'PAUSED' && typeof requestResume === 'function') requestResume();
         else togglePause();
         return;
     }
@@ -1958,9 +1972,14 @@ window.addEventListener('keydown', e => {
         if (i1 !== -1) previewPick('p1', CHARACTERS[i1].name);
         const i2 = P2_KEYS.indexOf(k);
         if (i2 !== -1) previewPick('p2', CHARACTERS[i2].name);
-        for (const side of SIDES) {
-            if (k === BINDINGS[side].attack) confirmPick(side);
-            if (k === BINDINGS[side].special) backToPick(side);
+        // Enter and Backspace are shorthand for "the one player here". With two
+        // at one keyboard there is no one player, so only the bound keys apply -
+        // and rebindSides() already answers which sides are at this keyboard.
+        for (const side of rebindSides()) {
+            if (k === BINDINGS[side].attack
+                || (AC_ONE_SIDE_PER_CLIENT && k === 'enter')) confirmPick(side);
+            if (k === BINDINGS[side].special
+                || (AC_ONE_SIDE_PER_CLIENT && k === 'backspace')) backToPick(side);
         }
         if (k === RANDOM_KEYS.p1) randomPick('p1');
         if (k === RANDOM_KEYS.p2) randomPick('p2');

@@ -2228,7 +2228,11 @@ window.addEventListener('keydown', e => {
         // Batch 37: requestResume, not togglePause. Escape must not lift an
         // away-pause - that is the whole point of one (see `localAway`). It
         // still pauses and unpauses an ordinary Escape pause normally.
-        else if (gameState === 'PAUSED') requestResume();
+        //
+        // Resuming is a NEGOTIATION where there is a peer who may also be away,
+        // so it ASKS rather than acts. Guarded by typeof rather than porting the
+        // whole away-pause subsystem into a build with nobody to wait for.
+        else if (gameState === 'PAUSED' && typeof requestResume === 'function') requestResume();
         else togglePause();
         return;
     }
@@ -2243,8 +2247,15 @@ window.addEventListener('keydown', e => {
         // Batch 31: one local player, so the confirm/back keys act on our own
         // side. `attack` is bound to the mouse by default, so a keyboard
         // fallback (Enter / Backspace) is provided for menu use.
-        if (k === BINDINGS[LOCAL_SIDE].attack || k === 'enter') confirmPick(LOCAL_SIDE);
-        if (k === BINDINGS[LOCAL_SIDE].special || k === 'backspace') backToPick(LOCAL_SIDE);
+        // Enter and Backspace are shorthand for "the one player here". With two
+        // at one keyboard there is no one player, so only the bound keys apply -
+        // and rebindSides() already answers which sides are at this keyboard.
+        for (const side of rebindSides()) {
+            if (k === BINDINGS[side].attack
+                || (AC_ONE_SIDE_PER_CLIENT && k === 'enter')) confirmPick(side);
+            if (k === BINDINGS[side].special
+                || (AC_ONE_SIDE_PER_CLIENT && k === 'backspace')) backToPick(side);
+        }
         if (k === RANDOM_KEYS.p1) randomPick('p1');
         if (k === RANDOM_KEYS.p2) randomPick('p2');
     }
@@ -2601,6 +2612,10 @@ function cycleHudScale() {
 document.getElementById('btn-sandbox').addEventListener('click', () => setSandboxMatch(!sandboxMatch));
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
 document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
+// BOTH buttons, at load. The Glow one was never refreshed here, so its
+// markup label - a hardcoded 'On' - survived a reload with bloom turned
+// off: the setting was honoured and the button said the opposite.
+refreshBloomUI();
 refreshHudScaleUI();
 
 function keyLabel(k) {

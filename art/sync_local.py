@@ -780,6 +780,18 @@ MARKUP_INTERFACE = {
     # things. Listed so the near-match report stops naming them every run and
     # a genuinely new one stands out.
     'modeselect-screen': 'the host owns the mode there; here either player picks it',
+    # Whole screens whose CONTENTS differ because the builds do. Listed with a
+    # reason each, so the drift report can name every other difference at any
+    # similarity instead of only the near-misses above 75% - which is what let
+    # the missing rebind note and the three volume readouts sit unnoticed.
+    'game-container': 'the outermost wrapper; it holds whichever screens the build has',
+    'ui-overlay': 'same, one layer in',
+    'select-screen': 'a room with one roster there, two side panels and a Start button here',
+    'shop-screen': 'one centred store there, a side-by-side pair here',
+    'settings-screen': 'the sandbox and the link to the other build exist on one side only',
+    'pause-screen': 'away-pause negotiation there; a plain pause here',
+    'gameover-screen': 'rematch is the host&apos;s to offer there',
+    'mapselect-screen': 'the host announces the arena there; here it just starts',
     'tutorial-screen': 'one explains hosting and joining, the other two people at one keyboard',
     'btn-mapselect-back': 'goes back to the fighter select here, to the room there',
     'btn-play-again': 'plays again here; returns to the room there, and is styled as a back button for it',
@@ -906,11 +918,18 @@ def markup_container_drift(src, dst, alike=0.75):
 
     Whole subtrees, so a container is judged on everything it holds.
     """
+    # A VOID ELEMENT HAS NO CLOSING TAG. Searching for </input> found nothing
+    # and ran the subtree to the end of the document, so the three volume
+    # sliders reported as 62% alike when each is a single self-contained line.
+    VOID = ('input', 'img', 'br', 'hr', 'meta', 'link', 'source', 'track')
+
     def subtree(text, eid):
         m = re.search(r'<(' + chr(92) + r'w+)([^>]*' + chr(92) + r'bid="%s"[^>]*)>'
                       % re.escape(eid), text)
         if not m:
             return None
+        if m.group(1).lower() in VOID:
+            return [m.group(0).strip()]
         tag, depth, i = m.group(1), 1, m.end()
         rx = re.compile(r'<(/?)%s' % re.escape(tag) + chr(92) + 'b')
         while depth and i < len(text):
@@ -996,6 +1015,138 @@ def close_markup_drift(src, dst):
         copied.append(eid)
     return dst, copied, undocumented
 
+
+# font-face included: the two faces the game ships were unwatched, and they
+# differ in the url() each points at - which is a thing to document, not hide.
+_AT_RULE = re.compile(r'@(keyframes|media|supports|font-face)([^{]*)'
+                     + chr(92) + '{')
+_ANIM_NAME = re.compile(r'animation(?:-name)?' + chr(92) + r's*:[^;}]*')
+
+
+def _at_blocks(block):
+    """(kind, condition, whole text) for each top-level at-rule."""
+    out = []
+    for m in _AT_RULE.finditer(block):
+        depth, i = 1, m.end()
+        while depth and i < len(block):
+            if block[i] == '{':
+                depth += 1
+            elif block[i] == '}':
+                depth -= 1
+            i += 1
+        out.append((m.group(1), ' '.join(m.group(2).split()), block[m.start():i]))
+    return out
+
+
+def at_rules_wanted(src, dst):
+    """At-rule blocks the local build has a use for and does not carry.
+
+    KEYFRAMES travel when something here names them in an `animation:` and no
+    @keyframes of that name is defined - the CSS equivalent of calling a
+    function that is not there, except that it fails silently.
+
+    A CONDITIONAL BLOCK travels when this build lacks it and every selector
+    inside is one this build carries. That keeps `@media (max-width: 780px)`,
+    which styles a screen this build does not have, where it is - and brings the
+    reduced-motion rule that switches off an animation this build now runs.
+    """
+    try:
+        import extract_css
+    except ImportError:
+        return []
+    a0, b0 = extract_css.style_block(src)
+    c0, d0 = extract_css.style_block(dst)
+    on_block, lo_block = src[a0:b0], dst[c0:d0]
+    have = {(k, c) for k, c, _t in _at_blocks(lo_block)}
+    # Keyframes names this build NAMES but does not DEFINE.
+    named = set()
+    for m in _ANIM_NAME.finditer(lo_block):
+        for w in m.group(0).split(':', 1)[1].replace(',', ' ').split():
+            if re.match(r'^[A-Za-z_][' + chr(92) + r'w-]*$', w):
+                named.add(w)
+    defined = {c for k, c, _t in _at_blocks(lo_block) if k == 'keyframes'}
+    # Selectors this build carries, for the conditional test.
+    carried = {sel for sel, _b, _f in extract_css.scan_rules(dst, c0, d0)}
+
+    out = []
+    for kind, cond, text in _at_blocks(on_block):
+        if (kind, cond) in have:
+            continue
+        if kind == 'keyframes':
+            if cond in named and cond not in defined:
+                out.append((kind, cond, text))
+            continue
+        inner = re.findall(r'(?m)^' + chr(92) + r's*([^@{}]+?)' + chr(92) + r's*' + chr(92) + '{', text[text.index('{') + 1:])
+        inner = [' '.join(x.split()) for x in inner if x.strip()]
+        if inner and all(x in carried for x in inner):
+            out.append((kind, cond, text))
+    return out
+
+
+def at_rule_inserts(src, dst):
+    """Rules missing from a conditional block this build ALREADY has.
+
+    The block-level port only helps where this build lacks the whole block. The
+    reduced-motion rule that switches off the result flourish had nowhere to go:
+    this build already has @media (prefers-reduced-motion: reduce), so the block
+    looked present and the rule inside stayed behind. Somebody who has asked
+    their system for less motion would have got the animation anyway - which is
+    worse than having no animation.
+
+    ALL BLOCKS SHARING A CONDITION ARE ONE SET. There are three
+    prefers-reduced-motion blocks in this file, written at different times, and
+    comparing against only the last one re-inserted a rule the first already
+    had. What the browser sees is their union, so that is what is compared.
+
+    Returns (offset in dst, rule text), to be applied back to front.
+    """
+    try:
+        import extract_css
+    except ImportError:
+        return []
+    a0, b0 = extract_css.style_block(src)
+    c0, d0 = extract_css.style_block(dst)
+    on_block, lo_block = src[a0:b0], dst[c0:d0]
+
+    def inner_rules(text):
+        body = text[text.index('{') + 1:text.rindex('}')]
+        # COMMENTS OUT FIRST. A block that opens with an explanation parsed as
+        # one rule whose selector was the comment followed by the real selector,
+        # which matched nothing and silently skipped the rule - which is how the
+        # reduced-motion rule kept not travelling.
+        body = re.sub(r'/' + chr(92) + r'*.*?' + chr(92) + r'*/', ' ', body, flags=re.S)
+        out = {}
+        for m in re.finditer(r'([^{}]+?)' + chr(92) + r's*' + chr(92) + '{([^{}]*)' + chr(92) + '}', body):
+            out[' '.join(m.group(1).split())] = m.group(0).strip()
+        return out
+
+    carried = {sel for sel, _b, _f in extract_css.scan_rules(dst, c0, d0)}
+
+    # Every block this build has, grouped by condition: the union is what the
+    # browser applies, and the LAST block is where a new rule goes.
+    lo_have, lo_last = {}, {}
+    for kind, cond, text in _at_blocks(lo_block):
+        if kind == 'keyframes':
+            continue
+        lo_have.setdefault((kind, cond), set()).update(inner_rules(text))
+        lo_last[(kind, cond)] = text
+
+    on_want = {}
+    for kind, cond, text in _at_blocks(on_block):
+        if kind == 'keyframes' or (kind, cond) not in lo_have:
+            continue
+        for sel, rule in inner_rules(text).items():
+            if sel in lo_have[(kind, cond)] or sel not in carried:
+                continue
+            on_want.setdefault((kind, cond), {})[sel] = rule
+
+    out = []
+    for key, rules in on_want.items():
+        text = lo_last[key]
+        close = c0 + lo_block.index(text) + text.rindex('}')
+        for rule in rules.values():
+            out.append((close, rule))
+    return out
 
 def _css_prop(decl, extract_css):
     """The property a declaration sets, or None for something unparseable."""
@@ -1162,6 +1313,22 @@ def close_css_drift(src, dst, shared_texts=()):
             continue
         fresh.append(on[sel][1])
         ported.append(sel)
+    # AT-RULES, which scan_rules steps over whole and so nothing ever looked
+    # inside. @keyframes travel when something here names them in an animation
+    # and nothing defines them; a conditional block travels when every selector
+    # inside is one this build carries.
+    for kind, cond, text in at_rules_wanted(src, dst):
+        fresh.append(text)
+        ported.append('@%s %s' % (kind, cond))
+
+    # ...and rules missing from a conditional block this build already has.
+    # Applied back to front so an earlier insert cannot move a later offset.
+    inserts = at_rule_inserts(src, dst)
+    for off, rule in sorted(inserts, reverse=True):
+        dst = dst[:off] + '    ' + rule + chr(10) + '        ' + dst[off:]
+    for _off, rule in inserts:
+        ported.append(rule.split('{')[0].strip() + ' (conditional)')
+
     if fresh:
         # APPENDED, never inserted. A rule this build does not have cannot
         # collide with itself, and the end of the block is the one position that
@@ -1171,10 +1338,14 @@ def close_css_drift(src, dst, shared_texts=()):
         if CSS_PORT_MARK not in dst:
             block += chr(10) + '        ' + CSS_PORT_MARK + chr(10)
         for sel in ported:
+            if sel.startswith('@'):
+                continue          # at-rules are appended below, already whole
             # The indent goes in front of the SELECTOR too: _css_rule_text
             # starts at the selector because the in-place rebuild replaces a
             # match that does, and an appended rule has no such match.
             block += ' ' * 8 + _css_rule_text(sel, on[sel][0], ' ' * 8)
+        for kind, cond, text in at_rules_wanted(src, dst):
+            block += ' ' * 8 + text.strip() + chr(10)
         dst = dst[:b] + block + '        ' + dst[b:]
     return dst, copied, undocumented, ported
 
@@ -3430,11 +3601,43 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # NEARLY-IDENTICAL CONTAINERS. Not closed, because the two builds' screens
     # genuinely hold different panels - but named, because this surface had no
     # report at all and was carrying four faults.
-    near = markup_container_drift(src, dst)
+    # NO THRESHOLD. Every shared container that differs without a documented
+    # reason, however little it differs - 75% was an arbitrary line and the
+    # faults found today sat on both sides of it.
+    near = markup_container_drift(src, dst, alike=0.0)
     if near:
-        print('  %-34s %s'
-              % ('markup nearly matching',
+        print('  %-34s %d differ with no reason on MARKUP_INTERFACE: %s'
+              % ('markup containers', len(near),
                  ', '.join('%s %d%%' % (e, r) for e, r in near)))
+    else:
+        print('  %-34s ok (all agreeing or documented)' % 'markup containers')
+
+    h_on, h_lo = head_drift(src, dst)
+    if h_on or h_lo:
+        print('  %-34s %d only there, %d only here: %s'
+              % ('document head', len(h_on), len(h_lo),
+                 '; '.join((h_on + h_lo)[:2])[:70]))
+    else:
+        print('  %-34s ok (%d lines match)'
+              % ('document head', len(head_lines(dst))))
+
+    only_on, only_lo = statement_drift(src, dst)
+    if only_on or only_lo:
+        print('  %-34s %d only there, %d only here'
+              % ('top-level statements', len(only_on), len(only_lo)))
+        for t in (only_on[:3] + only_lo[:3]):
+            print('      %s' % t[:88])
+    else:
+        print('  %-34s ok (%d match, either side)'
+              % ('top-level statements', len(top_level_statements(dst))))
+
+    drifted = listener_drift(src, dst)
+    if drifted:
+        print('  %-34s %d differ with no reason on LISTENER_INTERFACE: %s'
+              % ('event listeners', len(drifted), ', '.join(drifted)))
+    else:
+        print('  %-34s ok (%d registered in both, all agreeing or documented)'
+              % ('event listeners', len(set(listeners(src)) & set(listeners(dst)))))
 
     undocumented = wiring_drift(src, dst)
     if undocumented:
@@ -3581,6 +3784,215 @@ def wiring_drift(src, dst):
     a, b = wiring(src), wiring(dst)
     return sorted(i for i in set(a) & set(b)
                   if a[i] != b[i] and i not in WIRING_INTERFACE)
+
+
+# TOP-LEVEL EVENT LISTENERS that differ on purpose, keyed by target and event.
+#
+# The last region the coverage map found with no key at all. A listener is not
+# a definition, so the definition sync never saw one - and thirteen of them,
+# including the single keyboard dispatcher, sat duplicated between the builds.
+# Twelve were already identical, which is luck rather than a mechanism.
+#
+# Reported rather than closed: a listener body can reach for names that exist in
+# only one build, and copying one across would drag the lobby into a build with
+# no lobby. Same contract as WIRING_INTERFACE otherwise.
+LISTENER_INTERFACE = {
+    'document.visibilitychange': 'tells the peer you left the tab; nobody to tell here',
+    'window.pagehide': 'closes the connection on the way out; there is none here',
+}
+
+_LISTENER_RE = re.compile(r"(?m)^(window|document|canvas)" + chr(92)
+                          + r".addEventListener" + chr(92) + r"(" + chr(92)
+                          + r"s*'(" + chr(92) + r"w+)'")
+
+
+def listeners(text):
+    """target.event -> list of listener bodies registered at top level."""
+    out = {}
+    for m in _LISTENER_RE.finditer(text):
+        depth, i, started = 0, m.start(), False
+        while i < len(text):
+            if text[i] in '([{':
+                depth += 1
+                started = True
+            elif text[i] in ')]}':
+                depth -= 1
+                if started and depth == 0:
+                    break
+            i += 1
+        out.setdefault('%s.%s' % (m.group(1), m.group(2)), []).append(text[m.start():i + 1])
+    return out
+
+
+def listener_drift(src, dst):
+    """target.event pairs whose bodies disagree with no reason on the list."""
+    a, b = listeners(src), listeners(dst)
+    out = []
+    for key in sorted(set(a) & set(b)):
+        if key in LISTENER_INTERFACE:
+            continue
+        def code(bodies):
+            return [[l.strip() for l in x.splitlines()
+                     if l.strip() and not l.strip().startswith('//')] for x in bodies]
+        if code(a[key]) != code(b[key]):
+            out.append(key)
+    return out
+
+
+# TOP-LEVEL STATEMENTS that belong to one build only, normalised.
+#
+# The statements between definitions have no name, no id and no selector, so
+# nothing could key on one - but the SET of them can be compared, which catches
+# every way the region can drift without needing a key per statement.
+#
+# An entry here is a statement one build runs at load and the other must not.
+# Everything else is expected to match, and the sync names what does not.
+STATEMENT_INTERFACE = (
+    'net',              # the connection, the room, the peer
+    'room',
+    'lobby',
+    'peer',
+    'coop',
+    'sandbox',
+    'away',
+    'touch',            # the touch scheme exists in one build only
+    'orientation',
+    'watch',            # the spectator camera's rings and seeding
+    'localName',        # the two typed-in names
+    'nameSide',
+    'soloMouse',
+    'location.protocol',  # the canonical /local redirect
+    'shop-close',       # two store panels, each with its own close
+    'shadowMap.enabled',  # one build turns shadows off on a touch device
+    'buildGrid',        # P1_KEYS on both grids there, P1 and P2 here
+    # THE DEBUG SURFACE, explicitly rather than by accident: it was being
+    # exempted because the block happens to contain netHost and coopEnemies,
+    # which is a filter working for the wrong reason. Each build exports what
+    # it HAS, so the two lists differ by design - and a missing export fails a
+    # checker loudly ('D.foo is not a function') rather than the game quietly,
+    # which is why this one is documented rather than guarded per name.
+    'ACDebug',
+)
+
+# A statement at column 0 that is not a definition, a listener or button wiring.
+_STMT_SKIP = re.compile(r'^(?:function|const|let|var|class|' + chr(92)
+                        + r'}|' + chr(92) + r'{|//|/' + chr(92) + r'*|' + chr(92)
+                        + r'*|<)')
+
+
+def top_level_statements(text):
+    """Normalised top-level statements, excluding what other guards cover."""
+    covered = set()
+    for bodies in listeners(text).values():
+        for b in bodies:
+            covered.update(l.strip() for l in b.splitlines() if l.strip())
+    for m in _WIRE_RE.finditer(text):
+        line_start = text.rfind(chr(10), 0, m.start()) + 1
+        if text[line_start:m.start()].strip():
+            continue
+        j = text.find(';', m.end())
+        block = text[line_start:j + 1 if j > 0 else m.end()]
+        covered.update(l.strip() for l in block.splitlines() if l.strip())
+
+    # WHOLE BLOCKS, brace-matched. Collecting single lines compared a top-level
+    # `try {` opener and left its interior compared by nothing - and the
+    # interior is where the BINDINGS migration lives.
+    out, lines = [], text.splitlines()
+    k = 0
+    while k < len(lines):
+        line = lines[k]
+        if line[:1] in (' ', chr(9), ''):
+            k += 1
+            continue                      # indented: inside something
+        t = line.strip()
+        if not t or _STMT_SKIP.match(t) or t in covered:
+            k += 1
+            continue
+        if t in ('-->', '*/') or t.endswith('-->'):
+            k += 1
+            continue                      # the tail of an HTML comment
+        if t.startswith('document.getElementById('):
+            k += 1
+            continue                      # wiring, covered by its own guard
+        depth = (line.count('(') + line.count('{') + line.count('[')
+                 - line.count(')') - line.count('}') - line.count(']'))
+        block = [t]
+        while depth > 0 and k + 1 < len(lines):
+            k += 1
+            nxt = lines[k]
+            block.append(nxt.strip())
+            depth += (nxt.count('(') + nxt.count('{') + nxt.count('[')
+                      - nxt.count(')') - nxt.count('}') - nxt.count(']'))
+        # `} catch (e) {` and `} else {` continue the same statement.
+        while (k + 1 < len(lines)
+               and lines[k + 1].lstrip().startswith(('} catch', '} else', '} finally'))):
+            k += 1
+            nxt = lines[k]
+            block.append(nxt.strip())
+            depth += (nxt.count('(') + nxt.count('{') + nxt.count('[')
+                      - nxt.count(')') - nxt.count('}') - nxt.count(']'))
+            while depth > 0 and k + 1 < len(lines):
+                k += 1
+                n2 = lines[k]
+                block.append(n2.strip())
+                depth += (n2.count('(') + n2.count('{') + n2.count('[')
+                          - n2.count(')') - n2.count('}') - n2.count(']'))
+        out.append(' '.join(' '.join(block).split()))
+        k += 1
+    return out
+
+
+def statement_drift(src, dst):
+    """Top-level statements in one build and not the other, minus the expected."""
+    def keep(t):
+        return not any(w.lower() in t.lower() for w in STATEMENT_INTERFACE)
+    a = [t for t in top_level_statements(src) if keep(t)]
+    b = [t for t in top_level_statements(dst) if keep(t)]
+    only_src = [t for t in a if t not in set(b)]
+    only_dst = [t for t in b if t not in set(a)]
+    return only_src, only_dst
+
+
+# THE HTML HEAD, compared as a region. Eight lines of boilerplate - doctype,
+# charset, the viewport meta, the title, the favicon - and boilerplate drifts
+# like anything else: a viewport change is one edit in each file. url() paths
+# differ by design, so those are matched loosely.
+HEAD_INTERFACE = ('href="../', 'src="../', 'url(../')
+
+
+def head_lines(text):
+    """Normalised lines from the top of the file to </head>."""
+    end = text.index('</head>')
+    out, in_comment = [], False
+    for line in text[:end].splitlines():
+        t = ' '.join(line.split())
+        # MULTI-LINE COMMENTS, tracked. This build opens with a generated-file
+        # banner twenty-three lines long, and nothing inside it starts with a
+        # comment marker - so every line of it read as head content.
+        if in_comment:
+            in_comment = '-->' not in t
+            continue
+        if t.startswith('<!--') and '-->' not in t:
+            in_comment = True
+            continue
+        # STOP at the stylesheet, before skipping it. Skipping '<style>' as
+        # noise and only breaking on '<style' afterwards meant the break never
+        # fired and this swallowed all 1,300 lines of CSS.
+        if t.startswith('<style') or t.startswith('<script'):
+            break                         # the stylesheet has its own guards
+        if not t or t.startswith(('<!--', '//', '*', '/*')):
+            continue
+        out.append(t)
+    return out
+
+
+def head_drift(src, dst):
+    """Head lines in one build and not the other, minus the path differences."""
+    def keep(t):
+        return not any(w in t for w in HEAD_INTERFACE)
+    a = [t for t in head_lines(src) if keep(t)]
+    b = [t for t in head_lines(dst) if keep(t)]
+    return [t for t in a if t not in set(b)], [t for t in b if t not in set(a)]
 
 
 def check_fixed_point():
