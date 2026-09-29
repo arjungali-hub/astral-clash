@@ -242,74 +242,7 @@ function syncWatchRings(on) {
     }
 }
 
-// ------------------------------------------- the solo human's controls
-// Mouse look, strafing and left-click attack: the online build's scheme,
-// available here whenever exactly one side is human (see soloHumanSide).
-//
-// This build was forked before Batch 31 added any of it, so the pointer lock,
-// the mouse deltas and the strafe axis are all new - and all gated, so a
-// two-human split-screen match still has the keyboard-turn scheme it needs.
-const soloMouse = { dx: 0, dy: 0, attack: false, locked: false };
-const SOLO_SENSITIVITY = 0.0022;
-
-document.addEventListener('pointerlockchange', () => {
-    soloMouse.locked = document.pointerLockElement === canvas;
-});
-canvas.addEventListener('mousedown', (e) => {
-    if (!soloHumanSide() || gameState !== 'FIGHT') return;
-    // A click both takes the lock and throws a punch, in that order: the first
-    // click of a match should not be swallowed by the lock request.
-    if (!soloMouse.locked && canvas.requestPointerLock) canvas.requestPointerLock();
-    if (e.button === 0) soloMouse.attack = true;
-});
-document.addEventListener('mousemove', (e) => {
-    if (!soloMouse.locked) return;
-    soloMouse.dx += e.movementX || 0;
-    soloMouse.dy += e.movementY || 0;
-});
-
-// Applies the online scheme to `f` for this frame and returns its movement.
-// Mirrors index.html's own input block: forward/back along the facing, A/D as
-// STRAFE, mouse for looking, left click to attack.
-function applySoloControls(f, b, dt, target) {
-    const out = { moveX: 0, moveY: 0, jumpPressed: false, jumpJustPressed: false };
-    // Mouse deltas are an absolute displacement already, so they are
-    // deliberately NOT scaled by dt - scaling them would make sensitivity
-    // depend on framerate. Drained here so one frame cannot apply them twice.
-    if (soloMouse.dx || soloMouse.dy) {
-        f.turnBy(soloMouse.dx * SOLO_SENSITIVITY);
-        f.lookBy(-soloMouse.dy * SOLO_SENSITIVITY);
-        soloMouse.dx = 0; soloMouse.dy = 0;
-    }
-    // Screen-right for a camera looking along (fx, fy) is (-fy, fx): three.js
-    // cameras look down local -Z and the basis is right-handed, so right is
-    // forward x up. Getting this sign wrong is what made strafing reversed in
-    // the online build for a release (Batch 36).
-    const rx = -f.fy, ry = f.fx;
-    if (keys[b.up]) { out.moveX += f.fx; out.moveY += f.fy; }
-    if (keys[b.down]) { out.moveX -= f.fx; out.moveY -= f.fy; }
-    if (keys[b.left]) { out.moveX -= rx; out.moveY -= ry; }
-    if (keys[b.right]) { out.moveX += rx; out.moveY += ry; }
-    // The keyboard pitch keys stay available, for when pointer lock is refused.
-    if (keys[b.lookUp]) f.lookBy(LOOK_SPEED * dt);
-    if (keys[b.lookDown]) f.lookBy(-LOOK_SPEED * dt);
-    if (keys[b.jump]) out.jumpPressed = true;
-    if (consumePress(b.jump)) out.jumpJustPressed = true;
-    if (soloMouse.attack) { soloMouse.attack = false; f.tryStartAction('basic', target); }
-    if (consumePress(b.attack)) f.tryStartAction('basic', target);
-    if (consumePress(b.special)) f.tryStartAction('special', target);
-    if (consumePress(b.dodge)) f.tryDodge(out.moveX, out.moveY);
-    // A gamepad keeps working exactly as it did.
-    const gp = pollGamepad(padSlots[sideOf(f)]);
-    if (gp) {
-        if (gp.moveX) { out.moveX += gp.moveX * rx; out.moveY += gp.moveX * ry; } // stick X STRAFES now
-        if (gp.moveY) { out.moveX += -gp.moveY * f.fx; out.moveY += -gp.moveY * f.fy; }
-        if (gp.lookX) f.turnBy(gp.lookX * TURN_SPEED * dt * 1.6);                 // right stick turns
-        if (gp.lookY) f.lookBy(-gp.lookY * LOOK_SPEED * dt * 1.6);
-        if (gp.jump) { out.jumpPressed = true; out.jumpJustPressed = true; }
-        if (gp.attack) f.tryStartAction('basic', target);
-        if (gp.special) f.tryStartAction('special', target);
-        if (gp.dodge) f.tryDodge(out.moveX, out.moveY);
-    }
-    return out;
-}
+// The solo human's controls used to live here: soloMouse and
+// applySoloControls, a second copy of the one-player scheme and a second set
+// of mouse listeners beside the shared ones. Both builds call readSoloInput()
+// now, which is the same text in each and kept in step by the sync.

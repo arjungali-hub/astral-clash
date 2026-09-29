@@ -104,13 +104,20 @@ const H = require('./harness');
     // was really "forward is blocked". Sweeping and requiring that motion is
     // always PARALLEL (or always PERPENDICULAR) to the facing tests the actual
     // claim, and tolerates any one heading being obstructed.
+    // ONE FACING PER CALL. Every "step" is two requestAnimationFrames, and under
+    // swiftshader with the models loaded this arena renders at about a frame a
+    // second - so four facings in one page.evaluate is forty steps and well
+    // past the 180s puppeteer waits before abandoning the call. What came back
+    // then was `ProtocolError: Runtime.callFunctionOn timed out`, which says
+    // nothing about the game and reads exactly like a hang in the build.
+    const FACINGS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
     async function sweep(page, action) {
-        return page.evaluate(async (act) => {
-            const D = window.ACDebug, f = D.player1;
-            const step = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-            const facings = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-            const out = [];
-            for (const [fx, fy] of facings) {
+        const out = [];
+        for (const facing of FACINGS) {
+            out.push(await page.evaluate(async (act, fx, fy) => {
+                const D = window.ACDebug, f = D.player1;
+                const step = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
                 f.x = D.ARENA_CX; f.y = D.ARENA_CY; f.z = 0;
                 f.fx = fx; f.fy = fy; f.vx = 0; f.vy = 0;
                 f.hitstunTimer = 0; f.rootedFrames = 0; f.atkState = 'idle';
@@ -127,12 +134,12 @@ const H = require('./harness');
                 // Component of the displacement along the facing, and across it.
                 const along = dist > 0.001 ? (dx * fx + dy * fy) / dist : 0;
                 const across = dist > 0.001 ? (dx * fy - dy * fx) / dist : 0;
-                out.push({ facing: [fx, fy], dist: +dist.toFixed(2),
-                           along: +along.toFixed(3), across: +across.toFixed(3),
-                           yawDelta: +(Math.atan2(f.fy, f.fx) - yaw0).toFixed(4) });
-            }
-            return out;
-        }, action);
+                return { facing: [fx, fy], dist: +dist.toFixed(2),
+                         along: +along.toFixed(3), across: +across.toFixed(3),
+                         yawDelta: +(Math.atan2(f.fy, f.fx) - yaw0).toFixed(4) };
+            }, action, facing[0], facing[1]));
+        }
+        return out;
     }
 
     section('A/D strafe sideways instead of turning:');
@@ -155,18 +162,18 @@ const H = require('./harness');
     // against the CAMERA's own right vector (column 0 of its world matrix)
     // rather than a hand-derived formula - the bug was in exactly such a
     // derivation, so re-deriving it in the test would have reproduced it.
-    const dirCheck = await page.evaluate(async () => {
-        const D = window.ACDebug;
-        const f = D.player1;
-        const cam = D.localCamera();
-        const step = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        // Sweep four facings for the reason documented above sweep(): a single
-        // heading can be blocked by map geometry, which reads as "movement is
-        // broken" when it is only "movement is obstructed".
-        const facings = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-        const out = [];
-        for (const action of ['right', 'left']) {
-            for (const [fx, fy] of facings) {
+    // Sweep four facings for the reason documented above sweep(): a single
+    // heading can be blocked by map geometry, which reads as "movement is
+    // broken" when it is only "movement is obstructed". One call per facing,
+    // for the reason documented there too.
+    const dirCheck = [];
+    for (const action of ['right', 'left']) {
+        for (const facing of FACINGS) {
+            dirCheck.push(await page.evaluate(async (action, fx, fy) => {
+                const D = window.ACDebug;
+                const f = D.player1;
+                const cam = D.localCamera();
+                const step = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
                 f.x = 850; f.y = 480; f.vx = 0; f.vy = 0; f.z = 0; f.vz = 0;
                 f.fx = fx; f.fy = fy;
                 await step();
@@ -183,14 +190,13 @@ const H = require('./harness');
                 // The 2D plane maps x -> world X and y -> world Z (worldX/worldZ).
                 const moved = new THREE.Vector3(f.x - x0, 0, f.y - y0);
                 const dist = moved.length();
-                out.push({
+                return {
                     action, facing: [fx, fy], dist: +dist.toFixed(2),
                     dot: dist > 0.001 ? +moved.normalize().dot(right).toFixed(3) : 0,
-                });
-            }
+                };
+            }, action, facing[0], facing[1]));
         }
-        return out;
-    });
+    }
     const rights = dirCheck.filter(r => r.action === 'right' && r.dist > 2);
     const lefts = dirCheck.filter(r => r.action === 'left' && r.dist > 2);
     check('strafe-right moves you toward SCREEN right, from every facing',

@@ -249,7 +249,9 @@ INTERFACE = {
     # reminder, and refreshPauseUI is guarded by typeof because the 
     # away-pause subsystem it needs has no meaning without a peer.
     'refreshMenuUI': 'different menus',
-    'refreshBotUI': 'bots are per side here',
+    # refreshBotUI is SHARED now. Bots ARE per side in one build and absent
+    # from the other, and that is five guarded lookups plus one conditional
+    # for the hard flag reset - not a second function.
     # resolveCoopMode is SHARED now - the local body is missing the boss-HP line in the defeat
     # text, and coopIsHost() is shared and answers true here.
     # Not per-side at all: the online body calls refreshHudScaleUI(), and that
@@ -269,7 +271,8 @@ INTERFACE = {
     # buildShop is SHARED now. Three helpers - shopSidesOpen, shopListEl and
     # shopOwnerPhrase - name the one-panel-or-two difference once, and its
     # eighty-nine lines stop being two copies that agree.
-    'openShop': 'two purses',
+    # openShop is SHARED now: syncShopPanels owns the whole difference, which
+    # is one panel anchored to a side against two shown independently.
     # showDetail is SHARED now - the local build had no "Locked in" state and never warmed the 
     # fighter model while you read the card.
     # buildDetailHTML is SHARED now - same: the confirmed state reached one build only.

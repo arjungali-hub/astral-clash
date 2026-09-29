@@ -2196,79 +2196,104 @@ function syncWatchRings(on) {
 }
 
 // ------------------------------------------- the solo human's controls
-// Mouse look, strafing and left-click attack: the online build's scheme,
-// available here whenever exactly one side is human (see soloHumanSide).
+// Mouse look, strafing and left-click attack: available here whenever exactly
+// one side is human (see soloHumanSide), and it is the SAME FUNCTION the
+// one-player-per-machine build uses, because it is the same situation.
 //
-// This build was forked before Batch 31 added any of it, so the pointer lock,
-// the mouse deltas and the strafe axis are all new - and all gated, so a
-// two-human split-screen match still has the keyboard-turn scheme it needs.
-const soloMouse = { dx: 0, dy: 0, attack: false, locked: false };
-const SOLO_SENSITIVITY = 0.0022;
+// The plumbing under it is the shared pair - mouseDX, mouseDY, pointerLocked,
+// and the mousedown handler that turns mouse buttons into synthetic keys. This
+// build used to install a SECOND set beside them, soloMouse, with its own
+// listeners on the same three events; both accumulated deltas and only one was
+// ever drained. wantsPointerLock() asks soloHumanSide() now, so the shared
+// click-to-capture handler covers the case soloMouse's did.
 
-document.addEventListener('pointerlockchange', () => {
-    soloMouse.locked = document.pointerLockElement === canvas;
-});
-canvas.addEventListener('mousedown', (e) => {
-    // INTRO as well as FIGHT. The click a player actually makes is the one on
-    // the title card, and gating on 'FIGHT' meant the request never happened
-    // for it - so the lock was never taken and A/D kept turning.
-    if (!soloHumanSide() || (gameState !== 'FIGHT' && gameState !== 'INTRO')) return;
-    // A click both takes the lock and throws a punch, in that order: the first
-    // click of a match should not be swallowed by the lock request.
-    if (!soloMouse.locked && canvas.requestPointerLock) canvas.requestPointerLock();
-    if (e.button === 0) soloMouse.attack = true;
-});
-document.addEventListener('mousemove', (e) => {
-    if (!soloMouse.locked) return;
-    soloMouse.dx += e.movementX || 0;
-    soloMouse.dy += e.movementY || 0;
-});
-
-// Applies the online scheme to `f` for this frame and returns its movement.
-// Mirrors index.html's own input block: forward/back along the facing, A/D as
-// STRAFE, mouse for looking, left click to attack.
-function applySoloControls(f, b, dt, target) {
+// THE ONE-PLAYER SCHEME: mouse look, strafing, left click to attack.
+//
+// Used by the build where every client drives one fighter, and by the
+// split-screen build whenever a bot on the other side leaves exactly one human
+// at the keyboard - which is the same situation and was the same forty lines,
+// written twice.
+//
+// Returns its values rather than writing to the caller's locals. A function
+// that reaches into four of its caller's variables reads fine until it moves.
+function readSoloInput(f, b, dt, target) {
     const out = { moveX: 0, moveY: 0, jumpPressed: false, jumpJustPressed: false };
-    // Mouse deltas are an absolute displacement already, so they are
-    // deliberately NOT scaled by dt - scaling them would make sensitivity
-    // depend on framerate. Drained here so one frame cannot apply them twice.
-    if (soloMouse.dx || soloMouse.dy) {
-        f.turnBy(soloMouse.dx * SOLO_SENSITIVITY);
-        f.lookBy(-soloMouse.dy * SOLO_SENSITIVITY);
-        soloMouse.dx = 0; soloMouse.dy = 0;
+    // Batch 32: snapshot so a started action or a spent dodge can be detected
+    // below and announced to the other client. Watching the resulting STATE
+    // transition is more reliable than intercepting every tryStartAction call
+    // site, and it cannot report an action that was refused for cooldown or
+    // hitstun. Inert where netActive() is false forever.
+    const netPrevAtk = netActive() ? f.atkState : null;
+    const netPrevDodge = netActive() ? f.dodgeCooldown : 0;
+    const held = (action) => keys[b[action]] || keys[ARROW_ALTS[action]];
+
+    // MOUSE LOOK. Applied as a raw radian delta, deliberately NOT scaled by dt:
+    // mouse movement is already an absolute displacement, so scaling it would
+    // make sensitivity depend on framerate. Drained here so a frame that does
+    // not step the simulation cannot apply the same movement twice.
+    if (mouseDX || mouseDY) {
+        f.turnBy(mouseDX * mouseSensitivity);
+        f.lookBy((invertMouseY ? mouseDY : -mouseDY) * mouseSensitivity);
+        mouseDX = 0; mouseDY = 0;
     }
-    // Screen-right for a camera looking along (fx, fy) is (-fy, fx): three.js
-    // cameras look down local -Z and the basis is right-handed, so right is
-    // forward x up. Getting this sign wrong is what made strafing reversed in
-    // the online build for a release (Batch 36).
-    const rx = -f.fy, ry = f.fx;
-    if (keys[b.forward]) { out.moveX += f.fx; out.moveY += f.fy; }
-    if (keys[b.back]) { out.moveX -= f.fx; out.moveY -= f.fy; }
-    if (keys[b.left]) { out.moveX -= rx; out.moveY -= ry; }
-    if (keys[b.right]) { out.moveX += rx; out.moveY += ry; }
-    // The keyboard pitch keys stay available, for when pointer lock is refused.
+    // The keyboard pitch keys stay available for when pointer lock is refused.
+    // The one-player-per-machine build unbinds them (Batch 36: with the mouse
+    // aiming vertically whether or not the pointer is locked, they were a
+    // slower way to do the same thing), so these read undefined there.
     if (keys[b.lookUp]) f.lookBy(LOOK_SPEED * dt);
     if (keys[b.lookDown]) f.lookBy(-LOOK_SPEED * dt);
+
+    // MOVEMENT. Forward/back along the facing; left and right STRAFE, which is
+    // the whole point of pairing them with mouse look.
+    //
+    // Screen-right for a camera looking along (fx, fy) is (-fy, fx): three.js
+    // cameras look down local -Z and the basis is right-handed (X x Y = Z), so
+    // X = Y x Z = up x (-forward) = forward x up. With up (0,1,0) and forward
+    // (fx, 0, fy) that is (-fy, 0, fx) - (-fy, fx) in the game's 2D plane.
+    //
+    // Getting this sign wrong shipped once, as "strafe left and right is
+    // reversed", and a suite of twenty control assertions missed it because
+    // every one of them checked that the displacement was PERPENDICULAR to the
+    // facing, which both signs are.
+    const rx = -f.fy, ry = f.fx;
+    if (held('forward')) { out.moveX += f.fx; out.moveY += f.fy; }
+    if (held('back'))    { out.moveX -= f.fx; out.moveY -= f.fy; }
+    if (held('right'))   { out.moveX += rx; out.moveY += ry; }
+    if (held('left'))    { out.moveX -= rx; out.moveY -= ry; }
+
     if (keys[b.jump]) out.jumpPressed = true;
     if (consumePress(b.jump)) out.jumpJustPressed = true;
-    if (soloMouse.attack) { soloMouse.attack = false; f.tryStartAction('basic', target); }
-    if (consumePress(b.attack)) f.tryStartAction('basic', target);
+    // Left click attacks whatever the binding says. Where attack IS mouse0 the
+    // second consumePress finds nothing left, which is the correct no-op.
+    if (consumePress(b.attack) || consumePress('mouse0')) f.tryStartAction('basic', target);
     if (consumePress(b.special)) f.tryStartAction('special', target);
     if (consumePress(b.dodge)) f.tryDodge(out.moveX, out.moveY);
-    // A gamepad keeps working exactly as it did.
+
     const gp = pollGamepad(padSlots[sideOf(f)]);
     if (gp) {
-        if (gp.moveX) { out.moveX += gp.moveX * rx; out.moveY += gp.moveX * ry; } // stick X STRAFES now
-        if (gp.moveY) { out.moveX += -gp.moveY * f.fx; out.moveY += -gp.moveY * f.fy; }
-        if (gp.lookX) f.turnBy(gp.lookX * TURN_SPEED * dt * 1.6);                 // right stick turns
+        // Left stick X STRAFES, along the same vector the keyboard uses -
+        // turning is the right stick's job alongside pitch.
+        if (gp.moveX) { out.moveX += gp.moveX * rx; out.moveY += gp.moveX * ry; }
+        if (gp.moveY) { out.moveX += -gp.moveY * f.fx; out.moveY += -gp.moveY * f.fy; } // up on stick is negative
+        if (gp.lookX) f.turnBy(gp.lookX * TURN_SPEED * dt * 1.6);
         if (gp.lookY) f.lookBy(-gp.lookY * LOOK_SPEED * dt * 1.6);
-        if (gp.jump) { out.jumpPressed = true; out.jumpJustPressed = true; }
+        if (gp.jump) { out.jumpPressed = true; out.jumpJustPressed = true; } // pollGamepad already edge-triggers
         if (gp.attack) f.tryStartAction('basic', target);
         if (gp.special) f.tryStartAction('special', target);
         if (gp.dodge) f.tryDodge(out.moveX, out.moveY);
     }
+
+    if (netActive()) {
+        if (netPrevAtk === 'idle' && f.atkState !== 'idle') {
+            netSend({ t: 'EVENT', e: f.atkKind === 'special' ? 'special' : 'attack' });
+        }
+        if (netPrevDodge <= 0 && f.dodgeCooldown > 0) {
+            netSend({ t: 'EVENT', e: 'dodge' });
+        }
+    }
     return out;
 }
+
 
 // Run `work` with the loading screen up, whatever happens to `work` - and if
 // `work` returns a promise, hold the screen until it settles.
@@ -2393,7 +2418,9 @@ const shopExpanded = { p1: new Set(), p2: new Set() };
 //                    a sandbox that cannot let you try the fighter you have
 //                    not bought is not a sandbox.
 
-// Which stores are open right now. BOTH may be: see syncShopPanels.
+// WHICH STORES ARE OPEN. One at a time in this build, both at once in the
+// split-screen one - and openShop is the same five lines either way once
+// syncShopPanels owns the difference.
 const shopOpen = { p1: false, p2: false };
 
 // THE accessors. Gameplay and UI both go through these rather than reading
@@ -4823,7 +4850,6 @@ function pollGamepad(index) {
         dodge: justPressed[3]    // Y
     };
 }
-
 class Fighter {
     constructor(name, x, y, isPlayerOne, isBot) {
         // Batch 16: BOSS_MAP holds co-op-only combatants (the boss). They're kept
@@ -5316,12 +5342,11 @@ class Fighter {
     // throughout, so this removes a copy-paste inside this file as well as the
     // one between the two files.
     readHumanInput(dt, target) {
-        // One human, so the reason for the split-keyboard scheme is gone - see
-        // applySoloControls.
+        // ONE HUMAN, so the reason for the split-keyboard scheme is gone: they
+        // get the whole screen and a mouse, which is the other build's scheme
+        // and now literally the other build's function.
         if (soloHumanSide() === sideOf(this)) {
-            const r = applySoloControls(this, BINDINGS[sideOf(this)], dt, target);
-            return { moveX: r.moveX, moveY: r.moveY,
-                     jumpPressed: r.jumpPressed, jumpJustPressed: r.jumpJustPressed };
+            return readSoloInput(this, BINDINGS[sideOf(this)], dt, target);
         }
         const side = this.isPlayerOne ? 'p1' : 'p2';
         const b = BINDINGS[side];
@@ -7072,54 +7097,47 @@ function buildRiggedCharacter(name) {
 // false. What is left of this function is "show the local player's roster",
 // which is why it keeps the name its callers already use.
 function refreshBotUI(side) {
-    // Batch 21b: bot mode exists ONLY in the unlock-everything sandbox.
-    // Progression is strictly two humans: coins are earned by beating a real
-    // opponent, so unlocks can't be farmed against an AI. The sandbox is where
-    // you go to practice or mess about solo, and it deliberately pays nothing
-    // (see addCoins). Force the toggle off and disable it (rather than
-    // silently ignoring clicks) so it's clear *why* it's unavailable.
-    // Added after archiving: on a TOUCH device this build is single-player
-    // against a bot, always. Split-screen on a phone gives each player a
-    // ~195pt-wide viewport with a joystick and four action buttons layered over
-    // it, which is not playable - and a phone is exactly where someone arrives
-    // from the desktop build's "this version needs a computer" notice.
-    //
-    // So P2 is forced to a bot and the toggle is hidden: there is nothing to
-    // choose. Bot mode is normally sandbox-only to stop coins being farmed
-    // against an AI, so MOBILE_SOLO suppresses coin awards the same way the
-    // sandbox does (see addCoins) - the restriction must not become a farming
-    // shortcut just because the device is small.
+    // NO BOT SLOTS TO SET THEM FROM, so a flag left over from a sandbox match
+    // must not survive into a real one. The build with a toggle per side sets
+    // these deliberately and must not have them cleared underneath it.
+    if (AC_ONE_SIDE_PER_CLIENT) { p1IsBot = false; p2IsBot = false; }
     if (MOBILE_SOLO) {
         if (side === 'p2') p2IsBot = true;
         else p1IsBot = false;              // P1 is always the human here
     }
-    const botAllowed = debugUnlockAll || MOBILE_SOLO;
+    const botAllowed = matchIsSandbox() || MOBILE_SOLO;
     if (!botAllowed) { if (side === 'p1') p1IsBot = false; else p2IsBot = false; }
     const isBot = side === 'p1' ? p1IsBot : p2IsBot;
+    // EVERY LOOKUP GUARDED: these five ids exist in the build with a bot slot
+    // per side and nowhere else, so the other build skips them rather than
+    // throwing on a null.
     const toggle = document.getElementById(side === 'p1' ? 'btn-toggle-bot-p1' : 'btn-toggle-bot');
-    toggle.textContent = isBot ? 'Bot: ON' : 'Bot: OFF';
-    toggle.classList.toggle('active', isBot);
-    // Batch 24: HIDDEN, not merely disabled. A permanently greyed-out button
-    // answers a question nobody asked, and the tooltip explaining why only helps
-    // someone who already knows bot mode exists. The Shop button beside it takes
-    // the freed space. The forced-off assignment above is still load-bearing.
-    // MOBILE_SOLO makes botAllowed true so the bot can exist, but there is
-    // nothing to choose on a phone - so the toggle stays hidden there too.
-    toggle.style.display = (botAllowed && !MOBILE_SOLO) ? '' : 'none';
-    document.getElementById(side === 'p1' ? 'btn-random-p1' : 'btn-random-p2').disabled = isBot;
-    document.getElementById(`${side}-bot-mode`).classList.toggle('show', isBot);
+    if (toggle) {
+        toggle.textContent = isBot ? 'Bot: ON' : 'Bot: OFF';
+        toggle.classList.toggle('active', isBot);
+        // A permanently disabled button answering a question nobody asked is
+        // the complaint; hidden is the answer. MOBILE_SOLO makes botAllowed
+        // true so the bot can exist, but there is nothing to toggle there.
+        toggle.style.display = (botAllowed && !MOBILE_SOLO) ? '' : 'none';
+    }
+    const random = document.getElementById(side === 'p1' ? 'btn-random-p1' : 'btn-random-p2');
+    if (random) random.disabled = isBot;
+    const botMode = document.getElementById(`${side}-bot-mode`);
+    if (botMode) botMode.classList.toggle('show', isBot);
     if (isBot) {
-        // A bot side doesn't pick — clear any in-progress human selection
-        // and hide the grid/detail so only the bot card shows.
         if (side === 'p1') { p1Stage = 'pick'; p1Preview = null; p1Choice = null; }
         else { p2Stage = 'pick'; p2Preview = null; p2Choice = null; }
-        document.getElementById(`${side}-grid`).style.display = 'none';
-        document.getElementById(`${side}-detail`).style.display = 'none';
+        const grid = document.getElementById(`${side}-grid`);
+        if (grid) grid.style.display = 'none';
+        const detail = document.getElementById(`${side}-detail`);
+        if (detail) detail.style.display = 'none';
     } else {
         showGrid(side);
     }
-    document.getElementById('btn-difficulty').style.display = (p1IsBot || p2IsBot) ? '' : 'none';
+    const diff = document.getElementById('btn-difficulty');
+    if (diff) diff.style.display = (p1IsBot || p2IsBot) ? '' : 'none';
     refreshMenuUI();
+    refreshRoomUI();
 }
 
 document.getElementById('btn-toggle-bot').addEventListener('click', () => {
@@ -7633,10 +7651,29 @@ document.getElementById('btn-modeselect-close').addEventListener('click', () => 
 refreshModeUI();
 
 function syncShopPanels() {
+    // TWO PANELS, shown and hidden independently: the two people at this
+    // keyboard can each have their own store open, and closing one must not
+    // take the other with it. The one-panel build has no #shop-panel-* ids and
+    // skips the loop.
     for (const s of SIDES) {
         const el = document.getElementById('shop-panel-' + s);
         if (el) el.style.display = shopOpen[s] ? '' : 'none';
     }
+    // ONE PANEL, anchored to the side that opened it. With the tabs gone that
+    // position IS the label for whose account you are looking at, so it has to
+    // be set before the modal is shown rather than after.
+    //
+    // Asks the FLAG, not the DOM: both builds have a #shop-screen, and pinning
+    // it to one side where two panels are on screen would shove both of them
+    // into the same half.
+    const screen = document.getElementById('shop-screen');
+    if (screen && AC_ONE_SIDE_PER_CLIENT) screen.className = `side-${shopSide}`;
+    // Batch 38: your NAME, not your slot number. "Player 1 - Shop" was the last
+    // place the old two-local-players framing showed through in a build with
+    // one player per machine. The two-panel build names each panel in its own
+    // heading instead, and has no #shop-title to find.
+    const title = document.getElementById('shop-title');
+    if (title) title.textContent = `${playerLabel(shopSide)}\u2019s Armory`;
 }
 
 function closeShopSide(side) {
@@ -7648,9 +7685,6 @@ function closeShopSide(side) {
 
 function openShop(side) {
     if (side) shopSide = side;
-    // Anchor the panel to whichever player opened it. With the tabs gone this
-    // position IS the label for whose account you're looking at, so it has to be
-    // set before the modal is shown, not after.
     shopOpen[shopSide] = true;
     syncShopPanels();
     shopExpanded[shopSide].clear(); // every visit starts collapsed; see buildShop
