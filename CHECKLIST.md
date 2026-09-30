@@ -3262,25 +3262,42 @@ to be right either.
 
 ### Still open
 
-Nothing is open in the sense of "a reported bug nobody has fixed", and nothing
-is open that a checker could settle. What remains is three verification items,
-every one of which needs a person or hardware that headless software rendering
-does not have:
+Rewritten, because this section had gone stale in three ways at once: it said
+nothing open could be settled by a checker (two of the three now can be), it
+claimed `INTERFACE` had 114 entries (it has 18), and it described a forked
+boundary that four batches of work have since dissolved.
 
-  * **30fps vs 60fps vs uncapped parity** — needs a way to drive the game at a
-    chosen frame rate; `computeDt` is the thing under test.
-  * **Ten rematches, no GPU memory growth** — needs a GPU. Headless runs on
-    swiftshader, where "GPU memory" is not the thing that would leak.
-  * **The bot plays a competent match** — "competent" is a judgement.
+**Written but never verified — three checkers, blocked on memory, not on code.**
 
+  * `netcheck` — online multiplayer. Seven of its assertions pass and then a
+    browser dies: it is the only checker that launches TWO full Chrome instances,
+    each software-rendering a 3D match, and this machine has had under 1GB free
+    all week. Run it with ~2.5GB.
+  * `leakcheck` — ten rematches, no growth. Written for the old "needs a GPU"
+    item; headless runs on swiftshader, so what it can actually prove is that
+    ten rematches complete and JS heap does not climb, which is worth having.
+    Never executed successfully.
+  * `framerateccheck` — 30fps against uncapped, via the `?fps=` cap. Written for
+    the old parity item. `computeDt` is the thing under test. Never executed
+    successfully.
 
-Knockback is covered by the teleport sweep above only insofar as knockback
-routes through the same displacement path; a dedicated knockback sweep is not
-written, and the line above says teleports rather than claiming both.
+Nothing in the code is known to be wrong. Nothing in those three is known to be
+right either, and that is a different statement from "they pass".
 
-**What legitimately stays forked** (not a task; the boundary itself): the input
-scheme, `renderViews`, the lobby and netcode against the local start flow, and
-the spectator camera. The full list with a reason on every entry is `INTERFACE`
-in `art/sync_local.py`, 114 entries, and the sync fails if a definition differs
-without being on it.
+**Needs a person, not a machine.**
+
+  * **The bot plays a competent match.** "Competent" is a judgement, and no
+    assertion substitutes for watching one.
+  * **A knockback sweep.** The teleport sweep covers knockback only insofar as
+    both route through the same displacement path. That is an argument, not a
+    test.
+
+**What legitimately stays forked** (not a task; the boundary itself). One
+definition differs with a real body on both sides: `Fighter.readHumanInput`,
+eight lines, which is two people at one keyboard against one person with a
+mouse. Thirteen more differ because one side is a stub, where nothing can drift.
+Everything else that differs is on one of nine lists in `art/sync_local.py`,
+each entry carrying a reason, and the sync now **exits non-zero** on a difference
+without one — so the pre-commit hook refuses the commit. `python art/coverage.py`
+reports what no list covers at all.
 

@@ -45,8 +45,19 @@ async function travelAt(browser, fps) {
         };
         pick('#p1-grid', '#p1-detail');
         pick('#p2-grid', '#p2-detail');
+    });
+    // LET THE MENU REPAINT between steps. Doing all of this in one synchronous
+    // evaluate clicked Start Match in the same tick as the second confirm, and
+    // the arena card in the tick after that - so the match never started and
+    // both arms reported "never reached FIGHT", which reads as a frame-cap bug
+    // and is not one. mobilecheck had the same shape.
+    await H.sleep(500);
+    await page.evaluate(() => {
         const s = document.getElementById('btn-start-match');
         if (s) s.click();
+    });
+    await H.sleep(300);
+    await page.evaluate(() => {
         const card = document.querySelectorAll('#mapselect-grid .map-card')[0];
         if (card) card.click();
     });
@@ -87,8 +98,18 @@ async function travelAt(browser, fps) {
     console.log('    ' + JSON.stringify(slow));
     console.log('    ' + JSON.stringify(fast));
 
-    check('both arms reached a fight', !slow.failed && !fast.failed,
+    const bothRan = !slow.failed && !fast.failed;
+    check('both arms reached a fight', bothRan,
         JSON.stringify({ slow: slow.failed, fast: fast.failed }));
+    // STOP HERE if an arm never got into a match. `dist` is undefined then, and
+    // reading .toFixed(1) off it threw a TypeError that replaced the verdict
+    // with a stack trace - so the run reported NO VERDICT and said nothing
+    // about why, which is the one thing it did know.
+    if (!bothRan) {
+        console.log('    (no measurement to compare - an arm never started a match)');
+        await finish(browser, null);
+        return;
+    }
     check('the cap actually changed the frame rate',
         fast.frames > slow.frames * 1.5, JSON.stringify({ slow: slow.frames, fast: fast.frames }));
 
