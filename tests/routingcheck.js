@@ -51,5 +51,9 @@ check('it navigates to /local', /location\.href = '\/local'/.test(html));
 check('and not to the file path directly',
     !/location\.href = '\/?legacy\//.test(html));
 
-console.log(`\n${pass} passed, ${fail} failed\n`);
+// THE WORDING tests/run.js GRADES ON. This printed '5 passed, 0 failed', which
+// is true and ungradeable - so the runner reported NO VERDICT on a checker that
+// has always passed, every time it ran.
+console.log('');
+console.log(fail ? 'FAILED (' + fail + ')' : 'ALL CHECKS PASSED');
 process.exit(fail ? 1 : 0);

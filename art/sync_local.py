@@ -690,7 +690,13 @@ def force_online_bodies(src, dst):
             mine, theirs = dst[starts[k]:end], src_defs[name]
             if mine == theirs:
                 continue
-            missing = {r for r in set(_IDENT_RE.findall(theirs)) - {name}
+            # CODE ONLY, the third time this has bitten. A chunk carries its
+            # leading comment, and a comment that NAMES a function the other
+            # build lacks read as a dependency on it: gameLoop refused to sync
+            # because a comment inside it said "same shape as refreshPauseUI".
+            # port_missing_definitions was fixed for this in Batch 94; this scan
+            # was not.
+            missing = {r for r in set(_IDENT_RE.findall(_code_only(theirs))) - {name}
                        if r in src_defs and r not in have}
             if missing:
                 needs_port.append((name, sorted(missing)[:3]))

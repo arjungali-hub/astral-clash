@@ -105,6 +105,17 @@ const IPHONE = {
         if (c) c.click();
     });
     await H.sleep(600);
+    // START MATCH, which this checker used to skip. The local build asks for an
+    // explicit press - "when both players confirm, it automatically starts match
+    // instead of waiting for you to click start match" - and confirming P1 while
+    // P2 is a forced bot leaves the button waiting, not the match running. Both
+    // assertions below failed identically at every commit since that button
+    // arrived, which is what "stale test" looks like from outside.
+    await mob.evaluate(() => {
+        const s = document.getElementById('btn-start-match');
+        if (s) s.click();
+    });
+    await H.sleep(300);
     await mob.evaluate(() => { const c = document.querySelectorAll('#mapselect-grid .map-card'); if (c.length) c[0].click(); });
     const reached = await H.waitInPage(mob, "window.ACDebug.gameState === 'FIGHT'", 60000);
     const view = await mob.evaluate(() => {

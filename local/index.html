@@ -9569,6 +9569,16 @@ function syncLockHint() {
 function gameLoop() {
     const dt = computeDt();
     syncLockHint();
+    // The touch pads, in the build that has them. syncTouchUI() existed and was
+    // NEVER CALLED - so the pads were whatever CSS left them, and the second
+    // player's pad sat on screen through a mobile solo match where that side is
+    // a bot. Found by mobilecheck once a stale step in it stopped failing first
+    // and let the assertion behind it run.
+    //
+    // typeof, because this build has no touch scheme and no such function. Same
+    // shape as refreshPauseUI: the call lives in the shared body and does
+    // nothing where the thing it calls does not exist.
+    if (typeof syncTouchUI === 'function') syncTouchUI();
     lastDt = dt;
     fpsSmoothed = fpsSmoothed * 0.9 + (dt > 0.001 ? (60 / dt) : 60) * 0.1;
 

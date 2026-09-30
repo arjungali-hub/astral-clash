@@ -3197,6 +3197,69 @@ exactly how `playerName` was caught in Batch 94.
 Seven surfaces, every one proved by breaking it on purpose and watching it name
 the break.
 
+## Batch 106 - running the other 22 checkers, and what they found
+
+Asked "is there anything else for this update?" — and there was: **22 of the 38
+checkers had not been run against the day's changes**, including `netcheck`,
+which is the only one that covers online multiplayer. The bindings shape, the
+keyboard dispatcher, `readHumanInput` (which sends the network event packets) and
+`takeDamage`'s routing had all changed underneath it.
+
+**19 of the 22 pass.** `coopnetcheck`, `peercheck`, `charcheck`, `swingcheck`,
+`artcheck`, `crushcheck`, `teleportcheck`, `weaponcheck`, `symmetrycheck`,
+`consistencycheck`, `placementcheck`, `maptimecheck`, `localmatchcheck`,
+`coopdowncheck`, `deadcontrolcheck`, `fontcheck`, `batch24check`, `batch38check`,
+and after a fix, `routingcheck` and `mobilecheck`.
+
+### A real bug, behind a stale test
+
+`mobilecheck` failed two assertions. The first was stale: it confirmed P1's
+fighter and clicked an arena card, but never pressed **Start Match** — the button
+this build asks for, added after the checker was written. Verified stale rather
+than broken by running it at the commit before this session: identical failure.
+
+With that fixed the second assertion ran for the first time, and it was right:
+**`syncTouchUI()` existed and was never called.** Not once, from anywhere. The
+touch pads were whatever CSS left them, so the second player's pad sat on screen
+through a mobile solo match where that side is a bot. The call goes in
+`gameLoop`, in `index.html`, behind `typeof` — inert in the build with no touch
+scheme, live in the one that has it.
+
+`routingcheck` printed `5 passed, 0 failed`, which is true and ungradeable, so
+the runner reported NO VERDICT on a checker that has always passed.
+
+### The comment-scanning bug, third time
+
+Adding that call made `gameLoop` refuse to sync: *"needs refreshPauseUI"*. The
+name appears in the new **comment**, saying "same shape as refreshPauseUI" — and
+`force_online_bodies` scanned the whole chunk, comments included.
+`port_missing_definitions` was fixed for exactly this in Batch 94 and this scan
+was not.
+
+### Three checkers remain unverified, and the report now says why
+
+`netcheck` timed out at 900s. Seven of its assertions passed first — roles and
+`LOCAL_SIDE`, pick isolation, character sync, arena sync, puppeting, every path
+the day's changes touched — and then a browser **died**: `Target closed`, with
+684MB free. It is the only checker that launches two full Chrome instances, each
+software-rendering a 3D match. `leakcheck` (ten rematches) and `framerateccheck`
+(two browsers at different frame caps) failed the same way, both with under 1GB
+free; neither has ever been executed on this machine.
+
+That is not "they pass" and it is not "they fail" — it is unverified, and the
+difference matters. So `tests/run.js` measures free memory before each checker
+and says what it found, loudly for the two-browser ones:
+
+    LOW MEMORY: 922MB free, framerateccheck wants ~1200MB
+    ^ ran with 922MB free - confirm on a quieter machine before believing this
+
+Same lesson as the lockfile: contention does not announce itself, it corrupts the
+result and looks like a bug.
+
+**Still to do:** run `netcheck`, `leakcheck` and `framerateccheck` with ~2.5GB
+free. Nothing in the code is known to be wrong; nothing in those three is known
+to be right either.
+
 ### Still open
 
 Nothing is open in the sense of "a reported bug nobody has fixed", and nothing

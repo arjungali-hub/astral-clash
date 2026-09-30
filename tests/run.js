@@ -38,6 +38,33 @@ const PER_TEST_MS = 10 * 60 * 1000;
 // Not checkers: the harness itself, the mop, and this file.
 const NOT_TESTS = new Set(['harness.js', 'cleanup.js', 'run.js']);
 
+// FREE MEMORY, because contention does not announce itself.
+//
+// netcheck launches TWO Chrome instances, each software-rendering a 3D match.
+// With 684MB free one of them died mid-run - `Target closed` - and the watchdog
+// then burned 900 seconds before reporting TIMED OUT, which reads exactly like a
+// hang in the game. Seven of its assertions had already passed.
+//
+// Same lesson as the lockfile: say what the machine is doing, rather than
+// letting the machine corrupt the result and blaming the code.
+const TWO_BROWSER_TESTS = new Set(['netcheck']);
+const NEED_MB = 1200;          // one browser rendering an arena
+const NEED_MB_TWO = 2200;      // two of them
+
+function freeMB() {
+    try { return Math.round(require('os').freemem() / 1048576); }
+    catch (e) { return null; }
+}
+
+function memoryWarning(name) {
+    const free = freeMB();
+    if (free === null) return null;
+    const need = TWO_BROWSER_TESTS.has(name) ? NEED_MB_TWO : NEED_MB;
+    if (free >= need) return null;
+    return free + 'MB free, ' + name + ' wants ~' + need + 'MB'
+        + (TWO_BROWSER_TESTS.has(name) ? ' (it runs two browsers)' : '');
+}
+
 function allTests() {
     return fs.readdirSync(DIR)
         .filter(f => f.endsWith('.js') && !NOT_TESTS.has(f))
@@ -103,6 +130,8 @@ for (const name of names) {
     const file = path.join(DIR, name + '.js');
     if (!fs.existsSync(file)) { console.log('%s  NO SUCH CHECKER', name.padEnd(22)); failed.push(name); continue; }
     const started = Date.now();
+    const memWarn = memoryWarning(name);
+    if (memWarn) console.log('%s %s', ''.padEnd(22), 'LOW MEMORY: ' + memWarn);
     const r = spawnSync(process.execPath, [file], { encoding: 'utf8', timeout: PER_TEST_MS });
     const secs = ((Date.now() - started) / 1000).toFixed(0) + 's';
     const out = (r.stdout || '') + (r.stderr || '');
@@ -111,6 +140,10 @@ for (const name of names) {
     else if (/ALL CHECKS PASSED/.test(out)) verdict = 'pass';
     else if (/FAILED \(/.test(out)) verdict = (out.match(/FAILED \([^)]*\)/) || ['FAILED'])[0];
     else verdict = 'NO VERDICT';
+    if (verdict !== 'pass' && memWarn) {
+        console.log('%s %s', ''.padEnd(22), '^ ran with ' + memWarn
+            + ' - confirm on a quieter machine before believing this');
+    }
     if (verdict !== 'pass') {
         failed.push(name);
         const detail = out.split('\n').filter(l => /FAIL|Error|error:/.test(l)).slice(0, 3);
