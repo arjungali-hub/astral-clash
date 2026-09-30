@@ -3612,6 +3612,17 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     else:
         print('  %-34s ok (all agreeing or documented)' % 'markup containers')
 
+    cdrift = comment_drift(src, dst)
+    if cdrift:
+        print('  %-34s %d sentence(s) edited in one build only:'
+              % ('comment drift', len(cdrift)))
+        for x, y in cdrift[:3]:
+            print('      there: %s' % x[:80])
+            print('      here : %s' % y[:80])
+    else:
+        print('  %-34s ok (%d comment lines, none edited on one side)'
+              % ('comment drift', len(comment_lines(dst))))
+
     h_on, h_lo = head_drift(src, dst)
     if h_on or h_lo:
         print('  %-34s %d only there, %d only here: %s'
@@ -3993,6 +4004,58 @@ def head_drift(src, dst):
     a = [t for t in head_lines(src) if keep(t)]
     b = [t for t in head_lines(dst) if keep(t)]
     return [t for t in a if t not in set(b)], [t for t in b if t not in set(a)]
+
+
+# COMMENT SENTENCES that differ between the builds on purpose. There is one.
+#
+# Prose has no name to key on, so the key is FUZZY: two comment lines 82% alike
+# and not identical are one sentence edited in a single build, which is the whole
+# of what comment drift looks like. Four were found that way - the Shop/Armory
+# rename landing in one file and not the other, in opposite directions.
+#
+# Reported, not closed. A sentence is the one thing here a person should
+# reconcile rather than a script, and the pair below SHOULD differ.
+COMMENT_INTERFACE = (
+    'Shared with the',      # each file points at the other by name
+)
+_COMMENT_ALIKE = 0.82
+
+
+def comment_lines(text):
+    """Every comment line, block comments included, normalised."""
+    out, block = [], False
+    for line in text.splitlines():
+        x = ' '.join(line.split())
+        if not x:
+            continue
+        if block:
+            out.append(x)
+            if '*/' in x or '-->' in x:
+                block = False
+            continue
+        if x.startswith('//'):
+            out.append(x)
+            continue
+        if x.startswith('/*') or x.startswith('<!--'):
+            out.append(x)
+            if not ('*/' in x[2:] or '-->' in x):
+                block = True
+    return out
+
+
+def comment_drift(src, dst):
+    """Sentences that look edited in one build only."""
+    a, b = set(comment_lines(src)), set(comment_lines(dst))
+    only_a = sorted(x for x in a - b if len(x) >= 40)
+    only_b = [x for x in b - a if len(x) >= 40]
+    out = []
+    for x in only_a:
+        if any(w in x for w in COMMENT_INTERFACE):
+            continue
+        m = difflib.get_close_matches(x, only_b, n=1, cutoff=_COMMENT_ALIKE)
+        if m and not any(w in m[0] for w in COMMENT_INTERFACE):
+            out.append((x, m[0]))
+    return out
 
 
 def check_fixed_point():

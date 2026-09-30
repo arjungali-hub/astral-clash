@@ -489,7 +489,7 @@
            pick is confirmed) — these two "locked" concepts are unrelated and
            must not collide on one class name. A locked card stays visible
            and readable (you should want it) but is desaturated, shows its
-           coin price, and routes clicks to the Shop instead of previewPick. */
+           coin price, and routes clicks to the Armory instead of previewPick. */
         .fighter-btn.roster-locked { border-color: #3b4661; filter: grayscale(0.75) brightness(0.75); }
         .fighter-btn.roster-locked .fname { color: #94a3b8; }
         .fighter-btn.roster-locked:hover { background: #1a2235; box-shadow: none; }
@@ -503,7 +503,7 @@
         .coin-balance { color: #f59e0b; font-weight: bold; font-size: 0.9rem; letter-spacing: 0.02em; }
         .coin-balance::before { content: "\25CF"; margin-right: 5px; color: #fbbf24; }
         /* Batch 21: each side panel owns its purse + a shortcut into that
-           player's Shop tab, so whose coins are whose is never ambiguous. */
+           player's own Armory, so whose coins are whose is never ambiguous. */
         .side-name-row { display: flex; justify-content: center; margin: 0 0 8px; }
         .side-name {
             width: 100%; max-width: 220px; box-sizing: border-box;
@@ -1606,7 +1606,7 @@
     <!-- ONE MESSAGE, NO ESCAPE HATCHES (Batch 41).
          Batch 31 removed the touch control scheme, so on a phone this build is
          unplayable: aiming needs a mouse and moving needs a keyboard.
-         Batch 33 softened that with a link to the archived touch build and an
+         Batch 33 softened that with a link to the local touch build and an
          "I have a mouse and keyboard" override. Both are now gone, reported
          after actually trying it:
            - the touch build "was really bad and hard to play", so pointing
@@ -6176,7 +6176,7 @@ class Fighter {
         // same userData contract, so nothing downstream needs to know which.
         const group = buildRiggedCharacter(this.name) || PROC_MESH_BUILDERS[this.name](this.color);
         this.isRigged = !!group.userData.rigged;
-        // Batch 34: MULTIPLY by the builder's scale, never assign over it -
+        // MULTIPLY by the builder's scale, never assign over it - see
         // otherwise Karrigos snaps from 1.5x to 1.0x the moment he dies.
         this.meshBaseScale = group.scale.x || 1;
         addRimOutline(group, this.color, this.isBossEntity ? { color: '#140f0c', scale: 1.04 } : undefined);

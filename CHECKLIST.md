@@ -3145,6 +3145,58 @@ lists differ by design, and a missing export fails a checker loudly
 **What is left that genuinely needs two edits: nothing that is the same in both
 builds.** `Fighter.readHumanInput` is eight lines and is two control schemes.
 
+## Batch 104 - comments were the last thing with no key
+
+"Documentation, not bugs" is how I kept skipping 428 duplicated comment lines
+across four rounds of this question. An update to a comment is still an update,
+and four had drifted:
+
+  * `the Shop header` against `the Armory header`
+  * `routes clicks to the Armory` against `routes clicks to the Shop`
+
+    the same rename landing in one file and not the other, **in opposite
+    directions, one each way** - while the UI has said Armory in both builds for
+    some time.
+
+  * a `Batch 34:` prefix that reached one file only.
+  * `a link to the archived touch build`, which is the word the user asked not to
+    use for this build: "make sure to just call the legacy/archived version
+    local."
+
+**The key is a fuzzy match, which is unusual here and right for prose.** Code has
+names; a sentence has only itself. Two comment lines 82% alike and not identical
+are one sentence edited in a single build, and that is the whole of what comment
+drift looks like. Reported rather than closed - the one pair that SHOULD differ
+is each file's pointer at the other, and a sentence is the one thing here a
+person should reconcile rather than a script.
+
+### The coverage map, finally
+
+    duplicated lines with no key : 88
+       script  85   window.ACDebug, documented
+       head     1   <!DOCTYPE html>
+       gap      1   </head>
+       markup   1   <body>
+
+Three of those four are the document's own opening tags. The 85 are the debug
+surface each build exports for its own checkers, documented rather than guarded
+on purpose: the lists differ by design, and a missing export fails a checker
+loudly ("D.foo is not a function") rather than the game quietly - which is
+exactly how `playerName` was caught in Batch 94.
+
+### What the sync now says on every run
+
+    comment drift          ok (3287 comment lines, none edited on one side)
+    markup containers      ok (all agreeing or documented)
+    document head          ok (7 lines match)
+    top-level statements   ok (70 match, either side)
+    event listeners        ok (11 registered in both, agreeing or documented)
+    button wiring          ok (20 ids wired in both, agreeing or documented)
+    duplication left       1 real body both sides, 13 stubs
+
+Seven surfaces, every one proved by breaking it on purpose and watching it name
+the break.
+
 ### Still open
 
 Nothing is open in the sense of "a reported bug nobody has fixed", and nothing

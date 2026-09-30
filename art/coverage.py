@@ -27,11 +27,13 @@ art/sync_local.py would carry a change to it from the online build to this one,
 or would report it as an undocumented difference. It does NOT mean the line is
 identical - INTERFACE entries are covered and deliberately differ.
 
-READING THE OUTPUT. Comment prose and braces are counted apart from code: a
-comment drifting is a documentation problem, not a bug, and close_comment_drift
-already handles the ones attached to definitions. What matters is CODE with no
-key, and the honest target for that number is zero, or a short list of lines
-whose region explains them (the six tags of an HTML head, for instance).
+READING THE OUTPUT. Comments are keyed too, since Batch 104: an update to a
+comment is still an update, and four had drifted - the Shop/Armory rename landing
+in one file and not the other, in opposite directions. Prose has no name, so that
+key is a fuzzy match rather than an exact one.
+
+What is left, and why it is left, is the last section of this file's own report:
+whatever prints here is either a real gap or something documented as not one.
 """
 import io
 import os
@@ -107,6 +109,14 @@ def classify(dst, src):
             depth += -1 if mm.group(1) else 1
             i = mm.end()
         mark(mk0 + m.start(), i, 'markup-subtree')
+
+    # Comment lines, compared by comment_drift's fuzzy match. Prose has no name
+    # to key on, so the key is "82% alike and not identical" - which is the whole
+    # of what an edited sentence looks like.
+    for t in S.comment_lines(dst):
+        i = dst.find(t)
+        if i >= 0:
+            mark(i, i + len(t), 'comment-drift')
 
     # The document head, compared as a region by head_drift.
     for t in S.head_lines(dst):
