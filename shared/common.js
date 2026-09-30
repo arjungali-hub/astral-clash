@@ -61,6 +61,70 @@ const PROGRESSION_KEY = 'astralClashProgression';
 
 const SIDES = ['p1', 'p2'];
 
+// ------------------------------------------------------- side colours
+// WHICH SIDE IS WHICH, as a colour. Cyan against pink reads clearly to most
+// people and poorly to anyone with deuteranopia or protanopia - together the
+// great majority of colourblindness - and in three places the colour is the
+// only channel: the zone pillar in the arena, the two zone tracks on the HUD,
+// and the rings under each fighter in a spectator match.
+//
+// The alternative is Okabe-Ito blue and orange, a pair picked to stay separable
+// under all three common forms. The overhead rings already used exactly that,
+// for exactly this reason; this makes the choice available everywhere.
+const SIDE_PALETTES = {
+    standard:    { p1: '#00f3ff', p2: '#f472b6' },
+    colourblind: { p1: '#0072b2', p2: '#e69f00' },
+};
+const SIDE_PALETTE_KEY = 'astralClashSidePalette';
+let sidePalette = safeLSGet(SIDE_PALETTE_KEY) === 'colourblind' ? 'colourblind' : 'standard';
+
+function sideColor(side) {
+    return (SIDE_PALETTES[sidePalette] || SIDE_PALETTES.standard)[side === 'p2' ? 'p2' : 'p1'];
+}
+
+// THREE.js wants a number, the HUD and the DOM want a string. Both go through
+// the same table so a palette can never be half-applied.
+function sideColorHex(side) {
+    return parseInt(sideColor(side).slice(1), 16);
+}
+
+// THE RINGS UNDER EACH FIGHTER in a spectator match, by SIDE rather than by
+// fighter: a mirror match gave both the same ring and the same HUD colour, so
+// from overhead there was nothing to tell them apart.
+//
+// DECLARED HERE BECAUSE IT WAS DECLARED NOWHERE. Both builds referenced it
+// and neither defined it, so the line that colours a ring threw a
+// ReferenceError - in the one view it exists for, a two-bot match. The
+// dangling-reference guard could not see it: that guard is bounded by the
+// online build's vocabulary, and this name was in neither build's.
+const WATCH_RING_SIDE = { get p1() { return sideColor('p1'); },
+                          get p2() { return sideColor('p2'); } };
+
+function setSidePalette(key) {
+    sidePalette = SIDE_PALETTES[key] ? key : 'standard';
+    safeLSSet(SIDE_PALETTE_KEY, sidePalette);
+    refreshSidePaletteUI();
+    // NOTHING TO REPAINT BY HAND. syncWatchRings runs every frame and sets each
+    // ring from WATCH_RING_SIDE, which reads this palette - so the change lands
+    // on the next frame on its own.
+    //
+    // The first version of this called syncWatchRings() from here, and the
+    // shared-scope guard refused the write: that function lives inside
+    // bootGame(), which a shared module cannot see into. The `typeof` check I
+    // had wrapped it in would simply have been false forever.
+}
+
+function toggleSidePalette() {
+    setSidePalette(sidePalette === 'standard' ? 'colourblind' : 'standard');
+}
+
+function refreshSidePaletteUI() {
+    setOptState('btn-side-palette',
+                sidePalette === 'colourblind' ? 'Colourblind' : 'Standard',
+                sidePalette === 'colourblind');
+}
+
+
 function freshSideProgress() { return { coins: 0, unlockedChars: STARTER_CHARS.slice(), upgrades: {}, doubleJumpUnlocked: false }; }
 // Repairs one side's blob: these are the fields everything downstream indexes
 // into directly, so a hand-edited/half-written save must not reach them raw.

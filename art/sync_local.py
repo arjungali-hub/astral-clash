@@ -785,6 +785,12 @@ MARKUP_INTERFACE = {
     # Whole SCREENS that say different things because the builds do different
     # things. Listed so the near-match report stops naming them every run and
     # a genuinely new one stands out.
+    # DELIBERATELY REMOVED from this build, so the new-element porter must not
+    # put it back. AC_BLOOM says there is no composer here; the toggle wrote a
+    # flag and changed nothing visible, reported as "it doesn't seem to change
+    # anything". Without this the removal step and the porter fight forever and
+    # the fixed point never settles.
+    'btn-bloom': 'no composer in this build, so the glow toggle is removed',
     'modeselect-screen': 'the host owns the mode there; here either player picks it',
     # Whole screens whose CONTENTS differ because the builds do. Listed with a
     # reason each, so the drift report can name every other difference at any
@@ -898,6 +904,7 @@ def close_fighter_drift(src, dst):
 # Tags that are part of a label rather than a thing of their own. A child of one
 # of these carrying an ID is still a thing, so the id test is separate.
 _INLINE_TAGS = ('span', 'b', 'i', 'em', 'strong', 'small', 'code', 'br')
+_VOID_TAGS = ('input', 'img', 'br', 'hr', 'meta', 'link', 'source', 'track')
 
 
 def _has_real_children(inner):
@@ -966,6 +973,93 @@ def markup_container_drift(src, dst, alike=0.75):
     return out
 
 
+def markup_inserts(src, dst, shared_texts=()):
+    """(offset in dst, element source) for new elements that belong here.
+
+    Keyed on the PRECEDING SIBLING'S ID. An element the online build has and this
+    one does not travels when the id-bearing element directly before it exists
+    here too - which fixes its position exactly, with nothing to infer.
+
+    Without this, adding a control put it in one build and nowhere else: the
+    markup closer only ever kept in step what both builds already had.
+    """
+    def body(text):
+        i = text.index('<body')
+        return i, text[i:text.index('<script', i)]
+
+    _, a = body(src)
+    d_off, b = body(dst)
+    have = set(re.findall(r'id="([a-zA-Z][' + chr(92) + r'w-]*)"', b))
+    # Ids this build's own code, or shared/, reaches for. getElementById and
+    # querySelector both count; so does a data attribute the delegation reads.
+    haystack = dst + ''.join(shared_texts)
+    wanted_ids = set(re.findall(r"getElementById" + chr(92) + r"(" + chr(92)
+                                + r"s*'([a-zA-Z][" + chr(92) + r"w-]*)'", haystack))
+    wanted_ids |= set(re.findall(r"#([a-zA-Z][" + chr(92) + r"w-]*)", haystack))
+    # setOptState takes an element id as a plain string, so a settings row whose
+    # only reference is its own refresh function was invisible to the two
+    # patterns above - which is exactly how the first new control added after
+    # this porter existed still failed to travel.
+    wanted_ids |= set(re.findall(r"setOptState" + chr(92) + r"(" + chr(92)
+                                 + r"s*'([a-zA-Z][" + chr(92) + r"w-]*)'", haystack))
+
+    # Every id-bearing element in the online build's markup, in document order,
+    # as (id, full text, end offset).
+    els = []
+    for m in re.finditer(r'<(' + chr(92) + r'w+)([^>]*' + chr(92)
+                         + r'bid="([a-zA-Z][' + chr(92) + r'w-]*)"[^>]*)>', a):
+        tag, eid = m.group(1).lower(), m.group(3)
+        if tag in ('input', 'img', 'br', 'hr', 'meta', 'link', 'source', 'track'):
+            els.append((eid, m.group(0), m.end()))
+            continue
+        close = a.find('</%s>' % tag, m.end())
+        if close == -1:
+            continue
+        end = close + len('</%s>' % tag)
+        els.append((eid, a[m.start():end], end))
+
+    out = []
+    for k, (eid, text, _end) in enumerate(els):
+        if eid in have or eid in MARKUP_INTERFACE or k == 0:
+            continue
+        # THIS BUILD MUST ACTUALLY WANT IT. The first version keyed only on the
+        # preceding sibling existing, and dragged the entire online lobby across
+        # - lobby-screen, the room slots, the host controls - because their
+        # siblings happen to exist here too. Every one of those is referenced
+        # only by code this build does not have.
+        #
+        # So the test is the same one the CSS port uses: does anything HERE, or
+        # in shared/, look this id up? A control whose refresh function lives in
+        # shared/common.js is wanted; a lobby panel nothing here mentions is not.
+        if eid not in wanted_ids or is_online_only_business(eid.replace('-', '')):
+            continue
+        # Only a SIBLING, not an ancestor: the previous element must end before
+        # this one starts, or it is the container and this is its child.
+        prev_id, prev_text, prev_end = els[k - 1]
+        if prev_end > a.index(text) or prev_id not in have:
+            continue
+        # Same place in this build: directly after that sibling.
+        pm = re.search(r'<(' + chr(92) + r'w+)([^>]*' + chr(92) + r'bid="%s"[^>]*)>'
+                       % re.escape(prev_id), b)
+        if not pm:
+            continue
+        ptag = pm.group(1).lower()
+        if ptag in ('input', 'img', 'br', 'hr', 'meta', 'link', 'source', 'track'):
+            at = pm.end()
+        else:
+            close = b.find('</%s>' % ptag, pm.end())
+            if close == -1:
+                continue
+            at = close + len('</%s>' % ptag)
+        indent = ''
+        line_start = b.rfind(chr(10), 0, pm.start()) + 1
+        indent = b[line_start:pm.start()]
+        if indent.strip():
+            indent = ' ' * 24
+        out.append((d_off + at, chr(10) + indent + text.strip(), eid))
+    return out
+
+
 def close_markup_drift(src, dst):
     """Copy an element's attributes and label from the online build.
 
@@ -995,6 +1089,13 @@ def close_markup_drift(src, dst):
         out = {}
         for m in re.finditer(r'<(' + chr(92) + 'w+)([^>]*' + chr(92) + 'bid="([a-zA-Z][' + chr(92) + 'w-]*)"[^>]*)>', body):
             tag, attrs, eid = m.group(1), m.group(2), m.group(3)
+            # A VOID ELEMENT HAS NO CLOSING TAG. Searching for </input> finds
+            # nothing, so `inner` became everything after it and every slider
+            # and checkbox read as a container full of other elements - which
+            # is why aria-labels on the three volume sliders would not travel.
+            if tag.lower() in _VOID_TAGS:
+                out[eid] = (tag, attrs, '', m.group(0), False)
+                continue
             close = body.find('</%s>' % tag, m.end())
             inner = body[m.end():close] if close != -1 else ''
             out[eid] = (tag, attrs, inner, m.group(0), _has_real_children(inner))
@@ -1012,8 +1113,14 @@ def close_markup_drift(src, dst):
         same_text = ' '.join(inner.split()) == ' '.join(l_inner.split())
         if same_attrs and same_text:
             continue
-        rebuilt = full + inner + '</%s>' % tag
-        old = l_full + l_inner + '</%s>' % l_tag
+        # A void element is its open tag and nothing else. Appending </input>
+        # produced a string that appears nowhere, so every slider and checkbox
+        # reported "could not be matched uniquely" and its label never travelled.
+        if tag.lower() in _VOID_TAGS:
+            rebuilt, old = full, l_full
+        else:
+            rebuilt = full + inner + '</%s>' % tag
+            old = l_full + l_inner + '</%s>' % l_tag
         if dst.count(old) != 1:
             undocumented.append(eid)
             continue
@@ -2655,7 +2762,11 @@ if (location.protocol === 'https:'
     # GUARDED, because this step's anchor survives inside its own replacement -
     # without the guard a second run of this script declares WATCH_RING_SIDE
     # twice, which is a SyntaxError that blanks the page.
-    if 'WATCH_RING_SIDE' not in dst:
+    # WATCH_RING_SIDE lives in shared/common.js now, beside the side palette it
+    # reads. This step never fired - its anchor had already moved - which is
+    # how the name came to be referenced by both builds and declared by
+    # neither. Kept guarded so a stale local copy is still tolerated.
+    if False and 'WATCH_RING_SIDE' not in dst:
       dst = rep(dst, """const WATCH_RING_INNER = 26, WATCH_RING_OUTER = 34;""",
               """const WATCH_RING_INNER = 26, WATCH_RING_OUTER = 34;
 // Deliberately NOT the fighter's colour: see the note where these are applied.
@@ -3105,6 +3216,17 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # elements themselves. Five buttons here were missing a styling class the
     # online build gives them, and two said "Map" where the rest of this build
     # says "arena" 138 times.
+    # NEW ELEMENTS FIRST, so the closer below can then keep them in step.
+    # Applied back to front so an earlier insert cannot move a later offset.
+    inserts = markup_inserts(
+        src, dst, (shared_src, anim_src, props_src, chars_src, common_src))
+    for off, text, _eid in sorted(inserts, reverse=True):
+        dst = dst[:off] + text + dst[off:]
+    if inserts:
+        print('  %-34s %d new: %s'
+              % ('markup ported', len(inserts),
+                 ', '.join(e for _o, _t, e in inserts)))
+
     dst, mk_copied, mk_stuck = close_markup_drift(src, dst)
     if mk_copied:
         print('  %-34s %d elements took the online markup: %s'
@@ -3635,6 +3757,17 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         print('  %-34s ok (%d lines match)'
               % ('document head', len(head_lines(dst))))
 
+    global _ONLINE_VOCAB
+    _ONLINE_VOCAB = set(_def_names(src))
+    s_inserts = statement_inserts(
+        src, dst, (shared_src, anim_src, props_src, chars_src, common_src))
+    for off, text, _label in sorted(s_inserts, reverse=True):
+        dst = dst[:off] + text + dst[off:]
+    if s_inserts:
+        print('  %-34s %d new: %s'
+              % ('statements ported', len(s_inserts),
+                 ', '.join(l for _o, _t, l in s_inserts)))
+
     only_on, only_lo = statement_drift(src, dst)
     if only_on or only_lo:
         undocumented_drift.append('top-level statements')
@@ -3645,6 +3778,15 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     else:
         print('  %-34s ok (%d match, either side)'
               % ('top-level statements', len(top_level_statements(dst))))
+
+    w_inserts = wiring_inserts(
+        src, dst, (shared_src, anim_src, props_src, chars_src, common_src))
+    for off, text, _eid in sorted(w_inserts, reverse=True):
+        dst = dst[:off] + text + dst[off:]
+    if w_inserts:
+        print('  %-34s %d now connected here: %s'
+              % ('wiring ported', len(w_inserts),
+                 ', '.join(e for _o, _t, e in w_inserts)))
 
     drifted = listener_drift(src, dst)
     if drifted:
@@ -3724,6 +3866,10 @@ STUB_LINES = 3
 # Two is the observed cost of a drift closer and a rep() step that patches
 # what it copied; more than that means something is not converging.
 SETTLE_PASSES = 3
+
+# Filled in by main(): every name the online build defines at column 0. A name
+# in here that this build lacks is what makes a statement belong there.
+_ONLINE_VOCAB = set()
 
 # THE ONLY LINES OF THE BUILD PROFILE THAT DIFFER. Everything else in that block
 # - the comment, AC_VENDOR's expression - is copied from the online build
@@ -4098,6 +4244,94 @@ def comment_drift(src, dst):
         m = difflib.get_close_matches(x, only_b, n=1, cutoff=_COMMENT_ALIKE)
         if m and not any(w in m[0] for w in COMMENT_INTERFACE):
             out.append((x, m[0]))
+    return out
+
+
+def statement_inserts(src, dst, shared_texts=()):
+    """(offset in dst, statement text) for top-level statements that belong here.
+
+    A statement travels when every name it mentions already resolves in this
+    build - the same test port_missing_definitions applies to a definition - and
+    when the statement it follows in the online build is present here, which
+    fixes its position with nothing to infer.
+
+    Without this, adding a control put its button in both builds and its wiring
+    in one, so the button did nothing in the other.
+    """
+    have = set(_def_names(dst)) | SHARED_NAMES
+    for t in shared_texts:
+        have |= set(_def_names(t))
+    a = top_level_statements(src)
+    b = set(top_level_statements(dst))
+    out = []
+    for k, stmt in enumerate(a):
+        if k == 0 or stmt in b:
+            continue
+        # STATEMENT_INTERFACE BINDS HERE TOO. Without this the porter overwrote
+        # two statements this build differs on ON PURPOSE: shadows off on a
+        # touch device, and P2's own key set. It wrote `buildGrid('p2-grid',
+        # P1_KEYS, 'p2')` over `P2_KEYS` - which would have given both players
+        # the same keys on one keyboard.
+        if any(w.lower() in stmt.lower() for w in STATEMENT_INTERFACE):
+            continue
+        code = _code_only(stmt)
+        names = set(_IDENT_RE.findall(code))
+        # Anything it mentions that the online build defines and this one does
+        # not means the statement belongs to that build.
+        if any(is_online_only_business(n) for n in names):
+            continue
+        unresolved = [n for n in names
+                      if n in _ONLINE_VOCAB and n not in have]
+        if unresolved:
+            continue
+        prev = a[k - 1]
+        if prev not in b:
+            continue
+        i = dst.find(chr(10) + prev)
+        if i < 0:
+            continue
+        at = i + 1 + len(prev)
+        out.append((at, chr(10) + stmt, stmt.split('(')[0][:46]))
+    return out
+
+
+def wiring_inserts(src, dst, shared_texts=()):
+    """Wiring for a control this build HAS but has not connected.
+
+    wiring_drift compares ids wired in BOTH builds, so a newly wired control is
+    invisible to it: the button travels (markup_inserts), its refresh call
+    travels (statement_inserts), and the line joining the two does not - leaving
+    a control that looks right and does nothing when pressed. Which is exactly
+    what happened to the Player Colours row.
+
+    Ported when the element EXISTS here, is not wired here, and every name the
+    wiring mentions resolves here. Placed after the wiring of whichever control
+    precedes it in the online build, so the block stays in one piece.
+    """
+    have_ids = set(re.findall(r'id="([a-zA-Z][' + chr(92) + r'w-]*)"', dst))
+    on, lo = wiring(src), wiring(dst)
+    have = set(_def_names(dst)) | SHARED_NAMES
+    for t in shared_texts:
+        have |= set(_def_names(t))
+    order = [k for k in on]
+    out = []
+    for k, eid in enumerate(order):
+        if eid in lo or eid not in have_ids or eid in WIRING_INTERFACE:
+            continue
+        stmt = on[eid]
+        names = set(_IDENT_RE.findall(_code_only(stmt)))
+        if any(is_online_only_business(n) for n in names):
+            continue
+        if any(n in _ONLINE_VOCAB and n not in have for n in names):
+            continue
+        # After the preceding control's wiring, so settings rows stay together.
+        prev = next((order[j] for j in range(k - 1, -1, -1) if order[j] in lo), None)
+        if prev is None:
+            continue
+        i = dst.find(lo[prev])
+        if i < 0:
+            continue
+        out.append((i + len(lo[prev]), chr(10) + stmt.strip(), eid))
     return out
 
 

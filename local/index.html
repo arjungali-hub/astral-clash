@@ -1269,13 +1269,22 @@
             55%  { transform: scale(1.06); opacity: 1; letter-spacing: 0.035em; }
             100% { transform: scale(1);    opacity: 1; letter-spacing: 0.02em; }
         }
+                .setup-note {
+            color: #94a3b8;
+            font-size: 0.75rem;
+            line-height: 1.5;
+            margin: 10px 0;
+        }
+        .setup-note.ready {
+            color: #4ade80;
+        }
         </style>
 </head>
 <body>
 
     <div id="game-container">
-        <canvas id="gameCanvas" width="1170" height="650"></canvas>
-        <canvas id="hudCanvas" width="1170" height="650"></canvas>
+        <canvas id="gameCanvas" width="1170" height="650" role="img" aria-label="The arena, drawn from your fighter's eyes. This game needs sight to play."></canvas>
+        <canvas id="hudCanvas" width="1170" height="650" role="img" aria-label="Health, special meter and round score for both fighters."></canvas>
 
     <!-- The loading screen. Implemented from the design canvas; see the CSS
          above for which artboard each layer comes from. It is a sibling of
@@ -1390,9 +1399,14 @@
                 <div class="menu-section">
                     <h3 id="winner-title">Player Wins!</h3>
                     <div id="match-summary"></div>
+                    <div id="gameover-actions">
+                        <button id="btn-rematch">Rematch (Same Arena)</button>
+                        <button id="btn-reroll-map">Rematch (New Arena)</button>
+                    </div>
                     <button id="btn-play-again">Play Again</button>
                     <button id="btn-rematch">Rematch (Same Arena)</button>
                     <button id="btn-reroll-map">Rematch (New Arena)</button>
+                    <div id="gameover-wait" class="setup-note" style="display:none;">Waiting for the host to choose a rematch&hellip;</div>
                 </div>
             </div>
 
@@ -1425,17 +1439,17 @@
                     <h3>Audio Settings</h3>
                     <div class="audio-row">
                         <label for="vol-master">Master</label>
-                        <input type="range" id="vol-master" min="0" max="1" step="0.01">
+                        <input type="range" id="vol-master" min="0" max="1" step="0.01" aria-label="Master volume">
                         <span class="audio-value" id="vol-master-value">0%</span>
                     </div>
                     <div class="audio-row">
                         <label for="vol-sfx">SFX</label>
-                        <input type="range" id="vol-sfx" min="0" max="1" step="0.01">
+                        <input type="range" id="vol-sfx" min="0" max="1" step="0.01" aria-label="Sound effects volume">
                         <span class="audio-value" id="vol-sfx-value">0%</span>
                     </div>
                     <div class="audio-row">
                         <label for="vol-music">Music</label>
-                        <input type="range" id="vol-music" min="0" max="1" step="0.01">
+                        <input type="range" id="vol-music" min="0" max="1" step="0.01" aria-label="Music volume">
                         <span class="audio-value" id="vol-music-value">0%</span>
                     </div>
                     <button id="btn-audio-mute" class="opt">Mute<span class="opt-state">Off</span></button>
@@ -1449,6 +1463,7 @@
                     <div class="settings-list">
                         <button id="btn-open-rebind" class="btn-secondary">Rebind Keys</button>
                         <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
+                        <button id="btn-side-palette" class="opt" title="Switch the two player colours to a colourblind-safe pair">Player Colours<span class="opt-state">Standard</span></button>
 
                         <button id="btn-open-audio" class="btn-secondary">Audio Settings</button>
                         <!-- Added after archiving: the only edit to this file's
@@ -1523,7 +1538,7 @@
                         </div>
                     </div>
                     <label class="tutorial-hide-row" id="tutorial-hide-row">
-                        <input type="checkbox" id="chk-tutorial-hide"> Don't show this automatically next time
+                        <input type="checkbox" id="chk-tutorial-hide" aria-label="Do not show How to Play automatically next time"> Don't show this automatically next time
                     </label>
                     <button id="btn-tutorial-close">Got it!</button>
                 </div>
@@ -2542,7 +2557,9 @@ function toggleBloom() {
 }
 refreshBloomUI();
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
+document.getElementById('btn-side-palette').addEventListener('click', toggleSidePalette);
 refreshHudScaleUI();
+refreshSidePaletteUI();
 
 function keyLabel(k) {
     if (!k) return '--';
@@ -6176,8 +6193,15 @@ class Fighter {
         // same userData contract, so nothing downstream needs to know which.
         const group = buildRiggedCharacter(this.name) || PROC_MESH_BUILDERS[this.name](this.color);
         this.isRigged = !!group.userData.rigged;
-        // MULTIPLY by the builder's scale, never assign over it - see
-        // otherwise Karrigos snaps from 1.5x to 1.0x the moment he dies.
+        // Batch 34: remember the builder's own scale. The procedural builders
+        // apply a per-character size multiplier to this group - Karrigos 1.5,
+        // Grint 0.72, Slagling 0.86, Hollowkin 1.08 - and two animations then
+        // ASSIGNED to group.scale absolutely rather than multiplying, so
+        // Karrigos visibly snapped from 1.5x to 1.0x the instant he started
+        // dying (and again in the crush cinematic). It only ever self-healed
+        // because initMesh() builds a fresh group each round. Nothing in the
+        // simulation reads mesh scale - collision is a hardcoded 40x40 circle -
+        // so this is purely visual, which is exactly why it went unnoticed.
         this.meshBaseScale = group.scale.x || 1;
         addRimOutline(group, this.color, this.isBossEntity ? { color: '#140f0c', scale: 1.04 } : undefined);
         group.userData.specialAnim = SPECIAL_ANIMS[this.cfg.special] || null; // distinct, more elaborate motion for the special (vs the basic weaponAnim)
@@ -6219,7 +6243,7 @@ class Fighter {
         group.add(this.isBossEntity
             ? makeNameSprite(this.name, '#f59e0b')
             : makeNameSprite(displayName(this.isPlayerOne ? 'p1' : 'p2'),
-                             this.isPlayerOne ? '#00f3ff' : '#f472b6'));
+                             sideColor(this.isPlayerOne ? 'p1' : 'p2')));
 
         const flashLight = new THREE.PointLight(0xffffff, 0, 70);
         flashLight.position.y = 16;
@@ -8309,7 +8333,7 @@ function updateZoneControl(dt) {
         // Held: the holder's colour, pulsing. EMPTY: a bright amber beacon, and
         // MORE visible than when held - an unclaimed zone is the one asking you
         // to come and stand in it. It used to be dimmest exactly then.
-        const held = zoneHolder ? (zoneHolder === 'p1' ? 0x00f3ff : 0xf472b6) : 0xffd166;
+        const held = zoneHolder ? sideColorHex(zoneHolder) : 0xffd166;
         const beat = 0.5 + 0.5 * Math.sin(arenaTime * (zoneHolder ? 0.22 : 0.12));
         for (const part of [u.ring, u.fill, u.column]) part.material.color.setHex(held);
         for (const seg of u.collar.children) seg.material.color.setHex(held);
@@ -8617,7 +8641,8 @@ function drawRoundStatus() {
         // "who is closer to winning" reads as two bars racing inward.
         const BW = 120, BH = 9, gap = 26;
         const leftX = hudW() / 2 - gap / 2 - BW, rightX = hudW() / 2 + gap / 2;
-        [['p1', leftX, '#00f3ff'], ['p2', rightX, '#f472b6']].forEach(([side, x, col]) => {
+        [['p1', leftX], ['p2', rightX]].forEach(([side, x]) => {
+            const col = sideColor(side);
             hudCtx.fillStyle = 'rgba(15,20,32,0.75)'; hudCtx.fillRect(x, MODE_Y, BW, BH);
             const w = BW * Math.min(1, zoneScore[side] / ZONE_TARGET);
             hudCtx.fillStyle = col;
@@ -8636,9 +8661,9 @@ function drawRoundStatus() {
         hudCtx.fillText(`${Math.floor(zoneScore.p2)}s`, rightX + BW + 16, MODE_Y + BH);
     } else if (matchMode === 'timeattack') {
         for (let i = 0; i < TIME_ATTACK_KOS; i++) {
-            hudCtx.fillStyle = i < koTally.p1 ? '#00f3ff' : '#1e293b';
+            hudCtx.fillStyle = i < koTally.p1 ? sideColor('p1') : '#1e293b';
             hudCtx.beginPath(); hudCtx.arc(hudW() / 2 - 20 - i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
-            hudCtx.fillStyle = i < koTally.p2 ? '#f472b6' : '#1e293b';
+            hudCtx.fillStyle = i < koTally.p2 ? sideColor('p2') : '#1e293b';
             hudCtx.beginPath(); hudCtx.arc(hudW() / 2 + 20 + i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
         }
         hudCtx.font = hudFont(11); hudCtx.fillStyle = '#64748b';

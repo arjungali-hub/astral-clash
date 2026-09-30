@@ -35,6 +35,16 @@ const DIR = __dirname;
 const LOCK = path.join(DIR, '.run.lock');
 const PER_TEST_MS = 10 * 60 * 1000;
 
+// A FEW CHECKERS ARE HONESTLY SLOW, and a cap that kills them reports
+// TIMED OUT for work that was proceeding correctly. botcheck steps ~1400
+// FRAMES because the bot thinks in frames, and this machine renders a live
+// match at 2.1fps through swiftshader - eleven minutes here, twenty-five
+// seconds on a real display. netcheck drives two browsers; leakcheck plays
+// ten matches to completion.
+const LONG_MS = 30 * 60 * 1000;
+const SLOW_TESTS = new Set(['botcheck', 'netcheck', 'leakcheck']);
+const timeoutFor = (name) => (SLOW_TESTS.has(name) ? LONG_MS : PER_TEST_MS);
+
 // Not checkers: the harness itself, the mop, and this file.
 const NOT_TESTS = new Set(['harness.js', 'cleanup.js', 'run.js']);
 
@@ -132,7 +142,7 @@ for (const name of names) {
     const started = Date.now();
     const memWarn = memoryWarning(name);
     if (memWarn) console.log('%s %s', ''.padEnd(22), 'LOW MEMORY: ' + memWarn);
-    const r = spawnSync(process.execPath, [file], { encoding: 'utf8', timeout: PER_TEST_MS });
+    const r = spawnSync(process.execPath, [file], { encoding: 'utf8', timeout: timeoutFor(name) });
     const secs = ((Date.now() - started) / 1000).toFixed(0) + 's';
     const out = (r.stdout || '') + (r.stderr || '');
     let verdict;

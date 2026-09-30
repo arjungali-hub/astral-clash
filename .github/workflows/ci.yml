@@ -1,0 +1,147 @@
+# Every checker, on every push - because 38 of them existed and ran only when
+# somebody remembered.
+#
+# THIS ALSO FIXES THE ONE THING THIS REPO COULD NOT TEST. netcheck launches two
+# full Chrome instances, each software-rendering a 3D match through swiftshader;
+# leakcheck plays ten rematches; framerateccheck runs two frame-capped arms.
+# All three want 1.2-2.2GB free, the development machine has had under 1GB all
+# week, and all three have therefore never completed a run. A GitHub runner has
+# 16GB. They are not slow here because they are badly written.
+#
+# TWO JOBS, because a forty-minute suite that blocks every push gets switched
+# off. `guards` and `fast` answer in a few minutes and gate the push; `slow`
+# runs the heavy checkers on the same push but nobody waits on it.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push supersedes the first: nothing is learned from finishing a run
+# against a commit that is already stale.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # tests/harness.js takes the browser from AC_CHROME, defaulting to a Windows
+  # path that does not exist here.
+  AC_CHROME: /usr/bin/google-chrome
+
+jobs:
+  # ---------------------------------------------------------------- guards
+  # No browser, no npm install. This is the job that catches "changed one build
+  # and not the other", and it should answer in seconds.
+  guards:
+    name: Build guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Exits non-zero if the local build is stale, OR if the two builds differ
+      # anywhere without a reason on one of the nine interface lists.
+      - name: The two builds agree
+        run: python art/sync_local.py --check
+
+      # Not a pass/fail gate - a number to watch. If the unkeyed count climbs
+      # above 88, something new has no mechanism keeping it in step.
+      - name: Coverage map
+        run: python art/coverage.py
+
+      - name: Both builds parse
+        run: |
+          node -e '
+            const fs = require("fs"), vm = require("vm");
+            let bad = 0;
+            for (const p of ["index.html", "local/index.html"]) {
+              const s = fs.readFileSync(p, "utf8");
+              const re = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g;
+              let m;
+              while ((m = re.exec(s))) {
+                try { new vm.Script(m[1]); }
+                catch (e) { bad++; console.error(p + ": " + e.message); }
+              }
+            }
+            for (const p of ["shared/common.js", "shared/roster.js", "shared/animation.js",
+                             "shared/props.js", "shared/characters.js", "art/local_extras.js"]) {
+              try { new vm.Script(fs.readFileSync(p, "utf8")); }
+              catch (e) { bad++; console.error(p + ": " + e.message); }
+            }
+            process.exit(bad ? 1 : 0);
+          '
+
+  # ------------------------------------------------------------------ fast
+  # Under a minute each on a real machine. This is the gate.
+  fast:
+    name: Fast checkers
+    runs-on: ubuntu-latest
+    needs: guards
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+        with:
+          chrome-version: stable
+      - name: Install test deps
+        working-directory: tests
+        run: npm ci || npm install
+      - name: Run
+        env:
+          AC_CHROME: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          node tests/run.js \
+            bootcheck smoke localstartcheck localuxcheck localshopcheck \
+            layoutcheck keyboardcheck fontcheck consistencycheck routingcheck \
+            sandboxcheck batch24check batch38check symmetrycheck weaponcheck \
+            deadcontrolcheck inputguardcheck mobilecheck knockbackcheck
+
+  # ------------------------------------------------------------------ slow
+  # Minutes each, including the three that have never run on the development
+  # machine. Runs on the same push; nobody waits on it.
+  slow:
+    name: Slow checkers
+    runs-on: ubuntu-latest
+    needs: guards
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+        with:
+          chrome-version: stable
+      - name: Install test deps
+        working-directory: tests
+        run: npm ci || npm install
+      - name: Run
+        env:
+          AC_CHROME: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          node tests/run.js \
+            netcheck leakcheck framerateccheck botcheck \
+            controlscheck localcombatcheck localmatchcheck onlineuxcheck \
+            coopnetcheck peercheck charcheck swingcheck crushcheck \
+            teleportcheck artcheck mapscheck maptimecheck placementcheck \
+            coopdowncheck awaypausecheck cssparitycheck
+
+      # cssparitycheck compares against a snapshot that is git-ignored, so on a
+      # fresh checkout it has nothing to compare and says so. Keeping the one it
+      # builds lets a later run diff against it.
+      - name: Keep the CSS baseline
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: css-baseline
+          path: tests/.css-baseline.json
+          if-no-files-found: ignore

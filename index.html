@@ -1365,8 +1365,8 @@
 <body>
 
     <div id="game-container">
-        <canvas id="gameCanvas" width="1170" height="650"></canvas>
-        <canvas id="hudCanvas" width="1170" height="650"></canvas>
+        <canvas id="gameCanvas" width="1170" height="650" role="img" aria-label="The arena, drawn from your fighter's eyes. This game needs sight to play."></canvas>
+        <canvas id="hudCanvas" width="1170" height="650" role="img" aria-label="Health, special meter and round score for both fighters."></canvas>
 
     <!-- The loading screen. Implemented from the design canvas; see the CSS
          above for which artboard each layer comes from. It is a sibling of
@@ -1450,7 +1450,7 @@
                         <span id="room-status-pill" class="status-pill">Not connected</span>
                         <span id="room-code-chip" class="room-code-chip" style="display:none;">
                             <span class="room-code-chip-label">Room code</span>
-                            <input id="room-code-text" class="room-code-text" readonly>
+                            <input id="room-code-text" class="room-code-text" readonly aria-label="Your room code - share it with the other player">
                             <button id="btn-room-copy" class="lobby-copy">Copy</button>
                         </span>
                         <!-- With the room code rather than between the lobby
@@ -1582,17 +1582,17 @@
                     <h3>Audio Settings</h3>
                     <div class="audio-row">
                         <label for="vol-master">Master</label>
-                        <input type="range" id="vol-master" min="0" max="1" step="0.01">
+                        <input type="range" id="vol-master" min="0" max="1" step="0.01" aria-label="Master volume">
                         <span class="audio-value" id="vol-master-value">0%</span>
                     </div>
                     <div class="audio-row">
                         <label for="vol-sfx">SFX</label>
-                        <input type="range" id="vol-sfx" min="0" max="1" step="0.01">
+                        <input type="range" id="vol-sfx" min="0" max="1" step="0.01" aria-label="Sound effects volume">
                         <span class="audio-value" id="vol-sfx-value">0%</span>
                     </div>
                     <div class="audio-row">
                         <label for="vol-music">Music</label>
-                        <input type="range" id="vol-music" min="0" max="1" step="0.01">
+                        <input type="range" id="vol-music" min="0" max="1" step="0.01" aria-label="Music volume">
                         <span class="audio-value" id="vol-music-value">0%</span>
                     </div>
                     <button id="btn-audio-mute" class="opt">Mute<span class="opt-state">Off</span></button>
@@ -1605,6 +1605,7 @@
                     <h3>Settings</h3>
                     <div class="settings-list">
                         <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
+                        <button id="btn-side-palette" class="opt" title="Switch the two player colours to a colourblind-safe pair">Player Colours<span class="opt-state">Standard</span></button>
                         <button id="btn-bloom" class="opt">Glow<span class="opt-state">On</span></button>
                         <!-- These two DO something when pressed, so they keep
                              the primary style. See the .opt note in the CSS. -->
@@ -1690,7 +1691,7 @@
                         </div>
                     </div>
                     <label class="tutorial-hide-row" id="tutorial-hide-row">
-                        <input type="checkbox" id="chk-tutorial-hide"> Don't show this automatically next time
+                        <input type="checkbox" id="chk-tutorial-hide" aria-label="Do not show How to Play automatically next time"> Don't show this automatically next time
                     </label>
                     <button id="btn-tutorial-close">Got it!</button>
                 </div>
@@ -1721,7 +1722,7 @@
                     <button id="btn-net-host">Host Game</button>
                     <div id="lobby-code-row" class="lobby-code-row" style="display:none;">
                         <span class="lobby-code-label">Room code</span>
-                        <input id="lobby-code" class="lobby-code" readonly>
+                        <input id="lobby-code" class="lobby-code" readonly aria-label="Your room code - share it with the other player">
                         <button id="btn-copy-code" class="lobby-copy">Copy</button>
                     </div>
                 </div>
@@ -2611,12 +2612,14 @@ function cycleHudScale() {
 }
 document.getElementById('btn-sandbox').addEventListener('click', () => setSandboxMatch(!sandboxMatch));
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
+document.getElementById('btn-side-palette').addEventListener('click', toggleSidePalette);
 document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
 // BOTH buttons, at load. The Glow one was never refreshed here, so its
 // markup label - a hardcoded 'On' - survived a reload with bloom turned
 // off: the setting was honoured and the button said the opposite.
 refreshBloomUI();
 refreshHudScaleUI();
+refreshSidePaletteUI();
 
 function keyLabel(k) {
     if (!k) return '--';
@@ -6044,7 +6047,7 @@ class Fighter {
         group.add(this.isBossEntity
             ? makeNameSprite(this.name, '#f59e0b')
             : makeNameSprite(displayName(this.isPlayerOne ? 'p1' : 'p2'),
-                             this.isPlayerOne ? '#00f3ff' : '#f472b6'));
+                             sideColor(this.isPlayerOne ? 'p1' : 'p2')));
 
         const flashLight = new THREE.PointLight(0xffffff, 0, 70);
         flashLight.position.y = 16;
@@ -8925,7 +8928,7 @@ function updateZoneControl(dt) {
         // Held: the holder's colour, pulsing. EMPTY: a bright amber beacon, and
         // MORE visible than when held - an unclaimed zone is the one asking you
         // to come and stand in it. It used to be dimmest exactly then.
-        const held = zoneHolder ? (zoneHolder === 'p1' ? 0x00f3ff : 0xf472b6) : 0xffd166;
+        const held = zoneHolder ? sideColorHex(zoneHolder) : 0xffd166;
         const beat = 0.5 + 0.5 * Math.sin(arenaTime * (zoneHolder ? 0.22 : 0.12));
         for (const part of [u.ring, u.fill, u.column]) part.material.color.setHex(held);
         for (const seg of u.collar.children) seg.material.color.setHex(held);
@@ -9358,7 +9361,8 @@ function drawRoundStatus() {
         // "who is closer to winning" reads as two bars racing inward.
         const BW = 120, BH = 9, gap = 26;
         const leftX = hudW() / 2 - gap / 2 - BW, rightX = hudW() / 2 + gap / 2;
-        [['p1', leftX, '#00f3ff'], ['p2', rightX, '#f472b6']].forEach(([side, x, col]) => {
+        [['p1', leftX], ['p2', rightX]].forEach(([side, x]) => {
+            const col = sideColor(side);
             hudCtx.fillStyle = 'rgba(15,20,32,0.75)'; hudCtx.fillRect(x, MODE_Y, BW, BH);
             const w = BW * Math.min(1, zoneScore[side] / ZONE_TARGET);
             hudCtx.fillStyle = col;
@@ -9377,9 +9381,9 @@ function drawRoundStatus() {
         hudCtx.fillText(`${Math.floor(zoneScore.p2)}s`, rightX + BW + 16, MODE_Y + BH);
     } else if (matchMode === 'timeattack') {
         for (let i = 0; i < TIME_ATTACK_KOS; i++) {
-            hudCtx.fillStyle = i < koTally.p1 ? '#00f3ff' : '#1e293b';
+            hudCtx.fillStyle = i < koTally.p1 ? sideColor('p1') : '#1e293b';
             hudCtx.beginPath(); hudCtx.arc(hudW() / 2 - 20 - i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
-            hudCtx.fillStyle = i < koTally.p2 ? '#f472b6' : '#1e293b';
+            hudCtx.fillStyle = i < koTally.p2 ? sideColor('p2') : '#1e293b';
             hudCtx.beginPath(); hudCtx.arc(hudW() / 2 + 20 + i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
         }
         hudCtx.font = hudFont(11); hudCtx.fillStyle = '#64748b';
