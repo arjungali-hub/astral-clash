@@ -1728,6 +1728,13 @@ WATCH_NEW = """    // Nobody is playing: one camera, from above. Two split-scree
 
 
 def main():
+    # A DIFFERENCE WITH NO REASON IS A FAILURE, not a printed line. Every
+    # surface below reported its findings and let the sync exit 0, which is a
+    # warning in eighty lines of output - and "remember to check" is exactly
+    # what kept not happening. The build is still written first: this script
+    # exists to generate the local build, and refusing to write would leave no
+    # way to fix the thing being complained about.
+    undocumented_drift = []
     src = io.open(SRC, encoding='utf-8').read()
     shared_src = io.open(os.path.join(ROOT, 'shared', 'roster.js'), encoding='utf-8').read()
     anim_src = io.open(os.path.join(ROOT, 'shared', 'animation.js'), encoding='utf-8').read()
@@ -3117,6 +3124,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
               % ('css ported', len(css_ported), ', '.join(css_ported[:4]),
                  ', ...' if len(css_ported) > 4 else ''))
     if css_undoc:
+        undocumented_drift.append('css declarations')
         print('  %-34s %d differ with no reason on CSS_INTERFACE: %s'
               % ('css undocumented', len(css_undoc), ', '.join(sorted(set(css_undoc))[:4])))
 
@@ -3580,20 +3588,6 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
              len(SHARED_REQUIRED) + len(ANIM_REQUIRED) + len(PROPS_REQUIRED)
              + len(CHARS_REQUIRED), len(CALLED)))
 
-    if '--check' in sys.argv:
-        # COMPARE, do not write. The point is to answer "is the committed local
-        # build what this script would produce from the committed online one",
-        # which is the question a pre-commit hook needs and the one nobody
-        # remembers to ask by hand.
-        current = io.open(DST, encoding='utf-8').read()
-        if current == dst:
-            print('\nlocal build is up to date with index.html')
-            return 0
-        print('\nLOCAL BUILD IS STALE: index.html has changes the local build does not.')
-        print('   %d bytes here, %d bytes if regenerated.' % (len(current), len(dst)))
-        print('   Run: python art/sync_local.py')
-        return 1
-
     # THE WIRING, which is not a definition and so is invisible to everything
     # above. Reported rather than closed: six of the eight that differ do so for
     # reasons, and overwriting those would put the online lobby's buttons in a
@@ -3606,6 +3600,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # faults found today sat on both sides of it.
     near = markup_container_drift(src, dst, alike=0.0)
     if near:
+        undocumented_drift.append('markup containers')
         print('  %-34s %d differ with no reason on MARKUP_INTERFACE: %s'
               % ('markup containers', len(near),
                  ', '.join('%s %d%%' % (e, r) for e, r in near)))
@@ -3614,6 +3609,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
 
     cdrift = comment_drift(src, dst)
     if cdrift:
+        undocumented_drift.append('comment drift')
         print('  %-34s %d sentence(s) edited in one build only:'
               % ('comment drift', len(cdrift)))
         for x, y in cdrift[:3]:
@@ -3625,6 +3621,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
 
     h_on, h_lo = head_drift(src, dst)
     if h_on or h_lo:
+        undocumented_drift.append('document head')
         print('  %-34s %d only there, %d only here: %s'
               % ('document head', len(h_on), len(h_lo),
                  '; '.join((h_on + h_lo)[:2])[:70]))
@@ -3634,6 +3631,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
 
     only_on, only_lo = statement_drift(src, dst)
     if only_on or only_lo:
+        undocumented_drift.append('top-level statements')
         print('  %-34s %d only there, %d only here'
               % ('top-level statements', len(only_on), len(only_lo)))
         for t in (only_on[:3] + only_lo[:3]):
@@ -3644,6 +3642,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
 
     drifted = listener_drift(src, dst)
     if drifted:
+        undocumented_drift.append('event listeners')
         print('  %-34s %d differ with no reason on LISTENER_INTERFACE: %s'
               % ('event listeners', len(drifted), ', '.join(drifted)))
     else:
@@ -3652,6 +3651,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
 
     undocumented = wiring_drift(src, dst)
     if undocumented:
+        undocumented_drift.append('button wiring')
         print('  %-34s %d wired differently with no reason on WIRING_INTERFACE: %s'
               % ('button wiring', len(undocumented), ', '.join(undocumented)))
     else:
@@ -3665,9 +3665,46 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         worst = ', '.join('%s(%d)' % (n, c) for c, n in sorted(both, reverse=True)[:5])
         print('  %-34s %s' % ('biggest', worst))
 
+    if '--check' in sys.argv:
+        # COMPARE, do not write. The point is to answer "is the committed local
+        # build what this script would produce from the committed online one",
+        # which is the question a pre-commit hook needs and the one nobody
+        # remembers to ask by hand.
+        #
+        # AFTER the drift reports, not before them. It used to return as soon as
+        # it had compared bytes, while every surface report sits further down
+        # this function - so the hook checked staleness and never saw a one-sided
+        # change, which is the thing it most needs to catch. A build can be
+        # byte-identical to what the sync would produce and still differ from the
+        # online build in a way nobody documented.
+        current = io.open(DST, encoding='utf-8').read()
+        if undocumented_drift:
+            print('')
+            print('UNDOCUMENTED DIFFERENCE between the two builds: %s.'
+                  % ', '.join(undocumented_drift))
+            print('Either make the two agree, or put the difference on the matching')
+            print('list in art/sync_local.py with a reason.')
+            return 1
+        if current == dst:
+            print('\nlocal build is up to date with index.html')
+            return 0
+        print('\nLOCAL BUILD IS STALE: index.html has changes the local build does not.')
+        print('   %d bytes here, %d bytes if regenerated.' % (len(current), len(dst)))
+        print('   Run: python art/sync_local.py')
+        return 1
+
     io.open(DST, 'w', encoding='utf-8', newline='').write(dst)
     print('\nlocal build: %d -> %d bytes' % (before, len(dst)))
-    return check_fixed_point()
+    rc = check_fixed_point()
+    if undocumented_drift:
+        print('')
+        print('UNDOCUMENTED DIFFERENCE between the two builds: %s.'
+              % ', '.join(undocumented_drift))
+        print('The local build HAS been written - this is a verdict on it, not a')
+        print('refusal to produce it. Either make the two agree, or put the')
+        print('difference on the matching list above with a reason.')
+        return 1
+    return rc
 
 
 # How much of the duplication is real, for the report at the end of every run.

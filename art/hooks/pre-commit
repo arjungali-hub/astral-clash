@@ -44,12 +44,17 @@ fi
 LOG="$(mktemp 2>/dev/null || echo /tmp/ac-sync-check.log)"
 if ! $PY_BIN art/sync_local.py --check >"$LOG" 2>&1; then
     echo
-    echo "COMMIT REFUSED: the local build is stale."
+    echo "COMMIT REFUSED: the two builds do not agree."
     echo
     tail -n 6 "$LOG"
     echo
-    echo "  python art/sync_local.py     regenerates it"
+    echo "  python art/sync_local.py     regenerates the local build"
     echo "  git commit --no-verify       commits anyway, if you mean to"
+    echo
+    echo "A STALE build means index.html has changes the local one does not."
+    echo "An UNDOCUMENTED DIFFERENCE means one build was changed and the other"
+    echo "was not - put the difference on the matching list in art/sync_local.py"
+    echo "with a reason, or make the two agree. See CLAUDE.md."
     exit 1
 fi
 
