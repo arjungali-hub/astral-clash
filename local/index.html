@@ -1480,6 +1480,7 @@
                         <button id="btn-open-rebind" class="btn-secondary">Rebind Keys</button>
                         <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
                         <button id="btn-side-palette" class="opt" title="Switch the two player colours to a colourblind-safe pair">Player Colours<span class="opt-state">Standard</span></button>
+                        <button id="btn-lang" class="opt" title="Language of menus and help text">Language<span class="opt-state">English</span></button>
 
                         <button id="btn-open-audio" class="btn-secondary">Audio Settings</button>
                         <!-- Added after archiving: the only edit to this file's
@@ -1773,7 +1774,8 @@ function startGame() {
 <!-- ...and these build THREE objects, some at load time. -->
 <script src="../shared/props.js"></script>
 <script src="../shared/characters.js"></script>
-<script src="../shared/common.js"></script><script>
+<script src="../shared/common.js"></script>
+<script src="../shared/i18n.js"></script><script>
 function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
     const canvas = document.getElementById('gameCanvas');
@@ -2574,8 +2576,10 @@ function toggleBloom() {
 refreshBloomUI();
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
 document.getElementById('btn-side-palette').addEventListener('click', toggleSidePalette);
+document.getElementById('btn-lang').addEventListener('click', cycleLang);
 refreshHudScaleUI();
 refreshSidePaletteUI();
+refreshLangUI();
 
 function keyLabel(k) {
     if (!k) return '--';
@@ -9684,6 +9688,7 @@ function gameLoop() {
     const dt = computeDt();
     syncLockHint();
     gamepadMenuTick();   // a pad drives the menus too, outside a fight
+    localiseTick();      // Spanish/French, one DOM pass; see shared/i18n.js
     // The touch pads, in the build that has them. syncTouchUI() existed and was
     // NEVER CALLED - so the pads were whatever CSS left them, and the second
     // player's pad sat on screen through a mobile solo match where that side is

@@ -1621,6 +1621,7 @@
                     <div class="settings-list">
                         <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
                         <button id="btn-side-palette" class="opt" title="Switch the two player colours to a colourblind-safe pair">Player Colours<span class="opt-state">Standard</span></button>
+                        <button id="btn-lang" class="opt" title="Language of menus and help text">Language<span class="opt-state">English</span></button>
                         <button id="btn-bloom" class="opt">Glow<span class="opt-state">On</span></button>
                         <!-- These two DO something when pressed, so they keep
                              the primary style. See the .opt note in the CSS. -->
@@ -1897,6 +1898,7 @@ function startGame() {
 <script src="shared/props.js"></script>
 <script src="shared/characters.js"></script>
 <script src="shared/common.js"></script>
+<script src="shared/i18n.js"></script>
 <script>
 function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
@@ -2628,6 +2630,7 @@ function cycleHudScale() {
 document.getElementById('btn-sandbox').addEventListener('click', () => setSandboxMatch(!sandboxMatch));
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
 document.getElementById('btn-side-palette').addEventListener('click', toggleSidePalette);
+document.getElementById('btn-lang').addEventListener('click', cycleLang);
 document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
 // BOTH buttons, at load. The Glow one was never refreshed here, so its
 // markup label - a hardcoded 'On' - survived a reload with bloom turned
@@ -2635,6 +2638,7 @@ document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
 refreshBloomUI();
 refreshHudScaleUI();
 refreshSidePaletteUI();
+refreshLangUI();
 
 function keyLabel(k) {
     if (!k) return '--';
@@ -10374,6 +10378,7 @@ function gameLoop() {
     const dt = computeDt();
     syncLockHint();
     gamepadMenuTick();   // a pad drives the menus too, outside a fight
+    localiseTick();      // Spanish/French, one DOM pass; see shared/i18n.js
     // The touch pads, in the build that has them. syncTouchUI() existed and was
     // NEVER CALLED - so the pads were whatever CSS left them, and the second
     // player's pad sat on screen through a mobile solo match where that side is
@@ -10592,6 +10597,12 @@ if (DEBUG) {
         gamepadMenuTick, padMenuFocusables, sideColor, sideColorHex,
         toggleSidePalette, setSidePalette,
         get sidePalette() { return sidePalette; },
+        // Localisation. setLang reloads the page by design, so a test drives
+        // localiseDOM and t() directly and reads langCoverage for the gaps.
+        t, localiseDOM, localiseTick, langCoverage, proseKey,
+        AC_LANGS, I18N, I18N_HTML, netEaseK,
+        setLangForTest(id) { acLang = id; },
+        get lang() { return curLang(); },
         // Batch 37 away-pause: the gate is a set of rules, so the rules have
         // to be inspectable from a test.
         setLocalAway, requestResume, pauseForAway, refreshPauseUI, mayResumeAway, hostSide,

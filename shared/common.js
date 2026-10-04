@@ -4675,11 +4675,29 @@ const NET_LERP = 0.35;
 
 const NET_SNAP_DIST = 220;
 
+// How much of the remaining gap to close THIS frame.
+//
+// The obvious form is `NET_LERP * dt`, and it was what this used. It is wrong
+// away from 60fps, and wrong in a way that hides: exponential smoothing does
+// not scale linearly with the step, so `0.35 * dt` reaches 1.0 at dt = 2.857 -
+// about 21fps - and from there down the easing is a plain snap. Every frame.
+// The clamp made it look deliberate instead of degenerate.
+//
+// 1 - (1 - r)^dt is the same smoothing applied dt times, which is what a
+// variable frame length actually means. It agrees with the old expression
+// exactly at dt = 1, so the 60fps feel this was tuned for is untouched, and it
+// approaches 1 without ever reaching it, so a slow machine eases less smoothly
+// rather than not at all.
+//
+// Found by tests/netsmoothcheck.js, which asserted easing on a machine running
+// at 2fps and got a snap.
+function netEaseK(dt) { return 1 - Math.pow(1 - NET_LERP, Math.max(0, dt)); }
+
 function netApplyRemote(dt) {
     const st = net.remoteState;
     const f = remoteFighter();
     if (!st || !f || !f.isNetPuppet()) return;
-    const k = Math.min(1, NET_LERP * dt);
+    const k = netEaseK(dt);
     if (Math.hypot(st.x - f.x, st.y - f.y) > NET_SNAP_DIST) {
         f.x = st.x; f.y = st.y; f.z = st.z;
     } else {

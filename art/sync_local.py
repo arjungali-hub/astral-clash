@@ -40,6 +40,29 @@ _IDENT_RE = re.compile(r'[A-Za-z_$][\w$]*')
 # Every name the shared modules define; filled in by main().
 SHARED_NAMES = set()
 
+# The shared modules, in LOAD ORDER, and the only place that order is written.
+#
+# PRE may load before three.js (pure data and timing); POST builds THREE objects
+# at load time - shared/common.js opens with `new THREE.Vector3()`. i18n.js is
+# last and reads nothing at load, by design: see its curLang() note.
+#
+# Everything downstream derives from this - the script tags in both builds, the
+# block() fallback, and the haystack every porter searches to decide whether
+# this build WANTS a given id, selector or statement. It was five hardcoded
+# io.open calls and six hand-written tuples, and adding i18n.js to the first two
+# while missing the rest is what left the Language row in one build only.
+SHARED_PRE = ['roster.js', 'animation.js']
+SHARED_POST = ['props.js', 'characters.js', 'common.js', 'i18n.js']
+SHARED_MODULES = SHARED_PRE + SHARED_POST
+
+
+def read_shared():
+    """Every shared module's text, in SHARED_MODULES order."""
+    return [io.open(os.path.join(ROOT, 'shared', f), encoding='utf-8').read()
+            for f in SHARED_MODULES]
+
+
+
 # `class` included: without it `class Fighter` was invisible here too, and its
 # 1,681 lines were absorbed into the chunk of whatever preceded it.
 _DEF_RE = re.compile(r'(?m)^(?:function\s+([A-Za-z_$][\w$]*)\s*\(|'
@@ -1849,15 +1872,20 @@ def main():
     # way to fix the thing being complained about.
     undocumented_drift = []
     src = io.open(SRC, encoding='utf-8').read()
-    shared_src = io.open(os.path.join(ROOT, 'shared', 'roster.js'), encoding='utf-8').read()
-    anim_src = io.open(os.path.join(ROOT, 'shared', 'animation.js'), encoding='utf-8').read()
-    props_src = io.open(os.path.join(ROOT, 'shared', 'props.js'), encoding='utf-8').read()
-    chars_src = io.open(os.path.join(ROOT, 'shared', 'characters.js'), encoding='utf-8').read()
-    common_src = io.open(os.path.join(ROOT, 'shared', 'common.js'), encoding='utf-8').read()
+    # Read once, from SHARED_MODULES, so a new module is visible to every
+    # porter the moment it is on that list. The four named aliases below are
+    # only for the per-file REQUIRED checks, which name their file.
+    shared_texts = read_shared()
+    _by_name = dict(zip(SHARED_MODULES, shared_texts))
+    shared_src = _by_name['roster.js']
+    anim_src = _by_name['animation.js']
+    props_src = _by_name['props.js']
+    chars_src = _by_name['characters.js']
+    common_src = _by_name['common.js']
     # block() falls back to these when a region has moved out of the online
     # build; see its docstring. Read here rather than at the de-shadowing
     # pass because the port steps that need the fallback run long before it.
-    SHARED_FALLBACK[:] = [shared_src, anim_src, props_src, chars_src, common_src]
+    SHARED_FALLBACK[:] = list(shared_texts)
     for _text in SHARED_FALLBACK:
         for _m in _DEF_RE.finditer(_text):
             SHARED_NAMES.add(_m.group(1) or _m.group(2) or _m.group(3))
@@ -2229,9 +2257,8 @@ def main():
     # and may load before three.js, while props, characters and common build
     # THREE objects - shared/common.js opens with `const _fbVec = new
     # THREE.Vector3()`, which runs the moment it loads.
-    PRE = ['roster.js', 'animation.js']
-    POST = ['props.js', 'characters.js', 'common.js']
-    for fn in PRE + POST:
+    PRE, POST = SHARED_PRE, SHARED_POST
+    for fn in SHARED_MODULES:
         for form in ('<script src="../shared/%s"></script>' + chr(10),
                      '<script src="../shared/%s"></script>'):
             dst = dst.replace(form % fn, '')
@@ -3222,7 +3249,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # NEW ELEMENTS FIRST, so the closer below can then keep them in step.
     # Applied back to front so an earlier insert cannot move a later offset.
     inserts = markup_inserts(
-        src, dst, (shared_src, anim_src, props_src, chars_src, common_src))
+        src, dst, shared_texts)
     for off, text, _eid in sorted(inserts, reverse=True):
         dst = dst[:off] + text + dst[off:]
     if inserts:
@@ -3246,7 +3273,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # mentioned nowhere in this build's own text, and skipping those is how they
     # came to be toggled into a void.
     dst, css_copied, css_undoc, css_ported = close_css_drift(
-        src, dst, (shared_src, anim_src, props_src, chars_src, common_src))
+        src, dst, shared_texts)
     if css_copied:
         print('  %-34s %d rules took the online declarations'
               % ('css drift', len(css_copied)))
@@ -3502,7 +3529,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # NOTHING THE SHARED MODULES DEFINE MAY ALSO BE DEFINED HERE. Run last, so
     # it cleans up after every step above rather than racing them.
     dst, deduped, local_dups = strip_shared_duplicates(
-        dst, [shared_src, anim_src, props_src, chars_src, common_src])
+        dst, shared_texts)
     if deduped:
         print('  %-34s %d removed (%s%s)'
               % ('re-declared from shared/', len(deduped), ', '.join(sorted(set(deduped))[:4]),
@@ -3677,8 +3704,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     #
     # It still catches what it was written for - a name that is in NEITHER - so
     # it is widened, not dropped.
-    everywhere = dst + chr(10) + shared_src + chr(10) + anim_src + chr(10) + props_src \
-        + chr(10) + chars_src + chr(10) + common_src
+    everywhere = dst + chr(10) + chr(10).join(shared_texts)
     missing = [d for d in REQUIRED if d not in everywhere]
     undefined = [c for c in CALLED
                  if ('function %s(' % c) not in everywhere
@@ -3763,7 +3789,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     global _ONLINE_VOCAB
     _ONLINE_VOCAB = set(_def_names(src))
     s_inserts = statement_inserts(
-        src, dst, (shared_src, anim_src, props_src, chars_src, common_src))
+        src, dst, shared_texts)
     for off, text, _label in sorted(s_inserts, reverse=True):
         dst = dst[:off] + text + dst[off:]
     if s_inserts:
@@ -3783,7 +3809,7 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
               % ('top-level statements', len(top_level_statements(dst))))
 
     w_inserts = wiring_inserts(
-        src, dst, (shared_src, anim_src, props_src, chars_src, common_src))
+        src, dst, shared_texts)
     for off, text, _eid in sorted(w_inserts, reverse=True):
         dst = dst[:off] + text + dst[off:]
     if w_inserts:
