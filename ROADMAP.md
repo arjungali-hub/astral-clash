@@ -1,5 +1,24 @@
 # Astral Clash — what's left, in the order I'd do it
 
+> **Tiers 1 and 4 are done.** Items 1-4 and 13-17 below are kept for the
+> reasoning, each marked with what actually happened. Tier 1 landed CI and three
+> new checkers; tier 4 landed the colourblind palette, accessible names, a
+> contrast checker, gamepad menu navigation, and a measurement that reframed
+> localisation. **43 checkers now, 13/13 green on the fast set.**
+>
+> Two numbers worth carrying forward:
+>
+> * cyan against pink separates at **102.7** Lab units for normal vision and
+>   collapses to **24** under deuteranopia. The replacement pair holds at
+>   **126.8**. The problem was real and the fix is measured, not asserted.
+> * localisation is **260 strings, 2,263 words** — a translator and an
+>   afternoon, not a budgeted project. That is the number item 17 was missing,
+>   and it inverts the recommendation.
+>
+> What remains: **tiers 2, 3 and 5**, and the three checkers that need a machine
+> with ~2.5GB free. CI supplies that on the next push.
+
+
 Where the game actually is, as of Batch 107: **10 playable fighters, 10 arenas,
 5 modes** (Classic Versus, Zone Control, Takedown Race, and two co-op modes —
 Boss Fight and Survival Waves), two builds sharing one codebase, coin-based

@@ -1,0 +1,263 @@
+# markup (labels, headings, help)
+&larr; Back
+&mdash; click the arena once to capture the pointer, Esc releases it. Separate
+(or Left/Right)
+(or Up/Down) walk forward and back in whatever direction you're looking;
+, saved on your own machine and the same whether you host or join. You start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate and Speed, plus Double Jump. Open the
+, so it needs a desktop or laptop. Open it there and you are set.
+, where you each pick your own fighter &mdash; you can only pick yours, and you'll see theirs appear as they choose.
+. One of you presses
+. The host simulates every enemy and sends the result, so both of you are always fighting the same boss in the same place rather than two copies that drift apart. If you go down you are out for
+. The whole arena closes in from all four sides on a timer (the edges literally crumble away), squeezing the fight toward the center so stalling isn't an option. If it fully shuts, both fighters are crushed and lose the same flat HP per second (regardless of max or current HP) until one dies — whoever's crushed first loses.
+. You both land in the
+25 seconds
+: your opponent is on their own machine.
+A short burst with brief invulnerability frames — phases through attacks and projectiles entirely if timed right. Has its own cooldown, so it's a precise tool, not a shield.
+A/D
+ARENA // FOUNDRY OF ASH
+ASTRAL CLASH
+Arena Collapse
+Arena: Random
+Astral Clash
+Astral Clash is played with a
+Audio Settings
+Back to Settings
+Back to the Room
+Basic vs. Special
+Basics are fast and always available; your Special needs a full meter, built by both dealing and taking damage. Each fighter's Special is unique — read it (and your opponent's) in the fighter panel.
+Best of 3 rounds. Win a round by knocking your opponent's HP to 0 — there's no clock to just run out, so see Arena Collapse below for how a round is guaranteed to end.
+Boss Fight
+Choose Your Arena
+Choose your fighter
+Choosing...
+Classic Versus
+Click a key, then press its replacement. Esc cancels. Two actions cannot share a key &mdash; they swap.
+Click to capture the mouse
+Coins &amp; Unlocks
+Couldn't load Three.js
+Dimensional Arena Fighter
+Do not show How to Play automatically next time
+Don't show this automatically next time
+Double Jump
+Enter a room code
+Every match is
+First-Person View
+Game Mode
+Game Modes
+Got it!
+HUD Text
+Health, special meter and round score for both fighters.
+Host Game
+Host's choice
+How to Play
+Join Game
+Leave Room
+Looking for co-op?
+Master volume
+Match Setup
+Mode: Classic Versus
+Move the mouse to look
+Movement &amp; Jumping
+Music volume
+No Healing
+No round timer — instead, a countdown to the
+Not connected
+One of you hosts and shares a room code; the other joins with it. Two players, one fighter each, on separate machines.
+One of you hosts and shares the room code; the other joins with it. The host plays as Player 1 and chooses the mode and arena. You will both land in the room as soon as the link is up.
+Online Play
+Pick a fighter below
+Play Online
+Play Online &rarr; Host Game
+Player Colours
+Player Wins!
+Random (R)
+Random Arena
+Rebind Keys
+Rematch (New Arena)
+Rematch (Same Arena)
+Reset to Defaults
+Resume (Esc)
+Return to Menu
+Room code
+Sandbox &mdash; all unlocked, no coins
+Sandbox: Off
+Sound effects volume
+Start Match
+Survival Waves
+Switch the two player colours to a colourblind-safe pair
+Switch to Local Version
+Takedown Race
+Ten fighters, from twin-dagger rushdown to long-range casters. Reach and speed vary a lot — check a fighter's stats and Special in its detail panel before you commit.
+The Roster
+The arena, drawn from your fighter's eyes. This game needs sight to play.
+The game engine failed to load from the CDN (cdn.jsdelivr.net). Check your internet connection, or an ad/script blocker may be blocking jsDelivr, then retry.
+The two co-op modes &mdash;
+There's no way to get HP back — no health pickups, no regen. Every hit you take counts. Play patient, punish mistakes, and use your dash i-frames and shields to avoid damage rather than trying to out-heal it.
+This version needs a computer
+Two players on one keyboard, split screen. Shares your progress.
+W/S
+Waiting for both fighters.
+Waiting for the host to choose a rematch&hellip;
+Waiting...
+You are the host, so this is your call. Change it any time before you start the match &mdash; your opponent sees it update.
+You fight through your character's own eyes, weapon in hand.
+Your coins, unlocks and upgrades are yours
+Your name
+Your opponent sees your choice in the room. Nothing starts until you press
+Your own coins, unlocks and upgrades. Win a match to earn more.
+Your room code - share it with the other player
+Zone Control
+against Karrigos the Granite Colossus, and
+against squads of lesser creatures &mdash; are
+and a
+and owns the match settings: they choose the mode and the arena, and they press
+and reads out the room code; the other pastes it into
+and then respawn at full health; the run only ends if your teammate falls while you are still down.
+from the home screen or from the room while you're picking.
+host is Player 1
+in the Armory to press jump again in mid-air, once per airborne stretch, for the tallest perches.
+is best of 3 rounds.
+is one continuous fight with instant respawns, first to 3 takedowns &mdash; and the arena does not collapse in it, because a race cannot stall. In those last two a knockout costs you tempo, not the match.
+keyboard to move
+keys also aim vertically, and ranged attacks fire along that aim, so you can shoot up at someone on a high perch or down from one. You get the
+look up/down
+mouse to aim
+next collapse
+once you're both locked in. If your opponent drops mid-fight the match pauses and tells you.
+picks the mode in the room, and you'll see their choice.
+playable online
+puts a glowing ring at the arena's centre — stand in it
+sideways without turning. Aiming is the mouse's job, so the keys never rotate you. Jumping reaches platforms and cover but has a cooldown &mdash; you can't spam it. Small rises are walkable; tall ledges and walls aren't. Use columns and interior walls for cover. Buy
+to bank control time, and knock your opponent out of it; first to 45 seconds wins.
+two people on two machines
+whole screen
+← Back
+← Back to the room
+# code (HUD, toasts, dynamic panels)
++ net.detail :
+: (shown ||
+<span class="mode-current">SELECTED</span>
+Bot: OFF
+Bot: ON
+CRUSHING!
+Draw!
+End match? Click again
+FIGHT!
+GET READY
+If the last fighter standing falls, the run is over.
+No fighter yet
+Nobody has joined yet
+Reset to defaults
+Resume Match
+SPECIAL READY
+Sandbox on — everything unlocked, bot matches available
+Unlock to buy upgrades
+Victory!
+Your progression is back — two players only
+Zone contested
+map-name
+match-summary
+pause-controls-reminder
+shop-card-head
+shop-name
+shop-title
+tutorial-controls
+upg-label
+upg-pips
+# shared data (roster, modes)
+A balanced duelist with no bad matchup and no free win either. He wants to live at the edge of his own reach, trading slashes and using the dash to cross the gap or escape a corner.
+A blazing-fast glass cannon with the thinnest health of any melee fighter. He wins by never being where the last swing was — and the flurry is invulnerable, so it doubles as a way to run straight through an incoming attack.
+A ground slam that launches the enemy away and stuns them.
+A heavy hammer swing through a narrow cone. Slow to start and slow to recover, so a whiff is a real punish — but it hits hard enough to be worth the risk.
+A long scythe sweep through a wide cone — more reach than any other melee basic except Thorne, and wide enough that a sidestep alone will not clear it.
+A mountain that learned to move. Slow, enormous, and utterly unbothered.
+A quick sword arc through a wide cone in front of him. Short reach, but it recovers fast enough to throw out on reaction and keep throwing.
+A ranged stormcaller who outranges everyone. Her special is the exception to everything else she does: it lands on the target directly rather than travelling, so it cannot be dodged or blocked by cover.
+A rapid flurry jab with a very short cooldown. The least damage per hit on the roster, but you land far more of them than anyone else does.
+A relentless pressure fighter, fast on his feet and faster with his fists. The burst itself is modest — the burn afterwards is the real payload, and it keeps ticking while you keep jabbing.
+A short shockwave that shoves you off.
+A short-range overhead smash that hard-stuns (knocks down).
+A space-controller with the longest melee reach on the roster. He fights from a distance most characters consider safe, and the root buys him more than a second of free hits from exactly there.
+A wide thorn-arc that ensnares (roots) the enemy in place.
+Antlered Reaver
+Armoured but not immovable, and he builds special meter far faster than anyone else — so the knockdown comes around often. Use it to reset a fight you are losing, not just for the damage.
+Ashen Mortar
+Astral Orb
+Astral Ward
+Aurelia
+Bastion Knight
+Best of 3 rounds. Knock your opponent out to win a round.
+Blade Dash
+Blink onto the enemy and stab rapidly, briefly invulnerable.
+Boss Fight (Co-op)
+Both players team up against Karrigos, the Granite Colossus. Its attacks are slow and telegraphed — punish the wind-up. Go down and you are out for 25 seconds; if your teammate falls while you are down, the run is over.
+Bramble Lash
+Call a bolt down directly onto the enemy — cannot be sidestepped.
+Cinder Pugilist
+Cinder Spray
+Collapse
+Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse — the race is the pressure.
+Cowled Harvester
+Cycles between a shockwave Ground Slam, a telegraphed Charge, and an Ember Nova spread.
+Darts through its target.
+Dash through the enemy, cutting them on the pass and ending behind them.
+Draven
+Ember Jab
+Erupt in flame, leaving the enemy burning over time.
+Fires a single fast shard in a straight line. Long range, but it is a real projectile — it can miss, and it can be sidestepped or blocked by cover.
+Flicker Cutthroat
+Forge Hammerfist
+Fragile and deadly at range. She loses any melee exchange she is dragged into, so the whole game is keeping the gap open — the volley is as much a wall as it is damage.
+Gaunt Wraith
+Glass Shard
+Gorgonok
+Granite Colossus
+Grint
+Ground Breaker
+Haloed Aegis
+Hangs back and lobs fire. Punish it for existing.
+Hold the glowing ring at the center. First to 45 seconds of control wins — knock them out of it.
+Hollowkin
+Ignis
+Inferno Burst
+Ironclad Smash
+Kaelen
+Karrigos
+Lobs a slow-building orb of light down a long, narrow line. Low damage per shot — it is chip damage meant to be applied constantly from a safe distance.
+Long reach that drags foes into the blade. The special pulls a runaway opponent from well outside her range and roots them there, which turns a fleeing ranged fighter into a free follow-up.
+Lyra
+Nyx
+Prism Volley
+Quickstab
+Raise a strong shield that halves incoming damage for several seconds.
+Rhythm Slash
+Scrap Gremlin
+Seismic Slam
+Seraphine
+Shadow Flurry
+Shardwing Sylph
+Skitter
+Slagling
+Slow, heavy, and unbothered by your first few hits.
+Spits a fan of molten shards.
+Spray a wide 5-shard fan to wall off space.
+Storm Bolt
+Stormcrown Valkyrie
+Survival Waves (Co-op)
+Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.
+Tectonic Brute
+Tempo Duelist
+The fastest basic in the game — a near-instant dagger poke with almost no recovery. The reach is the shortest in the game, so you have to be genuinely on top of someone.
+The hardest-hitting basic on the roster, and by far the most committal — a long wind-up and a long recovery. Two of these end most fights; two whiffs end yours.
+The largest health pool in the game, on the slowest fighter in it. He cannot chase anyone, so he wins by making the space directly in front of him unaffordable to stand in — and the slam clears that space again whenever someone gets comfortable.
+The longest melee reach in the game, but through a narrow cone — it is a line, not a sweep, so it needs to be aimed rather than swung in someone\
+The longest-range basic in the game: a fast bolt down a very tight line. It demands real aim — the cone is the narrowest on the roster and it is still a dodgeable projectile.
+The only fighter whose special deals no damage at all. She survives instead of trading: the ward halves everything for over three seconds, which is long enough to walk through a special that would have killed her. Her meter builds slowest, so spend it deliberately.
+Thorne
+Thornwhip
+Thunderstrike
+Tiny, frantic, and never alone.
+Titan\
+Umbral Reap
+Voss
+Yank the enemy in, cut them, and root them in place.

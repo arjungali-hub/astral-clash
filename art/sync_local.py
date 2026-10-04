@@ -2565,6 +2565,9 @@ if (location.protocol === 'https:'
         dst = rep(dst, "        openShop, buildShop, refreshBotUI,",
                   "        openShop, buildShop, refreshBotUI,\n"
                   "        playerLabel, displayName, setLocalName, refreshLocalNames, resetProgressClicked,\n"
+                  "        gamepadMenuTick, padMenuFocusables, sideColor, sideColorHex,\n"
+                  "        toggleSidePalette, setSidePalette,\n"
+                  "        get sidePalette() { return sidePalette; },\n"
                   "        botsOnly, soloHumanSide, positionWatchCamera,\n"
                   "        get localNames() { return localNames; },",
                   'local debug handles')
@@ -4234,7 +4237,21 @@ def comment_lines(text):
 
 def comment_drift(src, dst):
     """Sentences that look edited in one build only."""
-    a, b = set(comment_lines(src)), set(comment_lines(dst))
+    # DIVIDER RULES ARE NOT PROSE. `// ---------- the menus, on a gamepad` and
+    # `// ---------- one human, one bot` are 80%+ alike on the dashes alone, so
+    # the fuzzy match paired two unrelated section headings and called it an
+    # edited sentence. Judge them on their WORDS: a line with little else is
+    # skipped, and the rule itself is stripped before comparing.
+    def words(x):
+        t = re.sub(r'[-=*/_#<>!]{3,}', ' ', x)
+        t = ' '.join(t.replace('//', ' ').split())
+        return t
+
+    def wordy(x):
+        return len(re.sub(r'[^A-Za-z0-9]', '', words(x))) >= 24
+
+    a = {words(x) for x in comment_lines(src) if wordy(x)}
+    b = {words(x) for x in comment_lines(dst) if wordy(x)}
     only_a = sorted(x for x in a - b if len(x) >= 40)
     only_b = [x for x in b - a if len(x) >= 40]
     out = []
