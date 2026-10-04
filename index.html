@@ -1156,6 +1156,127 @@
         #match-summary { font-size: 0.72rem; color: #94a3b8; text-align: left; margin: 8px 0; line-height: 1.5; }
         #match-summary b { color: #e2e8f0; }
         #pause-controls-reminder { font-size: 0.72rem; line-height: 1.6; text-align: left; }
+        /* ------------------------------------------- touch FPS controls
+           Online only; see shared/touch.js for why the local build has none.
+
+           LAYOUT IS ANATOMY, not symmetry. Holding a phone in landscape, each
+           thumb sweeps an arc rooted at a bottom corner - so the stick sits in
+           the bottom-left arc and the buttons in the bottom-right one, and
+           nothing a player needs mid-fight is near the top of the screen where
+           neither thumb reaches without regripping.
+
+           Fire is the largest and lowest because it is pressed the most and
+           wants the least aim. Jump sits above it rather than beside it: the
+           two are pressed together constantly and side-by-side invites a
+           thumb that lands between them and presses neither. */
+        #touch-fps {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 60;
+            /* The layer itself must never eat a tap - the listeners are on
+               document, and the only things that take a press are the buttons
+               below, which opt back in. */
+            pointer-events: none;
+            touch-action: none;
+            -webkit-user-select: none; user-select: none;
+        }
+        /* The floating stick. Positioned by script at the thumb, and
+           translate(-50%,-50%) is what makes `left/top` mean its CENTRE. */
+        #touch-stick {
+            display: none;
+            position: absolute;
+            width: 116px; height: 116px;
+            margin: -58px 0 0 -58px;        /* = TOUCH_STICK_RADIUS */
+            border-radius: 50%;
+            border: 1.5px solid rgba(0,243,255,0.33);
+            background: radial-gradient(circle at center,
+                        rgba(0,243,255,0.10), rgba(0,243,255,0.02) 70%, transparent);
+        }
+        #touch-stick-knob {
+            position: absolute;
+            left: 50%; top: 50%;
+            width: 46px; height: 46px;
+            border-radius: 50%;
+            background: rgba(0,243,255,0.30);
+            border: 1.5px solid rgba(0,243,255,0.6);
+            /* transform is written by script and carries its own centring
+               offset, so none is set here. */
+        }
+        #touch-buttons {
+            position: absolute;
+            right: 18px; bottom: 16px;
+            display: grid;
+            /* Fire spans the full height of the right column, so the thumb's
+               resting position IS the fire button. */
+            grid-template-columns: auto auto;
+            grid-template-areas: "special fire" "dash fire" "jump fire";
+            gap: 10px;
+            align-items: end;
+        }
+        #touch-buttons button {
+            pointer-events: auto;
+            -webkit-tap-highlight-color: transparent;
+            font-family: inherit;
+            font-size: 0.6rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #e2e8f0;
+            background: rgba(15,23,42,0.52);
+            border: 1.5px solid rgba(148,163,184,0.45);
+            border-radius: 50%;
+            width: 62px; height: 62px;
+            padding: 0;
+            display: flex; align-items: center; justify-content: center;
+            /* No transition: a fighting game's feedback has to be on the frame
+               the thumb lands, and 120ms of ease reads as input lag. */
+        }
+        #touch-buttons button.pressed {
+            background: rgba(0,243,255,0.26);
+            border-color: rgba(0,243,255,0.85);
+        }
+        #touch-btn-fire {
+            grid-area: fire;
+            width: 92px !important; height: 92px !important;
+            font-size: 0.68rem !important;
+            border-color: rgba(244,114,182,0.6) !important;
+            background: rgba(244,114,182,0.17) !important;
+        }
+        #touch-btn-fire.pressed {
+            background: rgba(244,114,182,0.42) !important;
+            border-color: rgba(244,114,182,1) !important;
+        }
+        #touch-btn-special { grid-area: special; }
+        #touch-btn-dash { grid-area: dash; }
+        #touch-btn-jump { grid-area: jump; }
+        /* A hint, once, at the start of the first fight. Not a tutorial card:
+           the scheme is the one every mobile shooter uses, so a player needs
+           confirmation rather than instruction. */
+        #touch-hint {
+            position: absolute;
+            left: 50%; top: 14px;
+            transform: translateX(-50%);
+            font-size: 0.62rem;
+            color: #94a3b8;
+            background: rgba(10,13,20,0.7);
+            padding: 5px 11px;
+            border-radius: 999px;
+            white-space: nowrap;
+            transition: opacity 0.6s ease;
+        }
+        #touch-hint.gone { opacity: 0; }
+        #touch-rotate {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 900;
+            background: rgba(10,13,20,0.97);
+            align-items: center; justify-content: center;
+            text-align: center; padding: 24px;
+            box-sizing: border-box;
+        }
+        #touch-rotate p { color: #cbd5e1; font-size: 0.95rem; line-height: 1.6; max-width: 320px; }
+        #touch-rotate b { color: #00f3ff; }
         #desktop-only {
             display: none;
             position: fixed;
@@ -1798,6 +1919,29 @@
              touchscreen laptop reports a fine pointer and real hover.)
          So: everything below the divider is gone, and what is left is the
          single statement that it needs a computer. -->
+    <!-- Touch controls, online only. shared/touch.js will not initialise in
+         the local build, so these stay hidden there; see its header for why
+         split screen on a phone is not worth offering. -->
+    <div id="touch-fps">
+        <div id="touch-stick"><div id="touch-stick-knob"></div></div>
+        <div id="touch-hint">Left thumb moves &middot; drag to aim &middot; tap to fire</div>
+        <div id="touch-buttons">
+            <button id="touch-btn-special" aria-label="Special attack">SPEC</button>
+            <button id="touch-btn-dash" aria-label="Dash">DASH</button>
+            <button id="touch-btn-jump" aria-label="Jump">JUMP</button>
+            <button id="touch-btn-fire" aria-label="Attack">FIRE</button>
+        </div>
+    </div>
+
+    <div id="touch-rotate">
+        <div class="menu-section">
+            <h3>Turn your phone sideways</h3>
+            <p>Astral Clash is a first-person game, and a portrait screen puts
+               both of your thumbs in the middle of the view.
+               <b>Rotate to landscape</b> to play.</p>
+        </div>
+    </div>
+
     <div id="desktop-only">
         <div class="menu-section">
             <h3>This version needs a computer</h3>
@@ -1899,6 +2043,7 @@ function startGame() {
 <script src="shared/characters.js"></script>
 <script src="shared/common.js"></script>
 <script src="shared/i18n.js"></script>
+<script src="shared/touch.js"></script>
 <script>
 function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
@@ -2639,6 +2784,9 @@ refreshBloomUI();
 refreshHudScaleUI();
 refreshSidePaletteUI();
 refreshLangUI();
+// The touch scheme, which is a no-op on a desktop and in the local
+// build. Must run after the markup exists, which it does here.
+initTouchFPS();
 
 function keyLabel(k) {
     if (!k) return '--';
@@ -4892,6 +5040,26 @@ function readSoloInput(f, b, dt, target) {
         if (gp.attack) f.tryStartAction('basic', target);
         if (gp.special) f.tryStartAction('special', target);
         if (gp.dodge) f.tryDodge(out.moveX, out.moveY);
+    }
+
+    // TOUCH, on a phone, in the build that gives one player the whole screen.
+    // Deliberately immediately after the gamepad and in the same form: a
+    // separate movement path is how the local build ended up with a right
+    // stick that read `lookX` nobody returned, dead from the day it shipped.
+    const tp = pollTouch();
+    if (tp) {
+        if (tp.moveX) { out.moveX += tp.moveX * rx; out.moveY += tp.moveX * ry; }
+        if (tp.moveY) { out.moveX += tp.moveY * f.fx; out.moveY += tp.moveY * f.fy; }
+        // NOT scaled by dt: a drag is already a displacement, exactly like
+        // mouseDX above. Scaling it would make sensitivity depend on framerate,
+        // which is the bug netsmoothcheck found in the netcode easing.
+        if (tp.lookX) f.turnBy(tp.lookX);
+        if (tp.lookY) f.lookBy(invertMouseY ? tp.lookY : -tp.lookY);
+        if (tp.jump || tp.jumpHeld) out.jumpPressed = true;
+        if (tp.jump) out.jumpJustPressed = true;
+        if (tp.attack) f.tryStartAction('basic', target);
+        if (tp.special) f.tryStartAction('special', target);
+        if (tp.dodge) f.tryDodge(out.moveX, out.moveY);
     }
 
     if (netActive()) {
@@ -10379,6 +10547,7 @@ function gameLoop() {
     syncLockHint();
     gamepadMenuTick();   // a pad drives the menus too, outside a fight
     localiseTick();      // Spanish/French, one DOM pass; see shared/i18n.js
+    syncTouchFPS();     // show the pads only during a live fight
     // The touch pads, in the build that has them. syncTouchUI() existed and was
     // NEVER CALLED - so the pads were whatever CSS left them, and the second
     // player's pad sat on screen through a mobile solo match where that side is
@@ -10599,6 +10768,8 @@ if (DEBUG) {
         get sidePalette() { return sidePalette; },
         // Localisation. setLang reloads the page by design, so a test drives
         // localiseDOM and t() directly and reads langCoverage for the gaps.
+        pollTouch, initTouchFPS, syncTouchFPS, syncTouchOrientation, releaseTouch,
+        touchActive, TOUCH_LOOK_SENS, TOUCH_STICK_RADIUS, TOUCH_MOVE_ZONE,
         t, localiseDOM, localiseTick, langCoverage, proseKey,
         AC_LANGS, I18N, I18N_HTML, netEaseK,
         setLangForTest(id) { acLang = id; },

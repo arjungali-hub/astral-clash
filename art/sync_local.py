@@ -52,7 +52,7 @@ SHARED_NAMES = set()
 # io.open calls and six hand-written tuples, and adding i18n.js to the first two
 # while missing the rest is what left the Language row in one build only.
 SHARED_PRE = ['roster.js', 'animation.js']
-SHARED_POST = ['props.js', 'characters.js', 'common.js', 'i18n.js']
+SHARED_POST = ['props.js', 'characters.js', 'common.js', 'i18n.js', 'touch.js']
 SHARED_MODULES = SHARED_PRE + SHARED_POST
 
 
@@ -744,6 +744,12 @@ def force_online_bodies(src, dst):
 # the container is exempt, the parts are not, and the sync reports any property
 # that differs without being named here.
 CSS_INTERFACE = {
+    # The online-only touch scheme. Its elements are on MARKUP_INTERFACE and
+    # removed from this build, so a rule for them would style nothing - and
+    # without this the porter offers it on every single run.
+    '#touch-hint.gone': ('the touch scheme is online-only', []),
+    '#touch-buttons button.pressed': ('the touch scheme is online-only', []),
+    '#touch-btn-fire.pressed': ('the touch scheme is online-only', []),
     '.shop-card':
         ('two panels side by side; tighter padding and radius',
          ['border-radius', 'margin-bottom', 'padding']),
@@ -814,6 +820,26 @@ MARKUP_INTERFACE = {
     # anything". Without this the removal step and the porter fight forever and
     # the fixed point never settles.
     'btn-bloom': 'no composer in this build, so the glow toggle is removed',
+    # The touch FPS scheme is ONLINE ONLY - one player with the whole screen is
+    # what makes a phone viable, and this build gives two people half each. Every
+    # id is listed because the porter inserts nested elements one at a time, and
+    # listing only the root left it dragging the children in without their parent.
+    'touch-fps': 'touch is online-only; this build shows the desktop notice',
+    'touch-stick': 'part of the online-only touch scheme',
+    'touch-stick-knob': 'part of the online-only touch scheme',
+    'touch-hint': 'part of the online-only touch scheme',
+    'touch-buttons': 'part of the online-only touch scheme',
+    'touch-btn-fire': 'part of the online-only touch scheme',
+    'touch-btn-special': 'part of the online-only touch scheme',
+    'touch-btn-dash': 'part of the online-only touch scheme',
+    'touch-btn-jump': 'part of the online-only touch scheme',
+    'touch-rotate': 'the online-only rotate prompt; this build never plays on a phone',
+    # ...and the OLD scheme, which this build had and no longer does.
+    'touch-controls': 'the retired local touch pads; mobile is not offered here',
+    'touch-p1': 'part of the retired local touch scheme',
+    'touch-p2': 'part of the retired local touch scheme',
+    'touch-pause-btn': 'part of the retired local touch scheme',
+    'orientation-prompt': 'part of the retired local touch scheme',
     'modeselect-screen': 'the host owns the mode there; here either player picks it',
     # Whole screens whose CONTENTS differ because the builds do. Listed with a
     # reason each, so the drift report can name every other difference at any
@@ -994,6 +1020,33 @@ def markup_container_drift(src, dst, alike=0.75):
         if r >= alike:
             out.append((eid, round(100 * r)))
     return out
+
+
+
+def _drop_rules(text, sel):
+    """Every top-level CSS rule whose selector list mentions `sel`.
+
+    Prefix-safe: `#touch-btn-fire` must not be matched by a search for
+    `#touch-btn`, so the selector has to end at a boundary. Brace-counted rather
+    than split on '}' because a rule can contain one inside a string or a
+    nested at-block.
+    """
+    out = text
+    pat = re.compile(r'(?m)^[ ]*(?=[^@{}\n][^{}\n]*' + re.escape(sel)
+                     + r'(?![-\w])[^{}\n]*' + chr(123) + r')')
+    while True:
+        m = pat.search(out)
+        if not m:
+            return out
+        i = out.index(chr(123), m.start())
+        depth, k = 1, i + 1
+        while depth and k < len(out):
+            if out[k] == chr(123):
+                depth += 1
+            elif out[k] == chr(125):
+                depth -= 1
+            k += 1
+        out = out[:m.start()].rstrip(chr(10)) + chr(10) + out[k:].lstrip(chr(10))
 
 
 def markup_inserts(src, dst, shared_texts=()):
@@ -3376,6 +3429,151 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # all - bloom was turned down for split screen, where it would have to run
     # per viewport. The toggle wrote a flag, reloaded the arena, and changed
     # nothing visible. Reported as "it doesn't seem to change anything".
+    # ------------------------------------------- no touch scheme in this build
+    # Both schemes, removed here rather than never inserted: the markup porter
+    # runs before this and will have put the new one in (badly - it inserts
+    # nested ids one at a time, which left #touch-stick unclosed and swallowed
+    # the prompt that followed it). MARKUP_INTERFACE stops it being REPORTED;
+    # this is what makes it absent.
+    #
+    # Markup first and on purpose. Every line of the retired scheme guards on an
+    # element - syncTouchUI() calls getElementById for each pad, setupTouchButton
+    # is wired by querySelectorAll('#touch-p1 .touch-btn'), and touchTurn/
+    # touchLook stay at zero unless a listener writes them. With the elements
+    # gone the code cannot run even if a fragment of it survives, which makes
+    # this removal safe in a way that deleting the functions first would not be.
+    # #touch-warning: a paragraph that told a phone player "left stick to move,
+    # right-side buttons to fight". Both are gone, and a hint for controls that
+    # do not exist is worse than no hint. Nothing shows it any more either - the
+    # block that set its textContent went with the scheme - so it was invisible
+    # dead markup, which is the kind that survives longest.
+    _m = re.search(r'[ ]*<p id="touch-warning".*?</p>' + chr(10) + r'?', dst, re.S)
+    if _m:
+        dst = dst[:_m.start()] + dst[_m.end():]
+        print('  %-34s ok' % 'touch-warning hint removed')
+
+    # STALE PROSE. The tutorial card described drag-to-look on touch, and the
+    # file header listed the touch scheme among what this build keeps. Both now
+    # describe something absent. Replaced rather than deleted: the sentences
+    # around them are still right, and the gamepad half of that clause is true.
+    dst = dst.replace(
+        'On a gamepad the right stick looks; on touch, drag anywhere in the '
+        'upper half of your side.',
+        'On a gamepad the right stick looks.')
+    dst = dst.replace(
+        '    - The entire touch control scheme: analog joysticks, drag-to-look zones,',
+        '    - (Retired) the touch control scheme: analog joysticks, drag-to-look zones,')
+    dst = dst.replace(
+        '  2-player split-screen and the whole touch/mobile control scheme. If we ever',
+        '  2-player split-screen. The touch scheme it also held has been removed - a'
+        + chr(10) + '  phone gets the online build, which has a real one. If we ever')
+    dst = dst.replace(
+        '  ARCHIVED BUILD - local split-screen + touch controls.',
+        '  LOCAL BUILD - split screen, two players at one keyboard. No touch: a phone'
+        + chr(10) + '  gets the online build, which has a control scheme built for one.')
+
+    # This build loads shared/touch.js and so HAS these, inert though they are.
+    # Exported here because "the module refuses to arm in the local build" is
+    # the central claim of the removal, and a claim a test cannot read is not
+    # worth much. ACDebug lists are per-build by design - each exports what it
+    # has - so this is an addition, not a drift.
+    #
+    # GUARDED, because the replacement KEEPS its own anchor: without the `not
+    # in` the step fires again on every pass and the list grows a copy each
+    # time. The fixed-point check caught it on the first run, which is what it
+    # is for - a duplicate identifier in object shorthand is a load-time
+    # SyntaxError, so this would not have been subtle for long.
+    if 'touchActive,' not in dst:
+        dst = dst.replace('        MOBILE_SOLO, hudViewports,',
+                          '        pollTouch, syncTouchFPS, syncTouchOrientation,' + chr(10)
+                          + '        releaseTouch, touchActive,' + chr(10)
+                          + '        MOBILE_SOLO, hudViewports,')
+
+    # The retired scheme's CODE. Not optional: setupTouchJoystick reads
+    # zoneEl.querySelector with no null check, so removing the markup alone
+    # threw at load and killed the build. bootcheck caught it, which is the
+    # whole reason that checker enters a real fight instead of only loading.
+    #
+    # Anchored on source text, never on line numbers - this file is rewritten
+    # every run and the numbers move.
+    _js_spans = [
+        # the joystick/look/button plumbing, through the end of syncTouchUI
+        ('// Turning is analog (proportional to how far the knob is dragged), not a',
+         "document.getElementById('btn-random-p1')"),
+        # the single-player-on-a-phone hint, which advertises a mode that is gone
+        ('// (TOUCH_UI itself is declared up near the renderer, before it' + chr(39)
+         + 's needed', chr(10) + chr(10) + '// held=true mirrors a keydown'),
+    ]
+    for lo, hi in _js_spans:
+        i = dst.find(lo)
+        if i == -1:
+            continue
+        j = dst.find(hi, i)
+        if j == -1:
+            continue
+        dst = dst[:comment_start(dst, i)].rstrip(chr(10)) + chr(10) + chr(10) + dst[j:]
+        print('  %-34s ok' % 'touch code removed')
+
+    # The update() branch that read the two axes, and the pause pad's listener.
+    for line in (
+            '        if (touchTurn[side]) this.turnBy(touchTurn[side] * TURN_SPEED * dt);'
+            ' // analog joystick turn' + chr(10),
+            '        if (touchLook[side]) this.lookBy(touchLook[side] * LOOK_SPEED * dt);'
+            ' // drag-to-look zone' + chr(10),
+            "document.getElementById('touch-pause-btn').addEventListener('click', togglePause);"
+            + chr(10)):
+        if line in dst:
+            dst = dst.replace(line, '')
+            print('  %-34s ok' % 'touch reference removed')
+
+    # ...and the names ACDebug exported for it. A bare identifier in object
+    # shorthand that no longer exists is a ReferenceError at load - this is how
+    # `playerName` killed this build once, and it is invisible to the
+    # dangling-reference guard because the name is in the ONLINE build's
+    # vocabulary too.
+    dst = dst.replace(' touchLook, touchTurn,', '')
+    dst = dst.replace(' TOUCH_UI,', '')
+
+    for eid in ('touch-fps', 'touch-rotate', 'touch-controls', 'orientation-prompt'):
+        while True:
+            m = re.search(r'[ ]*<div id="%s"[^>]*>' % eid, dst)
+            if not m:
+                break
+            # Match to the balanced close, counting nested <div> so a container
+            # with children does not stop at the first </div>.
+            depth, k = 1, m.end()
+            while depth and k < len(dst):
+                nxt = re.compile(r'</?div\b').search(dst, k)
+                if not nxt:
+                    break
+                depth += 1 if nxt.group(0) == '<div' else -1
+                k = nxt.end()
+            end = dst.index('>', k - 1) + 1 if depth == 0 else m.end()
+            start = comment_start(dst, m.start())
+            dst = dst[:start].rstrip(chr(10)) + chr(10) + dst[end:].lstrip(chr(10))
+            print('  %-34s ok' % ('touch markup removed: ' + eid))
+
+    # The CSS for both, by rule prefix. Left behind it would be ~70 rules
+    # styling nothing, and close_css_drift would keep reporting them as absent
+    # from one side.
+    # rotateHint animated the retired orientation prompt's phone icon and has
+    # no other user. _drop_rules steps over at-rules on purpose, so it is
+    # removed by name.
+    dst = re.sub(r'[ ]*@keyframes rotateHint\s*\{[^}]*\}[^}]*\}\n?', '', dst)
+    for sel in ('#touch-fps', '#touch-stick', '#touch-stick-knob', '#touch-buttons',
+                '#touch-btn-fire', '#touch-btn-special', '#touch-btn-dash',
+                '#touch-btn-jump', '#touch-hint', '#touch-rotate',
+                '#touch-controls', '#orientation-prompt', '.touch-btn', '.touch-look',
+                '.touch-side', '.touch-stick', '#touch-pause-btn',
+                # Named individually BECAUSE the matcher is prefix-safe: a search
+                # for '.touch-btn' deliberately will not match '.touch-btn-attack',
+                # so that '#touch-btn-fire' cannot be eaten by '#touch-btn'. The
+                # cost of that safety is listing the variants.
+                '.touch-btn-attack', '.touch-btn-special', '.touch-btn-jump',
+                '.touch-btn-dodge', '.touch-joy', '.touch-joy-knob',
+                '.touch-joystick', '.touch-joystick-knob', '.touch-buttons'):
+        dst = _drop_rules(dst, sel)
+
     i = dst.find('<button id="btn-bloom"')
     if i != -1:
         j = dst.index('</button>', i) + len('</button>')

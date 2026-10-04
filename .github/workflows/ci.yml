@@ -102,8 +102,9 @@ jobs:
             bootcheck smoke localstartcheck localuxcheck localshopcheck \
             layoutcheck keyboardcheck fontcheck consistencycheck routingcheck \
             sandboxcheck batch24check batch38check symmetrycheck weaponcheck \
-            deadcontrolcheck inputguardcheck mobilecheck knockbackcheck \
-            contrastcheck padmenucheck palettecheck
+            deadcontrolcheck inputguardcheck knockbackcheck \
+            contrastcheck padmenucheck palettecheck langcheck \
+            netsmoothcheck touchfpscheck
 
   # ------------------------------------------------------------------ slow
   # Minutes each, including the three that have never run on the development

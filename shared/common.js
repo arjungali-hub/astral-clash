@@ -2327,7 +2327,19 @@ function dismissDesktopOnlyNotice() {
 // markup. dismissDesktopOnlyNotice is kept because ACDebug still exposes it for
 // tests, but nothing in the UI calls it any more: on a touch device the notice
 // is the end of the road.
-if (IS_TOUCH_DEVICE) showDesktopOnlyNotice();
+//
+// ...in the LOCAL build. The online build now has a real mobile control scheme
+// (shared/touch.js) and plays on a phone, so telling its players to find a
+// computer would be refusing a game that works. The local build still refuses,
+// and should: split screen on a phone gives two people a letterbox each, and
+// the one-player mode behind it was played and reported as "really bad and hard
+// to play".
+//
+// AC_ONE_SIDE_PER_CLIENT is the discriminator because it is the actual
+// difference - one fighter per screen is what makes a phone viable at all. This
+// is one line in shared code rather than a fork, which is the whole point of
+// the build flags.
+if (IS_TOUCH_DEVICE && !AC_ONE_SIDE_PER_CLIENT) showDesktopOnlyNotice();
 
 
 // Batch 8: the canvas was being sized straight from getBoundingClientRect()
