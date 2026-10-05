@@ -203,8 +203,29 @@ async function launch(opts = {}) {
     const browser = await puppeteer.launch({
         executablePath: CHROME,
         headless: 'new',
+        // SOFTWARE WEBGL, ASKED FOR BY NAME.
+        //
+        // There is no GPU on a CI runner and none worth using in headless
+        // Chrome anywhere, so every one of these checkers renders the 3D scene
+        // through SwiftShader. Chrome used to fall back to it on its own.
+        // Since roughly version 128 it does not: software rendering for WebGL
+        // has to be requested with --enable-unsafe-swiftshader, and without it
+        // the context creation simply fails.
+        //
+        // This game builds a THREE.WebGLRenderer at load time, so that failure
+        // threw inside bootGame(), ACDebug never appeared, and all twenty-six
+        // browser checkers reported the same unhelpful "page failed to boot" in
+        // three seconds each. It could not be reproduced here because this
+        // machine's Chrome is old enough to still allow the fallback - which is
+        // the whole argument for CI pinning nothing and the local machine
+        // pinning nothing either: they disagree, and that is the point.
+        //
+        // --use-gl=angle with --use-angle=swiftshader is the current spelling;
+        // the bare --use-gl=swiftshader this used to pass is the retired one.
         args: [
-            '--no-sandbox', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist',
+            '--no-sandbox',
+            '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+            '--enable-webgl', '--ignore-gpu-blocklist',
             ...(keepAnimating ? NO_THROTTLE_ARGS : []),
         ],
         defaultViewport: { width: 1400, height: 1000 },
@@ -256,7 +277,21 @@ async function boot(page, { clearStorage = false, models = false, path = null } 
     await page.evaluate(() => { const c = document.querySelector('#btn-tutorial-close'); if (c) c.click(); });
     await sleep(200);
     const ok = await page.evaluate(() => !!window.ACDebug);
-    if (!ok) throw new Error('window.ACDebug missing — the page failed to boot (check for a load-time exception)');
+    if (!ok) {
+        // SAY WHY. newPage() has been collecting console and page errors all
+        // along and this threw without consulting them, so a load-time
+        // exception arrived as "check for a load-time exception" - advice, not
+        // information.
+        //
+        // It cost a full round trip through CI. Forty-seven checkers failed
+        // with this identical sentence; only bootcheck, which captures console
+        // output itself, carried the line that actually mattered
+        // ("THREE.WebGLRenderer: Error creating WebGL context"). Every one of
+        // the other forty-six had it in hand and discarded it.
+        const why = (page.errors || []).slice(0, 3).join(' | ');
+        throw new Error('window.ACDebug missing — the page failed to boot'
+            + (why ? ': ' + why : ' (and the page logged nothing, which is its own clue)'));
+    }
     // Model loading is deliberately not awaited by the game (it stays playable
     // while in flight), so a checker that cares about the rigged art must wait
     // for it explicitly or it races the procedural fallback.

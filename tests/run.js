@@ -146,13 +146,19 @@ const ON_ACTIONS = !!process.env.GITHUB_ACTIONS;
 
 function annotate(name, verdict, detail, out) {
     if (!ON_ACTIONS) return;
+    // Newlines and percent signs only. Colons were escaped too, which is
+    // required in a workflow command's PROPERTIES but not in its message - so
+    // the first annotations to actually carry a diagnosis delivered it as
+    // "Error%3A Uncaught Error%3A Error creating WebGL context."
     const esc = (s) => String(s).replace(/%/g, '%25')
-        .replace(/\r/g, '%0D').replace(/\n/g, '%0A').replace(/:/g, '%3A');
+        .replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+    const escTitle = (s) => esc(s).replace(/:/g, '%3A').replace(/,/g, '%2C');
     let body = detail.map(d => d.trim()).join(chr10());
     // NO VERDICT means the checker died before printing one, and then the only
     // useful thing is its tail - typically a stack.
     if (!body) body = out.split(chr10()).slice(-12).join(chr10());
-    console.log('::error title=' + esc(name + ' ' + verdict) + '::' + esc(body.slice(0, 1800)));
+    console.log('::error title=' + escTitle(name + ' ' + verdict) + '::'
+        + esc(body.slice(0, 1800)));
 }
 
 function chr10() { return String.fromCharCode(10); }
