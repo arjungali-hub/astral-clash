@@ -32,9 +32,28 @@ const H = require('./harness');
 
     await H.boot(page, { clearStorage: true });
 
-    section('With no account service, nothing about the game changes:');
+    section('The shipped build is pointed at a project:');
+    // Asserted as a FACT about the deployment, not assumed. This file used to
+    // open by checking the build was UNconfigured, which was true when it was
+    // written and silently became a test of the deployment rather than of the
+    // code the moment a project was wired in.
+    const shipped = await page.evaluate(() => {
+        const D = window.ACDebug;
+        const st = D.accountState();
+        return { configured: st.configured, status: st.status, supported: st.supported };
+    });
+    check('a project is configured in this build',
+        shipped.configured === true, JSON.stringify(shipped));
+    check('and the online build supports accounts at all',
+        shipped.supported === true, JSON.stringify(shipped));
+
+    section('With NO account service, nothing about the game changes:');
+    // Driven, not assumed - this is the promise the whole design rests on and
+    // it has to hold whether or not this particular build has a project.
     const off = await page.evaluate(() => {
         const D = window.ACDebug;
+        D.accountConfigure('', '');
+        D.__accountSetState('off', '');
         const st = D.accountState();
         return {
             configured: st.configured,
@@ -81,6 +100,8 @@ const H = require('./harness');
     const panels = await page.evaluate(() => {
         const D = window.ACDebug;
         const out = {};
+        D.accountConfigure('', '');
+        D.__accountSetState('off', '');
         out.unconfigured = D.accountPanelHTML();
         // CONFIGURE IT, with a project that does not exist. Every state below
         // sits behind the "is this configured" check, so without this they are

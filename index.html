@@ -2864,6 +2864,14 @@ refreshDailyUI();
 // Accounts. onAccountChange is how shared/account.js repaints without
 // reaching into bootGame(): it owns the state, this owns the screen.
 onAccountChange = refreshAccountUI;
+// The project these saves live in. BOTH VALUES ARE PUBLIC by design - this page
+// is static and anyone can view-source it - which is why the row level security
+// in supabase/migrations/0001_saves.sql is the actual access control and not a
+// formality. The publishable key rather than the legacy anon JWT: it is the
+// current recommendation and can be rotated on its own without reissuing
+// anything else.
+accountConfigure('https://bndxnalnawxlqnpggnwb.supabase.co',
+                 'sb_publishable_6nPMjevR8wYvv5kx9SWqHg_i4jxfOpf');
 initAccounts();
 refreshAccountUI();
 // The touch scheme, which is a no-op on a desktop and in the local
