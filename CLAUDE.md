@@ -59,15 +59,78 @@ The three build facts that are *supposed* to differ are declared at the top of
 each file and nowhere else: `AC_ONE_SIDE_PER_CLIENT`, `AC_BASE`, `AC_BLOOM`.
 Everything downstream asks them rather than forking.
 
+`AC_ONE_SIDE_PER_CLIENT` is the one that carries real behaviour. It is the
+answer to "does one player get the whole screen", and therefore also to:
+
+- **does this build play on a phone.** Online does, through `shared/touch.js`;
+  local does not and shows `#desktop-only`. One line in shared code decides it —
+  `if (IS_TOUCH_DEVICE && !AC_ONE_SIDE_PER_CLIENT) showDesktopOnlyNotice()` —
+  rather than a fork.
+
+## The shared modules
+
+`SHARED_MODULES` in `art/sync_local.py` is the single source of truth, in load
+order. Adding one is a one-line change there plus a `<script>` tag in
+`index.html`; everything else derives from it — the tags in both builds, the
+`block()` fallback, and the haystack every porter searches to decide whether a
+build *wants* a given id, selector or statement.
+
+    roster.js animation.js      pure data and timing; may load before three.js
+    props.js characters.js      build THREE objects at load time
+    common.js                   the game
+    i18n.js                     English/Spanish/French
+    touch.js                    the mobile control scheme (online only)
+
+That list was five hardcoded `io.open` calls and six hand-written five-tuples
+until `i18n.js` was added to the tag order, loaded in both builds, and the
+markup porter *still* could not see that it wanted `#btn-lang` — because the
+haystack it searched was one of those tuples. The Language row reached the
+online build and nowhere else, which is precisely what the porters exist to
+prevent.
+
+### Localisation
+
+`shared/i18n.js` keys on **the English source string itself**, not invented ids.
+One `localiseDOM()` pass localises the whole of the markup with no markup edits,
+a missing entry falls back to English rather than showing a key, and the pass is
+idempotent by construction (translated text no longer matches an English key),
+which is what makes it safe to call from the frame loop.
+
+The cost of that choice: **a mistyped key is invisible.** It does not throw, the
+string simply stays English. `tests/langcheck.js` exists for exactly this — it
+collects every prose key from the live DOM and fails on any table entry that
+matches nothing. Run it after touching any user-visible string.
+
+    python art/strings.py                 how many strings exist, by where they live
+    python art/strings.py --out FILE      a catalogue for a translator
+
 ## Checking that nothing has slipped a key
 
     python art/coverage.py            every line, by what keeps it in step
     python art/coverage.py --lines    the unkeyed ones, with their region
 
-It reports ~88 unkeyed duplicated lines: 85 are `window.ACDebug` (each build
-exports what it has, and a missing export fails a checker loudly rather than the
-game quietly) and three are `<!DOCTYPE html>`, `</head>`, `<body>`. **If that
-number grows, something new has no key — find it.**
+It reports **170 unkeyed duplicated lines**, and the breakdown is the part that
+matters, because one of those three numbers is *supposed* to move:
+
+| | | |
+| --- | --- | --- |
+| `code` | 92 | almost all `window.ACDebug` |
+| `comment` | 66 | prose beside code that is itself keyed |
+| `brace` | 12 | `}` / `});` on their own line |
+
+`comment` and `brace` are structural and should sit still. **`code` grows by one
+line for every `ACDebug` export added**, and that is correct: each build exports
+what it has, so the lists are deliberately not compared, and a missing export
+fails a checker loudly instead of the game failing quietly.
+
+So the rule is not "this number must not grow". It is: **if `code` grows by more
+than the exports you just added, something new has no key — find it.** Measure
+it the honest way rather than trusting the figure above, which has already gone
+stale once (it read 88 for several batches while the real number was 91):
+
+    git worktree add /tmp/ac-base HEAD~1
+    (cd /tmp/ac-base && python art/coverage.py)
+    git worktree remove /tmp/ac-base --force
 
 The guards compare things *named or keyed the same*. Code hand-written into both
 files under different names is invisible to all of them; that is how
@@ -84,6 +147,27 @@ this machine unusable. `node tests/run.js smoke localcombatcheck` runs a subset.
 (`tests/.css-baseline.json`, git-ignored). After an intended visual change,
 re-save it: `node tests/cssparitycheck.js --save`. It samples mid-transition
 colours occasionally, so confirm a failure reproduces before chasing it.
+
+## CI
+
+`.github/workflows/ci.yml`, three jobs: `guards` (no browser, seconds), `fast`
+(sub-minute checkers, gates the push), `slow` (the heavy ones, nobody waits).
+
+**It had never passed once** between being added and the fix below. Two causes,
+neither of them a bug in the game, and both of the same shape — *a file the
+checkers need is git-ignored, so it does not exist on a fresh checkout*:
+
+- `tests/.css-baseline.json`. `cssparitycheck` compared against it and called
+  `check(false)` when it was absent, so the slow job failed on every run by
+  design. A missing baseline is a FIRST RUN, not a regression: it now seeds one,
+  says plainly that it compared nothing, and passes. CI caches the file on a
+  rolling key so the next run genuinely diffs against the last.
+- `tests/screenshots/`. `page.screenshot({path})` into a missing directory
+  throws ENOENT. The harness creates it on launch.
+
+The lesson generalises: **anything in `.gitignore` that a checker reads must
+either be created on demand or restored by CI.** A red tick that is always red
+reports exactly as much as no tick at all.
 
 ## Other standing rules
 

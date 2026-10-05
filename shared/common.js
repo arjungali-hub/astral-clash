@@ -125,7 +125,7 @@ function refreshSidePaletteUI() {
 }
 
 
-function freshSideProgress() { return { coins: 0, unlockedChars: STARTER_CHARS.slice(), upgrades: {}, doubleJumpUnlocked: false }; }
+function freshSideProgress() { return { coins: 0, unlockedChars: STARTER_CHARS.slice(), upgrades: {}, doubleJumpUnlocked: false, daily: null }; }
 // Repairs one side's blob: these are the fields everything downstream indexes
 // into directly, so a hand-edited/half-written save must not reach them raw.
 
@@ -135,6 +135,15 @@ function repairSideProgress(raw) {
     if (!s.upgrades || typeof s.upgrades !== 'object') s.upgrades = {};
     s.coins = Number(s.coins) || 0;
     s.doubleJumpUnlocked = !!s.doubleJumpUnlocked;
+    // Today's challenges. Repaired rather than trusted for the same reason as
+    // everything above it: this comes back from localStorage, which a player
+    // can edit and a half-written save can truncate. A `done` that is not an
+    // array would throw on indexOf the first time a match ended.
+    if (!s.daily || typeof s.daily !== 'object' || typeof s.daily.day !== 'string') {
+        s.daily = null;
+    } else if (!Array.isArray(s.daily.done)) {
+        s.daily.done = [];
+    }
     return s;
 }
 
@@ -2506,12 +2515,87 @@ const net = {
     lastRecvAt: 0,
     timeoutMs: 15000,      // = NET_TIMEOUT_MS; silence after which we call it dropped
     pingTimer: null,       // setInterval handle - liveness, independent of rAF
+    // RECONNECT GRACE. A dropped data channel is usually a Wi-Fi blip, not
+    // somebody leaving - so the match is held rather than ended. See
+    // netBeginGrace() for why this does not simply tear down and re-host.
+    // True while netTeardown is closing the channel itself, so the 'close'
+    // event that causes cannot be read back as the opponent leaving.
+    closing: false,
+    graceUntil: 0,         // performance.now() past which we give up
+    graceReason: '',       // what dropped, shown while we wait
+    graceTries: 0,         // reconnect attempts made in this grace window
+    graceLastTry: 0,
+    hostId: '',            // the peer id to dial again; only the joiner dials
     remoteState: null,     // last STATE received; netApplyRemote eases toward it
     remoteName: '',        // the opponent's chosen name, cleared on teardown
     remoteReady: false,    // joiner has acknowledged SETUP
     pendingSetup: null,    // joiner: setup received before it could be applied
 };
-function netActive() { return !!(net.conn && net.conn.open); }
+// IS THIS AN ONLINE MATCH. Note that a grace window counts.
+//
+// This is the subtle part of reconnecting, and getting it wrong is worse than
+// having no reconnect at all. Dozens of guards hang off this one answer -
+// including isNetPuppet(), which decides whether the opponent is driven by the
+// wire or by this machine. PeerJS flips conn.open to false the moment a channel
+// closes, so a grace window that let netActive() go false would, for those
+// seconds, tell the game there is no opponent on the other end: the puppet stops
+// being a puppet, and this client starts driving BOTH fighters.
+//
+// During grace there IS still an online match. There is just no channel. So the
+// answer stays yes, sends fail harmlessly into netSend's catch, and the match is
+// paused anyway - which is the honest description of the situation.
+function netActive() { return !!(net.conn && net.conn.open) || netInGrace(); }
+
+// How long a blip is allowed to last. Long enough to cover a lift, a tunnel or
+// a Wi-Fi handover; short enough that someone who has actually quit does not
+// leave the other player staring at a countdown.
+const NET_GRACE_MS = 15000;
+
+// Gap between reconnect attempts. Only the joiner dials - the host cannot dial
+// anybody, it can only keep its peer alive and accept.
+const NET_RETRY_MS = 1800;
+
+function netInGrace() { return net.graceUntil > performance.now(); }
+
+function netGraceLeftMs() { return Math.max(0, net.graceUntil - performance.now()); }
+
+// Whole seconds, rounded UP, so a countdown never shows 0 while still waiting.
+function netGraceSecondsLeft() { return Math.ceil(netGraceLeftMs() / 1000); }
+
+// HOLD the match instead of ending it.
+//
+// Why not tear down and let them re-host: the host's peer id IS the room code.
+// Destroying the peer destroys the code, so "reconnect" would mean a new code,
+// read out loud again, with the match gone. Keeping the peer alive is what makes
+// this possible at all - and the signalling link already does exactly this for
+// its own drops (peer.on('disconnected') calls peer.reconnect() with the same
+// id, precisely so the code survives). This is the same idea one layer down.
+function netBeginGrace(reason) {
+    net.graceUntil = performance.now() + NET_GRACE_MS;
+    net.graceReason = reason || 'Connection lost';
+    net.graceTries = 0;
+    net.graceLastTry = 0;
+    // The STATUS LINE is not set here. netSetStatus lives inside bootGame(),
+    // which a shared module cannot see - the sync's shared-scope guard refused
+    // to write the build until this moved, which is the guard doing its job.
+    // It is also the right split on its own terms: this function is state, and
+    // where that state is displayed is the caller's business.
+}
+
+function netEndGrace() {
+    net.graceUntil = 0;
+    net.graceReason = '';
+    net.graceTries = 0;
+    net.graceLastTry = 0;
+}
+
+// Is a match worth holding on to. A drop in a menu or a room is not: there is
+// nothing to preserve, and the existing path (go home, say why, open the lobby)
+// is the better answer. A drop mid-fight is - that is a match in progress.
+function netGraceWorthwhile() {
+    return gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH'
+        || gameState === 'ROUND_END' || gameState === 'PAUSED';
+}
 
 let LOCAL_SIDE = 'p1';
 // "Is this side mine" has no meaning when one keyboard drives both, so the

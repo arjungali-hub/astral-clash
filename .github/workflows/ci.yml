@@ -104,7 +104,7 @@ jobs:
             sandboxcheck batch24check batch38check symmetrycheck weaponcheck \
             deadcontrolcheck inputguardcheck knockbackcheck \
             contrastcheck padmenucheck palettecheck langcheck \
-            netsmoothcheck touchfpscheck
+            netsmoothcheck touchfpscheck reconnectcheck dailycheck
 
   # ------------------------------------------------------------------ slow
   # Minutes each, including the three that have never run on the development
@@ -126,6 +126,19 @@ jobs:
       - name: Install test deps
         working-directory: tests
         run: npm ci || npm install
+
+      # THE CSS BASELINE, carried between runs. It is git-ignored, so without
+      # this every run starts with nothing to compare and cssparitycheck can only
+      # report that it established one. Restored on a rolling key so each run
+      # diffs against the one before it.
+      - name: Restore the CSS baseline
+        uses: actions/cache@v4
+        with:
+          path: tests/.css-baseline.json
+          key: css-baseline-${{ github.run_id }}
+          restore-keys: |
+            css-baseline-
+
       - name: Run
         env:
           AC_CHROME: ${{ steps.chrome.outputs.chrome-path }}

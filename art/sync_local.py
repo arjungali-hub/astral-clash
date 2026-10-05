@@ -52,7 +52,8 @@ SHARED_NAMES = set()
 # io.open calls and six hand-written tuples, and adding i18n.js to the first two
 # while missing the rest is what left the Language row in one build only.
 SHARED_PRE = ['roster.js', 'animation.js']
-SHARED_POST = ['props.js', 'characters.js', 'common.js', 'i18n.js', 'touch.js']
+SHARED_POST = ['props.js', 'characters.js', 'common.js', 'i18n.js', 'touch.js',
+               'challenges.js']
 SHARED_MODULES = SHARED_PRE + SHARED_POST
 
 
@@ -856,6 +857,10 @@ MARKUP_INTERFACE = {
     'tutorial-screen': 'one explains hosting and joining, the other two people at one keyboard',
     'btn-mapselect-back': 'goes back to the fighter select here, to the room there',
     'btn-play-again': 'plays again here; returns to the room there, and is styled as a back button for it',
+    # Same panel, different place to put it: the online build has a home card
+    # and this one opens straight into the picker. Contents come from
+    # dailyPanelHTML() in both, so only the position differs.
+    'daily-panel': 'the two builds have different entry screens; contents are shared',
 }
 
 
@@ -3429,6 +3434,30 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # all - bloom was turned down for split screen, where it would have to run
     # per viewport. The toggle wrote a flag, reloaded the arena, and changed
     # nothing visible. Reported as "it doesn't seem to change anything".
+    # ------------------------------------------- today's challenges, placed here
+    # Under the mode and How-to-Play buttons on the picker, which is this
+    # build's equivalent of the online home card: the first screen, where a
+    # player decides what this session is going to be.
+    if 'id="daily-panel"' not in dst:
+        _anchor = ('<button id="btn-open-tutorial" class="btn-tutorial">'
+                   'How to Play</button>')
+        if _anchor in dst:
+            dst = dst.replace(
+                _anchor,
+                _anchor + chr(10)
+                # The SAME sentence as the online build's, deliberately: the
+                # comment guard compares comments across the two files and
+                # reported a near-match as drift, which is exactly its job. Why
+                # the two builds place it differently belongs here, in the code
+                # that places it, not in a comment that has to differ to say so.
+                + '                    <!-- Filled by refreshDailyUI() from'
+                + ' shared/challenges.js, so' + chr(10)
+                + '                         both builds render the same panel'
+                + ' from one function. -->' + chr(10)
+                + '                    <div class="daily-panel" id="daily-panel"></div>',
+                1)
+            print('  %-34s ok' % 'daily panel placed')
+
     # ------------------------------------------- no touch scheme in this build
     # Both schemes, removed here rather than never inserted: the markup porter
     # runs before this and will have put the new one in (badly - it inserts

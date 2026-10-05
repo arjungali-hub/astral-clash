@@ -119,18 +119,39 @@ const SIZES = [
             !!m.grid && !!m.pickerSide && m.grid.w >= m.pickerSide.w - 2,
             JSON.stringify({ grid: m.grid, side: m.pickerSide }));
 
-        // 4b. NO MODAL SCROLLS INSIDE THE PAGE'S SCROLL. #ui-overlay is the one
-        //     scroll container; a panel with its own scrollbar hides content
-        //     with nothing on screen to say so.
-        const inner = await page.evaluate(() => {
+        // 4b. NO PANEL INSIDE A MODAL KEEPS A SCROLLBAR OF ITS OWN.
+        //
+        //     This assertion was passing while measuring NOTHING. By the time it
+        //     ran, the block above had put the page on the select screen via
+        //     netFakeConnect, so every opener it looks for had offsetParent
+        //     null, every modal was skipped, and `inner` was empty for the one
+        //     reason an empty list proves nothing. Going home first is what
+        //     makes it an assertion.
+        //
+        //     It also had the wrong exclusion list. The CSS deliberately makes
+        //     the modal SCREEN the scroller - "openModal() scrolls the overlay
+        //     to the top and locks it, so this container is the only scroller
+        //     while a modal is up... and no panel inside them keeps a scrollbar
+        //     of its own". Only #ui-overlay was excluded, so once the check
+        //     started running it reported those intended scrollers as faults.
+        //     The thing actually worth catching is a PANEL with its own
+        //     scrollbar, which hides content with nothing on screen to say so.
+        const SCROLLERS = new Set(['ui-overlay', 'settings-screen', 'audio-screen',
+            'rebind-screen', 'tutorial-screen', 'mapselect-screen',
+            'modeselect-screen', 'shop-screen', 'lobby-screen']);
+        await page.evaluate(() => window.ACDebug.goHome());
+        await H.sleep(120);
+        const inner = await page.evaluate((skip) => {
             const out = [];
             const open = ['lobby', 'settings', 'tutorial', 'modeselect', 'mapselect'];
             const ids = { lobby: 'btn-open-online', settings: 'btn-open-settings',
                           tutorial: 'btn-open-tutorial', modeselect: 'btn-open-modeselect',
                           mapselect: 'btn-open-mapselect' };
+            out.__seen = [];
             for (const name of open) {
                 const opener = document.getElementById(ids[name]);
                 if (!opener || opener.offsetParent === null) continue;
+                out.__seen.push(name);
                 opener.click();
                 const screen = document.getElementById(name + '-screen');
                 if (!screen) continue;
@@ -138,17 +159,21 @@ const SIZES = [
                     const over = el.scrollHeight - el.clientHeight;
                     const style = getComputedStyle(el);
                     const scrolls = /(auto|scroll)/.test(style.overflowY) && over > 2;
-                    if (scrolls && el.id !== 'ui-overlay') {
+                    if (scrolls && !skip.includes(el.id)) {
                         out.push({ modal: name, el: el.id || el.className, over });
                     }
                 }
                 document.querySelectorAll('#' + name + '-screen .btn-back, #' + name + '-screen .btn-close')
                     .forEach(b => b.click());
             }
-            return out;
-        });
-        check('no modal panel scrolls inside the page scroll',
-            inner.length === 0, JSON.stringify(inner));
+            return { out, seen: out.__seen };
+        }, [...SCROLLERS]);
+        // The guard on the guard: an empty list of faults only means something
+        // if modals were actually opened.
+        check('modals were actually opened, so this measured something',
+            inner.seen.length >= 2, JSON.stringify(inner.seen));
+        check('no panel inside a modal keeps a scrollbar of its own',
+            inner.out.length === 0, JSON.stringify(inner.out));
 
         // 5. MODAL CONTENT STAYS ON ITS PANEL. A panel with a max-height and
         //    content that ignores it renders text over the arena behind it.

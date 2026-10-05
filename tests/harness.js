@@ -158,6 +158,12 @@ const NO_THROTTLE_ARGS = [
 
 async function launch(opts = {}) {
     armCleanup();
+    // tests/screenshots/ is git-ignored, so it does not exist on a fresh
+    // checkout - and page.screenshot({path}) into a missing directory throws
+    // ENOENT, failing a checker for a reason that has nothing to do with the
+    // game. Created here because every checker that screenshots launches first.
+    try { fs.mkdirSync(path.resolve(__dirname, 'screenshots'), { recursive: true }); }
+    catch (e) { /* a read-only checkout is not a reason to fail a test */ }
     const { keepAnimating = false, ...rest } = opts;
     const browser = await puppeteer.launch({
         executablePath: CHROME,

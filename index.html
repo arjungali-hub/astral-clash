@@ -1277,6 +1277,30 @@
         }
         #touch-rotate p { color: #cbd5e1; font-size: 0.95rem; line-height: 1.6; max-width: 320px; }
         #touch-rotate b { color: #00f3ff; }
+        /* ------------------------------------------------ daily challenges
+           Quiet by default and green only when something is done: three lines
+           of text on the home card should read as information, not as a
+           notification demanding to be cleared. */
+        .daily-panel { margin: 10px 0 2px; text-align: left; }
+        .daily-panel h4 {
+            margin: 0 0 6px; font-size: 0.68rem; letter-spacing: 0.1em;
+            text-transform: uppercase; color: #64748b; font-weight: 700;
+        }
+        .daily-list { list-style: none; margin: 0; padding: 0;
+                      display: flex; flex-direction: column; gap: 5px; }
+        .daily-row {
+            display: flex; align-items: baseline; gap: 8px;
+            font-size: 0.72rem; line-height: 1.35; color: #cbd5e1;
+            /* The text column takes the slack so the coin value and the ticks
+               stay in a line down the panel instead of wandering with the
+               length of each challenge. */
+        }
+        .daily-text { flex: 1 1 auto; }
+        .daily-coins { flex: none; color: #f59e0b; font-weight: 700;
+                       font-variant-numeric: tabular-nums; }
+        .daily-mark { flex: none; color: #475569; font-size: 0.68rem; }
+        .daily-mark.done { color: #34d399; font-weight: 700; }
+        .daily-row.done .daily-text { color: #94a3b8; text-decoration: line-through; }
         #desktop-only {
             display: none;
             position: fixed;
@@ -1571,6 +1595,9 @@
                         <span class="coin-balance" id="home-coins">0</span>
                         <span class="home-roster" id="home-roster"></span>
                     </div>
+                    <!-- Filled by refreshDailyUI() from shared/challenges.js, so
+                         both builds render the same panel from one function. -->
+                    <div class="daily-panel" id="daily-panel"></div>
                     <div class="home-row">
                         <button id="btn-home-armory" class="btn-secondary">Armory</button>
                         <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
@@ -2044,6 +2071,7 @@ function startGame() {
 <script src="shared/common.js"></script>
 <script src="shared/i18n.js"></script>
 <script src="shared/touch.js"></script>
+<script src="shared/challenges.js"></script>
 <script>
 function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
@@ -2784,6 +2812,7 @@ refreshBloomUI();
 refreshHudScaleUI();
 refreshSidePaletteUI();
 refreshLangUI();
+refreshDailyUI();
 // The touch scheme, which is a no-op on a desktop and in the local
 // build. Must run after the markup exists, which it does here.
 initTouchFPS();
@@ -7682,7 +7711,11 @@ function refreshRoomUI() {
 // Kept as an alias: plenty of call sites (purchases, rebinds, mode changes,
 // net events) already say "the menu changed, repaint it" and renaming them all
 // would be churn for no gain.
-function refreshMenuUI() { refreshRoomUI(); }
+// One place, because refreshMenuUI already runs on every screen change and
+// every coin award - which is exactly when a challenge can have been
+// completed. A panel refreshed from its own call sites is a panel that goes
+// stale the first time somebody adds a new one.
+function refreshMenuUI() { refreshRoomUI(); refreshDailyUI(); }
 refreshCoinDisplays(); // initial paint at load, before any menu interaction
 
 // Rolls random fighters for any bot side (their pick is hidden until now),
@@ -8065,8 +8098,20 @@ function netTeardown(reason) {
                      'state=' + gameState, 'sinceRecv=' +
                      (net.lastRecvAt ? Math.round(performance.now() - net.lastRecvAt) : 'n/a'));
     }
+    // OUR OWN CLOSE IS NOT A DROP. conn.close() makes PeerJS emit 'close',
+    // whose handler calls netDropped - so without this flag, deliberately
+    // leaving a room re-entered teardown and reported "Opponent disconnected",
+    // then sent the player home with a message blaming somebody who had not
+    // gone anywhere.
+    //
+    // The re-entrancy was always there; it was invisible because the test
+    // connection's on() was a no-op, so no checker could ever see a close
+    // event. Making that fake connection dispatch its handlers is what
+    // surfaced it.
+    net.closing = true;
     if (net.conn) { try { net.conn.close(); } catch (e) {} }
     if (net.peer) { try { net.peer.destroy(); } catch (e) {} }
+    net.closing = false;
     net.peer = null; net.conn = null; net.role = null;
     net.remoteReady = false; net.pendingSetup = null;
     LOCAL_SIDE = 'p1';
@@ -8075,6 +8120,10 @@ function netTeardown(reason) {
     // waiting on a peer who is no longer there.
     remoteAway = false;
     awayPaused = false;
+    // A grace window belongs to the connection that opened it. Left set, the
+    // next netActive() call would answer yes for a match that no longer exists.
+    netEndGrace();
+    net.hostId = '';
     // The room code dies with the peer that owned it. Left on screen it sits
     // next to an enabled "Host Game" button, inviting someone to share a code
     // that cannot be joined.
@@ -8085,11 +8134,76 @@ function netTeardown(reason) {
     netSetStatus(reason ? 'dropped' : 'offline', reason || '');
 }
 
+// EVERY drop arrives here, and here is the only place that decides whether it
+// ends the match. There were two routes before - conn.on('close') and the
+// silence timeout in netHeartbeat - and both called netTeardown directly, which
+// is why a reconnect could not be added in one place.
+function netDropped(reason) {
+    if (net.closing) return;                     // we closed it; see netTeardown
+    if (net.status === 'offline') return;        // already torn down
+    // A drop with nothing to preserve is still a teardown. A room with no
+    // opponent is a dead end, and holding a countdown over a menu would be
+    // theatre.
+    if (!netGraceWorthwhile() || !net.peer || net.peer.destroyed) {
+        netTeardown(reason);
+        onNetLost();
+        return;
+    }
+    netBeginGrace(reason);
+    netSetStatus('dropped', net.graceReason);
+    // Pause and SAY why, exactly as a real disconnect does - the difference is
+    // that this one has a countdown and may undo itself.
+    if (gameState !== 'PAUSED') { exitPointerLock(); togglePause(); }
+    refreshMenuUI();
+    refreshPauseUI();
+}
+
+// Called from the heartbeat while a grace window is open. Three jobs: give up
+// when the window closes, dial again if we are the side that can, and keep the
+// countdown on screen honest.
+function netGraceTick() {
+    if (!netInGrace()) {
+        const why = net.graceReason || 'Connection lost';
+        netEndGrace();
+        netTeardown(why);
+        onNetLost();
+        // ...and repaint the pause screen EXPLICITLY. onNetLost only does that
+        // on its FIGHT/INTRO/DEATH branch, and a grace window has already
+        // paused the match - so it falls through to the menu branch and the
+        // screen keeps offering "Trying to reconnect... 15s" after we have
+        // given up. Found by reconnectcheck asserting the text after expiry.
+        refreshPauseUI();
+        return;
+    }
+    refreshPauseUI();                            // the countdown
+    // ONLY THE JOINER DIALS. The host has no address to dial - it published a
+    // room code and waits - so its half of the reconnect is simply keeping its
+    // peer alive and accepting the incoming connection, which
+    // peer.on('connection') now does during a grace window.
+    if (netIsHost() || !net.hostId) return;
+    const now = performance.now();
+    if (now - net.graceLastTry < NET_RETRY_MS) return;
+    net.graceLastTry = now;
+    net.graceTries++;
+    if (!net.peer || net.peer.destroyed) return;
+    try {
+        netBindConnection(net.peer.connect(net.hostId, { reliable: true }));
+    } catch (e) {
+        if (DEBUG) console.warn('[net] redial failed', e && e.message);
+    }
+}
+
 function netBindConnection(conn) {
     netLostReason = '';   // a live connection is not a lost one
     net.conn = conn;
     conn.on('open', () => {
         net.lastRecvAt = performance.now();
+        // RESUMING, not joining. enterRoom() below would throw away a match in
+        // progress and put both players back on the roster - so a reconnect
+        // takes a different path, and the host re-states the score because its
+        // copy is the authoritative one.
+        const resuming = netInGrace();
+        netEndGrace();
         netSetStatus('connected', netIsHost() ? 'You are Player 1' : 'You are Player 2');
         // Both sides announce themselves so a mismatched build is obvious
         // rather than manifesting as strange behaviour later.
@@ -8098,13 +8212,17 @@ function netBindConnection(conn) {
         // is open there is nothing to send it down.
         if (net.pingTimer) clearInterval(net.pingTimer);
         net.pingTimer = setInterval(netHeartbeat, NET_PING_MS);
+        if (resuming) {
+            netLostReason = '';
+            if (netIsHost()) netSendResync();
+            refreshMenuUI();
+            refreshPauseUI();
+            return;
+        }
         enterRoom();
     });
     conn.on('data', netOnMessage);
-    conn.on('close', () => {
-        if (net.status !== 'offline') netTeardown('Opponent disconnected');
-        onNetLost();
-    });
+    conn.on('close', () => netDropped('Opponent disconnected'));
     conn.on('error', err => {
         netSetStatus('error', (err && err.type) || 'connection error');
     });
@@ -8190,7 +8308,12 @@ function netHost() {
             if (row) row.style.display = 'flex';
         });
         net.peer.on('connection', conn => {
-            if (netActive()) { try { conn.close(); } catch (e) {} return; } // one opponent only
+            // One opponent only - EXCEPT during a grace window, where the
+            // incoming connection is very probably the same opponent coming
+            // back. netActive() stays true through a grace window on purpose,
+            // so without the second clause the host would hang up on the
+            // reconnect it is waiting for.
+            if (netActive() && !netInGrace()) { try { conn.close(); } catch (e) {} return; }
             netBindConnection(conn);
         });
         net.peer.on('error', err => {
@@ -8242,6 +8365,9 @@ function netJoin(hostId) {
     LOCAL_SIDE = 'p2';               // joiner always drives Player 2
     netSetStatus('connecting', 'Connecting to ' + roomCodeOf(id) + '...');
     net.peer = new Peer();
+    // Kept so a reconnect has somewhere to dial. The host does not need the
+    // mirror of this: it cannot dial, it can only accept.
+    net.hostId = id;
     net.peer.on('open', () => netBindConnection(net.peer.connect(id, { reliable: true })));
     net.peer.on('error', err => netSetStatus('error', (err && err.type) || 'peer error'));
 }
@@ -8288,6 +8414,56 @@ function enterRoom() {
     refreshRoomUI();
 }
 
+// WHAT THE GUEST MISSED. Sent by the host the moment a reconnect completes.
+//
+// Only the things that cannot be re-derived and would be WRONG rather than
+// merely stale. Positions are not among them: a STATE packet arrives within a
+// frame or two and netApplyRemote eases to it, and a snapped position from a
+// packet sent seconds ago would be a visible jump backwards. Scores and HP are
+// different - nothing else ever re-states them, so a guest that missed the hit
+// which ended a round would keep a stale bar and a stale score for the rest of
+// the match.
+function netSendResync() {
+    if (!netIsHost() || !player1 || !player2) return;
+    netSend({
+        t: 'RESYNC',
+        round: currentRound,
+        wins: { p1: roundWins.p1, p2: roundWins.p2 },
+        // The mode tallies matter MORE than the round score, not less: a
+        // Takedown Race is first to three, so a takedown the guest did not see
+        // is the difference between winning and not knowing why it ended.
+        zone: { p1: zoneScore.p1, p2: zoneScore.p2 },
+        ko: { p1: koTally.p1, p2: koTally.p2 },
+        hp: { p1: player1.hp, p2: player2.hp },
+        meter: { p1: player1.special, p2: player2.special },
+        state: gameState,
+    });
+}
+
+function netApplyResync(msg) {
+    if (netIsHost()) return;                 // the host IS the source
+    if (!player1 || !player2) return;
+    const num = (v, fallback) => (typeof v === 'number' && isFinite(v) ? v : fallback);
+    const pair = (into, from) => {
+        if (!from) return;
+        into.p1 = num(from.p1, into.p1);
+        into.p2 = num(from.p2, into.p2);
+    };
+    currentRound = num(msg.round, currentRound);
+    pair(roundWins, msg.wins);
+    pair(zoneScore, msg.zone);
+    pair(koTally, msg.ko);
+    if (msg.hp) {
+        player1.hp = num(msg.hp.p1, player1.hp);
+        player2.hp = num(msg.hp.p2, player2.hp);
+    }
+    if (msg.meter) {
+        player1.special = num(msg.meter.p1, player1.special);
+        player2.special = num(msg.meter.p2, player2.special);
+    }
+    refreshMenuUI();
+}
+
 function netOnMessage(msg) {
     if (!msg || typeof msg !== 'object') return;
     net.lastRecvAt = performance.now();
@@ -8305,6 +8481,10 @@ function netOnMessage(msg) {
         case 'PING':
             // Nothing to do: lastRecvAt was already refreshed above, which is
             // the whole point of a keepalive.
+            break;
+        case 'RESYNC':
+            // The host catching us up after a reconnect. See netSendResync.
+            netApplyResync(msg);
             break;
         case 'SETUP':
             // Host has chosen everything; mirror it exactly and confirm.
@@ -8473,6 +8653,10 @@ function netApplyLifecycle(msg) {
 // Liveness, on its own interval so it survives a backgrounded tab. See the
 // note on NET_PING_HZ. Started by netBindConnection, cleared by netTeardown.
 function netHeartbeat() {
+    // The grace window first: netActive() is deliberately TRUE throughout one
+    // (see its comment), so without this the code below would send PINGs into a
+    // closed channel and the window would never close.
+    if (netInGrace()) { netGraceTick(); return; }
     if (!netActive()) return;
     const now = performance.now();
     // Drop detection: PeerJS 'close' is not guaranteed on an abrupt network
@@ -8481,8 +8665,7 @@ function netHeartbeat() {
     // very check that notices a stalled peer - or, worse, notice its own
     // stall and blame the peer for it.
     if (net.lastRecvAt && now - net.lastRecvAt > net.timeoutMs) {
-        netTeardown('Connection timed out');
-        onNetLost();
+        netDropped('Connection timed out');
         return;
     }
     // A PING costs almost nothing and is only skipped when a STATE packet went
@@ -8997,6 +9180,23 @@ function refreshPauseUI() {
     // whose opponent left mid-match got an ordinary pause screen with a working
     // Resume button. Reported as "the host gets no notice when the opponent
     // leaves mid-match".
+    // RECONNECTING, which is not the same as gone and must not read like it.
+    // Checked FIRST: netActive() is true during a grace window by design, so
+    // the "opponent is gone" branch below would not fire - but the ordinary
+    // "Resume (Esc)" branch would, handing someone a button that resumes a
+    // match with nobody on the other end.
+    if (netInGrace() && player1 && player2) {
+        btn.disabled = true;
+        btn.textContent = 'Resume';
+        if (note) {
+            const left = netGraceSecondsLeft();
+            note.textContent = net.graceReason + '. Trying to reconnect\u2026 '
+                + left + 's' + (net.graceTries ? ' (attempt ' + net.graceTries + ')' : '')
+                + '. The match is held until then.';
+            note.style.display = '';
+        }
+        return;
+    }
     if (netLostReason && !netActive() && player1 && player2) {
         btn.disabled = true;
         btn.textContent = 'Resume';
@@ -10054,6 +10254,43 @@ function endMatch() {
         addCoins('p1', earnedP1);
         addCoins('p2', earnedP2);
     }
+    // DAILY CHALLENGES. Scored from the same facts the summary above is built
+    // from - nothing here counts anything new. Online, only the local side is
+    // scored, for exactly the reason only the local purse is credited: the
+    // opponent's progression lives on their machine.
+    const challengeCtx = (side) => challengeContext(side, {
+        mode: matchMode,
+        won: !isDraw && winner === (side === 'p1' ? player1 : player2),
+        stats: matchStats[side],
+        wins: roundWins,
+        ko: koTally,
+        rounds: roundDurations.slice(),
+        fighter: (side === 'p1' ? player1 : player2).name,
+        sandbox: matchIsSandbox(),
+    });
+    // Scored and PAID one side at a time, so the side is never in doubt. The
+    // first version of this scored both sides into one list and then paid them
+    // in a second loop, which had no way left to tell whose challenge was
+    // whose - both players' rewards would have gone to Player 1.
+    //
+    // addCoins is paid here rather than inside the module because it lives in
+    // bootGame() and shared code cannot see in; the sync's scope guard refused
+    // to write the build until it moved. It is a no-op under the sandbox
+    // override, and the context carries `sandbox` too, so a sandbox match
+    // neither completes a challenge nor pays for one.
+    const payDaily = (side) => {
+        const earned = scoreDailyChallenges(side, challengeCtx(side));
+        for (const ch of earned) addCoins(side, ch.coins);
+        return earned;
+    };
+    const earnedChallenges = netActive()
+        ? payDaily(LOCAL_SIDE)
+        : payDaily('p1').concat(payDaily('p2'));
+    const challengeLine = earnedChallenges.length
+        ? '<div style="margin-top:6px;color:#34d399;font-weight:bold;">Daily: '
+          + earnedChallenges.map(c => c.text + ' (+' + c.coins + ')').join(' &middot; ')
+          + '</div>'
+        : '';
     const coinLine = matchIsSandbox()
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} coins &nbsp;·&nbsp; P2 +${earnedP2} coins</div>`;
@@ -10061,7 +10298,7 @@ function endMatch() {
         `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
         `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
         `<div>Round times: ${roundTimesStr}</div>` +
-        coinLine;
+        coinLine + challengeLine;
 
     showScreen('gameover');
     refreshGameOverUI();   // the guest gets no rematch buttons
@@ -10717,6 +10954,20 @@ if (DEBUG) {
         // Batch 32: networking
         net, netActive, netIsHost, netHost, netJoin, netTeardown, netSend,
         netOnMessage, netApplyRemote, netTick, netHeartbeat, refreshLobbyUI,
+        netDropped, netGraceTick, netSendResync, netApplyResync,
+        // The match state RESYNC carries. The three tallies are objects, so
+        // exporting the reference is enough to watch them change; currentRound
+        // is a number and needs a getter.
+        // GETTERS, not references. These objects are reassigned when a match
+        // starts, so an exported reference pins whichever one existed when
+        // ACDebug was built - a test then writes to the live object and reads
+        // the dead one, and the write looks like it was ignored.
+        get roundWins() { return roundWins; },
+        get koTally() { return koTally; },
+        get zoneScore() { return zoneScore; },
+        get currentRound() { return currentRound; },
+        netInGrace, netBeginGrace, netEndGrace, netGraceSecondsLeft,
+        netGraceWorthwhile, NET_GRACE_MS, NET_RETRY_MS,
         NET_PING_MS, NET_TIMEOUT_MS,
         get netStatus() { return net.status; },
         get fpsSmoothed() { return fpsSmoothed; },
@@ -10734,22 +10985,60 @@ if (DEBUG) {
         // without depending on the public PeerJS broker being reachable, which
         // would make the suite fail for reasons that have nothing to do with
         // this code. A separate check covers the real PeerJS handshake.
+        // A connection that behaves like one: it DISPATCHES its handlers, so a
+        // test drives netBindConnection's real open/close paths instead of a
+        // copy of them. The previous version had `on() {}` and inlined what the
+        // open handler does, which meant the reconnect path could not be tested
+        // at all - its whole trigger is an open firing while a grace window is
+        // live.
+        __fakeConn() {
+            return {
+                open: false,
+                _h: {},
+                send(msg) { window.__netOutbox.push(msg); },
+                on(ev, fn) { (this._h[ev] = this._h[ev] || []).push(fn); },
+                _fire(ev, arg) { (this._h[ev] || []).slice().forEach(f => f(arg)); },
+                close() {
+                    if (!this.open) return;
+                    this.open = false;
+                    this._fire('close');
+                },
+            };
+        },
         netFakeConnect(role) {
             netTeardown();
             net.role = role;
             LOCAL_SIDE = role === 'host' ? 'p1' : 'p2';
             window.__netOutbox = [];
-            net.conn = {
-                open: true,
-                send(msg) { window.__netOutbox.push(msg); },
-                close() { this.open = false; },
+            // A STUB PEER, because net.peer being alive is not incidental - it
+            // is what makes a reconnect possible. The host's peer id IS the
+            // room code, so a destroyed peer means a dead code and no way back,
+            // and netDropped checks for exactly this before holding a match.
+            net.peer = {
+                destroyed: false,
+                destroy() { this.destroyed = true; },
                 on() {},
+                reconnect() {},
+                connect() { return window.ACDebug.__fakeConn(); },
             };
-            net.lastRecvAt = performance.now();
-            if (net.pingTimer) clearInterval(net.pingTimer);
-            net.pingTimer = setInterval(netHeartbeat, NET_PING_MS);
-            netSetStatus('connected', role === 'host' ? 'You are Player 1' : 'You are Player 2');
-            enterRoom();   // same entry point a real connection uses
+            const conn = this.__fakeConn();
+            netBindConnection(conn);
+            conn.open = true;
+            conn._fire('open');              // the real handler, not a copy
+            // Drained AFTER, so the HELLO that netBindConnection sends does not
+            // show up in a checker that is counting what the match sent.
+            window.__netOutbox = [];
+        },
+        // Drop the channel the way a real one drops: conn.close() fires the
+        // close handler, which is the only route into netDropped.
+        netFakeDrop() { if (net.conn && net.conn.close) net.conn.close(); },
+        // ...and bring it back, WITHOUT a teardown. This is the reconnect: a
+        // fresh channel opening while the grace window is still live.
+        netFakeReopen() {
+            const conn = this.__fakeConn();
+            netBindConnection(conn);
+            conn.open = true;
+            conn._fire('open');
         },
         netDrainOutbox() { const o = window.__netOutbox || []; window.__netOutbox = []; return o; },
         netFeed(msg) { net.lastRecvAt = performance.now(); netOnMessage(msg); },
@@ -10768,6 +11057,13 @@ if (DEBUG) {
         get sidePalette() { return sidePalette; },
         // Localisation. setLang reloads the page by design, so a test drives
         // localiseDOM and t() directly and reads langCoverage for the gaps.
+        // Daily challenges. The whole module, because dailycheck drives the
+        // predicates directly - a challenge that does not test what its own
+        // text says is the failure nobody notices.
+        CHALLENGES, challengeById, challengeDay, challengeHash,
+        dailyChallengeIds, dailyChallenges, dailyState, challengeDone,
+        scoreDailyChallenges, challengeContext, dailyProgress,
+        refreshDailyUI, dailyPanelHTML, DAILY_COUNT,
         pollTouch, initTouchFPS, syncTouchFPS, syncTouchOrientation, releaseTouch,
         touchActive, TOUCH_LOOK_SENS, TOUCH_STICK_RADIUS, TOUCH_MOVE_ZONE,
         t, localiseDOM, localiseTick, langCoverage, proseKey,

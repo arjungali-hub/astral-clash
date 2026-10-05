@@ -1229,6 +1229,39 @@
             font-weight: normal;
             font-size: 0.75rem;
         }
+        .daily-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .daily-text {
+            flex: 1 1 auto;
+        }
+        .daily-coins {
+            flex: none;
+            color: #f59e0b;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .daily-row.done .daily-text {
+            color: #94a3b8;
+            text-decoration: line-through;
+        }
+        .daily-panel {
+            margin: 10px 0 2px;
+            text-align: left;
+        }
+        .daily-panel h4 {
+            margin: 0 0 6px;
+            font-size: 0.68rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: 700;
+        }
         </style>
 </head>
 <body>
@@ -1284,6 +1317,9 @@
                     <p>Dimensional Arena Fighter</p>
                     <button id="btn-open-modeselect" class="btn-mode">Mode: Classic Versus</button>
                     <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
+                    <!-- Filled by refreshDailyUI() from shared/challenges.js, so
+                         both builds render the same panel from one function. -->
+                    <div class="daily-panel" id="daily-panel"></div>
                 </div>
                 <div class="select-row">
                     <div class="menu-section side-panel">
@@ -1678,7 +1714,8 @@ function startGame() {
 <script src="../shared/characters.js"></script>
 <script src="../shared/common.js"></script>
 <script src="../shared/i18n.js"></script>
-<script src="../shared/touch.js"></script><script>
+<script src="../shared/touch.js"></script>
+<script src="../shared/challenges.js"></script><script>
 function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
     const canvas = document.getElementById('gameCanvas');
@@ -2503,6 +2540,7 @@ document.getElementById('btn-lang').addEventListener('click', cycleLang);
 refreshHudScaleUI();
 refreshSidePaletteUI();
 refreshLangUI();
+refreshDailyUI();
 
 function keyLabel(k) {
     if (!k) return '--';
@@ -8905,6 +8943,43 @@ function endMatch() {
         addCoins('p1', earnedP1);
         addCoins('p2', earnedP2);
     }
+    // DAILY CHALLENGES. Scored from the same facts the summary above is built
+    // from - nothing here counts anything new. Online, only the local side is
+    // scored, for exactly the reason only the local purse is credited: the
+    // opponent's progression lives on their machine.
+    const challengeCtx = (side) => challengeContext(side, {
+        mode: matchMode,
+        won: !isDraw && winner === (side === 'p1' ? player1 : player2),
+        stats: matchStats[side],
+        wins: roundWins,
+        ko: koTally,
+        rounds: roundDurations.slice(),
+        fighter: (side === 'p1' ? player1 : player2).name,
+        sandbox: matchIsSandbox(),
+    });
+    // Scored and PAID one side at a time, so the side is never in doubt. The
+    // first version of this scored both sides into one list and then paid them
+    // in a second loop, which had no way left to tell whose challenge was
+    // whose - both players' rewards would have gone to Player 1.
+    //
+    // addCoins is paid here rather than inside the module because it lives in
+    // bootGame() and shared code cannot see in; the sync's scope guard refused
+    // to write the build until it moved. It is a no-op under the sandbox
+    // override, and the context carries `sandbox` too, so a sandbox match
+    // neither completes a challenge nor pays for one.
+    const payDaily = (side) => {
+        const earned = scoreDailyChallenges(side, challengeCtx(side));
+        for (const ch of earned) addCoins(side, ch.coins);
+        return earned;
+    };
+    const earnedChallenges = netActive()
+        ? payDaily(LOCAL_SIDE)
+        : payDaily('p1').concat(payDaily('p2'));
+    const challengeLine = earnedChallenges.length
+        ? '<div style="margin-top:6px;color:#34d399;font-weight:bold;">Daily: '
+          + earnedChallenges.map(c => c.text + ' (+' + c.coins + ')').join(' &middot; ')
+          + '</div>'
+        : '';
     const coinLine = matchIsSandbox()
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} coins &nbsp;·&nbsp; P2 +${earnedP2} coins</div>`;
@@ -8912,7 +8987,7 @@ function endMatch() {
         `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
         `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
         `<div>Round times: ${roundTimesStr}</div>` +
-        coinLine;
+        coinLine + challengeLine;
 
     showScreen('gameover');
     refreshGameOverUI();   // the guest gets no rematch buttons

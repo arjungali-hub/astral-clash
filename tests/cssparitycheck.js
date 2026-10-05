@@ -98,7 +98,17 @@ async function capture(page, build) {
 
     const { check, section, finish } = H.makeChecker();
     if (!fs.existsSync(file)) {
-        check('a baseline exists to compare against', false, 'run with --save first');
+        // A MISSING BASELINE IS A FIRST RUN, NOT A REGRESSION. This used to
+        // fail, which meant CI - where the baseline is git-ignored and so never
+        // present on a fresh checkout - failed on every single run regardless
+        // of the code. A tick that is always red reports nothing.
+        //
+        // So: seed it, say plainly that nothing was compared, and pass. CI
+        // caches the file between runs, so the run after this one does compare.
+        fs.writeFileSync(file, JSON.stringify(data));
+        section('No baseline existed, so one was established:');
+        check('baseline written - this run compared NOTHING', true,
+            'subsequent runs will diff against it');
         await finish(browser, page);
         return;
     }
