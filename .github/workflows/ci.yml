@@ -122,13 +122,29 @@ jobs:
             netsmoothcheck touchfpscheck reconnectcheck dailycheck accountcheck
 
   # ------------------------------------------------------------------ slow
-  # Minutes each, including the three that have never run on the development
-  # machine. Runs on the same push; nobody waits on it.
+  # Minutes each. Sharded three ways and run in parallel: as one job this took
+  # 57 minutes to reach sixteen of twenty-one checkers and was then cancelled at
+  # the hour with five never run. They are independent processes, so the fix is
+  # to run them beside each other rather than to ask for a longer hour.
+  #
+  # Shards are balanced on MEASURED time from that run, not on name order.
   slow:
-    name: Slow checkers
+    name: Slow checkers (${{ matrix.shard }})
     runs-on: ubuntu-latest
     needs: guards
-    timeout-minutes: 60
+    timeout-minutes: 45
+    strategy:
+      # One shard failing should not cancel the other two - the whole point is
+      # to learn about all of them in one push.
+      fail-fast: false
+      matrix:
+        include:
+          - shard: heavy
+            tests: netcheck leakcheck framerateccheck botcheck
+          - shard: match
+            tests: controlscheck localcombatcheck localmatchcheck crushcheck swingcheck artcheck
+          - shard: rest
+            tests: onlineuxcheck coopnetcheck peercheck charcheck teleportcheck mapscheck maptimecheck placementcheck coopdowncheck awaypausecheck
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -147,11 +163,37 @@ jobs:
         run: |
           node -e "const H=require('./tests/harness');const c=H.chromeCheck();console.log(JSON.stringify(c));if(!c.exists){console.log('::error title=Chrome missing::'+JSON.stringify(c));process.exit(1);}"
           "$AC_CHROME" --version || true
+      - name: Run
+        env:
+          AC_CHROME: ${{ steps.chrome.outputs.chrome-path }}
+        run: node tests/run.js ${{ matrix.tests }}
+
+  # ------------------------------------------------------------- css parity
+  # On its own, because it is the only checker that carries state between runs.
+  # Sharing one cache key across three parallel shards would have them
+  # overwriting each other's baseline, which is worse than having none.
+  cssparity:
+    name: CSS parity
+    runs-on: ubuntu-latest
+    needs: guards
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: browser-actions/setup-chrome@v2
+        id: chrome
+        with:
+          chrome-version: stable
+      - name: Install test deps
+        working-directory: tests
+        run: npm ci || npm install
 
       # THE CSS BASELINE, carried between runs. It is git-ignored, so without
-      # this every run starts with nothing to compare and cssparitycheck can only
-      # report that it established one. Restored on a rolling key so each run
-      # diffs against the one before it.
+      # this every run starts with nothing to compare and cssparitycheck can
+      # only report that it established one. A rolling key: each run saves its
+      # own and restores the newest earlier one.
       - name: Restore the CSS baseline
         uses: actions/cache@v4
         with:
@@ -163,17 +205,8 @@ jobs:
       - name: Run
         env:
           AC_CHROME: ${{ steps.chrome.outputs.chrome-path }}
-        run: |
-          node tests/run.js \
-            netcheck leakcheck framerateccheck botcheck \
-            controlscheck localcombatcheck localmatchcheck onlineuxcheck \
-            coopnetcheck peercheck charcheck swingcheck crushcheck \
-            teleportcheck artcheck mapscheck maptimecheck placementcheck \
-            coopdowncheck awaypausecheck cssparitycheck
+        run: node tests/run.js cssparitycheck
 
-      # cssparitycheck compares against a snapshot that is git-ignored, so on a
-      # fresh checkout it has nothing to compare and says so. Keeping the one it
-      # builds lets a later run diff against it.
       - name: Keep the CSS baseline
         if: always()
         uses: actions/upload-artifact@v4

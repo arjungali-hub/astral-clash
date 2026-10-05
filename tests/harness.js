@@ -62,7 +62,26 @@ const ROOT = path.resolve(__dirname, '..');
 // Headless software rendering (swiftshader) runs this page at only ~3-4 fps, so
 // anything measured in GAME FRAMES needs a far larger wall-clock budget than the
 // frame count suggests. A 150-frame pause is >10 real seconds here.
-const SLOW_MS = 40000;
+// HOW MUCH SLOWER THIS MACHINE IS than the one the budgets were written on.
+//
+// Every "wait until the fight starts" number in this suite was chosen by
+// watching it work here. A GitHub runner software-renders the same scene at a
+// different speed, and the first CI run that got far enough to measure anything
+// failed six checkers purely on elapsed time while every assertion about actual
+// behaviour passed.
+//
+// One multiplier rather than dozens of edited literals: tuning each number
+// until it stops failing fits them to today's runner and has to be redone for
+// the next one. AC_TIME_SCALE overrides it anywhere - including here, for the
+// checkers this machine has never had the memory to finish.
+const TIME_SCALE = Number(process.env.AC_TIME_SCALE)
+    || (process.env.GITHUB_ACTIONS ? 3 : 1);
+
+// Scale a budget. Exported so a checker with its own watchdog uses the same
+// number rather than inventing a second opinion.
+const budget = (ms) => Math.round(ms * TIME_SCALE);
+
+const SLOW_MS = budget(40000);
 
 // Batch 25: the game is served over HTTP now instead of being opened as a
 // file://. The Blender-authored characters are fetched with GLTFLoader (XHR),
@@ -302,7 +321,11 @@ async function boot(page, { clearStorage = false, models = false, path = null } 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Polls a predicate INSIDE the page until true or the budget expires.
+// `ms` is scaled here, so a checker that passes an explicit budget gets the
+// same treatment as one that takes the default - netcheck's hand-written 30000
+// was the budget that failed first on CI.
 async function waitInPage(page, fnBody, ms = SLOW_MS) {
+    ms = budget(ms);
     try {
         await page.waitForFunction(fnBody, { timeout: ms, polling: 100 });
         return true;
@@ -334,6 +357,7 @@ function makeChecker() {
 
 module.exports = {
     launch, newPage, boot, sleep, waitInPage, makeChecker, SLOW_MS, path,
+    TIME_SCALE, budget,
     startServer, stopServer, gameUrl,
     closeAllBrowsers, killStrays, chromeCheck, CHROME,
     get GAME_URL() { return gameUrl(); },

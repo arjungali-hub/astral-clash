@@ -11,8 +11,23 @@ const H = require('./harness');
 
 // A late rejection from a closed page must not kill the run before the summary
 // is printed - that turned a 20-of-21 result into a stack trace with no verdict.
+//
+// ONLY A *LATE* ONE. This handler used to swallow every rejection
+// unconditionally, which quietly turned a startup failure into a hang: when
+// H.boot() rejected on CI, the IIFE below rejected with it, this caught it,
+// printed one line, and left the process sitting on two open browsers until the
+// 900-second watchdog killed it. Every other checker failed in three seconds and
+// said why; this one spent fifteen minutes saying nothing. A guard written to
+// protect the SUMMARY was hiding the absence of one.
+let summaryPrinted = false;
 process.on('unhandledRejection', e => {
-    console.log('  (ignored late rejection: ' + String(e && e.message).slice(0, 80) + ')');
+    if (summaryPrinted) {
+        console.log('  (ignored late rejection: ' + String(e && e.message).slice(0, 80) + ')');
+        return;
+    }
+    console.error('netcheck failed before it could report: '
+        + ((e && e.stack) || String(e)));
+    process.exit(1);
 });
 
 (async () => {
@@ -405,5 +420,8 @@ process.on('unhandledRejection', e => {
     stopRelay();
     await host.evaluate(() => localStorage.clear());
     try { await joinBrowser.close(); } catch (e) {}
+    // From here on a rejection really is late, and really is ignorable: the
+    // assertions are done and finish() is about to print the verdict.
+    summaryPrinted = true;
     await finish(hostBrowser, host);
 })();

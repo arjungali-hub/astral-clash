@@ -1258,8 +1258,13 @@
             margin: 0 0 6px;
             font-size: 0.68rem;
             letter-spacing: 0.1em;
+            /* #64748b read 4.02:1 against this panel - under AA's 4.5 for text
+               this size, and caught by contrastcheck the first time CI managed
+               to run it. #7c8ba3 is the smallest step that clears it (5.17:1)
+               and keeps the heading quieter than the challenge text it labels,
+               which was the point of the grey. */
             text-transform: uppercase;
-            color: #64748b;
+            color: #7c8ba3;
             font-weight: 700;
         }
         </style>

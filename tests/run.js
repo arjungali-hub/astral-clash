@@ -43,7 +43,14 @@ const PER_TEST_MS = 10 * 60 * 1000;
 // ten matches to completion.
 const LONG_MS = 30 * 60 * 1000;
 const SLOW_TESTS = new Set(['botcheck', 'netcheck', 'leakcheck']);
-const timeoutFor = (name) => (SLOW_TESTS.has(name) ? LONG_MS : PER_TEST_MS);
+// The same multiplier the harness uses, read the same way, so the outer kill
+// timer cannot be tighter than the waits running inside it - which is how
+// controlscheck came back "TIMED OUT" with a list of passing assertions and no
+// verdict.
+const TIME_SCALE = Number(process.env.AC_TIME_SCALE)
+    || (process.env.GITHUB_ACTIONS ? 3 : 1);
+const timeoutFor = (name) =>
+    Math.round((SLOW_TESTS.has(name) ? LONG_MS : PER_TEST_MS) * TIME_SCALE);
 
 // Not checkers: the harness itself, the mop, and this file.
 const NOT_TESTS = new Set(['harness.js', 'cleanup.js', 'run.js']);
