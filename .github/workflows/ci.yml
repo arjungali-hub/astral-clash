@@ -119,7 +119,7 @@ jobs:
             sandboxcheck batch24check batch38check symmetrycheck weaponcheck \
             deadcontrolcheck inputguardcheck knockbackcheck \
             contrastcheck padmenucheck palettecheck langcheck \
-            netsmoothcheck touchfpscheck reconnectcheck dailycheck
+            netsmoothcheck touchfpscheck reconnectcheck dailycheck accountcheck
 
   # ------------------------------------------------------------------ slow
   # Minutes each, including the three that have never run on the development

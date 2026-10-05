@@ -2733,7 +2733,18 @@ const RANDOM_KEYS = { p1: 'r', p2: '/' };
 // each build their own account, and coins are earned by winning rather than
 // pooled. So every accessor and mutator below takes a `side` ('p1'|'p2') as its
 // first argument; there is no such thing as "the" progression anymore.
-function saveProgression() { safeLSSet(PROGRESSION_KEY, JSON.stringify(progression)); }
+function saveProgression() {
+    safeLSSet(PROGRESSION_KEY, JSON.stringify(progression));
+    // ...and to the account, if there is one. THIS ORDER MATTERS: localStorage
+    // is written first and unconditionally, so a failed or absent upload can
+    // never cost somebody progress they have already earned. See the header of
+    // shared/account.js.
+    //
+    // typeof because account.js loads after this file: at the moment this
+    // function is DEFINED the name does not exist yet, though it always does by
+    // the time anything calls it.
+    if (typeof accountQueuePush === 'function') accountQueuePush();
+}
 
 // The co-op third combatant. One slot, deliberately: supporting an arbitrary
 // number of simultaneous enemies would mean rewriting the render/HUD/target

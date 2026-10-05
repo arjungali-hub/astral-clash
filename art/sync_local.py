@@ -53,7 +53,7 @@ SHARED_NAMES = set()
 # while missing the rest is what left the Language row in one build only.
 SHARED_PRE = ['roster.js', 'animation.js']
 SHARED_POST = ['props.js', 'characters.js', 'common.js', 'i18n.js', 'touch.js',
-               'challenges.js']
+               'challenges.js', 'account.js']
 SHARED_MODULES = SHARED_PRE + SHARED_POST
 
 
@@ -861,6 +861,14 @@ MARKUP_INTERFACE = {
     # and this one opens straight into the picker. Contents come from
     # dailyPanelHTML() in both, so only the position differs.
     'daily-panel': 'the two builds have different entry screens; contents are shared',
+    # Accounts are online-only: two people at one keyboard share one
+    # progression object, so one account cannot mean one person here. See
+    # accountSupported() in shared/account.js.
+    'account-screen': 'accounts are online-only; see accountSupported()',
+    'account-body': 'part of the online-only account panel',
+    'btn-account': 'part of the online-only account panel',
+    'btn-account-back': 'part of the online-only account panel',
+    'input-account-email': 'part of the online-only account panel',
 }
 
 
@@ -3434,6 +3442,38 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     # all - bloom was turned down for split screen, where it would have to run
     # per viewport. The toggle wrote a flag, reloaded the arena, and changed
     # nothing visible. Reported as "it doesn't seem to change anything".
+    # ------------------------------------------------- no accounts in this build
+    # Removed rather than hidden. A settings row that opens a panel explaining
+    # why the feature is not for you is worse than no row: it advertises
+    # something and then withdraws it. See accountSupported().
+    for eid in ('account-screen',):
+        m = re.search(r'[ ]*<div id="%s"[^>]*>' % eid, dst)
+        if m:
+            depth, k = 1, m.end()
+            while depth and k < len(dst):
+                nxt = re.compile(r'</?div' + chr(92) + r'b').search(dst, k)
+                if not nxt:
+                    break
+                depth += 1 if nxt.group(0) == '<div' else -1
+                k = nxt.end()
+            end = dst.index('>', k - 1) + 1 if depth == 0 else m.end()
+            start = comment_start(dst, m.start())
+            dst = dst[:start].rstrip(chr(10)) + chr(10) + dst[end:].lstrip(chr(10))
+            print('  %-34s ok' % 'account panel removed')
+    i = dst.find('<button id="btn-account"')
+    if i != -1:
+        j = dst.index('</button>', i) + len('</button>')
+        dst = dst[:comment_start(dst, i)] + dst[j:]
+        print('  %-34s ok' % 'account row removed')
+    for line in ("document.getElementById('btn-account').addEventListener"
+                 "('click', openAccountPanel);" + chr(10),
+                 "document.getElementById('btn-account-back').addEventListener"
+                 "('click', () => openModal('settings'));" + chr(10)):
+        dst = dst.replace(line, '')
+    for sel in ('#account-screen', '.account-row', '.account-status',
+                '.account-conflict', '.account-choices', '.account-save-line'):
+        dst = _drop_rules(dst, sel)
+
     # ------------------------------------------- today's challenges, placed here
     # Under the mode and How-to-Play buttons on the picker, which is this
     # build's equivalent of the online home card: the first screen, where a

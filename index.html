@@ -1301,6 +1301,37 @@
         .daily-mark { flex: none; color: #475569; font-size: 0.68rem; }
         .daily-mark.done { color: #34d399; font-weight: 700; }
         .daily-row.done .daily-text { color: #94a3b8; text-decoration: line-through; }
+        /* ----------------------------------------------------- account
+           Deliberately plain. This screen is read once, acted on once, and
+           then ideally never visited again - so it gets hierarchy and
+           legibility rather than any visual identity of its own. */
+        #account-screen .menu-section { max-width: 440px; }
+        .account-row {
+            display: flex; align-items: center; gap: 8px; margin: 10px 0;
+        }
+        .account-row input {
+            flex: 1 1 auto; min-width: 0;
+        }
+        .account-status {
+            font-size: 0.74rem; line-height: 1.5; color: #94a3b8;
+            margin: 8px 0; text-align: left;
+        }
+        .account-status.err { color: #f87171; }
+        .account-status.ok { color: #34d399; }
+        /* The conflict prompt. Two real saves, side by side with their numbers
+           on them, because "cloud or local?" is not answerable without them. */
+        .account-conflict {
+            border: 1px solid rgba(245,158,11,0.45);
+            background: rgba(245,158,11,0.08);
+            border-radius: 8px; padding: 12px; margin: 10px 0; text-align: left;
+        }
+        .account-conflict h4 { margin: 0 0 6px; font-size: 0.8rem; color: #fbbf24; }
+        .account-choices { display: flex; gap: 8px; margin-top: 10px; }
+        .account-choices button { flex: 1 1 0; }
+        .account-save-line {
+            font-size: 0.74rem; color: #cbd5e1; line-height: 1.6;
+            font-variant-numeric: tabular-nums;
+        }
         #desktop-only {
             display: none;
             position: fixed;
@@ -1763,12 +1794,26 @@
                 </div>
             </div>
 
+            <!-- Sign in to keep progress across devices. Rendered by
+                 refreshAccountUI(); see shared/account.js for why the local save stays
+                 the source of truth either way. -->
+            <div id="account-screen">
+                <div class="menu-section">
+                    <h3>Account</h3>
+                    <p class="settings-note">Your coins, unlocks and upgrades are saved on
+                       this device. Sign in and they follow you to any other one.</p>
+                    <div id="account-body"></div>
+                    <button id="btn-account-back" class="btn-back">← Back</button>
+                </div>
+            </div>
+
             <div id="settings-screen">
                 <div class="menu-section">
                     <h3>Settings</h3>
                     <div class="settings-list">
                         <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
                         <button id="btn-side-palette" class="opt" title="Switch the two player colours to a colourblind-safe pair">Player Colours<span class="opt-state">Standard</span></button>
+                        <button id="btn-account" class="opt" title="Keep your coins and unlocks on every device">Account<span class="opt-state">Off</span></button>
                         <button id="btn-lang" class="opt" title="Language of menus and help text">Language<span class="opt-state">English</span></button>
                         <button id="btn-bloom" class="opt">Glow<span class="opt-state">On</span></button>
                         <!-- These two DO something when pressed, so they keep
@@ -2072,6 +2117,7 @@ function startGame() {
 <script src="shared/i18n.js"></script>
 <script src="shared/touch.js"></script>
 <script src="shared/challenges.js"></script>
+<script src="shared/account.js"></script>
 <script>
 function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
@@ -2084,7 +2130,7 @@ function bootGame() {
 const hudCtx = hudCanvas.getContext('2d');
 
 const SCREEN_EL = { home: 'home-screen', select: 'select-screen', gameover: 'gameover-screen', pause: 'pause-screen' };
-const MODAL_EL = { tutorial: 'tutorial-screen', settings: 'settings-screen', rebind: 'rebind-screen', audio: 'audio-screen', mapselect: 'mapselect-screen', shop: 'shop-screen', modeselect: 'modeselect-screen', lobby: 'lobby-screen' };
+const MODAL_EL = { tutorial: 'tutorial-screen', settings: 'settings-screen', rebind: 'rebind-screen', audio: 'audio-screen', mapselect: 'mapselect-screen', shop: 'shop-screen', modeselect: 'modeselect-screen', lobby: 'lobby-screen', account: 'account-screen' };
 let currentScreen = 'home'; // matches the initial CSS (home shown)
 function showScreen(name) {
     currentScreen = name;
@@ -2804,6 +2850,8 @@ document.getElementById('btn-sandbox').addEventListener('click', () => setSandbo
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
 document.getElementById('btn-side-palette').addEventListener('click', toggleSidePalette);
 document.getElementById('btn-lang').addEventListener('click', cycleLang);
+document.getElementById('btn-account').addEventListener('click', openAccountPanel);
+document.getElementById('btn-account-back').addEventListener('click', () => openModal('settings'));
 document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
 // BOTH buttons, at load. The Glow one was never refreshed here, so its
 // markup label - a hardcoded 'On' - survived a reload with bloom turned
@@ -2813,6 +2861,11 @@ refreshHudScaleUI();
 refreshSidePaletteUI();
 refreshLangUI();
 refreshDailyUI();
+// Accounts. onAccountChange is how shared/account.js repaints without
+// reaching into bootGame(): it owns the state, this owns the screen.
+onAccountChange = refreshAccountUI;
+initAccounts();
+refreshAccountUI();
 // The touch scheme, which is a no-op on a desktop and in the local
 // build. Must run after the markup exists, which it does here.
 initTouchFPS();
@@ -7715,6 +7768,8 @@ function refreshRoomUI() {
 // every coin award - which is exactly when a challenge can have been
 // completed. A panel refreshed from its own call sites is a panel that goes
 // stale the first time somebody adds a new one.
+function openAccountPanel() { refreshAccountUI(); openModal('account'); }
+
 function refreshMenuUI() { refreshRoomUI(); refreshDailyUI(); }
 refreshCoinDisplays(); // initial paint at load, before any menu interaction
 
@@ -11060,6 +11115,16 @@ if (DEBUG) {
         // Daily challenges. The whole module, because dailycheck drives the
         // predicates directly - a challenge that does not test what its own
         // text says is the failure nobody notices.
+        // Accounts. The three __-prefixed entries drive states that only a
+        // real backend could otherwise produce - a blocked CDN, a pending
+        // conflict, a save arriving over the wire. Named so it is obvious
+        // at a glance that nothing in the game calls them.
+        accountState, accountAvailable, accountSupported, accountConfigure, accountSignIn, accountSignOut,
+        accountPanelHTML, refreshAccountUI, accountSummary,
+        accountResolveConflict, accountWhen, initAccounts,
+        __accountSetState(status, detail) { accountSetStatus(status, detail); },
+        __accountSetConflict(c) { accountConflict = c; },
+        __accountApplyCloud(d) { accountApplyCloud(d); },
         CHALLENGES, challengeById, challengeDay, challengeHash,
         dailyChallengeIds, dailyChallenges, dailyState, challengeDone,
         scoreDailyChallenges, challengeContext, dailyProgress,

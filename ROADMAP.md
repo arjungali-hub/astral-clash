@@ -20,7 +20,7 @@
 >   collapses to **24** under deuteranopia. The replacement pair holds at
 >   **126.8**. Measured, not asserted.
 >
-> **47 checkers.** What remains: **tiers 2, 3 and 5** minus the items above, and
+> **48 checkers.** What remains: **tiers 2, 3 and 5** minus the items above, and
 > the three checkers that need a machine with ~2.5GB free. CI supplies that.
 
 
@@ -29,7 +29,7 @@ Where the game actually is, as of Batch 107: **10 playable fighters, 10 arenas,
 Boss Fight and Survival Waves), two builds sharing one codebase, coin-based
 progression with unlocks and per-character upgrades, synthesised audio, a
 tutorial, rebindable controls, gamepad support, a mobile control scheme for
-the online build, Spanish and French, and 47 automated checkers.
+the online build, Spanish and French, and 48 automated checkers.
 
 That is a complete game. What follows is what stands between it and *finished*.
 
@@ -185,34 +185,51 @@ play".
 
 ## Tier 3 — Depth
 
-### 9. Progression that survives a browser — ACCOUNTS
-**Size: large. Risk: medium. The biggest remaining item, and queued last.**
+### 9. ~~Progression that survives a browser~~ — ACCOUNTS, built
+**Size: large. One step left, and it is not a code step — see below.**
 
-Coins, unlocks and upgrades live in `localStorage`. Clear site data and it is
-gone; switch device and it never existed.
+Sign in with an emailed link; coins, unlocks, upgrades and today's challenges
+follow you to any other device. **Everything is written except the Supabase
+project itself**, which needs someone with the account to create it — see
+"Finishing accounts" at the bottom of this file.
 
-This entry used to recommend **export/import a save** on the grounds that it
-needs no server and takes an afternoon. **Overruled, and rightly:** a save code
-is cheap for the person who builds it and a chore for every person who uses it —
-you have to know it exists, remember to export, and keep the file somewhere.
-Accounts are the thing a player actually wants, and "much easier for the user"
-is the correct tiebreaker when the cost is only ours.
+Three decisions worth keeping.
 
-So: real accounts. Sign in, progression follows you to any device, and a phone
-and a desktop are the same save. Implies infrastructure, which is why it is last
-rather than first — and why it should not be started while anything cheaper is
-still outstanding.
+**localStorage is still the truth.** This is a sync target bolted onto the side
+of the existing save, never a replacement. Every write goes to localStorage
+first and unconditionally, so a missing project, a blocked CDN, a dead network
+or a player who never signs in all behave exactly as before. Anything else turns
+a flaky connection into a lost save, which is worse than the problem being
+solved.
 
-Notes for whoever picks it up:
+**Conflicts are ASKED, never guessed.** Two devices both earning coins offline
+is the normal case, and both obvious answers lose data. Last-write-wins quietly
+discards the newer save the moment the older device is opened second.
+Merge-by-maximum refunds coins that were spent — play on A, never open B, and
+the merge hands back the 500 you spent while you keep what you bought. So when
+two real saves disagree the player is shown both, **with their coin totals,
+fighter counts and dates on them**, because "cloud or local?" is unanswerable
+without those. Everything else (no cloud save, no local save, they already
+agree) is decided without asking, because nothing can be lost.
 
-- **`localStorage` stays the source of truth offline.** The game must remain
-  playable with no connection and no account; the account syncs that store
-  rather than replacing it. Anything else makes a flaky connection into a lost
-  save, which is worse than the problem being solved.
-- **Conflict resolution needs deciding before any code.** Two devices both
-  earning coins offline is the normal case, not the edge case.
-- It touches `progression`, `addCoins`, every unlock check, and both builds —
-  so it belongs in `shared/`, like everything else that is not a build fact.
+**Accounts are online-only**, gated on `AC_ONE_SIDE_PER_CLIENT` — the same flag
+that decides touch controls, and for the same underlying reason: how many people
+share this screen. The local build is two people at one keyboard sharing a
+single `progression` object with a p1 and a p2 side; "whose account is this" has
+no good answer there, and a sign-out would take both saves. Nothing is lost by
+it: the builds share one progression store, so a split-screen player signs in
+once on the online build.
+
+Found by `accountcheck`, and all real:
+
+* a pending conflict was outranked by "signed in" on the settings row, so it
+  read a reassuring **On** at exactly the moment the player had a decision to
+  make about which of their saves survives;
+* `accountSignIn` checked availability before the address, so a typo'd email
+  came back as "unavailable" — sending somebody to check their wifi over a
+  missing `@`;
+* the panel asked "is this configured" before anything else, which made every
+  state behind it unreachable.
 
 ### 10. ~~Something to chase~~ — DONE
 **Size: medium. Risk: low.**
@@ -371,16 +388,36 @@ privacy principle as item 11.
 
 Items 1-6, 8, 10, 13-17 are done; 18 was looked at and declined.
 
-**What is left is item 9, accounts** — the biggest remaining item, and the one
-asked for in place of export/import. Last on purpose: it is the only thing on
-this list that adds infrastructure, and everything above it was cheaper.
+**Item 9 is built and needs one non-code step** — see "Finishing accounts"
+below.
 
-After that, the open items are the ones that were always going to need a
-decision rather than an afternoon: telemetry for balance (11) and error
-reporting (21), both of which need a privacy call first; replays (12), which
-depends on determinism the netcode does not guarantee; and the 563KB single file
-(19), which should not be started without a plan for what replaces the nine
-interface lists.
+Everything else open was always going to need a decision rather than an
+afternoon: telemetry for balance (11) and error reporting (21), both of which
+need a privacy call first; replays (12), which depends on determinism the
+netcode does not guarantee; and the 563KB single file (19), which should not be
+started without a plan for what replaces the nine interface lists.
+
+---
+
+## Finishing accounts
+
+The code is done and tested. What is missing is a Supabase project, which only
+somebody with the account can create.
+
+1. **Create a project.** Free tier is enough — one small row per player.
+2. **Run the migration** in `supabase/migrations/0001_saves.sql`. It creates the
+   `saves` table and its row level security policies. **The policies are not
+   optional:** the anon key ships inside a static page anybody can read, so RLS
+   is the entire access control. Without it that key opens every save.
+3. **Point the build at it.** Call `accountConfigure(url, anonKey)` before
+   `initAccounts()` — both values are public by design.
+4. **Turn on email sign-in** in the project's auth settings, and add the site's
+   URL to the allowed redirect list, or the emailed link lands nowhere.
+
+Until then the build reports "Accounts are not set up for this build. Your
+progress is still saved on this device." and everything else works unchanged —
+which is the designed behaviour, not a degraded one, and `accountcheck` asserts
+it.
 
 Deliberately NOT next: item 19, the 563KB single file. It is the largest and
 riskiest thing on this list and it would invalidate most of the machinery

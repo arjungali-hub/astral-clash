@@ -1450,6 +1450,7 @@
                         <button id="btn-open-rebind" class="btn-secondary">Rebind Keys</button>
                         <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
                         <button id="btn-side-palette" class="opt" title="Switch the two player colours to a colourblind-safe pair">Player Colours<span class="opt-state">Standard</span></button>
+
                         <button id="btn-lang" class="opt" title="Language of menus and help text">Language<span class="opt-state">English</span></button>
 
                         <button id="btn-open-audio" class="btn-secondary">Audio Settings</button>
@@ -1715,7 +1716,8 @@ function startGame() {
 <script src="../shared/common.js"></script>
 <script src="../shared/i18n.js"></script>
 <script src="../shared/touch.js"></script>
-<script src="../shared/challenges.js"></script><script>
+<script src="../shared/challenges.js"></script>
+<script src="../shared/account.js"></script><script>
 function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
     const canvas = document.getElementById('gameCanvas');
@@ -2541,6 +2543,9 @@ refreshHudScaleUI();
 refreshSidePaletteUI();
 refreshLangUI();
 refreshDailyUI();
+onAccountChange = refreshAccountUI;
+initAccounts();
+refreshAccountUI();
 
 function keyLabel(k) {
     if (!k) return '--';
@@ -4089,6 +4094,15 @@ function gamepadMenuTick() {
     padMenuBackHeld = back;
 }
 let padMenuConfirmHeld = false, padMenuBackHeld = false;
+
+// Kept as an alias: plenty of call sites (purchases, rebinds, mode changes,
+// net events) already say "the menu changed, repaint it" and renaming them all
+// would be churn for no gain.
+// One place, because refreshMenuUI already runs on every screen change and
+// every coin award - which is exactly when a challenge can have been
+// completed. A panel refreshed from its own call sites is a panel that goes
+// stale the first time somebody adds a new one.
+function openAccountPanel() { refreshAccountUI(); openModal('account'); }
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every
