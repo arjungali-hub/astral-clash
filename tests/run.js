@@ -135,10 +135,39 @@ console.log('Running %d checker(s), one at a time.\n', names.length);
 sweep('before');
 
 const failed = [];
+// GITHUB ANNOTATIONS. stdout goes to a log; an annotation goes to the run
+// summary and into the failure email. Without this a red CI says only "some
+// jobs were not successful", which is the position this repo was in for several
+// days while nobody could see why from outside.
+//
+// Workflow commands are one line, so newlines are escaped as %0A - that is the
+// documented encoding, not a workaround.
+const ON_ACTIONS = !!process.env.GITHUB_ACTIONS;
+
+function annotate(name, verdict, detail, out) {
+    if (!ON_ACTIONS) return;
+    const esc = (s) => String(s).replace(/%/g, '%25')
+        .replace(/\r/g, '%0D').replace(/\n/g, '%0A').replace(/:/g, '%3A');
+    let body = detail.map(d => d.trim()).join(chr10());
+    // NO VERDICT means the checker died before printing one, and then the only
+    // useful thing is its tail - typically a stack.
+    if (!body) body = out.split(chr10()).slice(-12).join(chr10());
+    console.log('::error title=' + esc(name + ' ' + verdict) + '::' + esc(body.slice(0, 1800)));
+}
+
+function chr10() { return String.fromCharCode(10); }
+
 const t0 = Date.now();
 for (const name of names) {
     const file = path.join(DIR, name + '.js');
-    if (!fs.existsSync(file)) { console.log('%s  NO SUCH CHECKER', name.padEnd(22)); failed.push(name); continue; }
+    if (!fs.existsSync(file)) {
+        // Annotated too: a checker named in the workflow but not in the repo is
+        // a rename nobody finished, and it should say so rather than scroll past.
+        console.log('%s  NO SUCH CHECKER', name.padEnd(22));
+        annotate(name, 'NO SUCH CHECKER', ['tests/' + name + '.js does not exist'], '');
+        failed.push(name);
+        continue;
+    }
     const started = Date.now();
     const memWarn = memoryWarning(name);
     if (memWarn) console.log('%s %s', ''.padEnd(22), 'LOW MEMORY: ' + memWarn);
@@ -159,6 +188,7 @@ for (const name of names) {
         const detail = out.split('\n').filter(l => /FAIL|Error|error:/.test(l)).slice(0, 3);
         console.log('%s %s  %s', name.padEnd(22), secs.padStart(5), verdict);
         for (const d of detail) console.log('      ' + d.trim().slice(0, 150));
+        annotate(name, verdict, detail, out);
     } else {
         console.log('%s %s  pass', name.padEnd(22), secs.padStart(5));
     }

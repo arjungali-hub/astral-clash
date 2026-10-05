@@ -27,8 +27,17 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # tests/harness.js takes the browser from AC_CHROME, defaulting to a Windows
-  # path that does not exist here.
+  # tests/harness.js takes the browser from AC_CHROME. A workflow-level
+  # default, so a job that does not override it still finds a browser: the
+  # ubuntu runner images ship Chrome at this path.
+  #
+  # The jobs DO override it, from setup-chrome's chrome-path output - and
+  # that output only exists on v2. Pinned at v1, the expression resolved to
+  # the EMPTY STRING, which harness.js then treated as "unset" and fell back
+  # to a Windows path, so every checker died in about four seconds looking
+  # for Chrome in Program Files. Twenty-five of those is the 1m41s the fast
+  # job kept taking. harness.js now ignores a blank AC_CHROME rather than
+  # obeying it, so this is belt and braces.
   AC_CHROME: /usr/bin/google-chrome
 
 jobs:
@@ -87,13 +96,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - uses: browser-actions/setup-chrome@v1
+      - uses: browser-actions/setup-chrome@v2
         id: chrome
         with:
           chrome-version: stable
       - name: Install test deps
         working-directory: tests
         run: npm ci || npm install
+      - name: Chrome is really there
+        env:
+          AC_CHROME: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          node -e "const H=require('./tests/harness');const c=H.chromeCheck();console.log(JSON.stringify(c));if(!c.exists){console.log('::error title=Chrome missing::'+JSON.stringify(c));process.exit(1);}"
+          "$AC_CHROME" --version || true
       - name: Run
         env:
           AC_CHROME: ${{ steps.chrome.outputs.chrome-path }}
@@ -119,13 +134,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - uses: browser-actions/setup-chrome@v1
+      - uses: browser-actions/setup-chrome@v2
         id: chrome
         with:
           chrome-version: stable
       - name: Install test deps
         working-directory: tests
         run: npm ci || npm install
+      - name: Chrome is really there
+        env:
+          AC_CHROME: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          node -e "const H=require('./tests/harness');const c=H.chromeCheck();console.log(JSON.stringify(c));if(!c.exists){console.log('::error title=Chrome missing::'+JSON.stringify(c));process.exit(1);}"
+          "$AC_CHROME" --version || true
 
       # THE CSS BASELINE, carried between runs. It is git-ignored, so without
       # this every run starts with nothing to compare and cssparitycheck can only

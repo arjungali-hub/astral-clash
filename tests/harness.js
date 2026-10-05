@@ -21,7 +21,42 @@ const path = require('path');
 const http = require('http');
 const fs = require('fs');
 
-const CHROME = process.env.AC_CHROME || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+// WHERE CHROME IS. This used to be `process.env.AC_CHROME || <a Windows
+// path>`, which has a trap in it: an AC_CHROME that is set but EMPTY - which is
+// what a CI expression yields when the step it reads produced no output - is
+// falsy, so the fallback fires and a Linux runner goes looking in Program
+// Files. Every checker then fails in about four seconds for a reason none of
+// them mention.
+//
+// Now: an explicit AC_CHROME always wins, a blank one is ignored rather than
+// obeyed, and the fallbacks match the platform.
+const CHROME = (function () {
+    const env = (process.env.AC_CHROME || '').trim();
+    if (env) return env;
+    const candidates = process.platform === 'win32'
+        ? ['C:' + '\\' + 'Program Files' + '\\' + 'Google' + '\\' + 'Chrome'
+           + '\\' + 'Application' + '\\' + 'chrome.exe',
+           'C:' + '\\' + 'Program Files (x86)' + '\\' + 'Google' + '\\' + 'Chrome'
+           + '\\' + 'Application' + '\\' + 'chrome.exe']
+        : ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
+           '/usr/bin/chromium-browser', '/usr/bin/chromium',
+           '/snap/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'];
+    for (const c of candidates) {
+        try { if (fs.existsSync(c)) return c; } catch (e) { /* keep looking */ }
+    }
+    // Returned anyway so the launch failure names a real path rather than
+    // undefined; chromeCheck() below is what turns this into a sentence.
+    return candidates[0];
+})();
+
+// Does the browser we are about to drive actually exist. Called by the CI
+// preflight, because one clear message beats twenty-five identical launch
+// failures that each blame something else.
+function chromeCheck() {
+    const ok = (function () { try { return fs.existsSync(CHROME); } catch (e) { return false; } })();
+    return { path: CHROME, exists: ok, fromEnv: !!(process.env.AC_CHROME || '').trim(),
+             platform: process.platform };
+}
 const ROOT = path.resolve(__dirname, '..');
 
 // Headless software rendering (swiftshader) runs this page at only ~3-4 fps, so
@@ -265,6 +300,6 @@ function makeChecker() {
 module.exports = {
     launch, newPage, boot, sleep, waitInPage, makeChecker, SLOW_MS, path,
     startServer, stopServer, gameUrl,
-    closeAllBrowsers, killStrays,
+    closeAllBrowsers, killStrays, chromeCheck, CHROME,
     get GAME_URL() { return gameUrl(); },
 };
