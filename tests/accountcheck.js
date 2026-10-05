@@ -1,26 +1,27 @@
-// Accounts: the parts that do not need a backend, which is most of what can go
-// wrong.
+// Accounts: username, display name, password - and progress that lives on the
+// server rather than on the machine.
 //
-// WHAT IS NOT TESTED HERE, and why that is the right line: signing in needs a
-// Supabase project, an email, and a link clicked in it. None of that belongs in
-// a checker. What DOES belong is everything that decides what happens to
-// somebody's progress - because the failure mode of this feature is not "sign
-// in is broken", it is "sign in worked and ate my save".
+// WHAT IS NOT TESTED HERE, and why that is the right line: actually creating an
+// account needs a live Supabase project, and a checker that depends on one
+// fails for reasons that have nothing to do with this code. What DOES belong
+// here is everything that decides what happens to somebody's progress, because
+// the failure mode of this feature is not "sign-in is broken" - it is "sign-in
+// worked and I lost everything".
 //
 // So the assertions are:
 //
-//   * the game is completely unaffected when there is no account service. This
-//     is the promise the whole design rests on - localStorage is still the
-//     truth, so an unconfigured build, a blocked CDN and an offline player all
-//     have to be ordinary.
-//   * a conflict is NEVER resolved quietly. Two real saves that disagree is the
-//     normal case for two devices, and both of the obvious answers lose data:
-//     last-write-wins silently discards the newer save when the older device is
-//     opened second, and merge-by-maximum refunds coins that were spent.
-//   * a save that comes back from the network goes through the same repair as
-//     one from localStorage. It arrived from a row a client wrote; it is no
-//     more trustworthy.
+//   * THE ONLINE BUILD WRITES NOTHING TO THIS MACHINE. That is the request, and
+//     it is the one thing a checker can prove outright: play, earn, and then
+//     show localStorage is still empty.
+//   * THE SPLIT-SCREEN BUILD IS UNTOUCHED. Two people at one keyboard still
+//     keep their progress locally, with no account anywhere near it.
+//   * signing out LEAVES NOTHING BEHIND. The previous account's coins must not
+//     sit on screen, and must never be pushed into the next account.
+//   * the rules a player meets before any request is made - username shape,
+//     password length - are enforced, and say which rule was broken.
 const H = require('./harness');
+
+const CFG = ['https://example.supabase.co', 'not-a-real-key'];
 
 (async () => {
     const browser = await H.launch();
@@ -32,249 +33,241 @@ const H = require('./harness');
 
     await H.boot(page, { clearStorage: true });
 
-    section('The shipped build is pointed at a project:');
-    // Asserted as a FACT about the deployment, not assumed. This file used to
-    // open by checking the build was UNconfigured, which was true when it was
-    // written and silently became a test of the deployment rather than of the
-    // code the moment a project was wired in.
+    section('The online build supports accounts and is pointed at a project:');
     const shipped = await page.evaluate(() => {
         const D = window.ACDebug;
         const st = D.accountState();
-        return { configured: st.configured, status: st.status, supported: st.supported };
+        return { supported: st.supported, configured: st.configured, status: st.status };
     });
-    check('a project is configured in this build',
-        shipped.configured === true, JSON.stringify(shipped));
-    check('and the online build supports accounts at all',
-        shipped.supported === true, JSON.stringify(shipped));
+    check('this build has accounts', shipped.supported === true, JSON.stringify(shipped));
+    check('and a project is configured', shipped.configured === true, JSON.stringify(shipped));
 
-    section('With NO account service, nothing about the game changes:');
-    // Driven, not assumed - this is the promise the whole design rests on and
-    // it has to hold whether or not this particular build has a project.
-    const off = await page.evaluate(() => {
-        const D = window.ACDebug;
-        D.accountConfigure('', '');
-        D.__accountSetState('off', '');
-        const st = D.accountState();
-        return {
-            configured: st.configured,
-            status: st.status,
-            available: D.accountAvailable(),
-            // The game's own save must still work, untouched.
-            coinsBefore: D.prog('p1').coins,
-        };
-    });
-    check('it reports itself as unconfigured rather than broken',
-        off.configured === false && off.status === 'off', JSON.stringify(off));
-    check('and nothing is "available" to talk to', off.available === false,
-        String(off.available));
-
-    const stillWorks = await page.evaluate(() => {
+    section('NOTHING about progress is written to this machine:');
+    // The whole point of the change. Earn coins, buy something, and then look
+    // at the disk: it has to be empty.
+    const disk = await page.evaluate(() => {
         const D = window.ACDebug;
         D.setDebugUnlockAll(false);
-        const before = D.prog('p1').coins;
-        D.addCoins('p1', 123);
-        const after = D.prog('p1').coins;
-        // ...and it is really on disk, not just in memory.
-        const raw = JSON.parse(localStorage.getItem('astralClashProgression') || '{}');
-        return { before, after, stored: raw.p1 ? raw.p1.coins : null };
+        D.addCoins('p1', 500);
+        D.prog('p1').unlockedChars.push('Nyx');
+        D.saveProgression();
+        const keys = Object.keys(localStorage);
+        return {
+            coins: D.prog('p1').coins,
+            progression: localStorage.getItem('astralClashProgression'),
+            // THE CLAIM IS ABOUT PROGRESS, not about key names. Matching on
+            // names caught astralClashDebugUnlockAll, which is a SETTING and
+            // belongs on the machine. So this looks at the VALUES: nothing
+            // stored here may contain a progression blob.
+            progressish: keys.filter(k => {
+                const v = localStorage.getItem(k) || '';
+                return /unlockedChars|doubleJumpUnlocked/.test(v);
+            }),
+        };
     });
-    check('coins are still earned with no account',
-        stillWorks.after === stillWorks.before + 123, JSON.stringify(stillWorks));
-    check('and still written to localStorage, which remains the truth',
-        stillWorks.stored === stillWorks.after, JSON.stringify(stillWorks));
+    check('coins still move in memory, so the game works',
+        disk.coins >= 500, String(disk.coins));
+    check('but the progression key is NOT written',
+        disk.progression === null, String(disk.progression));
+    check('and nothing else on disk holds a progression blob either',
+        disk.progressish.length === 0, JSON.stringify(disk.progressish));
 
-    section('Signing in is refused politely rather than throwing:');
+    section('...and it survives a reload as nothing, because that is the deal:');
+    // Signed out, a reload is a fresh start. This is the consequence of the
+    // request and it should be asserted, not discovered.
+    await page.reload({ waitUntil: 'load' });
+    await H.sleep(900);
+    const after = await page.evaluate(() => ({
+        coins: window.ACDebug.prog('p1').coins,
+        chars: window.ACDebug.prog('p1').unlockedChars.length,
+    }));
+    check('a signed-out reload starts from zero coins',
+        after.coins === 0, String(after.coins));
+    check('and from the starter roster', after.chars === 3, String(after.chars));
+
+    section('The rules a player meets before any request is made:');
+    const rules = await page.evaluate(() => {
+        const D = window.ACDebug;
+        return {
+            short: D.usernameProblem('ab'),
+            long: D.usernameProblem('a'.repeat(21)),
+            punct: D.usernameProblem('arjun!'),
+            spaces: D.usernameProblem('ar jun'),
+            upper: D.usernameProblem('Arjun'),      // lowercased before checking
+            good: D.usernameProblem('arjun_g'),
+            pwShort: D.passwordProblem('short12'),
+            pwGood: D.passwordProblem('longenough1'),
+            dispEmpty: D.displayProblem('   '),
+            dispLong: D.displayProblem('x'.repeat(15)),
+            dispGood: D.displayProblem('Arjun'),
+        };
+    });
+    check('a 2-character username is refused, and says so',
+        /3 characters/.test(rules.short || ''), String(rules.short));
+    check('a 21-character one is refused', !!rules.long, String(rules.long));
+    check('punctuation is refused', /underscores/.test(rules.punct || ''), String(rules.punct));
+    check('so are spaces', !!rules.spaces, String(rules.spaces));
+    check('MIXED CASE is accepted and folded, not rejected',
+        rules.upper === null, String(rules.upper));
+    check('a sensible username passes', rules.good === null, String(rules.good));
+    check('a 7-character password is refused',
+        /8 characters/.test(rules.pwShort || ''), String(rules.pwShort));
+    check('an 11-character one passes', rules.pwGood === null, String(rules.pwGood));
+    check('an empty display name is refused', !!rules.dispEmpty, String(rules.dispEmpty));
+    check('and an over-long one', !!rules.dispLong, String(rules.dispLong));
+    check('a sensible display name passes', rules.dispGood === null, String(rules.dispGood));
+
+    section('The username IS the identity - one mapping, used by both paths:');
+    const mapped = await page.evaluate(() => {
+        const D = window.ACDebug;
+        return {
+            plain: D.accountEmailFor('arjun'),
+            cased: D.accountEmailFor('  ArJuN  '),
+        };
+    });
+    check('a username becomes a synthetic address',
+        /^arjun@/.test(mapped.plain), mapped.plain);
+    check('on a domain that can never resolve, so nothing is ever sent',
+        /\.invalid$/.test(mapped.plain), mapped.plain);
+    check('and case and spacing cannot make two accounts of one name',
+        mapped.cased === mapped.plain, JSON.stringify(mapped));
+
+    section('Signing in is refused politely when there is no backend:');
     const refused = await page.evaluate(async () => {
         const D = window.ACDebug;
-        const bad = await D.accountSignIn('not-an-email');
-        const unconfigured = await D.accountSignIn('someone@example.com');
-        return { bad, unconfigured };
+        return {
+            noUser: await D.accountSignIn('', 'whatever12'),
+            noPass: await D.accountSignIn('arjun', ''),
+            badName: await D.accountSignUp('arj!n', 'Arjun', 'longenough1'),
+            badPass: await D.accountSignUp('arjun', 'Arjun', 'short'),
+        };
     });
-    check('a malformed address is rejected with a sentence',
-        refused.bad.ok === false && /email address/i.test(refused.bad.error),
-        JSON.stringify(refused.bad));
-    check('and an unconfigured build says so instead of hanging',
-        refused.unconfigured.ok === false, JSON.stringify(refused.unconfigured));
+    check('a missing username is named', refused.noUser.ok === false,
+        JSON.stringify(refused.noUser));
+    check('a missing password is named', refused.noPass.ok === false,
+        JSON.stringify(refused.noPass));
+    check('sign-up rejects a bad username before any request',
+        refused.badName.ok === false && /underscores/.test(refused.badName.error),
+        JSON.stringify(refused.badName));
+    check('and a short password', refused.badPass.ok === false
+        && /8 characters/.test(refused.badPass.error), JSON.stringify(refused.badPass));
 
-    section('The panel renders every state it has:');
-    const panels = await page.evaluate(() => {
+    section('Signing out leaves NOTHING behind:');
+    // The hazard: one account's coins staying in memory and being pushed into
+    // whichever account signs in next.
+    const cleared = await page.evaluate(() => {
+        const D = window.ACDebug;
+        D.addCoins('p1', 900);
+        D.prog('p1').unlockedChars.push('Voss');
+        D.prog('p2').coins = 400;
+        const before = { p1: D.prog('p1').coins, p2: D.prog('p2').coins };
+        D.accountForgetProgress();
+        return {
+            before,
+            p1: D.prog('p1').coins, p2: D.prog('p2').coins,
+            chars: D.prog('p1').unlockedChars.length,
+        };
+    });
+    check('there was something to clear', cleared.before.p1 >= 900, JSON.stringify(cleared));
+    check('both purses are emptied',
+        cleared.p1 === 0 && cleared.p2 === 0, JSON.stringify(cleared));
+    check('and the roster goes back to the starters',
+        cleared.chars === 3, String(cleared.chars));
+
+    section('The panel shows each state, and asks for the right things:');
+    const panels = await page.evaluate((cfg) => {
         const D = window.ACDebug;
         const out = {};
         D.accountConfigure('', '');
-        D.__accountSetState('off', '');
         out.unconfigured = D.accountPanelHTML();
-        // CONFIGURE IT, with a project that does not exist. Every state below
-        // sits behind the "is this configured" check, so without this they are
-        // unreachable - which is the reason the URL and key are settable rather
-        // than baked into the source. Nothing is contacted: these assertions are
-        // all about what the panel SAYS.
-        D.accountConfigure('https://example.supabase.co', 'not-a-real-key');
-        // Drive each state directly; there is no backend to produce them.
+        D.accountConfigure(cfg[0], cfg[1]);
         D.__accountSetState('unavailable', 'Could not load the account service');
         out.unavailable = D.accountPanelHTML();
         D.__accountSetState('signed-out', '');
-        out.signedOut = D.accountPanelHTML();
-        D.__accountSetState('sending', 'Check you@example.com for a sign-in link');
-        out.sending = D.accountPanelHTML();
-        D.__accountSetState('error', 'Could not send the link');
+        D.__accountSetMode('in');
+        out.signIn = D.accountPanelHTML();
+        D.__accountSetMode('up');
+        out.signUp = D.accountPanelHTML();
+        D.__accountSetState('busy', 'Signing in…');
+        out.busy = D.accountPanelHTML();
+        D.__accountSetState('error', 'That username and password do not match');
         out.error = D.accountPanelHTML();
-        D.__accountSetState('off', '');
-        D.accountConfigure('', '');          // back to how the build ships
+        D.__accountSetMode('in');
+        D.__accountSetState('signed-out', '');
         return out;
-    });
-    check('unconfigured says progress is still saved locally',
-        /still saved on this device/i.test(panels.unconfigured), panels.unconfigured.slice(0, 80));
-    check('a blocked CDN says the same reassuring thing',
-        /still saved on this device/i.test(panels.unavailable), panels.unavailable.slice(0, 80));
-    // No password FIELD. The first version of this looked for the word and
-    // failed on the copy that explains there is no password - which is the
-    // sentence most worth keeping on the screen.
-    check('signed-out offers an email field and no password field',
-        /input-account-email/.test(panels.signedOut)
-        && !/type="password"/i.test(panels.signedOut), panels.signedOut.slice(0, 110));
-    check('"sent" disables the button so it is not pressed twice',
-        /disabled/.test(panels.sending), panels.sending.slice(0, 110));
+    }, CFG);
+    check('unconfigured says nothing can be saved',
+        /nothing can be saved/i.test(panels.unconfigured), panels.unconfigured.slice(0, 90));
+    check('a blocked CDN says the same',
+        /nothing can be saved/i.test(panels.unavailable), panels.unavailable.slice(0, 90));
+    check('SIGN IN asks for a username and a password, and nothing else',
+        /input-account-user/.test(panels.signIn)
+        && /input-account-pass/.test(panels.signIn)
+        && !/input-account-display/.test(panels.signIn), panels.signIn.slice(0, 140));
+    check('SIGN UP also asks for a display name',
+        /input-account-display/.test(panels.signUp), panels.signUp.slice(0, 140));
+    check('the password field is a password field',
+        /type="password"/.test(panels.signIn), panels.signIn.slice(0, 140));
+    check('sign-up warns there is no password reset',
+        /no password reset/i.test(panels.signUp), panels.signUp.slice(-180));
+    check('a request in flight disables the button, so it is not sent twice',
+        /disabled/.test(panels.busy), panels.busy.slice(0, 140));
     check('an error is marked as one', /account-status err/.test(panels.error),
-        panels.error.slice(0, 110));
+        panels.error.slice(-160));
+    // One message for both, deliberately: telling them apart hands out which
+    // usernames exist.
+    check('and a failed sign-in does not say WHICH half was wrong',
+        /do not match/.test(panels.error)
+        && !/no such user|unknown username|wrong password/i.test(panels.error),
+        panels.error.slice(-160));
 
-    section('A CONFLICT is shown, with numbers, and never decided quietly:');
-    const conflict = await page.evaluate(() => {
+    section('Signed in, it shows who you are:');
+    const inPanel = await page.evaluate(() => {
         const D = window.ACDebug;
-        const cloud = {
-            p1: { coins: 900, unlockedChars: ['Kaelen', 'Lyra', 'Nyx', 'Voss'],
-                  upgrades: {}, doubleJumpUnlocked: true },
-            p2: { coins: 10, unlockedChars: ['Kaelen'], upgrades: {}, doubleJumpUnlocked: false },
-        };
-        D.__accountSetConflict({
-            local: D.accountSummary({ p1: { coins: 40, unlockedChars: ['Kaelen', 'Lyra'] },
-                                      p2: { coins: 0, unlockedChars: ['Kaelen'] } },
-                                    Date.now() - 3600000, 'device-abc12'),
-            cloud: D.accountSummary(cloud, Date.now() - 86400000 * 2, 'device-zz999'),
-            cloudData: cloud,
-        });
-        return { html: D.accountPanelHTML(), state: D.accountState() };
-    });
-    check('both saves are offered, neither applied',
-        /btn-account-use-cloud/.test(conflict.html)
-        && /btn-account-use-local/.test(conflict.html), conflict.html.slice(0, 120));
-    check('the CLOUD save shows its real coin total',
-        /910 coins/.test(conflict.html), (conflict.html.match(/\d+ coins/g) || []).join(', '));
-    check('the LOCAL save shows its own, so they can be told apart',
-        /40 coins/.test(conflict.html), (conflict.html.match(/\d+ coins/g) || []).join(', '));
-    check('each says when and where it was saved',
-        /day[s]? ago/.test(conflict.html) && /device-zz999/.test(conflict.html),
-        conflict.html.slice(0, 200));
-    check('and it says plainly that the other one is replaced',
-        /replaced/i.test(conflict.html), conflict.html.slice(0, 200));
-
-    section('Choosing the cloud save applies it; choosing local does not:');
-    const chose = await page.evaluate(async () => {
-        const D = window.ACDebug;
-        const before = D.prog('p1').coins;
-        await D.accountResolveConflict('cloud');
-        return { before, after: D.prog('p1').coins,
-                 chars: D.prog('p1').unlockedChars.length,
-                 conflict: D.accountState().conflict };
-    });
-    check('the cloud save really replaced the local one',
-        chose.after === 900 && chose.chars === 4, JSON.stringify(chose));
-    check('and the prompt is cleared once answered',
-        chose.conflict === null, JSON.stringify(chose.conflict));
-
-    section('A save from the network is repaired like any other:');
-    // It came from a row a client wrote. A `coins` of "lots" or an unlockedChars
-    // of null must not reach the code that indexes into them.
-    const repaired = await page.evaluate(() => {
-        const D = window.ACDebug;
-        let threw = null;
-        try {
-            D.__accountApplyCloud({
-                p1: { coins: 'lots', unlockedChars: null, upgrades: 'nope' },
-                p2: null,
-            });
-        } catch (e) { threw = e.message; }
-        return {
-            threw,
-            coins: D.prog('p1').coins,
-            chars: Array.isArray(D.prog('p1').unlockedChars),
-            upgrades: typeof D.prog('p1').upgrades,
-            p2chars: Array.isArray(D.prog('p2').unlockedChars),
-        };
-    });
-    check('a mangled cloud save does not throw', repaired.threw === null,
-        String(repaired.threw));
-    check('a non-numeric coin total becomes a number',
-        repaired.coins === 0, String(repaired.coins));
-    check('a null roster becomes the starter roster',
-        repaired.chars === true && repaired.p2chars === true, JSON.stringify(repaired));
-    check('and upgrades is an object whatever arrived',
-        repaired.upgrades === 'object', repaired.upgrades);
-
-    section('The settings row says enough to be worth reading:');
-    const row = await page.evaluate(() => {
-        const D = window.ACDebug;
-        const read = () => document.getElementById('btn-account').textContent
-            .replace(/\s+/g, ' ').trim();
-        D.__accountSetState('off', ''); D.refreshAccountUI();
-        const off = read();
-        D.__accountSetState('signed-in', 'you@example.com'); D.refreshAccountUI();
-        const on = read();
-        D.__accountSetConflict({ local: { coins: 1, chars: 1, when: 1, device: 'a' },
-                                 cloud: { coins: 2, chars: 1, when: 1, device: 'b' },
-                                 cloudData: { p1: {}, p2: {} } });
+        D.__accountSetUser({ id: 'u1', username: 'arjun_g', displayName: 'Arjun' });
+        D.__accountSetState('signed-in', 'Arjun');
+        const html = D.accountPanelHTML();
         D.refreshAccountUI();
-        const needs = read();
-        return { off, on, needs };
+        const row = document.getElementById('btn-account').textContent
+            .replace(/\s+/g, ' ').trim();
+        D.__accountSetUser(null);
+        D.__accountSetState('signed-out', '');
+        return { html, row };
     });
-    check('it reads Off when signed out', /Off/.test(row.off), row.off);
-    check('On when signed in', /On/.test(row.on), row.on);
-    check('and ASKS when a choice is pending, rather than sitting quiet',
-        /Action needed/i.test(row.needs), row.needs);
+    check('the display name is what is shown',
+        /<b>Arjun<\/b>/.test(inPanel.html), inPanel.html.slice(0, 120));
+    check('with the login name beside it, so you know which account',
+        /account-username">arjun_g/.test(inPanel.html), inPanel.html.slice(0, 160));
+    check('and there is a way out', /btn-account-signout/.test(inPanel.html),
+        inPanel.html.slice(0, 200));
+    check('the settings row carries the display name',
+        /Arjun/.test(inPanel.row), inPanel.row);
 
-    section('The LOCAL build has no account, and says nothing about one:');
-    // Two people at one keyboard share a single progression object with a p1
-    // and a p2 side, so "whose account is this" has no good answer there. The
-    // row is REMOVED rather than hidden: a settings row that opens a panel
-    // explaining why the feature is not for you advertises something and then
-    // withdraws it. Nothing is lost - the builds share one progression store,
-    // so a split-screen player signs in once on the online build.
+    // ============================================== THE SPLIT-SCREEN BUILD
+    section('The split-screen build is UNTOUCHED - local save, no account:');
     const local = await H.newPage(browser);
     local.on('pageerror', e => errors.push('local: ' + String(e.message || e)));
     await H.boot(local, { clearStorage: true, path: '/local/index.html' });
     const lp = await local.evaluate(() => {
-        const D = window.ACDebug || {};
+        const D = window.ACDebug;
+        D.setDebugUnlockAll(false);
+        D.addCoins('p1', 250);
+        D.saveProgression();
+        const raw = localStorage.getItem('astralClashProgression');
         return {
             row: !!document.getElementById('btn-account'),
             panel: !!document.getElementById('account-screen'),
-            body: !!document.getElementById('account-body'),
-            // Asked of WINDOW, not of ACDebug: a top-level `function` in a
-            // classic script is a global, and each build's ACDebug lists only
-            // what that build chose to export. The question here is about the
-            // module, which both builds load.
             supported: window.accountSupported(),
-            available: window.accountAvailable(),
-            // ...and the progression it does have still works.
-            coins: D.prog ? typeof D.prog('p1').coins : 'no prog',
+            coins: D.prog('p1').coins,
+            stored: raw ? (JSON.parse(raw).p1 || {}).coins : null,
         };
     });
-    check('no account row, panel or body exists there',
-        !lp.row && !lp.panel && !lp.body, JSON.stringify(lp));
-    check('the module itself reports the build as unsupported',
-        lp.supported === false && lp.available === false, JSON.stringify(lp));
-    check('and local progression is untouched by any of it',
-        lp.coins === 'number', JSON.stringify(lp));
-
-    section('The ONLINE build has all of it:');
-    const op = await page.evaluate(() => ({
-        row: !!document.getElementById('btn-account'),
-        panel: !!document.getElementById('account-screen'),
-        body: !!document.getElementById('account-body'),
-        back: !!document.getElementById('btn-account-back'),
-        supported: window.ACDebug.accountSupported(),
-    }));
-    check('the row, the panel and a way back all exist',
-        op.row && op.panel && op.body && op.back && op.supported === true,
-        JSON.stringify(op));
+    check('it has no account row or panel',
+        !lp.row && !lp.panel, JSON.stringify(lp));
+    check('the module reports the build as unsupported',
+        lp.supported === false, String(lp.supported));
+    check('and progress IS written to this machine there',
+        lp.stored === lp.coins && lp.coins >= 250, JSON.stringify(lp));
 
     check('no errors thrown', errors.length === 0, errors.slice(0, 3).join(' | ') || 'none');
     await finish(browser, page);

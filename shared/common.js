@@ -1792,7 +1792,22 @@ let gameState = "MENU"; // MENU, INTRO, FIGHT, DEATH, ROUND_END, PAUSED, GAMEOVE
 // questions - "what do you want to do" vs "who is here and what are we
 // playing" - and the room is meaningless without a connection.
 
+// WHERE PROGRESS LIVES, and it is not the same answer in both builds.
+//
+//   ONLINE  the server, and only the server. Nothing is written to this
+//           machine. accountLoadProgression() replaces what is here the moment
+//           somebody signs in, and a signed-out player earns nothing because
+//           there is nowhere to put it.
+//   LOCAL   localStorage, exactly as before. Two people share one keyboard and
+//           one progression object with a p1 and a p2 side, so there is nobody
+//           for an account to belong to.
+//
+// Starting from a fresh object in the online build rather than reading and then
+// discarding: a save that is loaded and then overwritten is a save that existed
+// for a moment, and somebody will eventually write code that runs in that
+// moment.
 let progression = (() => {
+    if (AC_ONE_SIDE_PER_CLIENT) return { p1: freshSideProgress(), p2: freshSideProgress() };
     try {
         const saved = JSON.parse(safeLSGet(PROGRESSION_KEY)) || {};
         // Migration: Batch 12's shape was a single shared blob with `coins` at
@@ -2734,13 +2749,21 @@ const RANDOM_KEYS = { p1: 'r', p2: '/' };
 // pooled. So every accessor and mutator below takes a `side` ('p1'|'p2') as its
 // first argument; there is no such thing as "the" progression anymore.
 function saveProgression() {
-    safeLSSet(PROGRESSION_KEY, JSON.stringify(progression));
-    // ...and to the account, if there is one. THIS ORDER MATTERS: localStorage
-    // is written first and unconditionally, so a failed or absent upload can
-    // never cost somebody progress they have already earned. See the header of
-    // shared/account.js.
+    if (!AC_ONE_SIDE_PER_CLIENT) {
+        // The split-screen build, unchanged: two people, one machine, one file.
+        safeLSSet(PROGRESSION_KEY, JSON.stringify(progression));
+        return;
+    }
+    // THE ONLINE BUILD WRITES NOTHING HERE. Progress belongs to an account and
+    // lives on the server; a copy on this machine would be a second answer to
+    // "what do I own", and the two would disagree the first time somebody
+    // played signed out.
     //
-    // typeof because account.js loads after this file: at the moment this
+    // So a signed-out player earns nothing. That is the design, not a gap: with
+    // no account there is no purse to credit. refreshAccountUI() is what says so
+    // on screen, rather than letting coins appear and then vanish on reload.
+    //
+    // typeof because account.js loads after this file - at the moment this
     // function is DEFINED the name does not exist yet, though it always does by
     // the time anything calls it.
     if (typeof accountQueuePush === 'function') accountQueuePush();

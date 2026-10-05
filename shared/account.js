@@ -1,117 +1,75 @@
-// Accounts: progression that follows you to another device.
-//
-// WHAT THIS REPLACED. The roadmap recommended export/import a save - a code you
-// copy out and paste back - on the grounds that it needs no server and takes an
-// afternoon. That was overruled, and rightly: a save code is cheap for the
-// person who BUILDS it and a chore for every person who USES it. You have to
-// know it exists, remember to export, and keep the file somewhere. Accounts are
-// the thing a player actually wants, and "much easier for the user" is the
-// right tiebreaker when the cost is only ours.
+// Accounts: a username, a display name, and a password.
 //
 // ============================================================================
-// THE RULE THAT DECIDES EVERYTHING ELSE: localStorage IS STILL THE TRUTH.
+// THE RULE THAT DECIDES EVERYTHING ELSE: THE SERVER IS THE TRUTH.
 // ============================================================================
 //
-// The game must stay completely playable with no account, no connection, and no
-// Supabase script loaded at all. So this is a SYNC TARGET bolted onto the side
-// of the existing save, never a replacement for it. Every write still goes to
-// localStorage first and every read still comes from there. If the network is
-// down, or the CDN is blocked, or the player never signs in, nothing above this
-// line notices.
+// In the ONLINE build, progress belongs to an account and lives in the
+// database. Nothing is written to this machine - no coins, no unlocks, no
+// upgrades. Sign in and your progress is there; sign out and there is nothing
+// on the device to find.
 //
-// Anything else turns a flaky connection into a lost save, which is strictly
-// worse than the problem being solved.
+// So a signed-out player EARNS NOTHING. There is no purse to credit. That is
+// the design rather than a gap, and the panel says so plainly instead of
+// letting coins appear and then vanish on the next reload.
+//
+// The SPLIT-SCREEN build is untouched and still uses localStorage. Two people
+// share one keyboard and one progression object with a p1 and a p2 side, so
+// there is nobody for a single account to belong to - the same reason
+// accountSupported() is false there.
 //
 // ============================================================================
-// CONFLICT RESOLUTION, decided before any of this was written.
+// WHY THERE IS NO EMAIL
 // ============================================================================
 //
-// Two devices both earning coins offline is the NORMAL case, not the edge case,
-// so this needed an answer rather than a default. The ones that do not work:
+// Supabase Auth is built around an address, so each account gets a synthetic
+// one derived from its username: `<username>@users.astral-clash.invalid`.
+// `.invalid` is reserved by RFC 2606 so it can never resolve - which is the
+// point. Nothing is ever sent there. It exists because auth.users needs a
+// unique key; the username is the identity.
 //
-//   LAST WRITE WINS, silently. Play on your laptop, then open your phone which
-//   has an older save, and the phone's save is now the one that gets uploaded.
-//   Progress disappears with nothing on screen having said so.
-//
-//   MERGE BY MAXIMUM. Tempting, because coins and unlocks only go up. It is
-//   also a duplication bug: spend 500 coins on device A, never open device B,
-//   and the merge restores the 500 you spent while you keep what you bought.
-//
-// So: ASK, but only when it actually matters. On sign-in,
-//
-//   - cloud has no save            -> upload this device's. Nothing to lose.
-//   - this device has nothing      -> download the cloud's. Nothing to lose.
-//   - they agree                   -> nothing to do.
-//   - they differ                  -> SHOW BOTH and let the player choose.
-//
-// The choice is shown with real numbers on it - coins and fighters unlocked on
-// each side - because "cloud save or local save?" is not a question anybody can
-// answer without them.
-//
-// After that, the account is simply where the save lives, and every change is
-// pushed (debounced) as it happens.
+// THE COST, because it is real and should not be discovered later: there is no
+// password reset. With no address to mail, a forgotten password cannot be
+// recovered by the player. The honest fix is an OPTIONAL recovery address on
+// the profile - optional, because requiring one puts back exactly what this
+// avoids.
 
-// Filled in by whoever deploys this; see supabase/migrations/0001_saves.sql for
-// the table. Both values are PUBLIC by design - the anon key is shipped inside
-// a static page that anybody can read, which is why row level security on that
-// table is the actual access control and not a formality.
-// `let`, not `const`: a deployment sets these with accountConfigure() rather
-// than by editing this file, which keeps a key out of the source history and
-// lets the same build point at a different project. Empty means "no accounts",
-// which is a supported state and not a broken one.
+// Set by the build with accountConfigure(). Both are PUBLIC by design - this
+// page is static and anyone can read it - which is why the row level security
+// in supabase/migrations/ is the actual access control.
 let SUPABASE_URL = '';
 let SUPABASE_ANON_KEY = '';
 
-// Call before initAccounts(). Returns whether it took, so a deployment script
-// can tell the difference between "configured" and "typo".
 function accountConfigure(url, key) {
     SUPABASE_URL = String(url || '').trim();
     SUPABASE_ANON_KEY = String(key || '').trim();
     return !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 }
 
-// Rows are small (one JSON blob) and a match ends rarely, so this exists to
-// collapse the burst of writes a single match-end produces - coins, then
-// unlocks, then challenges - into one request, not to ration anything.
-const ACCOUNT_PUSH_MS = 2500;
+// The domain the synthetic addresses live under. Never contacted.
+const ACCOUNT_EMAIL_DOMAIN = '@users.astral-clash.invalid';
 
-const ACCOUNT_DEVICE_KEY = 'astralClashDevice';
-const ACCOUNT_STAMP_KEY = 'astralClashSavedAt';
+// Collapses the burst of writes one match-end produces - coins, then unlocks,
+// then challenges - into a single request. Not a rate limit; a tidy-up.
+const ACCOUNT_PUSH_MS = 2000;
 
-let sb = null;                  // the Supabase client, or null if unavailable
-let accountUser = null;         // { id, email } when signed in
-let accountStatus = 'off';      // off | unavailable | signed-out | sending | signed-in | error
+// Matches the CHECK constraint on profiles.username deliberately: a rule
+// enforced in one place and described in another drifts, and a player should
+// hear about a bad username before a round trip rather than after one.
+const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
+const DISPLAY_MAX = 14;
+
+let sb = null;
+let accountUser = null;        // { id, username, displayName } when signed in
+let accountStatus = 'off';     // off | unavailable | signed-out | busy | signed-in | error
 let accountDetail = '';
 let accountPushTimer = null;
-let accountConflict = null;     // { local, cloud } while a choice is pending
-let onAccountChange = null;     // the build sets this; see accountNotify
-
-// A human label for "your other device", so a conflict can say WHERE the other
-// save came from. Random, stored locally, never derived from anything about the
-// machine - a fingerprint would be a worse answer to a smaller question.
-function accountDeviceName() {
-    let d = safeLSGet(ACCOUNT_DEVICE_KEY);
-    if (!d) {
-        d = 'device-' + Math.random().toString(36).slice(2, 7);
-        safeLSSet(ACCOUNT_DEVICE_KEY, d);
-    }
-    return d;
-}
-
-// When this device last changed its save. Written by accountTouch(), which
-// saveProgression() calls, so it tracks the real thing rather than page loads.
-function accountLocalStamp() {
-    const raw = Number(safeLSGet(ACCOUNT_STAMP_KEY));
-    return isFinite(raw) && raw > 0 ? raw : 0;
-}
-
-function accountTouch() {
-    safeLSSet(ACCOUNT_STAMP_KEY, String(Date.now()));
-}
+let accountMode = 'in';        // which half of the panel is showing: 'in' | 'up'
+let onAccountChange = null;    // the build sets this; see accountNotify
 
 function accountNotify() {
     if (typeof onAccountChange === 'function') {
-        try { onAccountChange(); } catch (e) { /* a UI refresh must not break sync */ }
+        try { onAccountChange(); } catch (e) { /* a repaint must not break sync */ }
     }
 }
 
@@ -124,52 +82,81 @@ function accountSetStatus(status, detail) {
 function accountState() {
     return {
         supported: accountSupported(),
+        configured: !!(SUPABASE_URL && SUPABASE_ANON_KEY),
         status: accountStatus,
         detail: accountDetail,
-        email: accountUser ? accountUser.email : '',
-        conflict: accountConflict,
-        configured: !!(SUPABASE_URL && SUPABASE_ANON_KEY),
+        username: accountUser ? accountUser.username : '',
+        displayName: accountUser ? accountUser.displayName : '',
+        signedIn: !!accountUser,
+        mode: accountMode,
     };
 }
 
 // DOES THIS BUILD HAVE ACCOUNTS AT ALL.
 //
 // Online: one client drives one fighter and owns one purse, so an account is
-// one person's save and the mapping is obvious.
+// one person's progress and the mapping is obvious.
 //
-// Local: two people share a keyboard and one `progression` object with a p1 and
-// a p2 side. An account there would mean "this household's two saves", and
-// signing out would take both. There is no good answer to "whose account is
-// this" on a shared machine, so the honest thing is not to ask the question.
-//
-// Nothing is lost: the two builds share one progression store, so a split-screen
-// player signs in once on the online build and that save syncs.
+// Local: two people, one keyboard, one progression object. "Whose account is
+// this" has no good answer, so the question is not asked - that build keeps its
+// save on the machine, as it always has.
 function accountSupported() { return !!AC_ONE_SIDE_PER_CLIENT; }
 
-// Is this build able to talk to an account RIGHT NOW. Four ways it can be no,
-// all ordinary rather than exceptional: the build does not have accounts, no
-// project was configured, the CDN script was blocked, or there is no network.
 function accountAvailable() {
     return !!(accountSupported() && sb && SUPABASE_URL && SUPABASE_ANON_KEY);
 }
 
-// Started once, after the page has loaded. Never throws: a missing script, a
-// blocked CDN and an unconfigured deployment all end as a status line, because
-// the game behind this has to run regardless.
+function accountSignedIn() { return !!(accountUser && accountAvailable()); }
+
+// The synthetic address for a username. One function, used by sign-up and
+// sign-in alike, so the two can never disagree about what an account is called.
+function accountEmailFor(username) {
+    return String(username || '').trim().toLowerCase() + ACCOUNT_EMAIL_DOMAIN;
+}
+
+// Checked here as well as in the database. The constraint is what makes it
+// true; this is what makes it quick to hear about.
+function usernameProblem(username) {
+    const u = String(username || '').trim().toLowerCase();
+    if (!u) return 'Pick a username';
+    if (u.length < 3) return 'Usernames are at least 3 characters';
+    if (u.length > 20) return 'Usernames are at most 20 characters';
+    if (!USERNAME_RE.test(u)) return 'Letters, numbers and underscores only';
+    return null;
+}
+
+function passwordProblem(pw) {
+    const p = String(pw || '');
+    // Supabase's own floor is 6. Eight here, because this password cannot be
+    // reset and a weak one is not recoverable from.
+    if (p.length < 8) return 'Passwords are at least 8 characters';
+    if (p.length > 72) return 'Passwords are at most 72 characters';
+    return null;
+}
+
+function displayProblem(name) {
+    const d = String(name || '').trim();
+    if (!d) return 'Pick a display name';
+    if (d.length > DISPLAY_MAX) return 'Display names are at most ' + DISPLAY_MAX + ' characters';
+    return null;
+}
+
+// ---------------------------------------------------------------------------
+// Startup
+// ---------------------------------------------------------------------------
+
 function initAccounts() {
     if (!accountSupported()) {
-        accountSetStatus('off', 'Accounts are managed in the online build');
+        accountSetStatus('off', 'Split-screen build - progress stays on this machine');
         return;
     }
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
         accountSetStatus('off', 'No account service configured for this build');
         return;
     }
-    // LOADED ONLY IF CONFIGURED. The client is ~50KB and the overwhelming
-    // majority of page loads never touch an account, so it is fetched on demand
-    // rather than sitting in the critical path of a game that has to start
-    // fast. A blocked CDN ends as a status line, exactly like the three.js
-    // fallback above it.
+    // Fetched on demand: the client is ~50KB and most page loads never touch an
+    // account, so it stays out of the critical path of a game that has to start
+    // quickly. A blocked CDN ends as a status line, like the three.js fallback.
     accountLoadLib().then(startAccountClient).catch(() => {
         accountSetStatus('unavailable', 'Could not load the account service');
     });
@@ -197,8 +184,10 @@ function accountLoadLib() {
 function startAccountClient(lib) {
     try {
         sb = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-            auth: { persistSession: true, autoRefreshToken: true,
-                    detectSessionInUrl: true },
+            // detectSessionInUrl off: nothing arrives by link any more, and
+            // leaving it on makes the client parse every page load's hash
+            // looking for a token that is never there.
+            auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
         });
     } catch (e) {
         accountSetStatus('unavailable', 'Could not start the account service');
@@ -206,166 +195,160 @@ function startAccountClient(lib) {
     }
     accountSetStatus('signed-out', '');
     sb.auth.onAuthStateChange((_event, session) => {
-        accountUser = session && session.user
-            ? { id: session.user.id, email: session.user.email }
-            : null;
-        if (accountUser) {
-            accountSetStatus('signed-in', accountUser.email);
-            accountSync();
-        } else {
-            accountSetStatus('signed-out', '');
-        }
+        if (session && session.user) accountAfterSignIn(session.user.id);
+        else { accountUser = null; accountForgetProgress(); accountSetStatus('signed-out', ''); }
     });
-    // A magic link lands back on the page with the session in the URL; this
-    // picks up an existing one on an ordinary load.
     sb.auth.getSession().then(({ data }) => {
-        if (data && data.session && data.session.user) {
-            accountUser = { id: data.session.user.id, email: data.session.user.email };
-            accountSetStatus('signed-in', accountUser.email);
-            accountSync();
-        }
-    }).catch(() => { /* an absent session is the normal case */ });
+        if (data && data.session && data.session.user) accountAfterSignIn(data.session.user.id);
+    }).catch(() => { /* no session is the normal case */ });
 }
 
-// A LINK, not a password. There is nothing here worth the support burden of
-// password resets, and a password is one more thing to lose - which is the
-// problem this whole feature exists to solve.
-async function accountSignIn(email) {
-    // THE ADDRESS FIRST. This is a client-side question, so answering it does
-    // not need a backend - and reporting "unavailable" for a typo blames the
-    // wrong thing, which is the kind of error message that sends somebody to
-    // check their wifi over a missing @.
-    const addr = String(email || '').trim();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) {
-        return { ok: false, error: 'That does not look like an email address' };
-    }
-    if (!accountAvailable()) return { ok: false, error: accountDetail || 'unavailable' };
-    accountSetStatus('sending', addr);
+// ---------------------------------------------------------------------------
+// Sign up / in / out
+// ---------------------------------------------------------------------------
+
+async function accountSignUp(username, displayName, password) {
+    // THE FIELDS FIRST. These are client-side rules and answering them needs no
+    // backend - reporting "accounts are unavailable" for a username with a
+    // punctuation mark in it blames the wrong thing, and sends somebody to
+    // check their connection over a typo.
+    const u = String(username || '').trim().toLowerCase();
+    const d = String(displayName || '').trim();
+    const bad = usernameProblem(u) || displayProblem(d) || passwordProblem(password);
+    if (bad) { accountSetStatus('error', bad); return { ok: false, error: bad }; }
+    if (!accountAvailable()) return { ok: false, error: accountDetail || 'Accounts are unavailable' };
+
+    accountSetStatus('busy', 'Creating your account…');
     try {
-        const { error } = await sb.auth.signInWithOtp({
-            email: addr,
-            options: { emailRedirectTo: location.origin + location.pathname },
-        });
-        if (error) {
-            accountSetStatus('error', error.message || 'Could not send the link');
-            return { ok: false, error: error.message || 'Could not send the link' };
+        // ASKED BEFORE TRYING, so a taken name is a clear sentence rather than
+        // a unique-constraint violation surfacing as "duplicate key value".
+        const { data: free, error: checkErr } =
+            await sb.rpc('username_available', { candidate: u });
+        if (checkErr) throw checkErr;
+        if (free === false) {
+            accountSetStatus('error', 'That username is taken');
+            return { ok: false, error: accountDetail };
         }
-        accountSetStatus('sending', 'Check ' + addr + ' for a sign-in link');
+
+        const { data, error } = await sb.auth.signUp({
+            email: accountEmailFor(u), password: String(password),
+        });
+        if (error) throw error;
+        const id = data && data.user && data.user.id;
+        if (!id) throw new Error('no user came back');
+
+        // The profile row is what makes the username real. If this fails the
+        // auth user exists without one - recoverable, because accountAfterSignIn
+        // treats a missing profile as "finish signing up" rather than a crash.
+        const { error: pErr } = await sb.from('profiles')
+            .insert({ user_id: id, username: u, display_name: d });
+        if (pErr) throw pErr;
+
+        await accountAfterSignIn(id);
         return { ok: true };
     } catch (e) {
-        accountSetStatus('error', 'Could not reach the account service');
-        return { ok: false, error: 'Could not reach the account service' };
+        const msg = (e && e.message) || 'Could not create the account';
+        accountSetStatus('error', /already registered|duplicate|unique/i.test(msg)
+            ? 'That username is taken' : msg);
+        return { ok: false, error: accountDetail };
+    }
+}
+
+async function accountSignIn(username, password) {
+    if (!accountAvailable()) return { ok: false, error: accountDetail || 'Accounts are unavailable' };
+    const u = String(username || '').trim().toLowerCase();
+    if (!u) { accountSetStatus('error', 'Enter your username'); return { ok: false, error: accountDetail }; }
+    if (!password) { accountSetStatus('error', 'Enter your password'); return { ok: false, error: accountDetail }; }
+
+    accountSetStatus('busy', 'Signing in…');
+    try {
+        const { data, error } = await sb.auth.signInWithPassword({
+            email: accountEmailFor(u), password: String(password),
+        });
+        if (error) throw error;
+        await accountAfterSignIn(data.user.id);
+        return { ok: true };
+    } catch (e) {
+        // DELIBERATELY ONE MESSAGE for a wrong username and a wrong password.
+        // Telling them apart hands out which usernames exist, and tells an
+        // honest player nothing they could act on differently.
+        accountSetStatus('error', 'That username and password do not match');
+        return { ok: false, error: accountDetail };
     }
 }
 
 async function accountSignOut() {
     if (!accountAvailable()) return;
-    try { await sb.auth.signOut(); } catch (e) { /* signing out always succeeds locally */ }
+    try { await sb.auth.signOut(); } catch (e) { /* signing out always works locally */ }
     accountUser = null;
-    accountConflict = null;
+    accountForgetProgress();
     accountSetStatus('signed-out', '');
 }
 
-// What a save looks like at a glance, for the conflict prompt. Numbers, because
-// "cloud save or local save?" is unanswerable without them.
-function accountSummary(data, when, device) {
-    const side = (s) => (data && data[s]) || {};
-    const coins = (side('p1').coins || 0) + (side('p2').coins || 0);
-    const chars = new Set([...(side('p1').unlockedChars || []),
-                           ...(side('p2').unlockedChars || [])]).size;
-    return { coins, chars, when: when || 0, device: device || '' };
+// Signed out means EMPTY, not stale. The previous account's coins must not sit
+// on screen - or worse, be pushed into whichever account signs in next.
+function accountForgetProgress() {
+    if (!accountSupported()) return;
+    if (accountPushTimer) { clearTimeout(accountPushTimer); accountPushTimer = null; }
+    progression.p1 = freshSideProgress();
+    progression.p2 = freshSideProgress();
+    accountNotify();
 }
 
-async function accountPull() {
+// ---------------------------------------------------------------------------
+// The save
+// ---------------------------------------------------------------------------
+
+async function accountAfterSignIn(userId) {
+    try {
+        const { data: prof, error } = await sb.from('profiles')
+            .select('username, display_name').eq('user_id', userId).maybeSingle();
+        if (error) throw error;
+        if (!prof) {
+            // An auth user with no profile: sign-up got halfway. Say so rather
+            // than pretending to be signed in with no name.
+            accountUser = null;
+            accountSetStatus('error', 'This account is half-created — sign up again');
+            return;
+        }
+        accountUser = { id: userId, username: prof.username, displayName: prof.display_name };
+        await accountLoadProgression();
+        accountSetStatus('signed-in', prof.display_name);
+    } catch (e) {
+        accountUser = null;
+        accountSetStatus('error', 'Signed in, but could not read your account');
+    }
+}
+
+// THE ONLY PLACE PROGRESS COMES FROM in the online build.
+async function accountLoadProgression() {
+    if (!accountUser) return;
     const { data, error } = await sb.from('saves')
-        .select('data, updated_at, device').eq('user_id', accountUser.id).maybeSingle();
+        .select('data').eq('user_id', accountUser.id).maybeSingle();
     if (error) throw error;
-    return data || null;
+    const blob = (data && data.data) || null;
+    // Through the same repair a local save gets. It arrived over a network from
+    // a row a client wrote, so it is no more trustworthy than localStorage -
+    // and repairSideProgress is what everything downstream assumes has run.
+    progression.p1 = repairSideProgress(blob && blob.p1);
+    progression.p2 = repairSideProgress(blob && blob.p2);
+    // A brand-new account has no row yet. Writing one now means every later
+    // save is an update against something that already exists.
+    if (!blob) await accountPush();
+    accountNotify();
 }
 
 async function accountPush() {
-    const row = {
-        user_id: accountUser.id,
-        data: progression,
-        device: accountDeviceName(),
-    };
-    const { error } = await sb.from('saves').upsert(row, { onConflict: 'user_id' });
+    if (!accountUser) return;
+    const { error } = await sb.from('saves').upsert(
+        { user_id: accountUser.id, data: progression, device: accountUser.username },
+        { onConflict: 'user_id' });
     if (error) throw error;
-    accountTouch();
 }
 
-// Called on sign-in. Decides pull, push, or ask - see the header for why those
-// are the only three answers.
-async function accountSync() {
-    if (!accountAvailable() || !accountUser) return;
-    let cloud;
-    try {
-        cloud = await accountPull();
-    } catch (e) {
-        accountSetStatus('error', 'Signed in, but could not read your save');
-        return;
-    }
-    const localStamp = accountLocalStamp();
-    const localEmpty = !localStamp;
-
-    if (!cloud) {                       // nothing up there yet
-        try { await accountPush(); accountSetStatus('signed-in', accountUser.email); }
-        catch (e) { accountSetStatus('error', 'Signed in, but could not save'); }
-        return;
-    }
-    if (localEmpty) {                   // nothing down here
-        accountApplyCloud(cloud.data);
-        return;
-    }
-    if (JSON.stringify(cloud.data) === JSON.stringify(progression)) {
-        accountSetStatus('signed-in', accountUser.email);   // already agree
-        return;
-    }
-    // They differ and both are real. This is the case that must not be decided
-    // quietly: see the header.
-    accountConflict = {
-        local: accountSummary(progression, localStamp, accountDeviceName()),
-        cloud: accountSummary(cloud.data, Date.parse(cloud.updated_at) || 0, cloud.device),
-        cloudData: cloud.data,
-    };
-    accountNotify();
-}
-
-function accountApplyCloud(data) {
-    if (!data || typeof data !== 'object') return;
-    // Through the same repair the local save goes through. It arrived over a
-    // network from a row a client wrote, so it is no more trustworthy than
-    // localStorage - and repairSideProgress is what everything downstream
-    // assumes has already run.
-    progression.p1 = repairSideProgress(data.p1);
-    progression.p2 = repairSideProgress(data.p2);
-    saveProgression();
-    accountTouch();
-    accountConflict = null;
-    accountSetStatus('signed-in', accountUser ? accountUser.email : '');
-}
-
-// The player's answer to a conflict. 'cloud' takes what was up there, 'local'
-// uploads what is here. Both are explicit; there is no third option that does
-// not involve guessing.
-async function accountResolveConflict(which) {
-    if (!accountConflict) return;
-    if (which === 'cloud') {
-        accountApplyCloud(accountConflict.cloudData);
-        return;
-    }
-    accountConflict = null;
-    try { await accountPush(); accountSetStatus('signed-in', accountUser.email); }
-    catch (e) { accountSetStatus('error', 'Could not upload this device’s save'); }
-    accountNotify();
-}
-
-// Called by saveProgression(). Debounced, so one match-end is one request
-// rather than three - and NEVER while a conflict is unanswered, because
-// pushing then would silently decide the question being asked.
+// Called by saveProgression(). Debounced, so one match-end is one request.
 function accountQueuePush() {
-    accountTouch();
-    if (!accountAvailable() || !accountUser || accountConflict) return;
+    if (!accountSignedIn()) return;
     if (accountPushTimer) clearTimeout(accountPushTimer);
     accountPushTimer = setTimeout(() => {
         accountPushTimer = null;
@@ -374,124 +357,111 @@ function accountQueuePush() {
 }
 
 // ---------------------------------------------------------------------------
-// The panel.
-//
-// Rendered from here rather than built as elements in the build, for the reason
-// the daily panel is: written once, identical in both builds, and impossible to
-// drift. It is a string of HTML because that is what a screen made entirely of
-// text and three buttons actually needs.
+// The panel
 // ---------------------------------------------------------------------------
-
-function accountWhen(ms) {
-    if (!ms) return 'unknown';
-    const mins = Math.round((Date.now() - ms) / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return mins + ' minute' + (mins === 1 ? '' : 's') + ' ago';
-    const hrs = Math.round(mins / 60);
-    if (hrs < 24) return hrs + ' hour' + (hrs === 1 ? '' : 's') + ' ago';
-    const days = Math.round(hrs / 24);
-    return days + ' day' + (days === 1 ? '' : 's') + ' ago';
-}
-
-function accountSaveLine(s, label) {
-    return '<div class="account-save-line"><b>' + label + '</b> \u2014 '
-        + s.coins + ' coins, ' + s.chars + ' fighter' + (s.chars === 1 ? '' : 's')
-        + ' unlocked, saved ' + accountWhen(s.when)
-        + (s.device ? ' on ' + s.device : '') + '</div>';
-}
-
-// FIRST AND ALONE. Two real saves that disagree is the only thing on this
-// screen that cannot wait, and showing the sign-out button beside it would
-// invite somebody to make the choice by accident.
-function accountConflictHTML(c) {
-    return '<div class="account-conflict">'
-        + '<h4>Two saves, and they do not match</h4>'
-        + '<p class="account-status">Pick the one to keep. The other is '
-        + 'replaced, so choose the one with the progress you recognise.</p>'
-        + accountSaveLine(c.cloud, 'In your account')
-        + accountSaveLine(c.local, 'On this device')
-        + '<div class="account-choices">'
-        + '<button id="btn-account-use-cloud">Use my account\u2019s save</button>'
-        + '<button id="btn-account-use-local" class="btn-secondary">'
-        + 'Use this device\u2019s save</button>'
-        + '</div></div>';
-}
 
 function accountPanelHTML() {
     const st = accountState();
-    // ORDER IS URGENCY. A pending conflict is a decision about whose save
-    // survives and outranks everything; "not set up" is the least urgent thing
-    // here and used to be checked first, which made every state behind it
-    // unreachable.
-    if (st.conflict) return accountConflictHTML(st.conflict);
+    if (!st.supported) {
+        return '<p class="account-status">This is the split-screen build — progress is '
+            + 'saved on this machine and each player keeps their own.</p>';
+    }
     if (!st.configured) {
-        return '<p class="account-status">Accounts are not set up for this build. '
-            + 'Your progress is still saved on this device.</p>';
+        return '<p class="account-status err">Accounts are not set up for this build, '
+            + 'so nothing can be saved.</p>';
     }
     if (st.status === 'unavailable') {
-        return '<p class="account-status err">' + st.detail + '. '
-            + 'Your progress is still saved on this device.</p>';
+        return '<p class="account-status err">' + st.detail + ', so nothing can be saved '
+            + 'right now.</p>';
     }
-    if (st.status === 'signed-in') {
-        return '<p class="account-status ok">Signed in as <b>' + st.email + '</b>. '
-            + 'Your progress is saved here and to your account.</p>'
+    if (st.signedIn) {
+        return '<p class="account-status ok">Signed in as <b>' + st.displayName + '</b> '
+            + '(<span class="account-username">' + st.username + '</span>). '
+            + 'Your coins, unlocks and upgrades are saved to this account.</p>'
             + '<button id="btn-account-signout" class="btn-secondary">Sign out</button>';
     }
-    const sending = st.status === 'sending';
-    return '<div class="account-row">'
-        + '<input id="input-account-email" type="email" autocomplete="email" '
-        + 'spellcheck="false" placeholder="you@example.com" aria-label="Your email address">'
-        + '<button id="btn-account-send"' + (sending ? ' disabled' : '') + '>'
-        + (sending ? 'Sent' : 'Send link') + '</button>'
+    const busy = st.status === 'busy';
+    const dis = busy ? ' disabled' : '';
+    const up = st.mode === 'up';
+    // ONE PANEL, TWO MODES. A separate sign-up screen means somebody who
+    // already has an account meets a form asking them to invent one; this way
+    // the thing you came to do is on screen and the other is one click away.
+    return ''
+        + '<div class="account-tabs">'
+        + '<button id="btn-account-mode-in" class="account-tab' + (up ? '' : ' on') + '">Sign in</button>'
+        + '<button id="btn-account-mode-up" class="account-tab' + (up ? ' on' : '') + '">Create account</button>'
         + '</div>'
+        + '<div class="account-row"><label for="input-account-user">Username</label>'
+        + '<input id="input-account-user" autocomplete="username" spellcheck="false"'
+        + ' maxlength="20" placeholder="' + (up ? '3-20 characters' : '') + '"' + dis + '></div>'
+        + (up
+            ? '<div class="account-row"><label for="input-account-display">Display name</label>'
+              + '<input id="input-account-display" autocomplete="nickname" maxlength="' + DISPLAY_MAX + '"'
+              + ' placeholder="what other players see"' + dis + '></div>'
+            : '')
+        + '<div class="account-row"><label for="input-account-pass">Password</label>'
+        + '<input id="input-account-pass" type="password"'
+        + ' autocomplete="' + (up ? 'new-password' : 'current-password') + '"'
+        + ' maxlength="72" placeholder="' + (up ? 'at least 8 characters' : '') + '"' + dis + '></div>'
+        + '<button id="btn-account-go"' + dis + '>'
+        + (busy ? '…' : (up ? 'Create account' : 'Sign in')) + '</button>'
         + '<p class="account-status' + (st.status === 'error' ? ' err' : '') + '">'
-        + (st.detail || 'We email you a link instead of a password \u2014 there is '
-           + 'nothing to remember and nothing to lose.')
+        + (st.detail || (up
+            ? 'Nothing is emailed anywhere, so there is no password reset — pick '
+              + 'one you will remember.'
+            : 'Your progress lives on your account, not on this machine.'))
         + '</p>';
 }
 
 function refreshAccountUI() {
-    // The row is REMOVED from the local build by the sync, not merely hidden -
-    // see MARKUP_INTERFACE. This guard is for the build that has it.
     if (!accountSupported()) return;
     const el = document.getElementById('account-body');
     if (!el) return;
     el.innerHTML = accountPanelHTML();
     wireAccountPanel();
     const st = accountState();
-    // The settings row says enough to be worth reading without opening it.
-    // CONFLICT OUTRANKS SIGNED-IN. It used to be the other way round, so a
-    // signed-in player with two disagreeing saves saw a reassuring "On" at
-    // exactly the moment they had a decision to make about which one survives.
-    setOptState('btn-account',
-        st.conflict ? 'Action needed' : (st.status === 'signed-in' ? 'On' : 'Off'),
-        !!st.conflict || st.status === 'signed-in');
+    // The row carries the DISPLAY NAME when signed in: it is the one piece of
+    // this that a player recognises at a glance from the settings list.
+    setOptState('btn-account', st.signedIn ? st.displayName : 'Signed out', st.signedIn);
 }
 
-// Re-wired on every render, because the panel replaces its own contents and
-// the buttons that were there are gone.
 function wireAccountPanel() {
     const on = (id, fn) => {
         const b = document.getElementById(id);
         if (b) b.addEventListener('click', fn);
     };
-    on('btn-account-send', () => {
-        const input = document.getElementById('input-account-email');
-        accountSignIn(input ? input.value : '').then(refreshAccountUI);
-    });
+    const val = (id) => {
+        const e = document.getElementById(id);
+        return e ? e.value : '';
+    };
+    const submit = () => {
+        const u = val('input-account-user');
+        const p = val('input-account-pass');
+        const go = accountMode === 'up'
+            ? accountSignUp(u, val('input-account-display'), p)
+            : accountSignIn(u, p);
+        go.then(refreshAccountUI);
+    };
+    const mode = (m) => () => {
+        accountMode = m;
+        // Clear the last error with the mode: "that username is taken" makes no
+        // sense once you have switched to signing in.
+        accountSetStatus('signed-out', '');
+        refreshAccountUI();
+    };
+    on('btn-account-mode-in', mode('in'));
+    on('btn-account-mode-up', mode('up'));
+    on('btn-account-go', submit);
     on('btn-account-signout', () => { accountSignOut().then(refreshAccountUI); });
-    on('btn-account-use-cloud', () => {
-        accountResolveConflict('cloud').then(refreshAccountUI);
-    });
-    on('btn-account-use-local', () => {
-        accountResolveConflict('local').then(refreshAccountUI);
-    });
-    const input = document.getElementById('input-account-email');
-    if (input) {
-        input.addEventListener('keydown', (e) => {
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
-            accountSignIn(input.value).then(refreshAccountUI);
+    // Enter submits from any field. A three-box form whose button only answers
+    // the mouse is a form people fight.
+    for (const id of ['input-account-user', 'input-account-display', 'input-account-pass']) {
+        const e = document.getElementById(id);
+        if (!e) continue;
+        e.addEventListener('keydown', (ev) => {
+            if (ev.key !== 'Enter') return;
+            ev.preventDefault();
+            submit();
         });
     }
 }

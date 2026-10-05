@@ -1311,11 +1311,38 @@
            then ideally never visited again - so it gets hierarchy and
            legibility rather than any visual identity of its own. */
         #account-screen .menu-section { max-width: 440px; }
+        /* Label on the left, field taking the slack, so three rows of
+           different label lengths still line their inputs up. */
         .account-row {
             display: flex; align-items: center; gap: 8px; margin: 10px 0;
         }
+        .account-row label {
+            flex: 0 0 96px; text-align: left;
+            font-size: 0.72rem; color: #94a3b8;
+        }
         .account-row input {
             flex: 1 1 auto; min-width: 0;
+        }
+        /* Sign in / Create account. Two states of one panel rather than two
+           screens - see the note in accountPanelHTML. */
+        .account-tabs { display: flex; gap: 6px; margin: 0 0 12px; }
+        .account-tab {
+            flex: 1 1 0; margin: 0;
+            background: rgba(15,23,42,0.5);
+            border: 1px solid rgba(148,163,184,0.3);
+            color: #94a3b8; font-size: 0.74rem;
+        }
+        .account-tab.on {
+            background: rgba(0,243,255,0.12);
+            border-color: rgba(0,243,255,0.55);
+            color: #e2e8f0;
+        }
+        /* The login name, shown beside the display name so somebody can see
+           which account they are in without it competing with the name they
+           chose to be known by. */
+        .account-username {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.92em; color: #94a3b8;
         }
         .account-status {
             font-size: 0.74rem; line-height: 1.5; color: #94a3b8;
@@ -11132,12 +11159,16 @@ if (DEBUG) {
         // real backend could otherwise produce - a blocked CDN, a pending
         // conflict, a save arriving over the wire. Named so it is obvious
         // at a glance that nothing in the game calls them.
-        accountState, accountAvailable, accountSupported, accountConfigure, accountSignIn, accountSignOut,
-        accountPanelHTML, refreshAccountUI, accountSummary,
-        accountResolveConflict, accountWhen, initAccounts,
+        accountState, accountAvailable, accountSupported, accountConfigure,
+        accountSignIn, accountSignUp, accountSignOut, accountPanelHTML,
+        refreshAccountUI, initAccounts, accountEmailFor, accountSignedIn,
+        usernameProblem, passwordProblem, displayProblem,
+        accountForgetProgress, accountQueuePush,
+        // Drives states a real backend would otherwise be needed to produce.
+        // Named so it is obvious at a glance that nothing in the game calls it.
         __accountSetState(status, detail) { accountSetStatus(status, detail); },
-        __accountSetConflict(c) { accountConflict = c; },
-        __accountApplyCloud(d) { accountApplyCloud(d); },
+        __accountSetMode(m) { accountMode = m; },
+        __accountSetUser(u) { accountUser = u; },
         CHALLENGES, challengeById, challengeDay, challengeHash,
         dailyChallengeIds, dailyChallenges, dailyState, challengeDone,
         scoreDailyChallenges, challengeContext, dailyProgress,
