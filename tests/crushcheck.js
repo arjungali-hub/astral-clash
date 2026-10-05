@@ -49,7 +49,22 @@ const H = require('./harness');
 
     section('The crush leaves first person, per the request:');
     await page.evaluate(() => window.ACDebug.forceCrush(0));
-    await H.sleep(700);
+    // WAIT FOR THE FIRST CRUSH FRAME, not for a stopwatch.
+    //
+    // Everything asserted below is set up by renderCrush(), so a fixed sleep
+    // measures whatever the renderer managed in that window - forty-odd frames
+    // here, one or two on a CI runner software-rendering the same scene. CI
+    // reported both fighters at yaw 0 and -PI, which are their ORDINARY
+    // facings: the sample landed after `crushing` went true and before anything
+    // had been staged. Nothing was wrong with the game or with the assertions.
+    //
+    // g.visible is set inside the staging loop itself, so it is exactly the
+    // signal that the work has been done rather than merely scheduled.
+    const staged = await H.waitInPage(page,
+        "!!(window.ACDebug.crushRigs && window.ACDebug.crushRigs.p1.visible"
+        + " && window.ACDebug.crushRigs.p2.visible)", 20000);
+    check('a crush frame actually rendered, so the rest measures something',
+        staged, 'no crush frame inside the budget');
     const during = await page.evaluate(() => {
         const D = window.ACDebug, T = window.THREE;
         const rigs = D.crushRigs;

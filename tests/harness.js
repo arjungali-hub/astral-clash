@@ -247,6 +247,14 @@ async function launch(opts = {}) {
             '--enable-webgl', '--ignore-gpu-blocklist',
             ...(keepAnimating ? NO_THROTTLE_ARGS : []),
         ],
+        // PUPPETEER'S OWN TIMEOUT, which is separate from every budget in this
+        // file and was the one nothing scaled. It defaults to 180s and applies
+        // to a single CDP call - so one long page.evaluate() on a machine
+        // software-rendering a 3D scene blows it and the checker dies with
+        // "Runtime.callFunctionOn timed out" instead of failing an assertion.
+        // That is what crushcheck reported here while CI, on faster hardware,
+        // got far enough to report real assertions instead.
+        protocolTimeout: budget(180000),
         defaultViewport: { width: 1400, height: 1000 },
         ...rest,
     });
