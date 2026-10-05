@@ -406,9 +406,15 @@ somebody with the account can create.
 
 1. **Create a project.** Free tier is enough — one small row per player.
 2. **Run the migration** in `supabase/migrations/0001_saves.sql`. It creates the
-   `saves` table and its row level security policies. **The policies are not
-   optional:** the anon key ships inside a static page anybody can read, so RLS
-   is the entire access control. Without it that key opens every save.
+   `saves` table, its row level security policies, and the grant that exposes it
+   to the Data API. **The policies are not optional:** the anon key ships inside
+   a static page anybody can read, so RLS is the entire access control. Without
+   it that key opens every save.
+
+   At project creation, under Security: **Enable Data API** on (supabase-js
+   needs it), **Enable automatic RLS** on, and **Automatically expose new
+   tables** OFF - Supabase's own recommendation, and the migration grants this
+   one table explicitly so it does not need the blanket version.
 3. **Point the build at it.** Call `accountConfigure(url, anonKey)` before
    `initAccounts()` — both values are public by design.
 4. **Turn on email sign-in** in the project's auth settings, and add the site's

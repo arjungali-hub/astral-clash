@@ -77,3 +77,21 @@ drop trigger if exists saves_touch_updated_at on public.saves;
 create trigger saves_touch_updated_at
     before insert or update on public.saves
     for each row execute function public.touch_saves_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- EXPOSURE, stated explicitly rather than inherited.
+--
+-- A table reaches supabase-js only if the Data API roles have privileges on it.
+-- The project setting "Automatically expose new tables" would grant these for
+-- us, but it is worth leaving OFF - it is Supabase's own recommendation, and it
+-- means a table added later is invisible until somebody decides otherwise,
+-- rather than public until somebody remembers.
+--
+-- So this table says so itself. Granted to `authenticated` ONLY: every policy
+-- above is written against auth.uid(), so a signed-out caller could not pass
+-- one anyway, and `anon` having no privileges at all makes that a fact about
+-- the grant rather than a fact about the policies.
+--
+-- Harmless if the setting is left on - these are the privileges it would have
+-- granted, and re-granting them changes nothing.
+grant select, insert, update, delete on public.saves to authenticated;
