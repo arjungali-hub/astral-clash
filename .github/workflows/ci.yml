@@ -113,13 +113,13 @@ jobs:
         env:
           AC_CHROME: ${{ steps.chrome.outputs.chrome-path }}
         run: |
-          node tests/run.js \
+          node tests/run.js --jobs 3 \
             bootcheck smoke localstartcheck localuxcheck localshopcheck \
             layoutcheck keyboardcheck fontcheck consistencycheck routingcheck \
             sandboxcheck batch24check batch38check symmetrycheck weaponcheck \
             deadcontrolcheck inputguardcheck knockbackcheck \
             contrastcheck padmenucheck palettecheck langcheck \
-            netsmoothcheck touchfpscheck reconnectcheck dailycheck accountcheck
+            netsmoothcheck touchfpscheck reconnectcheck dailycheck accountcheck telemetrycheck
 
   # ------------------------------------------------------------------ slow
   # Minutes each. Sharded three ways and run in parallel: as one job this took
@@ -166,7 +166,7 @@ jobs:
       - name: Run
         env:
           AC_CHROME: ${{ steps.chrome.outputs.chrome-path }}
-        run: node tests/run.js ${{ matrix.tests }}
+        run: node tests/run.js --jobs 3 ${{ matrix.tests }}
 
   # ------------------------------------------------------------- css parity
   # On its own, because it is the only checker that carries state between runs.

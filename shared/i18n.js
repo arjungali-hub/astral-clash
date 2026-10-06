@@ -45,7 +45,7 @@ const I18N = {
         // ---- the shell -------------------------------------------------
         'Astral Clash': 'Astral Clash',
         'Dimensional Arena Fighter': 'Luchador de arenas dimensionales',
-        'Play Online': 'Jugar en línea',
+        'Play': 'Jugar',
         'Host Game': 'Crear partida',
         'Join Game': 'Unirse',
         'Leave Room': 'Salir de la sala',
@@ -56,7 +56,7 @@ const I18N = {
         'Waiting...': 'Esperando...',
         'Choosing...': 'Eligiendo...',
         'Waiting for both fighters.': 'Esperando a los dos luchadores.',
-        'Host’s choice': 'Decisión del anfitrión',
+        "Host's choice": 'Decisión del anfitrión',
         'Match Setup': 'Configuración del combate',
         'Choose your fighter': 'Elige tu luchador',
         'Pick a fighter below': 'Elige un luchador abajo',
@@ -97,16 +97,16 @@ const I18N = {
         'Waiting for the host to choose a rematch…':
             'Esperando a que el anfitrión elija la revancha…',
         'This version needs a computer': 'Esta versión necesita un ordenador',
-        'Couldn’t load Three.js': 'No se pudo cargar Three.js',
+        "Couldn't load Three.js": 'No se pudo cargar Three.js',
         'Do not show How to Play automatically next time':
             'No mostrar «Cómo jugar» automáticamente la próxima vez',
-        'Don’t show this automatically next time':
+        "Don't show this automatically next time":
             'No mostrar esto automáticamente la próxima vez',
         'Your room code - share it with the other player':
             'Tu código de sala: compártelo con el otro jugador',
         'Switch the two player colors to a colorblind-safe pair':
             'Cambia los dos colores de jugador a un par seguro para daltonismo',
-        'The arena, drawn from your fighter’s eyes. This game needs sight to play.':
+        "The arena, drawn from your fighter's eyes. This game needs sight to play.":
             'La arena, vista por los ojos de tu luchador. Este juego requiere visión.',
         'Health, special meter and round score for both fighters.':
             'Salud, medidor especial y puntuación de ronda de ambos luchadores.',
@@ -167,6 +167,166 @@ const I18N = {
         'If the last fighter standing falls, the run is over.':
             'Si cae el último luchador en pie, la partida termina.',
 
+        // ---- the split-screen build -------------------------------------
+        "(keys on cards)":
+            "(teclas en las tarjetas)",
+        "Bot Fighter":
+            "Luchador bot",
+        "Choose your fighters":
+            "Elegid vuestros luchadores",
+        "Co-op: Boss & Survival":
+            "Cooperativo: Jefe y Supervivencia",
+        "Pick a battleground, or drop into a random one.":
+            "Elige un campo de batalla, o entra en uno al azar.",
+        "Play Again":
+            "Jugar otra vez",
+        "Player 1 name":
+            "Nombre del Jugador 1",
+        "Player 1 — Armory":
+            "Jugador 1 — Armería",
+        "Player 2 name":
+            "Nombre del Jugador 2",
+        "Player 2 — Armory":
+            "Jugador 2 — Armería",
+        "Random (/)":
+            "Aleatorio (/)",
+        "Randomly chosen when the match starts":
+            "Elegida al azar cuando empieza el combate",
+        "The longest melee reach in the game, but through a narrow cone — it is a line, not a sweep, so it needs to be aimed rather than swung in someone's general direction.":
+            "El mayor alcance cuerpo a cuerpo del juego, pero en un cono estrecho: es una línea, no un barrido, así que hay que apuntarlo en lugar de agitarlo en la dirección general del rival.",
+        "Time Attack":
+            "Carrera de derribos",
+        "Titan's Wrath":
+            "Ira del Titán",
+        "What are you playing for? You can change this any time before the match starts.":
+            "¿Por qué jugáis? Puedes cambiarlo en cualquier momento antes de que empiece el combate.",
+        "← Back to Fighters":
+            "← Volver a los luchadores",
+        // ---- challenges, modes, and the rest of both builds -------------
+        "Account":
+            "Cuenta",
+        "Armory":
+            "Armería",
+        "Back":
+            "Atrás",
+        "Back to Online Version":
+            "Volver a la versión en línea",
+        "Best of 3 rounds. Knock your opponent out to win a round.":
+            "Al mejor de 3 rondas. Deja fuera de combate a tu rival para ganar una ronda.",
+        "Both players team up against Karrigos, the Granite Colossus. Its attacks are slow and telegraphed — punish the wind-up. Go down and you are out for 25 seconds; if your teammate falls while you are down, the run is over.":
+            "Los dos jugadores se unen contra Karrigos, el Coloso de Granito. Sus ataques son lentos y telegrafiados: castiga la preparación. Si caes, quedas fuera 25 segundos; si tu compañero cae mientras tú estás en el suelo, la partida termina.",
+        "Clear a Survival Waves run with a teammate":
+            "Completa una partida de Oleadas de supervivencia con un compañero",
+        "Clears both players' coins, unlocks and upgrades on this machine. Names are kept. Click twice to confirm.":
+            "Borra las monedas, los desbloqueos y las mejoras de ambos jugadores en esta máquina. Los nombres se conservan. Haz clic dos veces para confirmar.",
+        "Coins":
+            "Monedas",
+        "Confirm":
+            "Confirmar",
+        "Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse — the race is the pressure.":
+            "Combate continuo con reapariciones instantáneas. Gana el primero en lograr 3 derribos. Sin derrumbe de la arena: la carrera es la presión.",
+        "Controls":
+            "Controles",
+        "Copy":
+            "Copiar",
+        "Create account":
+            "Crear cuenta",
+        "Damage":
+            "Daño",
+        "Dash":
+            "Desplazamiento",
+        "Deal 400 damage in a single match":
+            "Inflige 400 de daño en un solo combate",
+        "Details":
+            "Detalles",
+        "Display name":
+            "Nombre visible",
+        "Email":
+            "Correo electrónico",
+        "Forgotten your password?":
+            "¿Olvidaste tu contraseña?",
+        "Glow":
+            "Brillo",
+        "Health":
+            "Salud",
+        "Hold the glowing ring at the center. First to 45 seconds of control wins — knock them out of it.":
+            "Mantente en el anillo luminoso del centro. Gana el primero en acumular 45 segundos de control: échalo de ahí.",
+        "Join":
+            "Unirse",
+        "Land a single hit for 60 damage or more":
+            "Acierta un solo golpe de 60 de daño o más",
+        "Language":
+            "Idioma",
+        "Main Attack":
+            "Ataque principal",
+        "Mute":
+            "Silenciar",
+        "New password":
+            "Nueva contraseña",
+        "Objective":
+            "Objetivo",
+        "Password":
+            "Contraseña",
+        "Player 1":
+            "Jugador 1",
+        "Player 2":
+            "Jugador 2",
+        "Quit to Menu":
+            "Salir al menú",
+        "Rematch":
+            "Revancha",
+        "Reset Progress":
+            "Reiniciar progreso",
+        "Resume":
+            "Continuar",
+        "Retry":
+            "Reintentar",
+        "Save new password":
+            "Guardar la nueva contraseña",
+        "Send reset link":
+            "Enviar enlace de restablecimiento",
+        "Settings":
+            "Ajustes",
+        "Shield":
+            "Escudo",
+        "Shop":
+            "Tienda",
+        "Sign in":
+            "Iniciar sesión",
+        "Sign out":
+            "Cerrar sesión",
+        "Sound":
+            "Sonido",
+        "Special":
+            "Especial",
+        "Speed":
+            "Velocidad",
+        "Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.":
+            "Haced equipo y resistid contra una sucesión interminable de rivales cada vez más duros, de uno en uno. Monedas por cada oleada superada.",
+        "Today’s Challenges":
+            "Desafíos de hoy",
+        "Try every fighter and maxed-out upgrades without spending coins, and play against a bot. Each player's real progress is kept separately and comes back exactly as it was when you turn this off. Nothing you do in here earns coins — progression matches are two players, one keyboard.":
+            "Prueba a todos los luchadores y las mejoras al máximo sin gastar monedas, y juega contra un bot. El progreso real de cada jugador se guarda aparte y vuelve exactamente como estaba cuando desactives esto. Nada de lo que hagas aquí da monedas: los combates de progresión son de dos jugadores en un teclado.",
+        "Unlock everything (sandbox)":
+            "Desbloquear todo (pruebas)",
+        "Use your Special three times in one match":
+            "Usa tu Especial tres veces en un combate",
+        "Username":
+            "Nombre de usuario",
+        "Win a Classic match 2-0":
+            "Gana un combate Clásico por 2-0",
+        "Win a Takedown Race":
+            "Gana una Carrera de derribos",
+        "Win a Zone Control match":
+            "Gana un combate de Control de zona",
+        "Win a match after losing the first round":
+            "Gana un combate tras perder la primera ronda",
+        "Win a match without using your Special":
+            "Gana un combate sin usar tu Especial",
+        "Win a round in under 20 seconds":
+            "Gana una ronda en menos de 20 segundos",
+        "← Back to signing in":
+            "← Volver a iniciar sesión",
         // ---- the roster ------------------------------------------------
         "A balanced duelist with no bad matchup and no free win either. He wants to live at the edge of his own reach, trading slashes and using the dash to cross the gap or escape a corner.":
             "Un duelista equilibrado sin ningún emparejamiento malo y sin ninguna victoria regalada. Quiere vivir en el borde de su propio alcance, intercambiando tajos y usando el desplazamiento para cruzar la distancia o escapar de una esquina.",
@@ -298,7 +458,7 @@ const I18N = {
             "El básico más contundente del elenco, y con diferencia el más comprometido: una preparación larga y una recuperación larga. Dos de estos acaban con casi cualquier combate; dos fallos acaban con el tuyo.",
         "The largest health pool in the game, on the slowest fighter in it. He cannot chase anyone, so he wins by making the space directly in front of him unaffordable to stand in — and the slam clears that space again whenever someone gets comfortable.":
             "La mayor reserva de salud del juego, en el luchador más lento que hay. No puede perseguir a nadie, así que gana haciendo que el espacio justo delante de él sea insostenible, y el impacto despeja ese espacio cada vez que alguien se acomoda.",
-        "The longest melee reach in the game, but through a narrow cone — it is a line, not a sweep, so it needs to be aimed rather than swung in someone’s general direction.":
+        "The longest melee reach in the game, but through a narrow cone — it is a line, not a sweep, so it needs to be aimed rather than swung in someone's general direction.":
             "El mayor alcance cuerpo a cuerpo del juego, pero en un cono estrecho: es una línea, no un barrido, así que hay que apuntarlo en lugar de agitarlo en la dirección general del rival.",
         "The longest-range basic in the game: a fast bolt down a very tight line. It demands real aim — the cone is the narrowest on the roster and it is still a dodgeable projectile.":
             "El básico de mayor alcance del juego: un rayo rápido por una línea muy estrecha. Exige puntería de verdad: el cono es el más angosto del elenco y sigue siendo un proyectil esquivable.",
@@ -310,7 +470,7 @@ const I18N = {
             "Golpe de Trueno",
         "Tiny, frantic, and never alone.":
             "Diminuto, frenético y nunca solo.",
-        "Titan’s Wrath":
+        "Titan's Wrath":
             "Ira del Titán",
         "Umbral Reap":
             "Siega Umbría",
@@ -321,7 +481,7 @@ const I18N = {
         // ---- the shell -------------------------------------------------
         'Astral Clash': 'Astral Clash',
         'Dimensional Arena Fighter': 'Combats d’arène dimensionnels',
-        'Play Online': 'Jouer en ligne',
+        'Play': 'Jouer',
         'Host Game': 'Héberger',
         'Join Game': 'Rejoindre',
         'Leave Room': 'Quitter le salon',
@@ -332,7 +492,7 @@ const I18N = {
         'Waiting...': 'En attente...',
         'Choosing...': 'Choix en cours...',
         'Waiting for both fighters.': 'En attente des deux combattants.',
-        'Host’s choice': 'Choix de l’hôte',
+        "Host's choice": 'Choix de l’hôte',
         'Match Setup': 'Préparation du combat',
         'Choose your fighter': 'Choisissez votre combattant',
         'Pick a fighter below': 'Choisissez un combattant ci-dessous',
@@ -373,16 +533,16 @@ const I18N = {
         'Waiting for the host to choose a rematch…':
             'En attente du choix de revanche de l’hôte…',
         'This version needs a computer': 'Cette version nécessite un ordinateur',
-        'Couldn’t load Three.js': 'Impossible de charger Three.js',
+        "Couldn't load Three.js": 'Impossible de charger Three.js',
         'Do not show How to Play automatically next time':
             'Ne plus afficher « Comment jouer » automatiquement',
-        'Don’t show this automatically next time':
+        "Don't show this automatically next time":
             'Ne plus afficher ceci automatiquement',
         'Your room code - share it with the other player':
             'Votre code de salon : partagez-le avec l’autre joueur',
         'Switch the two player colors to a colorblind-safe pair':
             'Remplace les deux couleurs de joueur par une paire adaptée au daltonisme',
-        'The arena, drawn from your fighter’s eyes. This game needs sight to play.':
+        "The arena, drawn from your fighter's eyes. This game needs sight to play.":
             'L’arène, vue par les yeux de votre combattant. Ce jeu requiert la vue.',
         'Health, special meter and round score for both fighters.':
             'Santé, jauge spéciale et score de manche des deux combattants.',
@@ -443,6 +603,166 @@ const I18N = {
         'If the last fighter standing falls, the run is over.':
             'Si le dernier combattant debout tombe, la partie est terminée.',
 
+        // ---- the split-screen build -------------------------------------
+        "(keys on cards)":
+            "(touches sur les cartes)",
+        "Bot Fighter":
+            "Combattant bot",
+        "Choose your fighters":
+            "Choisissez vos combattants",
+        "Co-op: Boss & Survival":
+            "Coop : Boss et Survie",
+        "Pick a battleground, or drop into a random one.":
+            "Choisissez un champ de bataille, ou lancez-en un au hasard.",
+        "Play Again":
+            "Rejouer",
+        "Player 1 name":
+            "Nom du Joueur 1",
+        "Player 1 — Armory":
+            "Joueur 1 — Armurerie",
+        "Player 2 name":
+            "Nom du Joueur 2",
+        "Player 2 — Armory":
+            "Joueur 2 — Armurerie",
+        "Random (/)":
+            "Aléatoire (/)",
+        "Randomly chosen when the match starts":
+            "Choisie au hasard au lancement du combat",
+        "The longest melee reach in the game, but through a narrow cone — it is a line, not a sweep, so it needs to be aimed rather than swung in someone's general direction.":
+            "La plus grande allonge au corps à corps du jeu, mais dans un cône étroit — c’est une ligne, pas un balayage : il faut la viser plutôt que l’agiter dans la direction générale de quelqu’un.",
+        "Time Attack":
+            "Course aux éliminations",
+        "Titan's Wrath":
+            "Courroux du Titan",
+        "What are you playing for? You can change this any time before the match starts.":
+            "Pour quoi jouez-vous ? Vous pouvez le changer à tout moment avant le début du combat.",
+        "← Back to Fighters":
+            "← Retour aux combattants",
+        // ---- challenges, modes, and the rest of both builds -------------
+        "Account":
+            "Compte",
+        "Armory":
+            "Armurerie",
+        "Back":
+            "Retour",
+        "Back to Online Version":
+            "Retour à la version en ligne",
+        "Best of 3 rounds. Knock your opponent out to win a round.":
+            "Au meilleur des 3 manches. Mettez votre adversaire K.O. pour gagner une manche.",
+        "Both players team up against Karrigos, the Granite Colossus. Its attacks are slow and telegraphed — punish the wind-up. Go down and you are out for 25 seconds; if your teammate falls while you are down, the run is over.":
+            "Les deux joueurs font équipe contre Karrigos, le Colosse de Granit. Ses attaques sont lentes et télégraphiées — punissez la préparation. Si vous tombez, vous êtes hors jeu 25 secondes ; si votre équipier tombe pendant que vous êtes au sol, la partie est terminée.",
+        "Clear a Survival Waves run with a teammate":
+            "Terminez une partie de Vagues de survie avec un équipier",
+        "Clears both players' coins, unlocks and upgrades on this machine. Names are kept. Click twice to confirm.":
+            "Efface les pièces, déblocages et améliorations des deux joueurs sur cette machine. Les noms sont conservés. Cliquez deux fois pour confirmer.",
+        "Coins":
+            "Pièces",
+        "Confirm":
+            "Confirmer",
+        "Continuous fight with instant respawns. First to 3 takedowns wins. No arena collapse — the race is the pressure.":
+            "Combat continu avec réapparition immédiate. Le premier à 3 éliminations gagne. Pas d’effondrement de l’arène — la course est la pression.",
+        "Controls":
+            "Commandes",
+        "Copy":
+            "Copier",
+        "Create account":
+            "Créer un compte",
+        "Damage":
+            "Dégâts",
+        "Dash":
+            "Ruée",
+        "Deal 400 damage in a single match":
+            "Infligez 400 dégâts en un seul combat",
+        "Details":
+            "Détails",
+        "Display name":
+            "Nom affiché",
+        "Email":
+            "E-mail",
+        "Forgotten your password?":
+            "Mot de passe oublié ?",
+        "Glow":
+            "Lueur",
+        "Health":
+            "Santé",
+        "Hold the glowing ring at the center. First to 45 seconds of control wins — knock them out of it.":
+            "Tenez l’anneau lumineux au centre. Le premier à 45 secondes de contrôle gagne — délogez-l’en.",
+        "Join":
+            "Rejoindre",
+        "Land a single hit for 60 damage or more":
+            "Placez un seul coup à 60 dégâts ou plus",
+        "Language":
+            "Langue",
+        "Main Attack":
+            "Attaque principale",
+        "Mute":
+            "Muet",
+        "New password":
+            "Nouveau mot de passe",
+        "Objective":
+            "Objectif",
+        "Password":
+            "Mot de passe",
+        "Player 1":
+            "Joueur 1",
+        "Player 2":
+            "Joueur 2",
+        "Quit to Menu":
+            "Quitter vers le menu",
+        "Rematch":
+            "Revanche",
+        "Reset Progress":
+            "Réinitialiser la progression",
+        "Resume":
+            "Reprendre",
+        "Retry":
+            "Réessayer",
+        "Save new password":
+            "Enregistrer le nouveau mot de passe",
+        "Send reset link":
+            "Envoyer le lien de réinitialisation",
+        "Settings":
+            "Réglages",
+        "Shield":
+            "Bouclier",
+        "Shop":
+            "Boutique",
+        "Sign in":
+            "Se connecter",
+        "Sign out":
+            "Se déconnecter",
+        "Sound":
+            "Son",
+        "Special":
+            "Spéciale",
+        "Speed":
+            "Vitesse",
+        "Team up and hold out against an endless run of ever-tougher challengers, one at a time. Coins for every wave cleared.":
+            "Faites équipe et tenez bon contre une série sans fin d’adversaires toujours plus coriaces, un à la fois. Des pièces pour chaque vague franchie.",
+        "Today’s Challenges":
+            "Défis du jour",
+        "Try every fighter and maxed-out upgrades without spending coins, and play against a bot. Each player's real progress is kept separately and comes back exactly as it was when you turn this off. Nothing you do in here earns coins — progression matches are two players, one keyboard.":
+            "Essayez tous les combattants et toutes les améliorations au maximum sans dépenser de pièces, et jouez contre un bot. La progression réelle de chaque joueur est conservée à part et revient exactement comme elle était quand vous désactivez ceci. Rien de ce que vous faites ici ne rapporte de pièces — les combats de progression se jouent à deux sur un clavier.",
+        "Unlock everything (sandbox)":
+            "Tout débloquer (bac à sable)",
+        "Use your Special three times in one match":
+            "Utilisez votre Spéciale trois fois en un combat",
+        "Username":
+            "Nom d’utilisateur",
+        "Win a Classic match 2-0":
+            "Gagnez un combat Classique 2-0",
+        "Win a Takedown Race":
+            "Gagnez une Course aux éliminations",
+        "Win a Zone Control match":
+            "Gagnez un combat en Contrôle de zone",
+        "Win a match after losing the first round":
+            "Gagnez un combat après avoir perdu la première manche",
+        "Win a match without using your Special":
+            "Gagnez un combat sans utiliser votre Spéciale",
+        "Win a round in under 20 seconds":
+            "Gagnez une manche en moins de 20 secondes",
+        "← Back to signing in":
+            "← Retour à la connexion",
         // ---- the roster ------------------------------------------------
         "A balanced duelist with no bad matchup and no free win either. He wants to live at the edge of his own reach, trading slashes and using the dash to cross the gap or escape a corner.":
             "Un duelliste équilibré, sans mauvais match-up ni victoire offerte. Il veut vivre à la limite de sa propre allonge, en échangeant des taillades et en se servant de la ruée pour franchir l’écart ou sortir d’un coin.",
@@ -574,7 +894,7 @@ const I18N = {
             "La base la plus puissante du roster, et de loin la plus engageante : une longue préparation et une longue récupération. Deux de celles-ci terminent la plupart des combats ; deux coups dans le vide terminent le vôtre.",
         "The largest health pool in the game, on the slowest fighter in it. He cannot chase anyone, so he wins by making the space directly in front of him unaffordable to stand in — and the slam clears that space again whenever someone gets comfortable.":
             "La plus grande réserve de santé du jeu, sur le combattant le plus lent qui soit. Il ne peut poursuivre personne, alors il gagne en rendant intenable l’espace juste devant lui — et le choc dégage cet espace dès que quelqu’un s’y installe.",
-        "The longest melee reach in the game, but through a narrow cone — it is a line, not a sweep, so it needs to be aimed rather than swung in someone’s general direction.":
+        "The longest melee reach in the game, but through a narrow cone — it is a line, not a sweep, so it needs to be aimed rather than swung in someone's general direction.":
             "La plus grande allonge au corps à corps du jeu, mais dans un cône étroit — c’est une ligne, pas un balayage : il faut la viser plutôt que l’agiter dans la direction générale de quelqu’un.",
         "The longest-range basic in the game: a fast bolt down a very tight line. It demands real aim — the cone is the narrowest on the roster and it is still a dodgeable projectile.":
             "La base avec la plus grande portée du jeu : un éclair rapide sur une ligne très serrée. Elle exige une vraie visée — le cône est le plus étroit du roster et cela reste un projectile esquivable.",
@@ -586,7 +906,7 @@ const I18N = {
             "Frappe de Tonnerre",
         "Tiny, frantic, and never alone.":
             "Minuscule, frénétique, et jamais seul.",
-        "Titan’s Wrath":
+        "Titan's Wrath":
             "Courroux du Titan",
         "Umbral Reap":
             "Fauche Ombreuse",
@@ -600,14 +920,27 @@ const I18N = {
 // language keeps English's word order, so these are translated entire.
 const I18N_HTML = {
     es: {
+        // ---- the split-screen build -------------------------------------
+        "Each player has their own coins, unlocks and upgrades. You both start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate, and Speed, plus Double Jump. Open the Armory from your own panel (or the footer) and use the Player 1 / Player 2 tabs. Progression matches are two players; if you want to fight a bot or try the whole roster, turn on the \"Unlock everything\" sandbox in Settings — it leaves both players' real progress untouched and earns no coins.":
+            "<b>Cada jugador tiene sus propias monedas, desbloqueos y mejoras.</b> Los dos empezáis con tres luchadores; el resto se compran con monedas ganadas en los combates: el ganador se lleva más, pero una derrota también paga algo. Las monedas compran además mejoras permanentes por luchador de Salud, Daño, velocidad de carga del Especial y Velocidad, más el Salto doble. Abre la Armería desde tu propio panel (o desde el pie) y usa las pestañas de Jugador 1 / Jugador 2. Los combates de progresión son de <b>dos jugadores</b>; si quieres luchar contra un bot o probar todo el elenco, activa el modo de pruebas «Desbloquear todo» en Ajustes: deja intacto el progreso real de ambos jugadores y no da monedas.",
+        "Movement is covered under Controls above. Jumping reaches platforms and cover, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges and walls aren't. Use columns and interior walls for cover. Buy Double Jump in the Armory and you can press jump again in mid-air, once per airborne stretch, to reach the tallest perches.":
+            "El movimiento se explica en <b>Controles</b>, más arriba. Saltar alcanza plataformas y coberturas, pero tiene un tiempo de recarga después: no puedes abusar de él. Los escalones de poca altura se pueden caminar sin saltar; los salientes altos y los muros, no. Usa las columnas y los muros interiores como cobertura. Compra el <b>Salto doble</b> en la Armería y podrás volver a saltar en el aire, una vez por cada tramo aéreo, para llegar a las cornisas más altas.",
+        "Pick a mode from the button under the title. Classic Versus is best of 3 rounds. Zone Control puts a glowing ring at the arena's centre — stand in it alone to bank control time, and knock your opponent out of it; first to 45 seconds wins. Time Attack is one continuous fight with instant respawns, first to 3 knockouts. In the two continuous modes a knockout costs you tempo, not the match. The last two modes are co-op — see the card beside this one.":
+            "Elige un modo con el botón bajo el título. <b>Versus clásico</b> es al mejor de 3 rondas. <b>Control de zona</b> coloca un anillo luminoso en el centro de la arena: quédate dentro <em>a solas</em> para acumular tiempo de control y echa de él a tu rival; gana el primero que llegue a 45 segundos. <b>Carrera de derribos</b> es un combate continuo con reapariciones instantáneas, el primero en lograr 3 derribos. En los dos modos continuos, caer te cuesta ritmo, no el combate. Los dos últimos modos son cooperativos: mira la tarjeta de al lado.",
+        "Survival Waves sends squads of lesser creatures at you — darting Grint, fire-spitting Slagling, and heavy Hollowkin — with more of them each wave. Clear a wave to bank coins and recover 30% of your health. Every 5th wave is a Karrigos boss wave instead. In both modes the run ends the moment either of you falls, so keep each other alive; the Bot difficulty setting scales everything.":
+            "<b>Oleadas de supervivencia</b> te lanza escuadrones de criaturas menores: Grint veloces, Slagling escupefuego y Hollowkin pesados, y cada oleada trae más. Supera una oleada para embolsarte monedas y recuperar el <b>30% de tu salud</b>. Cada <b>5.ª oleada</b> es, en su lugar, una oleada de jefe con Karrigos. En ambos modos la partida termina en cuanto <b>cualquiera de los dos</b> cae, así que manteneos con vida; el ajuste de dificultad del Bot escala todo.",
+        "Two co-op modes put you and Player 2 on the same team. Boss Fight pits you against Karrigos, the Granite Colossus — enormous, slow, and enormously strong. Every one of its attacks has a long, obvious wind-up: a shockwave Ground Slam, a Charge at whoever's closest, and an Ember Nova spread. Watch the tell, get clear, then punish the recovery.":
+            "Dos modos cooperativos te ponen a ti y al Jugador 2 en el <b>mismo equipo</b>. <b>Jefe</b> te enfrenta a Karrigos, el Coloso de Granito: enorme, lento y enormemente fuerte. Todos sus ataques tienen una preparación larga y evidente: un Rompesuelos de onda expansiva, una Carga contra quien esté más cerca y una dispersión de Nova de Brasas. Observa la señal, apártate y castiga la recuperación.",
+        "You fight through your character's own eyes, weapon in hand. See Controls above for how you move and aim. Separate look up/down keys aim vertically, and ranged attacks fire along that aim — so you can shoot up at someone on a high perch, or down at the floor from one. On a gamepad the right stick looks. Two human players share the screen split left/right; against a bot you get the whole screen.":
+            "Luchas a través de los ojos de tu personaje, con el arma en la mano. Consulta <b>Controles</b> más arriba para saber cómo te mueves y apuntas. Las teclas de <b>mirar arriba/abajo</b> apuntan en vertical, y los ataques a distancia disparan siguiendo esa puntería, así que puedes disparar hacia arriba a alguien en una plataforma alta, o hacia abajo desde una. En un mando, el stick derecho mira. Dos jugadores humanos comparten la pantalla dividida izquierda/derecha; contra un bot tienes la pantalla entera.",
         "Astral Clash is played with a mouse to aim and a keyboard to move, so it needs a desktop or laptop. Open it there and you are set.":
             "Astral Clash se juega con un <b>ratón para apuntar</b> y un <b>teclado para moverse</b>, así que necesita un ordenador de sobremesa o portátil. Ábrelo ahí y listo.",
 
         "Best of 3 rounds. Win a round by knocking your opponent's HP to 0 — there's no clock to just run out, so see Arena Collapse below for how a round is guaranteed to end.":
             "Al mejor de 3 rondas. Ganas una ronda dejando los PV de tu rival a 0: no hay reloj que se agote, así que consulta «Derrumbe de la arena» más abajo para ver cómo se garantiza el final de una ronda.",
 
-        "Every match is two people on two machines. One of you presses Play Online → Host Game and reads out the room code; the other pastes it into Join. You both land in the room, where you each pick your own fighter — you can only pick yours, and you'll see theirs appear as they choose.":
-            "Cada combate es <b>dos personas en dos máquinas</b>. Uno de los dos pulsa <b>Jugar en línea → Crear partida</b> y lee en voz alta el código de sala; el otro lo pega en <b>Unirse</b>. Los dos entráis en la <b>sala</b>, donde cada uno elige su propio luchador: solo puedes elegir el tuyo, y verás aparecer el del otro a medida que elige.",
+        "Every match is two people on two machines. One of you presses Play → Host Game and reads out the room code; the other pastes it into Join. You both land in the room, where you each pick your own fighter — you can only pick yours, and you'll see theirs appear as they choose.":
+            "Cada combate es <b>dos personas en dos máquinas</b>. Uno de los dos pulsa <b>Jugar → Crear partida</b> y lee en voz alta el código de sala; el otro lo pega en <b>Unirse</b>. Los dos entráis en la <b>sala</b>, donde cada uno elige su propio luchador: solo puedes elegir el tuyo, y verás aparecer el del otro a medida que elige.",
 
         "The host is Player 1 and owns the match settings: they choose the mode and the arena, and they press Start Match once you're both locked in. If your opponent drops mid-fight the match pauses and tells you.":
             "El <b>anfitrión es el Jugador 1</b> y controla los ajustes del combate: elige el modo y la arena, y pulsa <b>Empezar combate</b> cuando los dos estéis listos. Si tu rival se desconecta a mitad del combate, la partida se pausa y te avisa.",
@@ -643,14 +976,27 @@ const I18N_HTML = {
             "<b>Tus monedas, desbloqueos y mejoras son tuyos</b>, guardados en tu propia máquina y los mismos tanto si creas la partida como si te unes. Empiezas con tres luchadores; el resto se compran con las monedas ganadas en los combates: el ganador se lleva más, pero una derrota también paga algo. Las monedas compran además mejoras permanentes por luchador de Salud, Daño, velocidad de carga del Especial y Velocidad, más el Salto doble. Abre la <b>Armería</b> desde la pantalla de inicio, o desde la sala mientras eliges.",
     },
     fr: {
+        // ---- the split-screen build -------------------------------------
+        "Each player has their own coins, unlocks and upgrades. You both start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate, and Speed, plus Double Jump. Open the Armory from your own panel (or the footer) and use the Player 1 / Player 2 tabs. Progression matches are two players; if you want to fight a bot or try the whole roster, turn on the \"Unlock everything\" sandbox in Settings — it leaves both players' real progress untouched and earns no coins.":
+            "<b>Chaque joueur a ses propres pièces, déblocages et améliorations.</b> Vous commencez tous les deux avec trois combattants ; les autres s’achètent avec les pièces gagnées en combat : le vainqueur en prend plus, mais une défaite rapporte quand même quelque chose. Les pièces achètent aussi des améliorations permanentes par combattant pour la Santé, les Dégâts, la vitesse de charge de la Spéciale et la Vitesse, ainsi que le Double saut. Ouvrez l’Armurerie depuis votre propre panneau (ou le pied de page) et utilisez les onglets Joueur 1 / Joueur 2. Les combats de progression se jouent à <b>deux joueurs</b> ; si vous voulez affronter un bot ou essayer tout le roster, activez le bac à sable « Tout débloquer » dans les Réglages — il laisse la progression réelle des deux joueurs intacte et ne rapporte aucune pièce.",
+        "Movement is covered under Controls above. Jumping reaches platforms and cover, but has a cooldown afterward — you can't spam it. Steps with a small enough rise are walkable without jumping; tall ledges and walls aren't. Use columns and interior walls for cover. Buy Double Jump in the Armory and you can press jump again in mid-air, once per airborne stretch, to reach the tallest perches.":
+            "Le déplacement est expliqué sous <b>Commandes</b>, plus haut. Le saut atteint les plateformes et les couverts, mais a ensuite un temps de recharge : impossible de l’enchaîner. Les marches assez basses se franchissent à pied ; les rebords hauts et les murs non. Servez-vous des colonnes et des murs intérieurs comme couvert. Achetez le <b>Double saut</b> à l’Armurerie et vous pourrez sauter une seconde fois en plein air, une fois par envol, pour atteindre les perchoirs les plus hauts.",
+        "Pick a mode from the button under the title. Classic Versus is best of 3 rounds. Zone Control puts a glowing ring at the arena's centre — stand in it alone to bank control time, and knock your opponent out of it; first to 45 seconds wins. Time Attack is one continuous fight with instant respawns, first to 3 knockouts. In the two continuous modes a knockout costs you tempo, not the match. The last two modes are co-op — see the card beside this one.":
+            "Choisissez un mode avec le bouton sous le titre. <b>Versus classique</b> se joue au meilleur des 3 manches. <b>Contrôle de zone</b> place un anneau lumineux au centre de l’arène : tenez-vous-y <em>seul</em> pour accumuler du temps de contrôle et délogez-en votre adversaire ; le premier à 45 secondes gagne. <b>Course aux éliminations</b> est un combat continu avec réapparition immédiate, le premier à 3 éliminations. Dans ces deux modes continus, se faire sortir coûte du tempo, pas le combat. Les deux derniers modes sont coopératifs — voyez la carte à côté.",
+        "Survival Waves sends squads of lesser creatures at you — darting Grint, fire-spitting Slagling, and heavy Hollowkin — with more of them each wave. Clear a wave to bank coins and recover 30% of your health. Every 5th wave is a Karrigos boss wave instead. In both modes the run ends the moment either of you falls, so keep each other alive; the Bot difficulty setting scales everything.":
+            "<b>Vagues de survie</b> vous envoie des escouades de créatures mineures : des Grint véloces, des Slagling cracheurs de feu et de lourds Hollowkin, et chaque vague en apporte davantage. Franchissez une vague pour empocher des pièces et récupérer <b>30 % de votre santé</b>. Toutes les <b>5 vagues</b>, c’est une vague de boss avec Karrigos. Dans les deux modes, la partie s’arrête dès que <b>l’un de vous</b> tombe : gardez-vous mutuellement en vie ; le réglage de difficulté du Bot ajuste tout.",
+        "Two co-op modes put you and Player 2 on the same team. Boss Fight pits you against Karrigos, the Granite Colossus — enormous, slow, and enormously strong. Every one of its attacks has a long, obvious wind-up: a shockwave Ground Slam, a Charge at whoever's closest, and an Ember Nova spread. Watch the tell, get clear, then punish the recovery.":
+            "Deux modes coopératifs vous placent, vous et le Joueur 2, dans la <b>même équipe</b>. <b>Boss</b> vous oppose à Karrigos, le Colosse de Granit : énorme, lent et énormément fort. Chacune de ses attaques a une préparation longue et évidente : un Brise-Sol à onde de choc, une Charge sur le plus proche, et une gerbe de Nova de Braises. Guettez le signe, dégagez-vous, puis punissez la récupération.",
+        "You fight through your character's own eyes, weapon in hand. See Controls above for how you move and aim. Separate look up/down keys aim vertically, and ranged attacks fire along that aim — so you can shoot up at someone on a high perch, or down at the floor from one. On a gamepad the right stick looks. Two human players share the screen split left/right; against a bot you get the whole screen.":
+            "Vous combattez par les yeux de votre personnage, arme en main. Voyez <b>Commandes</b> plus haut pour vous déplacer et viser. Les touches <b>regarder haut/bas</b> visent à la verticale, et les attaques à distance tirent le long de cette visée : vous pouvez donc tirer vers le haut sur quelqu’un perché, ou vers le bas depuis un perchoir. À la manette, le stick droit regarde. Deux joueurs humains partagent l’écran divisé gauche/droite ; contre un bot, vous avez l’écran entier.",
         "Astral Clash is played with a mouse to aim and a keyboard to move, so it needs a desktop or laptop. Open it there and you are set.":
             "Astral Clash se joue avec une <b>souris pour viser</b> et un <b>clavier pour se déplacer</b> : il lui faut donc un ordinateur de bureau ou portable. Ouvrez-le là et c’est bon.",
 
         "Best of 3 rounds. Win a round by knocking your opponent's HP to 0 — there's no clock to just run out, so see Arena Collapse below for how a round is guaranteed to end.":
             "Au meilleur des 3 manches. Vous gagnez une manche en réduisant les PV de votre adversaire à 0 : aucun chronomètre ne vient l'interrompre, voyez donc « Effondrement de l'arène » plus bas pour savoir comment une manche finit forcément.",
 
-        "Every match is two people on two machines. One of you presses Play Online → Host Game and reads out the room code; the other pastes it into Join. You both land in the room, where you each pick your own fighter — you can only pick yours, and you'll see theirs appear as they choose.":
-            "Chaque combat se joue à <b>deux personnes sur deux machines</b>. L'un de vous appuie sur <b>Jouer en ligne → Héberger</b> et lit le code du salon à voix haute ; l'autre le colle dans <b>Rejoindre</b>. Vous arrivez tous les deux dans le <b>salon</b>, où chacun choisit son propre combattant : vous ne pouvez choisir que le vôtre, et vous verrez le sien apparaître au fur et à mesure.",
+        "Every match is two people on two machines. One of you presses Play → Host Game and reads out the room code; the other pastes it into Join. You both land in the room, where you each pick your own fighter — you can only pick yours, and you'll see theirs appear as they choose.":
+            "Chaque combat se joue à <b>deux personnes sur deux machines</b>. L'un de vous appuie sur <b>Jouer → Héberger</b> et lit le code du salon à voix haute ; l'autre le colle dans <b>Rejoindre</b>. Vous arrivez tous les deux dans le <b>salon</b>, où chacun choisit son propre combattant : vous ne pouvez choisir que le vôtre, et vous verrez le sien apparaître au fur et à mesure.",
 
         "The host is Player 1 and owns the match settings: they choose the mode and the arena, and they press Start Match once you're both locked in. If your opponent drops mid-fight the match pauses and tells you.":
             "L'<b>hôte est le Joueur 1</b> et décide des réglages du combat : il choisit le mode et l'arène, et appuie sur <b>Lancer le combat</b> quand vous êtes tous les deux prêts. Si votre adversaire se déconnecte en pleine partie, le combat se met en pause et vous le signale.",

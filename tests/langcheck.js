@@ -43,22 +43,86 @@ const H = require('./harness');
     // The brittle half. These keys are long, and they are the browser's own
     // textContent with whitespace collapsed, which is not what the source file
     // looks like. Each one has to be found.
-    const prose = await page.evaluate(() => {
-        const D = window.ACDebug;
-        const present = new Set();
+    // BOTH BUILDS. The tables cover the split-screen game too - its tutorial
+    // and settings prose is different text on a page this one never shows - so
+    // checking only the online page reported every local-only block as dead.
+    // A key is dead when NEITHER build has it.
+    const proseIn = (pg) => pg.evaluate(() => {
+        // window.proseKey, not ACDebug.proseKey: a top-level function in a
+        // shared module is a global in BOTH builds, whereas each build's
+        // ACDebug lists only what that build chose to export - and the local
+        // one never listed the i18n helpers.
+        const present = [];
         for (const el of document.querySelectorAll('p, li, .tutorial-controls-row')) {
-            present.add(D.proseKey(el.textContent));
+            present.push(window.proseKey(el.textContent));
         }
+        return present;
+    });
+    const localForProse = await H.newPage(browser);
+    await H.boot(localForProse, { clearStorage: true, path: '/local/index.html' });
+    const present = new Set([...(await proseIn(page)), ...(await proseIn(localForProse))]);
+    await localForProse.close();
+    const prose = await page.evaluate((have) => {
+        const D = window.ACDebug;
+        const set = new Set(have);
         const dead = {};
         for (const lang of ['es', 'fr']) {
-            dead[lang] = Object.keys(D.I18N_HTML[lang]).filter(k => !present.has(k));
+            dead[lang] = Object.keys(D.I18N_HTML[lang]).filter(k => !set.has(k));
         }
         return dead;
-    });
+    }, [...present]);
     check('no dead Spanish prose key', prose.es.length === 0,
         prose.es.map(k => k.slice(0, 60) + '...').join(' | ') || 'none');
     check('no dead French prose key', prose.fr.length === 0,
         prose.fr.map(k => k.slice(0, 60) + '...').join(' | ') || 'none');
+
+    section('Every FLAT key matches something too - the gap that cost eight:');
+    // The prose check above covers I18N_HTML. This covers I18N, and it exists
+    // because eight entries were written with a curly apostrophe where the
+    // source has a straight one - "Host's choice" against "Host’s choice".
+    // They could never match at runtime, nothing threw, and the strings simply
+    // stayed English. Exactly the failure the file header warns about, in the
+    // half that was not being checked.
+    //
+    // Keys are compared against every text node and translatable attribute the
+    // page actually holds, so a key that matches nothing is named.
+    const deadFlat = await page.evaluate(() => {
+        const D = window.ACDebug;
+        const present = new Set();
+        const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let n;
+        while ((n = walk.nextNode())) {
+            const t = n.nodeValue.trim();
+            if (t) present.add(t);
+        }
+        for (const el of document.querySelectorAll('[placeholder],[title],[aria-label]')) {
+            for (const a of ['placeholder', 'title', 'aria-label']) {
+                const v = el.getAttribute(a);
+                if (v && v.trim()) present.add(v.trim());
+            }
+        }
+        // Strings the game builds at runtime rather than ships in markup - HUD
+        // words, toasts, roster prose - are legitimately absent from a menu
+        // page, so only keys that LOOK like markup are judged here: anything
+        // also present in the English table for another screen would be a false
+        // alarm, and a check that cries wolf is one nobody reads.
+        const out = {};
+        for (const lang of ['es', 'fr']) {
+            out[lang] = Object.keys(D.I18N[lang]).filter((k) => {
+                if (present.has(k)) return false;
+                // Apostrophe style is the specific trap: a key that matches
+                // once the quote is swapped is dead, and provably so.
+                const swapped = k.replace(/'/g, '’');
+                const unswapped = k.replace(/’/g, "'");
+                return present.has(swapped) || present.has(unswapped);
+            });
+        }
+        return out;
+    });
+    check('no Spanish key is dead on an apostrophe', deadFlat.es.length === 0,
+        deadFlat.es.join(' | ') || 'none');
+    check('no French key is dead on an apostrophe', deadFlat.fr.length === 0,
+        deadFlat.fr.join(' | ') || 'none');
 
     section('Spanish reaches the screen:');
     const es = await page.evaluate(() => {
@@ -85,7 +149,7 @@ const H = require('./harness');
             placeholder: (document.querySelector('[placeholder]') || {}).placeholder,
         };
     });
-    check('a button label is Spanish', es.online && /línea/.test(es.online),
+    check('a button label is Spanish', es.online && /Jugar/.test(es.online),
         String(es.online));
     check('tutorial headings are Spanish', es.heading.includes('Objetivo'),
         es.heading.slice(0, 5).join(', '));
@@ -120,7 +184,7 @@ const H = require('./harness');
                 .map(h => h.textContent.trim()),
         };
     });
-    check('a button label is French', fr.online && /ligne/.test(fr.online),
+    check('a button label is French', fr.online && /Jouer/.test(fr.online),
         String(fr.online));
     check('tutorial headings are French', fr.heading.includes('Objectif'),
         fr.heading.slice(0, 5).join(', '));
@@ -149,12 +213,30 @@ const H = require('./harness');
     const local = await H.newPage(browser);
     local.on('pageerror', e => errors.push('local: ' + String(e.message || e)));
     await H.boot(local, { clearStorage: true, path: '/local/index.html' });
+    // A <select> now, not a cycle button: three languages is already too many to
+    // reach by pressing until the one you want comes round, and a cycle never
+    // shows what the choices are. The porters add and remove elements but
+    // cannot CONVERT one, so the local build kept a button with a dead listener
+    // until the sync was taught to replace it - which is what the second half
+    // of this is really checking.
     const bothRows = await Promise.all([page, local].map(p => p.evaluate(() => {
-        const b = document.getElementById('btn-lang');
-        return b ? b.textContent.replace(/\s+/g, ' ').trim() : null;
+        const sel = document.getElementById('sel-lang');
+        if (!sel) return null;
+        return {
+            options: [...sel.options].map(o => o.value),
+            value: sel.value,
+            labelled: !!document.querySelector('label[for="sel-lang"]'),
+        };
     })));
-    check('online has a Language row', bothRows[0] !== null, String(bothRows[0]));
-    check('local has the same Language row', bothRows[1] !== null, String(bothRows[1]));
+    for (const [i, name] of [[0, 'online'], [1, 'local']]) {
+        const r = bothRows[i];
+        check(name + ' has a language dropdown', r !== null, JSON.stringify(r));
+        check(name + ' offers every language, not just the next one',
+            !!r && JSON.stringify(r.options) === JSON.stringify(['en', 'es', 'fr']),
+            JSON.stringify(r && r.options));
+        check(name + ' has it labelled for a screen reader',
+            !!r && r.labelled, JSON.stringify(r && r.labelled));
+    }
 
     check('no errors thrown', errors.length === 0, errors.slice(0, 3).join(' | ') || 'none');
     await finish(browser, page);

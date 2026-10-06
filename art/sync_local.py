@@ -53,7 +53,7 @@ SHARED_NAMES = set()
 # while missing the rest is what left the Language row in one build only.
 SHARED_PRE = ['roster.js', 'animation.js']
 SHARED_POST = ['props.js', 'characters.js', 'common.js', 'i18n.js', 'touch.js',
-               'challenges.js', 'account.js']
+               'challenges.js', 'account.js', 'telemetry.js']
 SHARED_MODULES = SHARED_PRE + SHARED_POST
 
 
@@ -3495,6 +3495,27 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
                       _daily_css
                       + '        .daily-mark.done { color: #34d399; font-weight: 700; }' + chr(10)
                       + '        #desktop-only {', 'daily panel css')
+
+    # ---------------------------------------- the language control is a <select>
+    # The porters add elements and remove them; they cannot CONVERT one. When
+    # the cycle button became a dropdown online, this build kept the button and
+    # its click listener - a control that still looked right and no longer did
+    # anything, because the listener it needed now hangs off a select that was
+    # not here.
+    #
+    # Replaced rather than patched: the markup is taken from the online build,
+    # so the two cannot describe the control differently.
+    _old_lang = ('<button id="btn-lang" class="opt" title="Language of menus and '
+                 'help text">Language<span class="opt-state">English</span></button>')
+    if _old_lang in dst:
+        m = re.search(r'[ ]*<label class="opt opt-select"(?:.|' + chr(10) + r')*?</label>', src)
+        if m:
+            dst = dst.replace(_old_lang, m.group(0).strip(), 1)
+            print('  %-34s ok' % 'language control is a select')
+    dst = dst.replace(
+        "document.getElementById('btn-lang').addEventListener('click', cycleLang);",
+        "document.getElementById('sel-lang').addEventListener"
+        "('change', (e) => setLang(e.target.value));")
 
     # ------------------------------------------- today's challenges, placed here
     # Under the mode and How-to-Play buttons on the picker, which is this

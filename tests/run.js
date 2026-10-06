@@ -120,7 +120,19 @@ function sweep(label) {
 
 const args = process.argv.slice(2);
 if (args.includes('--list')) { console.log(allTests().join('\n')); process.exit(0); }
-const names = args.length ? args : allTests();
+
+// HOW MANY AT ONCE. One by default: this machine cannot run two
+// software-rendered 3D scenes without becoming unusable, which is the whole
+// reason the lockfile exists. CI passes --jobs 3.
+let JOBS = 1;
+for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--jobs' && args[i + 1]) {
+        JOBS = Math.max(1, Math.min(8, parseInt(args[i + 1], 10) || 1));
+    }
+}
+const names = args.filter((a, i) =>
+    a !== '--jobs' && args[i - 1] !== '--jobs' && !a.startsWith('--'));
+const chosen = names.length ? names : allTests();
 
 takeLock();
 // However this ends - finished, failed, Ctrl+C, an uncaught throw - the
@@ -171,7 +183,10 @@ function annotate(name, verdict, detail, out) {
 function chr10() { return String.fromCharCode(10); }
 
 const t0 = Date.now();
-for (const name of names) {
+// One checker, start to finish. Identical whether it is the only one running or
+// one of several - which is the point: parallelism changes the SCHEDULE, not
+// what a checker does.
+function runOne(name) {
     const file = path.join(DIR, name + '.js');
     if (!fs.existsSync(file)) {
         // Annotated too: a checker named in the workflow but not in the repo is
@@ -179,7 +194,7 @@ for (const name of names) {
         console.log('%s  NO SUCH CHECKER', name.padEnd(22));
         annotate(name, 'NO SUCH CHECKER', ['tests/' + name + '.js does not exist'], '');
         failed.push(name);
-        continue;
+        return;
     }
     const started = Date.now();
     const memWarn = memoryWarning(name);
@@ -207,10 +222,42 @@ for (const name of names) {
     }
     // Between every test, not just at the end: one timeout must not leave a
     // software-rendering Chrome competing with everything after it.
-    sweep(name);
+    //
+    // NOT IN PARALLEL, THOUGH. cleanup.js kills every headless Chrome whose
+    // command line mentions swiftshader, and with siblings in flight that is
+    // somebody else's browser as readily as a leftover. The sweep happens once
+    // at the end instead.
+    if (JOBS === 1) sweep(name);
 }
 
-console.log('\n%d/%d passed in %ds%s', names.length - failed.length, names.length,
-    Math.round((Date.now() - t0) / 1000),
-    failed.length ? '   FAILED: ' + failed.join(', ') : '');
-finish(failed.length ? 1 : 0);
+// Runs `chosen` with at most JOBS in flight. A worker takes the next name off
+// the list and starts it, so a slow checker holds up only itself - which is the
+// difference between this and splitting the list into equal halves up front.
+function runAll() {
+    if (JOBS === 1) {
+        for (const name of chosen) runOne(name);
+        return Promise.resolve();
+    }
+    console.log('Running %d at a time.', JOBS);
+    let next = 0;
+    const worker = () => new Promise((resolve) => {
+        const step = () => {
+            if (next >= chosen.length) return resolve();
+            const name = chosen[next++];
+            // spawnSync blocks this thread, so each worker is really a turn in
+            // a round-robin rather than a true thread. setImmediate between
+            // turns is what lets the others get theirs.
+            setImmediate(() => { runOne(name); step(); });
+        };
+        step();
+    });
+    return Promise.all(Array.from({ length: JOBS }, worker));
+}
+
+runAll().then(() => {
+    if (JOBS > 1) sweep('end');
+    console.log('\n%d/%d passed in %ds%s', chosen.length - failed.length, chosen.length,
+        Math.round((Date.now() - t0) / 1000),
+        failed.length ? '   FAILED: ' + failed.join(', ') : '');
+    finish(failed.length ? 1 : 0);
+});

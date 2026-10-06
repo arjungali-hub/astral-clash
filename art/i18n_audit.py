@@ -28,8 +28,8 @@ Proper nouns stay: fighter names (Kaelen, Lyra) and the game's own title are not
 translated, and listing them as missing every run would train somebody to ignore
 the output.
 """
+import html
 import io
-import json
 import os
 import re
 import sys
@@ -38,10 +38,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
 # Proper nouns and non-words. A name is a name in every language.
-KEEP = set("""
-Astral Clash Kaelen Lyra Gorgonok Voss Draven Seraphine Nyx Ignis Aurelia Thorne
-Grint Slagling Hollowkin Karrigos ASTRAL CLASH
-""".split())
+KEEP = set([
+    'Astral Clash', 'ASTRAL CLASH', 'Kaelen', 'Lyra', 'Gorgonok', 'Voss',
+    'Draven', 'Seraphine', 'Nyx', 'Ignis', 'Aurelia', 'Thorne', 'Grint',
+    'Slagling', 'Hollowkin', 'Karrigos',
+    # Key names and a decorative arena sign. A key is called W/S in every
+    # language, and listing them every run trains somebody to skip the output.
+    'W/S', 'A/D', 'ARENA // FOUNDRY OF ASH',
+])
 
 NOT_PROSE = re.compile(
     r'^(?:[a-z-]+/[a-z0-9+.-]+'
@@ -59,7 +63,12 @@ def visible_strings():
     out = {}
 
     def add(group, s):
-        s = ' '.join(str(s).split())
+        # DECODED FIRST. `&mdash;` reaches a text node as an em dash, and the
+        # tables are keyed on what the node holds - so comparing raw markup
+        # against them reported `Coins &amp; Unlocks` as untranslated while
+        # `Coins & Unlocks` sat in the table.
+        s = html.unescape(str(s))
+        s = ' '.join(s.split())
         if not s or s in KEEP:
             return
         if not WORDY.search(s):
@@ -152,12 +161,27 @@ def main():
     worst = 0
     for lang in ('es', 'fr'):
         keys = tables[lang]
+        # A PROSE BLOCK COVERS ITS OWN FRAGMENTS. localiseDOM replaces a <p>
+        # wholesale, so the pieces its text splits into around <b> tags - ", and
+        # heavy", ". Every", "above for how you move and aim" - are never looked
+        # up individually and never need entries of their own.
+        #
+        # Without this the audit reported every one of them as missing, which is
+        # both wrong and the kind of wrong that makes a report ignorable: a list
+        # with fifty false entries does not get read for the three real ones.
+        blocks = [k for k in keys if len(k) > 60]
+        covered = lambda frag: any(frag in b for b in blocks)
+
         missing = {}
         for s, g in seen.items():
-            # A key matches if the table holds the string itself. Escapes in the
-            # source are compared decoded on both sides by construction.
-            if s not in keys:
-                missing.setdefault(g, []).append(s)
+            if s in keys:
+                continue
+            # Fragments only. A whole sentence that merely appears inside a
+            # longer one still deserves its own entry, so this is limited to
+            # short pieces - the shape a split paragraph actually produces.
+            if len(s) < 60 and covered(s):
+                continue
+            missing.setdefault(g, []).append(s)
         total = sum(len(v) for v in missing.values())
         worst = max(worst, total)
         print('%s: %d translated, %d MISSING' % (lang, len(keys), total))

@@ -1308,7 +1308,10 @@
         .daily-text { flex: 1 1 auto; }
         .daily-coins { flex: none; color: #f59e0b; font-weight: 700;
                        font-variant-numeric: tabular-nums; }
-        .daily-mark { flex: none; color: #475569; font-size: 0.68rem; }
+        /* #475569 read 2.52:1 - a tick nobody can see is not a quiet tick, it
+           is an absent one. #7c8ba3 clears AA at 5.17:1 and is still dimmer
+           than the challenge text beside it, which was the intent. */
+        .daily-mark { flex: none; color: #7c8ba3; font-size: 0.68rem; }
         .daily-mark.done { color: #34d399; font-weight: 700; }
         .daily-row.done .daily-text { color: #94a3b8; text-decoration: line-through; }
         /* ----------------------------------------------------- account
@@ -1879,6 +1882,7 @@
                     <div class="settings-list">
                         <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
                         <button id="btn-side-palette" class="opt" title="Switch the two player colors to a colorblind-safe pair">Player Colors<span class="opt-state">Standard</span></button>
+                        <button id="btn-share-stats" class="opt" title="Send which fighter won, with nothing about you">Share Stats<span class="opt-state">On</span></button>
                         <button id="btn-account" class="opt" title="Keep your coins and unlocks on every device">Account<span class="opt-state">Off</span></button>
                         <!-- A SELECT, not a cycle button. Three languages is already
                              too many to reach by pressing until the one you want
@@ -2190,6 +2194,7 @@ function startGame() {
 <script src="shared/touch.js"></script>
 <script src="shared/challenges.js"></script>
 <script src="shared/account.js"></script>
+<script src="shared/telemetry.js"></script>
 <script>
 function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
@@ -2923,6 +2928,7 @@ document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale
 document.getElementById('btn-side-palette').addEventListener('click', toggleSidePalette);
 document.getElementById('sel-lang').addEventListener('change', (e) => setLang(e.target.value));
 document.getElementById('btn-account').addEventListener('click', openAccountPanel);
+document.getElementById('btn-share-stats').addEventListener('click', toggleShareStats);
 document.getElementById('btn-account-back').addEventListener('click', () => openModal('settings'));
 document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
 // BOTH buttons, at load. The Glow one was never refreshed here, so its
@@ -2945,6 +2951,9 @@ onAccountChange = refreshAccountUI;
 accountConfigure('https://bndxnalnawxlqnpggnwb.supabase.co',
                  'sb_publishable_6nPMjevR8wYvv5kx9SWqHg_i4jxfOpf');
 initAccounts();
+// Balance data and error reports, both aggregate-only. See the header of
+// shared/telemetry.js for what is deliberately absent from them.
+initTelemetry();
 refreshAccountUI();
 // The touch scheme, which is a no-op on a desktop and in the local
 // build. Must run after the markup exists, which it does here.
@@ -7555,6 +7564,12 @@ function showLocalPickerOnly() {
 // but plainly wrong once progression mode hides it entirely.
 refreshBotUI('p1'); refreshBotUI('p2');
 
+// =========================================================================
+// THE ROSTER AND THE SHOP
+//
+// Everything between picking a fighter and paying for one: the grid, the
+// detail panel, the armory, upgrades, and the coin purse that funds them.
+// =========================================================================
 function buildGrid(gridId, keyList, side) {
     const grid = document.getElementById(gridId);
     CHARACTERS.forEach((c, i) => {
@@ -7713,6 +7728,12 @@ function pickKeyHint() {
 
 function localPlayerNumber() { return LOCAL_SIDE === 'p1' ? 1 : 2; }
 
+// =========================================================================
+// THE ROOM, AND EVERY OTHER SCREEN
+//
+// refresh*() functions. Each one repaints from state rather than being told
+// what changed, which is why adding a control rarely means adding a call.
+// =========================================================================
 function refreshRoomUI() {
     const connected = netActive();
     const host = netIsHost();
@@ -7805,7 +7826,12 @@ function refreshRoomUI() {
     const gm = document.getElementById('guest-mode');
     if (gm) gm.textContent = modeInfo().name;
     const ga = document.getElementById('guest-arena');
-    if (ga) ga.textContent = selectedMap ? selectedMap.name : 'Host\u2019s choice';
+    // ONE SPELLING. The markup ships "Host's choice" with a straight
+    // apostrophe and this overwrote it with a curly one, so the same
+    // sentence existed twice and no translation key could match both. Found
+    // by langcheck, which flags a key that only matches once the quote is
+    // swapped - the shape of a translation that will never be seen.
+    if (ga) ga.textContent = selectedMap ? selectedMap.name : "Host's choice";
 
     // ---- the one line that says what is actually blocking the match ------
     const note = document.getElementById('setup-note');
@@ -8395,6 +8421,11 @@ function netErrorText(type) {
     return 'Connection problem (' + type + ')';
 }
 
+// =========================================================================
+// ROOM CODES
+//
+// Six characters chosen so a code survives being read down a phone line.
+// =========================================================================
 function newRoomCode() {
     let out = '';
     for (let i = 0; i < ROOM_CODE_LEN; i++) {
@@ -8419,6 +8450,13 @@ function roomCodeOf(peerId) {
     return id.indexOf(ROOM_ID_PREFIX) === 0 ? id.slice(ROOM_ID_PREFIX.length) : id;
 }
 
+// =========================================================================
+// THE NETCODE
+//
+// PeerJS, the packet types, and who is allowed to decide what. The rules are
+// written out above netSend; the short version is that each client owns its
+// own fighter and the host owns the match.
+// =========================================================================
 function netHost() {
     if (typeof Peer !== 'function') { netSetStatus('error', 'PeerJS failed to load'); return; }
     netTeardown();
@@ -10153,6 +10191,12 @@ function drawIntroOverlay() {
 
 // Wraps the HUD draw so the shadow state set inside it cannot leak, whichever
 // path it returns on.
+// =========================================================================
+// THE HUD
+//
+// Drawn to a 2D canvas over the 3D one, so it costs nothing in the scene and
+// is not in the DOM. Nothing here is translated by localiseDOM - see t().
+// =========================================================================
 function drawHUD() {
     drawHUDInner();
     // A restore() with no matching save() throws, and drawHUDInner has
@@ -10413,6 +10457,22 @@ function endMatch() {
     // to write the build until it moved. It is a no-op under the sandbox
     // override, and the context carries `sandbox` too, so a sandbox match
     // neither completes a challenge nor pays for one.
+    // BALANCE (roadmap 11). One row: who beat whom, in which mode, by how
+    // much. No player, no account, no device, no time finer than the date -
+    // see shared/telemetry.js and the migration for why that is structural
+    // rather than a promise.
+    //
+    // Reported from the ONE client that owns the result. Online both machines
+    // see the same match, and both reporting it would double every row and
+    // quietly halve nothing - the winner would just appear twice as often as
+    // they are. The host reports; locally there is only one machine anyway.
+    if (!isDraw && winner && (!netActive() || netIsHost())) {
+        const wSide = winner === player1 ? 'p1' : 'p2';
+        const lSide = otherSide(wSide);
+        reportMatchResult(matchMode, winner.name,
+            (lSide === 'p1' ? player1 : player2).name, roundWins[lSide]);
+    }
+
     const payDaily = (side) => {
         const earned = scoreDailyChallenges(side, challengeCtx(side));
         for (const ch of earned) addCoins(side, ch.coins);
@@ -10544,6 +10604,12 @@ function spawnCoopEntity(name, hpMult, dmgMult, opts) {
 // Boss Fight's challenger. Difficulty tiers reuse the EXISTING BOT_DIFFICULTY
 // order rather than inventing a parallel system, so the difficulty cycler
 // already on the select screen drives the boss too with no new UI.
+// =========================================================================
+// CO-OP: THE BOSS AND THE WAVES
+//
+// The two modes where both players are on the same side. The host simulates
+// every enemy and sends the result, so the two clients cannot drift.
+// =========================================================================
 function spawnBossForFight() {
     const tier = Math.max(0, DIFFICULTY_ORDER.indexOf(botDifficulty));
     const hpMult = BOSS_HP_BASE_MULT * (1 + tier * 0.4);
@@ -11199,6 +11265,8 @@ if (DEBUG) {
         // real backend could otherwise produce - a blocked CDN, a pending
         // conflict, a save arriving over the wire. Named so it is obvious
         // at a glance that nothing in the game calls them.
+        reportMatchResult, reportError, telemetryEnabled, setShareStats,
+        toggleShareStats, telemetryBuild, refreshShareStatsUI, initTelemetry,
         accountState, accountAvailable, accountSupported, accountConfigure,
         accountSignIn, accountSignUp, accountSignOut, accountPanelHTML,
         refreshAccountUI, initAccounts, accountSignedIn,

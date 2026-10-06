@@ -932,7 +932,11 @@
         .daily-text { flex: 1 1 auto; }
         .daily-coins { flex: none; color: #f59e0b; font-weight: 700;
                        font-variant-numeric: tabular-nums; }
-        .daily-mark { flex: none; color: #475569; font-size: 0.68rem; }
+        .daily-mark {
+            flex: none;
+            color: #7c8ba3;
+            font-size: 0.68rem;
+        }
         .daily-mark.done { color: #34d399; font-weight: 700; }
         #desktop-only {
             display: none;
@@ -1317,6 +1321,28 @@
             background: none;
             box-shadow: none;
         }
+        .opt-select {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            cursor: pointer;
+        }
+        .opt-select select {
+            font-family: inherit;
+            font-size: 0.78rem;
+            background: rgba(15,23,42,0.85);
+            color: #e2e8f0;
+            border: 1px solid rgba(148,163,184,0.4);
+            border-radius: 6px;
+            padding: 4px 8px;
+            cursor: pointer;
+            max-width: 55%;
+        }
+        .opt-select select:focus-visible {
+            outline: 2px solid #00f3ff;
+            outline-offset: 2px;
+        }
         </style>
 </head>
 <body>
@@ -1505,8 +1531,11 @@
                         <button id="btn-open-rebind" class="btn-secondary">Rebind Keys</button>
                         <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
                         <button id="btn-side-palette" class="opt" title="Switch the two player colors to a colorblind-safe pair">Player Colors<span class="opt-state">Standard</span></button>
+                        <button id="btn-share-stats" class="opt" title="Send which fighter won, with nothing about you">Share Stats<span class="opt-state">On</span></button>
 
-                        <button id="btn-lang" class="opt" title="Language of menus and help text">Language<span class="opt-state">English</span></button>
+                        <label class="opt opt-select" for="sel-lang">Language
+                            <select id="sel-lang" title="Language of menus and help text"></select>
+                        </label>
 
                         <button id="btn-open-audio" class="btn-secondary">Audio Settings</button>
                         <!-- Added after archiving: the only edit to this file's
@@ -1772,7 +1801,8 @@ function startGame() {
 <script src="../shared/i18n.js"></script>
 <script src="../shared/touch.js"></script>
 <script src="../shared/challenges.js"></script>
-<script src="../shared/account.js"></script><script>
+<script src="../shared/account.js"></script>
+<script src="../shared/telemetry.js"></script><script>
 function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
     const canvas = document.getElementById('gameCanvas');
@@ -2593,7 +2623,8 @@ function toggleBloom() {
 refreshBloomUI();
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
 document.getElementById('btn-side-palette').addEventListener('click', toggleSidePalette);
-document.getElementById('btn-lang').addEventListener('click', cycleLang);
+document.getElementById('sel-lang').addEventListener('change', (e) => setLang(e.target.value));
+document.getElementById('btn-share-stats').addEventListener('click', toggleShareStats);
 refreshHudScaleUI();
 refreshSidePaletteUI();
 refreshLangUI();
@@ -2601,6 +2632,7 @@ refreshDailyUI();
 onAccountChange = refreshAccountUI;
 accountConfigure('https://bndxnalnawxlqnpggnwb.supabase.co', 'sb_publishable_6nPMjevR8wYvv5kx9SWqHg_i4jxfOpf');
 initAccounts();
+initTelemetry();
 refreshAccountUI();
 
 function keyLabel(k) {
@@ -7442,6 +7474,12 @@ document.getElementById('btn-difficulty').style.display = 'none'; // hidden unti
 // but plainly wrong once progression mode hides it entirely.
 refreshBotUI('p1'); refreshBotUI('p2');
 
+// =========================================================================
+// THE ROSTER AND THE SHOP
+//
+// Everything between picking a fighter and paying for one: the grid, the
+// detail panel, the armory, upgrades, and the coin purse that funds them.
+// =========================================================================
 function buildGrid(gridId, keyList, side) {
     const grid = document.getElementById(gridId);
     CHARACTERS.forEach((c, i) => {
@@ -8777,6 +8815,12 @@ function drawIntroOverlay() {
 
 // Wraps the HUD draw so the shadow state set inside it cannot leak, whichever
 // path it returns on.
+// =========================================================================
+// THE HUD
+//
+// Drawn to a 2D canvas over the 3D one, so it costs nothing in the scene and
+// is not in the DOM. Nothing here is translated by localiseDOM - see t().
+// =========================================================================
 function drawHUD() {
     drawHUDInner();
     // A restore() with no matching save() throws, and drawHUDInner has
@@ -9037,6 +9081,22 @@ function endMatch() {
     // to write the build until it moved. It is a no-op under the sandbox
     // override, and the context carries `sandbox` too, so a sandbox match
     // neither completes a challenge nor pays for one.
+    // BALANCE (roadmap 11). One row: who beat whom, in which mode, by how
+    // much. No player, no account, no device, no time finer than the date -
+    // see shared/telemetry.js and the migration for why that is structural
+    // rather than a promise.
+    //
+    // Reported from the ONE client that owns the result. Online both machines
+    // see the same match, and both reporting it would double every row and
+    // quietly halve nothing - the winner would just appear twice as often as
+    // they are. The host reports; locally there is only one machine anyway.
+    if (!isDraw && winner && (!netActive() || netIsHost())) {
+        const wSide = winner === player1 ? 'p1' : 'p2';
+        const lSide = otherSide(wSide);
+        reportMatchResult(matchMode, winner.name,
+            (lSide === 'p1' ? player1 : player2).name, roundWins[lSide]);
+    }
+
     const payDaily = (side) => {
         const earned = scoreDailyChallenges(side, challengeCtx(side));
         for (const ch of earned) addCoins(side, ch.coins);
@@ -9168,6 +9228,12 @@ function spawnCoopEntity(name, hpMult, dmgMult, opts) {
 // Boss Fight's challenger. Difficulty tiers reuse the EXISTING BOT_DIFFICULTY
 // order rather than inventing a parallel system, so the difficulty cycler
 // already on the select screen drives the boss too with no new UI.
+// =========================================================================
+// CO-OP: THE BOSS AND THE WAVES
+//
+// The two modes where both players are on the same side. The host simulates
+// every enemy and sends the result, so the two clients cannot drift.
+// =========================================================================
 function spawnBossForFight() {
     const tier = Math.max(0, DIFFICULTY_ORDER.indexOf(botDifficulty));
     const hpMult = BOSS_HP_BASE_MULT * (1 + tier * 0.4);
