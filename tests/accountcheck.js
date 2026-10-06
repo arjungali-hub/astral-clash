@@ -117,20 +117,25 @@ const CFG = ['https://example.supabase.co', 'not-a-real-key'];
     check('and an over-long one', !!rules.dispLong, String(rules.dispLong));
     check('a sensible display name passes', rules.dispGood === null, String(rules.dispGood));
 
-    section('The username IS the identity - one mapping, used by both paths:');
-    const mapped = await page.evaluate(() => {
+    section('Email is validated before anything is sent:');
+    const mail = await page.evaluate(() => {
         const D = window.ACDebug;
         return {
-            plain: D.accountEmailFor('arjun'),
-            cased: D.accountEmailFor('  ArJuN  '),
+            empty: D.emailProblem('   '),
+            noAt: D.emailProblem('arjun'),
+            noDot: D.emailProblem('arjun@localhost'),
+            good: D.emailProblem('arjun@example.com'),
+            plus: D.emailProblem('arjun+clash@example.co.uk'),
         };
     });
-    check('a username becomes a synthetic address',
-        /^arjun@/.test(mapped.plain), mapped.plain);
-    check('on a domain that can never resolve, so nothing is ever sent',
-        /\.invalid$/.test(mapped.plain), mapped.plain);
-    check('and case and spacing cannot make two accounts of one name',
-        mapped.cased === mapped.plain, JSON.stringify(mapped));
+    check('an empty address is refused', !!mail.empty, String(mail.empty));
+    check('one with no @ is refused', !!mail.noAt, String(mail.noAt));
+    check('one with no dot in the domain is refused', !!mail.noDot, String(mail.noDot));
+    check('an ordinary address passes', mail.good === null, String(mail.good));
+    // Plus-addressing and multi-part TLDs are real and get rejected by every
+    // regex somebody tightens "just a bit" - so that is asserted, not assumed.
+    check('and so does a +tagged one on a two-part TLD',
+        mail.plus === null, String(mail.plus));
 
     section('Signing in is refused politely when there is no backend:');
     const refused = await page.evaluate(async () => {
@@ -138,8 +143,9 @@ const CFG = ['https://example.supabase.co', 'not-a-real-key'];
         return {
             noUser: await D.accountSignIn('', 'whatever12'),
             noPass: await D.accountSignIn('arjun', ''),
-            badName: await D.accountSignUp('arj!n', 'Arjun', 'longenough1'),
-            badPass: await D.accountSignUp('arjun', 'Arjun', 'short'),
+            badName: await D.accountSignUp('arj!n', 'Arjun', 'a@b.co', 'longenough1'),
+            badPass: await D.accountSignUp('arjun', 'Arjun', 'a@b.co', 'short'),
+            badMail: await D.accountSignUp('arjun', 'Arjun', 'nope', 'longenough1'),
         };
     });
     check('a missing username is named', refused.noUser.ok === false,
@@ -151,6 +157,8 @@ const CFG = ['https://example.supabase.co', 'not-a-real-key'];
         JSON.stringify(refused.badName));
     check('and a short password', refused.badPass.ok === false
         && /8 characters/.test(refused.badPass.error), JSON.stringify(refused.badPass));
+    check('and a malformed email', refused.badMail.ok === false
+        && /email address/.test(refused.badMail.error), JSON.stringify(refused.badMail));
 
     section('Signing out leaves NOTHING behind:');
     // The hazard: one account's coins staying in memory and being pushed into
@@ -204,12 +212,16 @@ const CFG = ['https://example.supabase.co', 'not-a-real-key'];
         /input-account-user/.test(panels.signIn)
         && /input-account-pass/.test(panels.signIn)
         && !/input-account-display/.test(panels.signIn), panels.signIn.slice(0, 140));
-    check('SIGN UP also asks for a display name',
-        /input-account-display/.test(panels.signUp), panels.signUp.slice(0, 140));
+    check('SIGN UP also asks for a display name and an email',
+        /input-account-display/.test(panels.signUp)
+        && /input-account-email/.test(panels.signUp), panels.signUp.slice(0, 220));
+    check('and says the email is only for resets',
+        /password resets/i.test(panels.signUp), panels.signUp.slice(-200));
+    check('SIGN IN offers a way out of a forgotten password',
+        /btn-account-mode-forgot/.test(panels.signIn), panels.signIn.slice(-200));
     check('the password field is a password field',
         /type="password"/.test(panels.signIn), panels.signIn.slice(0, 140));
-    check('sign-up warns there is no password reset',
-        /no password reset/i.test(panels.signUp), panels.signUp.slice(-180));
+
     check('a request in flight disables the button, so it is not sent twice',
         /disabled/.test(panels.busy), panels.busy.slice(0, 140));
     check('an error is marked as one', /account-status err/.test(panels.error),
@@ -220,6 +232,42 @@ const CFG = ['https://example.supabase.co', 'not-a-real-key'];
         /do not match/.test(panels.error)
         && !/no such user|unknown username|wrong password/i.test(panels.error),
         panels.error.slice(-160));
+
+    section('The reset path, both halves of it:');
+    const reset = await page.evaluate(async (cfg) => {
+        const D = window.ACDebug;
+        D.accountConfigure(cfg[0], cfg[1]);
+        D.__accountSetMode('forgot');
+        D.__accountSetState('signed-out', '');
+        const forgot = D.accountPanelHTML();
+        // The reply must be the same whether or not the address has an account:
+        // anything else turns this form into a way of testing which addresses
+        // are registered.
+        const sent = await D.accountRequestReset('nobody@example.com');
+        const sentPanel = D.accountPanelHTML();
+        D.__accountSetMode('recover');
+        D.__accountSetState('signed-out', 'Choose a new password');
+        const recover = D.accountPanelHTML();
+        D.__accountSetMode('in');
+        D.__accountSetState('signed-out', '');
+        return { forgot, sent, sentPanel, recover, redirect: D.accountRedirectTo() };
+    }, CFG);
+    check('the forgot form asks for an email, not a username',
+        /input-account-email/.test(reset.forgot) && !/input-account-user/.test(reset.forgot),
+        reset.forgot.slice(0, 160));
+    check('and offers a way back', /btn-account-mode-in/.test(reset.forgot),
+        reset.forgot.slice(-160));
+    check('an unknown address is NOT reported as unknown',
+        reset.sent.ok === true && /if there is an account/i.test(reset.sentPanel),
+        JSON.stringify(reset.sent) + ' | ' + reset.sentPanel.slice(0, 120));
+    check('the recover form asks for a new password and nothing else',
+        /input-account-pass/.test(reset.recover)
+        && !/input-account-user/.test(reset.recover)
+        && !/btn-account-mode-up/.test(reset.recover), reset.recover.slice(0, 200));
+    // Supabase appends its token to this, so anything already on the end of it
+    // gets in the way.
+    check('the link comes back to a bare page URL',
+        !/[?#]/.test(reset.redirect), reset.redirect);
 
     section('Signed in, it shows who you are:');
     const inPanel = await page.evaluate(() => {

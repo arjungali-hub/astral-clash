@@ -1340,6 +1340,17 @@
         /* The login name, shown beside the display name so somebody can see
            which account they are in without it competing with the name they
            chose to be known by. */
+        /* "Forgotten your password?" and "Back to signing in" - links in
+           everything but markup. A button, because they DO something; styled
+           flat so they read as the aside they are rather than competing with
+           the action above them. */
+        .account-link {
+            background: none; border: none; box-shadow: none;
+            color: #7c8ba3; font-size: 0.72rem; text-decoration: underline;
+            padding: 4px 0; margin: 4px 0 0; width: auto;
+        }
+        .account-link:hover { color: #cbd5e1; background: none; box-shadow: none; }
+        .account-status.ok { color: #34d399; }
         .account-username {
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
             font-size: 0.92em; color: #94a3b8;
@@ -11161,8 +11172,9 @@ if (DEBUG) {
         // at a glance that nothing in the game calls them.
         accountState, accountAvailable, accountSupported, accountConfigure,
         accountSignIn, accountSignUp, accountSignOut, accountPanelHTML,
-        refreshAccountUI, initAccounts, accountEmailFor, accountSignedIn,
-        usernameProblem, passwordProblem, displayProblem,
+        refreshAccountUI, initAccounts, accountSignedIn,
+        accountRequestReset, accountSetNewPassword, accountRedirectTo,
+        usernameProblem, passwordProblem, displayProblem, emailProblem,
         accountForgetProgress, accountQueuePush,
         // Drives states a real backend would otherwise be needed to produce.
         // Named so it is obvious at a glance that nothing in the game calls it.
