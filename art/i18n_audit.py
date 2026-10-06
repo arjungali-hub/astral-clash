@@ -136,8 +136,21 @@ def table_keys():
                     depth -= 1
                 k += 1
             block = src[j:k]
-            for m in re.finditer(r"""(?m)^\s*(['"])((?:[^'"\\]|\\.)+)\1\s*:""", block):
-                keys.add(m.group(2))
+            # ONE PATTERN PER QUOTE STYLE. A single pattern with a backreference
+            # must exclude BOTH quote characters from the body, which makes a
+            # double-quoted key containing an apostrophe invisible - and those are
+            # exactly the keys that exist, since a key with an apostrophe HAS to be
+            # double-quoted. The audit reported every one of them as untranslated
+            # while the translation sat in the file.
+            for pat in (r"(?m)^\s*'((?:[^'\\]|\\.)+)'\s*:",
+                        r'(?m)^\s*"((?:[^"\\]|\\.)+)"\s*:'):
+                for m in re.finditer(pat, block):
+                    # UNESCAPED. A key containing a quote is stored with it escaped,
+                    # and the raw match carries the backslashes - so the key never
+                    # equalled the source string it was written for.
+                    keys.add(m.group(1).replace('\\"', '"')
+                             .replace("\\'", "'")
+                             .replace('\\\\', '\\'))
         langs[lang] = keys
     return langs
 
@@ -179,7 +192,10 @@ def main():
             # Fragments only. A whole sentence that merely appears inside a
             # longer one still deserves its own entry, so this is limited to
             # short pieces - the shape a split paragraph actually produces.
-            if len(s) < 60 and covered(s):
+            # ANY LENGTH. The pieces a <p> splits into around its <b> tags are
+            # often whole clauses, and capping this reported two dozen of them
+            # as missing while their paragraph was translated in full.
+            if covered(s):
                 continue
             missing.setdefault(g, []).append(s)
         total = sum(len(v) for v in missing.values())

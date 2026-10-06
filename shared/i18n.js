@@ -167,6 +167,35 @@ const I18N = {
         'If the last fighter standing falls, the run is over.':
             'Si cae el último luchador en pie, la partida termina.',
 
+        // ---- the last of them ------------------------------------------
+        "; if you want to fight a bot or try the whole roster, turn on the \"Unlock everything\" sandbox in Settings — it leaves both players' real progress untouched and earns no coins.":
+            "; si quieres luchar contra un bot o probar todo el elenco, activa el modo de pruebas «Desbloquear todo» en Ajustes: deja intacto el progreso real de ambos jugadores y no da monedas.",
+        "Astral Clash is a first-person game, and a portrait screen puts both of your thumbs in the middle of the view.":
+            "Astral Clash es un juego en primera persona, y una pantalla vertical te deja los dos pulgares en medio de la vista.",
+        "Difficulty: ‹ Normal ›":
+            "Dificultad: ‹ Normal ›",
+        "Keep your coins and unlocks on every device":
+            "Conserva tus monedas y desbloqueos en todos tus dispositivos",
+        "Language of menus and help text":
+            "Idioma de los menús y de la ayuda",
+        "Left thumb moves · drag to aim · tap to fire":
+            "Pulgar izquierdo para moverte · arrastra para apuntar · toca para disparar",
+        "Play Online":
+            "Jugar en línea",
+        "Rotate to landscape":
+            "Gíralo en horizontal",
+        "Send which fighter won, with nothing about you":
+            "Envía qué luchador ganó, sin nada sobre ti",
+        "Share Stats":
+            "Compartir datos",
+        "Special attack":
+            "Ataque especial",
+        "Turn your phone sideways":
+            "Gira el teléfono",
+        "Your coins, unlocks and upgrades live on your account, not on this machine — sign in on any device and they are there.":
+            "Tus monedas, desbloqueos y mejoras viven en tu cuenta, no en esta máquina: inicia sesión en cualquier dispositivo y ahí estarán.",
+        "Your opponent sees your choice in the room. Nothing starts until you press":
+            "Tu rival ve tu elección en la sala. No empieza nada hasta que pulses",
         // ---- the split-screen build -------------------------------------
         "(keys on cards)":
             "(teclas en las tarjetas)",
@@ -603,6 +632,35 @@ const I18N = {
         'If the last fighter standing falls, the run is over.':
             'Si le dernier combattant debout tombe, la partie est terminée.',
 
+        // ---- the last of them ------------------------------------------
+        "; if you want to fight a bot or try the whole roster, turn on the \"Unlock everything\" sandbox in Settings — it leaves both players' real progress untouched and earns no coins.":
+            "; si vous voulez affronter un bot ou essayer tout le roster, activez le bac à sable « Tout débloquer » dans les Réglages — il laisse la progression réelle des deux joueurs intacte et ne rapporte aucune pièce.",
+        "Astral Clash is a first-person game, and a portrait screen puts both of your thumbs in the middle of the view.":
+            "Astral Clash est un jeu à la première personne, et un écran en portrait place vos deux pouces au milieu de la vue.",
+        "Difficulty: ‹ Normal ›":
+            "Difficulté : ‹ Normal ›",
+        "Keep your coins and unlocks on every device":
+            "Gardez vos pièces et déblocages sur tous vos appareils",
+        "Language of menus and help text":
+            "Langue des menus et de l’aide",
+        "Left thumb moves · drag to aim · tap to fire":
+            "Pouce gauche pour bouger · glissez pour viser · touchez pour tirer",
+        "Play Online":
+            "Jouer en ligne",
+        "Rotate to landscape":
+            "Passez en mode paysage",
+        "Send which fighter won, with nothing about you":
+            "Envoie quel combattant a gagné, sans rien sur vous",
+        "Share Stats":
+            "Partager les stats",
+        "Special attack":
+            "Attaque spéciale",
+        "Turn your phone sideways":
+            "Tournez votre téléphone",
+        "Your coins, unlocks and upgrades live on your account, not on this machine — sign in on any device and they are there.":
+            "Vos pièces, déblocages et améliorations vivent sur votre compte, pas sur cette machine — connectez-vous sur n’importe quel appareil et ils y sont.",
+        "Your opponent sees your choice in the room. Nothing starts until you press":
+            "Votre adversaire voit votre choix dans le salon. Rien ne commence tant que vous n’appuyez pas sur",
         // ---- the split-screen build -------------------------------------
         "(keys on cards)":
             "(touches sur les cartes)",

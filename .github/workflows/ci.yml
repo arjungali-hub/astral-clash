@@ -53,6 +53,14 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Exits non-zero while any user-visible string has no translation. It
+      # needs no browser, so it belongs with the guards rather than with the
+      # checkers - and it is the thing that catches a string ADDED in English
+      # and never translated, which is how the roster stayed English through
+      # an entire "localisation is done".
+      - name: Everything is translated
+        run: python art/i18n_audit.py
+
       # Exits non-zero if the local build is stale, OR if the two builds differ
       # anywhere without a reason on one of the nine interface lists.
       - name: The two builds agree
