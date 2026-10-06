@@ -326,7 +326,19 @@ async function boot(page, { clearStorage = false, models = false, path = null } 
     return page;
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+// SCALED, like every other budget here, and for the same reason. A sleep in a
+// checker always means "give the machine time to finish what I just asked for"
+// - repaint the menu, settle a transition, run a few frames - so on a machine
+// three times slower it should be three times longer. There is no case in this
+// suite where a sleep wants to stay the same length on slower hardware.
+//
+// This was the last unscaled budget, and it was the one that mattered.
+// framerateccheck does its menu steps with sleeps between them precisely
+// BECAUSE doing them in one tick was a bug it already fixed once - its own
+// comment says so - and on a CI runner those fixed 500ms gaps put the same race
+// straight back. Both arms then reported "never reached FIGHT", which reads as
+// a frame-cap failure and is nothing of the kind.
+const sleep = ms => new Promise(r => setTimeout(r, budget(ms)));
 
 // Polls a predicate INSIDE the page until true or the budget expires.
 // `ms` is scaled here, so a checker that passes an explicit budget gets the

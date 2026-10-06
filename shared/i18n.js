@@ -86,7 +86,7 @@ const I18N = {
         'Sound effects volume': 'Volumen de efectos',
         'Music volume': 'Volumen de música',
         'HUD Text': 'Texto del HUD',
-        'Player Colours': 'Colores de jugador',
+        'Player Colors': 'Colores de jugador',
         'Switch to Local Version': 'Cambiar a versión local',
         'Sandbox: Off': 'Pruebas: no',
         'Sandbox — all unlocked, no coins':
@@ -104,7 +104,7 @@ const I18N = {
             'No mostrar esto automáticamente la próxima vez',
         'Your room code - share it with the other player':
             'Tu código de sala: compártelo con el otro jugador',
-        'Switch the two player colours to a colourblind-safe pair':
+        'Switch the two player colors to a colorblind-safe pair':
             'Cambia los dos colores de jugador a un par seguro para daltonismo',
         'The arena, drawn from your fighter’s eyes. This game needs sight to play.':
             'La arena, vista por los ojos de tu luchador. Este juego requiere visión.',
@@ -166,6 +166,156 @@ const I18N = {
             'Tu progreso ha vuelto: solo dos jugadores',
         'If the last fighter standing falls, the run is over.':
             'Si cae el último luchador en pie, la partida termina.',
+
+        // ---- the roster ------------------------------------------------
+        "A balanced duelist with no bad matchup and no free win either. He wants to live at the edge of his own reach, trading slashes and using the dash to cross the gap or escape a corner.":
+            "Un duelista equilibrado sin ningún emparejamiento malo y sin ninguna victoria regalada. Quiere vivir en el borde de su propio alcance, intercambiando tajos y usando el desplazamiento para cruzar la distancia o escapar de una esquina.",
+        "A blazing-fast glass cannon with the thinnest health of any melee fighter. He wins by never being where the last swing was — and the flurry is invulnerable, so it doubles as a way to run straight through an incoming attack.":
+            "Un cañón de cristal vertiginoso, con la salud más frágil de cualquier luchador cuerpo a cuerpo. Gana no estando nunca donde cayó el último golpe, y la ráfaga es invulnerable, así que también sirve para atravesar de lleno un ataque entrante.",
+        "A ground slam that launches the enemy away and stuns them.":
+            "Un impacto contra el suelo que lanza al enemigo por los aires y lo aturde.",
+        "A heavy hammer swing through a narrow cone. Slow to start and slow to recover, so a whiff is a real punish — but it hits hard enough to be worth the risk.":
+            "Un mazazo pesado en un cono estrecho. Lento de iniciar y lento de recuperar, así que fallar es un castigo real, pero golpea lo bastante fuerte como para merecer el riesgo.",
+        "A long scythe sweep through a wide cone — more reach than any other melee basic except Thorne, and wide enough that a sidestep alone will not clear it.":
+            "Un barrido largo de guadaña en un cono amplio: más alcance que cualquier otro básico cuerpo a cuerpo salvo el de Thorne, y lo bastante ancho como para que un paso lateral por sí solo no baste.",
+        "A mountain that learned to move. Slow, enormous, and utterly unbothered.":
+            "Una montaña que aprendió a moverse. Lento, enorme y absolutamente impasible.",
+        "A quick sword arc through a wide cone in front of him. Short reach, but it recovers fast enough to throw out on reaction and keep throwing.":
+            "Un arco de espada rápido en un cono amplio frente a él. Poco alcance, pero se recupera lo bastante rápido como para soltarlo por reacción y seguir soltándolo.",
+        "A ranged stormcaller who outranges everyone. Her special is the exception to everything else she does: it lands on the target directly rather than travelling, so it cannot be dodged or blocked by cover.":
+            "Una invocadora de tormentas a distancia que supera el alcance de todos. Su especial es la excepción a todo lo demás que hace: cae directamente sobre el objetivo en lugar de viajar, así que no se puede esquivar ni bloquear con cobertura.",
+        "A rapid flurry jab with a very short cooldown. The least damage per hit on the roster, but you land far more of them than anyone else does.":
+            "Un golpe de ráfaga rápido con un tiempo de recarga muy corto. El menor daño por impacto del elenco, pero aciertas muchísimos más que nadie.",
+        "A relentless pressure fighter, fast on his feet and faster with his fists. The burst itself is modest — the burn afterwards is the real payload, and it keeps ticking while you keep jabbing.":
+            "Un luchador de presión implacable, rápido de pies y más rápido de puños. El estallido en sí es modesto: la quemadura posterior es la carga real, y sigue consumiendo mientras tú sigues golpeando.",
+        "A short shockwave that shoves you off.":
+            "Una onda expansiva corta que te aparta de un empujón.",
+        "A short-range overhead smash that hard-stuns (knocks down).":
+            "Un mazazo descendente de corto alcance que aturde con fuerza (derriba).",
+        "A space-controller with the longest melee reach on the roster. He fights from a distance most characters consider safe, and the root buys him more than a second of free hits from exactly there.":
+            "Un controlador de espacio con el mayor alcance cuerpo a cuerpo del elenco. Pelea desde una distancia que casi todos consideran segura, y el enraizamiento le compra más de un segundo de golpes gratis justo desde ahí.",
+        "A wide thorn-arc that ensnares (roots) the enemy in place.":
+            "Un arco amplio de espinas que atrapa (enraíza) al enemigo en el sitio.",
+        "Antlered Reaver":
+            "Saqueador Astado",
+        "Armoured but not immovable, and he builds special meter far faster than anyone else — so the knockdown comes around often. Use it to reset a fight you are losing, not just for the damage.":
+            "Acorazado pero no inamovible, y carga el medidor especial mucho más rápido que nadie, así que el derribo vuelve a menudo. Úsalo para reiniciar un combate que vas perdiendo, no solo por el daño.",
+        "Ashen Mortar":
+            "Mortero Ceniciento",
+        "Astral Orb":
+            "Orbe Astral",
+        "Astral Ward":
+            "Égida Astral",
+        "Bastion Knight":
+            "Caballero Bastión",
+        "Blade Dash":
+            "Embate de Filo",
+        "Blink onto the enemy and stab rapidly, briefly invulnerable.":
+            "Parpadea hasta el enemigo y apuñala rápidamente, brevemente invulnerable.",
+        "Bramble Lash":
+            "Azote de Zarzas",
+        "Call a bolt down directly onto the enemy — cannot be sidestepped.":
+            "Invoca un rayo directamente sobre el enemigo: no se puede esquivar de lado.",
+        "Cinder Pugilist":
+            "Púgil de Brasa",
+        "Cinder Spray":
+            "Rociada de Brasas",
+        "Cowled Harvester":
+            "Segador Encapuchado",
+        "Cycles between a shockwave Ground Slam, a telegraphed Charge, and an Ember Nova spread.":
+            "Alterna entre un Rompesuelos de onda expansiva, una Carga telegrafiada y una dispersión de Nova de Brasas.",
+        "Darts through its target.":
+            "Se lanza a través de su objetivo.",
+        "Dash through the enemy, cutting them on the pass and ending behind them.":
+            "Atraviesa al enemigo de un embate, cortándolo al pasar y acabando detrás de él.",
+        "Ember Jab":
+            "Golpe de Ascua",
+        "Erupt in flame, leaving the enemy burning over time.":
+            "Estalla en llamas, dejando al enemigo ardiendo con el tiempo.",
+        "Fires a single fast shard in a straight line. Long range, but it is a real projectile — it can miss, and it can be sidestepped or blocked by cover.":
+            "Dispara una sola esquirla rápida en línea recta. Largo alcance, pero es un proyectil de verdad: puede fallar, y se puede esquivar de lado o bloquear con cobertura.",
+        "Flicker Cutthroat":
+            "Degollador Fugaz",
+        "Forge Hammerfist":
+            "Puño de Forja",
+        "Fragile and deadly at range. She loses any melee exchange she is dragged into, so the whole game is keeping the gap open — the volley is as much a wall as it is damage.":
+            "Frágil y letal a distancia. Pierde cualquier intercambio cuerpo a cuerpo al que la arrastren, así que todo el juego consiste en mantener la distancia abierta: la andanada es tanto un muro como daño.",
+        "Gaunt Wraith":
+            "Espectro Enjuto",
+        "Glass Shard":
+            "Esquirla de Vidrio",
+        "Granite Colossus":
+            "Coloso de Granito",
+        "Ground Breaker":
+            "Rompesuelos",
+        "Haloed Aegis":
+            "Égida Nimbada",
+        "Hangs back and lobs fire. Punish it for existing.":
+            "Se queda atrás y lanza fuego. Castígalo por existir.",
+        "Inferno Burst":
+            "Estallido Infernal",
+        "Ironclad Smash":
+            "Mazazo Acorazado",
+        "Lobs a slow-building orb of light down a long, narrow line. Low damage per shot — it is chip damage meant to be applied constantly from a safe distance.":
+            "Lanza un orbe de luz de carga lenta por una línea larga y estrecha. Poco daño por disparo: es daño de desgaste pensado para aplicarse sin parar desde una distancia segura.",
+        "Long reach that drags foes into the blade. The special pulls a runaway opponent from well outside her range and roots them there, which turns a fleeing ranged fighter into a free follow-up.":
+            "Gran alcance que arrastra a los enemigos hacia la hoja. El especial atrae a un rival que huye desde muy fuera de su alcance y lo enraíza allí, lo que convierte a un luchador a distancia en fuga en un seguimiento gratuito.",
+        "Prism Volley":
+            "Andanada Prismática",
+        "Quickstab":
+            "Puntazo Veloz",
+        "Raise a strong shield that halves incoming damage for several seconds.":
+            "Alza un escudo potente que reduce a la mitad el daño recibido durante varios segundos.",
+        "Rhythm Slash":
+            "Tajo Rítmico",
+        "Scrap Gremlin":
+            "Gremlin Chatarrero",
+        "Seismic Slam":
+            "Impacto Sísmico",
+        "Shadow Flurry":
+            "Ráfaga de Sombras",
+        "Shardwing Sylph":
+            "Sílfide Alaesquirla",
+        "Skitter":
+            "Correteo",
+        "Slow, heavy, and unbothered by your first few hits.":
+            "Lento, pesado e indiferente a tus primeros golpes.",
+        "Spits a fan of molten shards.":
+            "Escupe un abanico de esquirlas fundidas.",
+        "Spray a wide 5-shard fan to wall off space.":
+            "Rocía un abanico amplio de 5 esquirlas para cerrar el espacio.",
+        "Storm Bolt":
+            "Rayo de Tormenta",
+        "Stormcrown Valkyrie":
+            "Valquiria Coronatormenta",
+        "Tectonic Brute":
+            "Bruto Tectónico",
+        "Tempo Duelist":
+            "Duelista de Tempo",
+        "The fastest basic in the game — a near-instant dagger poke with almost no recovery. The reach is the shortest in the game, so you have to be genuinely on top of someone.":
+            "El básico más rápido del juego: un pinchazo de daga casi instantáneo y sin apenas recuperación. El alcance es el más corto del juego, así que tienes que estar realmente encima del rival.",
+        "The hardest-hitting basic on the roster, and by far the most committal — a long wind-up and a long recovery. Two of these end most fights; two whiffs end yours.":
+            "El básico más contundente del elenco, y con diferencia el más comprometido: una preparación larga y una recuperación larga. Dos de estos acaban con casi cualquier combate; dos fallos acaban con el tuyo.",
+        "The largest health pool in the game, on the slowest fighter in it. He cannot chase anyone, so he wins by making the space directly in front of him unaffordable to stand in — and the slam clears that space again whenever someone gets comfortable.":
+            "La mayor reserva de salud del juego, en el luchador más lento que hay. No puede perseguir a nadie, así que gana haciendo que el espacio justo delante de él sea insostenible, y el impacto despeja ese espacio cada vez que alguien se acomoda.",
+        "The longest melee reach in the game, but through a narrow cone — it is a line, not a sweep, so it needs to be aimed rather than swung in someone’s general direction.":
+            "El mayor alcance cuerpo a cuerpo del juego, pero en un cono estrecho: es una línea, no un barrido, así que hay que apuntarlo en lugar de agitarlo en la dirección general del rival.",
+        "The longest-range basic in the game: a fast bolt down a very tight line. It demands real aim — the cone is the narrowest on the roster and it is still a dodgeable projectile.":
+            "El básico de mayor alcance del juego: un rayo rápido por una línea muy estrecha. Exige puntería de verdad: el cono es el más angosto del elenco y sigue siendo un proyectil esquivable.",
+        "The only fighter whose special deals no damage at all. She survives instead of trading: the ward halves everything for over three seconds, which is long enough to walk through a special that would have killed her. Her meter builds slowest, so spend it deliberately.":
+            "La única luchadora cuyo especial no hace ningún daño. Sobrevive en lugar de intercambiar: la égida reduce todo a la mitad durante más de tres segundos, suficiente para atravesar un especial que la habría matado. Su medidor es el más lento en cargarse, así que gástalo con intención.",
+        "Thornwhip":
+            "Látigo de Espinas",
+        "Thunderstrike":
+            "Golpe de Trueno",
+        "Tiny, frantic, and never alone.":
+            "Diminuto, frenético y nunca solo.",
+        "Titan’s Wrath":
+            "Ira del Titán",
+        "Umbral Reap":
+            "Siega Umbría",
+        "Yank the enemy in, cut them, and root them in place.":
+            "Atrae al enemigo de un tirón, córtalo y enraízalo en el sitio.",
     },
     fr: {
         // ---- the shell -------------------------------------------------
@@ -212,7 +362,7 @@ const I18N = {
         'Sound effects volume': 'Volume des effets',
         'Music volume': 'Volume de la musique',
         'HUD Text': 'Texte de l’interface',
-        'Player Colours': 'Couleurs des joueurs',
+        'Player Colors': 'Couleurs des joueurs',
         'Switch to Local Version': 'Passer à la version locale',
         'Sandbox: Off': 'Bac à sable : non',
         'Sandbox — all unlocked, no coins':
@@ -230,7 +380,7 @@ const I18N = {
             'Ne plus afficher ceci automatiquement',
         'Your room code - share it with the other player':
             'Votre code de salon : partagez-le avec l’autre joueur',
-        'Switch the two player colours to a colourblind-safe pair':
+        'Switch the two player colors to a colorblind-safe pair':
             'Remplace les deux couleurs de joueur par une paire adaptée au daltonisme',
         'The arena, drawn from your fighter’s eyes. This game needs sight to play.':
             'L’arène, vue par les yeux de votre combattant. Ce jeu requiert la vue.',
@@ -292,6 +442,156 @@ const I18N = {
             'Votre progression est de retour : deux joueurs uniquement',
         'If the last fighter standing falls, the run is over.':
             'Si le dernier combattant debout tombe, la partie est terminée.',
+
+        // ---- the roster ------------------------------------------------
+        "A balanced duelist with no bad matchup and no free win either. He wants to live at the edge of his own reach, trading slashes and using the dash to cross the gap or escape a corner.":
+            "Un duelliste équilibré, sans mauvais match-up ni victoire offerte. Il veut vivre à la limite de sa propre allonge, en échangeant des taillades et en se servant de la ruée pour franchir l’écart ou sortir d’un coin.",
+        "A blazing-fast glass cannon with the thinnest health of any melee fighter. He wins by never being where the last swing was — and the flurry is invulnerable, so it doubles as a way to run straight through an incoming attack.":
+            "Un canon de verre fulgurant, avec la santé la plus fragile de tous les combattants au corps à corps. Il gagne en n’étant jamais là où le dernier coup est tombé — et la rafale est invulnérable, ce qui en fait aussi un moyen de traverser une attaque de plein fouet.",
+        "A ground slam that launches the enemy away and stuns them.":
+            "Un choc au sol qui projette l’ennemi au loin et l’étourdit.",
+        "A heavy hammer swing through a narrow cone. Slow to start and slow to recover, so a whiff is a real punish — but it hits hard enough to be worth the risk.":
+            "Un lourd coup de marteau dans un cône étroit. Lent à démarrer et lent à récupérer, donc un coup dans le vide se paie — mais il frappe assez fort pour valoir le risque.",
+        "A long scythe sweep through a wide cone — more reach than any other melee basic except Thorne, and wide enough that a sidestep alone will not clear it.":
+            "Un long balayage de faux dans un large cône — plus d’allonge que toute autre base au corps à corps sauf celle de Thorne, et assez large pour qu’un simple pas de côté ne suffise pas.",
+        "A mountain that learned to move. Slow, enormous, and utterly unbothered.":
+            "Une montagne qui a appris à marcher. Lent, énorme et parfaitement imperturbable.",
+        "A quick sword arc through a wide cone in front of him. Short reach, but it recovers fast enough to throw out on reaction and keep throwing.":
+            "Un arc d’épée rapide dans un large cône devant lui. Peu d’allonge, mais il récupère assez vite pour être sorti en réaction et resorti aussitôt.",
+        "A ranged stormcaller who outranges everyone. Her special is the exception to everything else she does: it lands on the target directly rather than travelling, so it cannot be dodged or blocked by cover.":
+            "Une invocatrice d’orages à distance qui surpasse l’allonge de tout le monde. Sa spéciale est l’exception à tout le reste : elle tombe directement sur la cible au lieu de voyager, donc elle ne peut être ni esquivée ni bloquée par un couvert.",
+        "A rapid flurry jab with a very short cooldown. The least damage per hit on the roster, but you land far more of them than anyone else does.":
+            "Un jab en rafale très rapide, au temps de recharge très court. Le plus faible dégât par coup du roster, mais vous en placez bien plus que quiconque.",
+        "A relentless pressure fighter, fast on his feet and faster with his fists. The burst itself is modest — the burn afterwards is the real payload, and it keeps ticking while you keep jabbing.":
+            "Un combattant de pression implacable, vif des pieds et plus vif encore des poings. L’explosion elle-même est modeste : la brûlure ensuite est la vraie charge, et elle continue pendant que vous continuez à frapper.",
+        "A short shockwave that shoves you off.":
+            "Une courte onde de choc qui vous repousse.",
+        "A short-range overhead smash that hard-stuns (knocks down).":
+            "Un coup vertical à courte portée qui étourdit lourdement (met à terre).",
+        "A space-controller with the longest melee reach on the roster. He fights from a distance most characters consider safe, and the root buys him more than a second of free hits from exactly there.":
+            "Un contrôleur d’espace avec la plus grande allonge au corps à corps du roster. Il combat à une distance que la plupart jugent sûre, et l’enracinement lui offre plus d’une seconde de coups gratuits depuis exactement là.",
+        "A wide thorn-arc that ensnares (roots) the enemy in place.":
+            "Un large arc d’épines qui entrave (enracine) l’ennemi sur place.",
+        "Antlered Reaver":
+            "Pillard Ramu",
+        "Armoured but not immovable, and he builds special meter far faster than anyone else — so the knockdown comes around often. Use it to reset a fight you are losing, not just for the damage.":
+            "Cuirassé mais pas inamovible, et il charge sa jauge spéciale bien plus vite que quiconque — donc la mise à terre revient souvent. Servez-vous-en pour relancer un combat mal engagé, pas seulement pour les dégâts.",
+        "Ashen Mortar":
+            "Mortier Cendreux",
+        "Astral Orb":
+            "Orbe Astral",
+        "Astral Ward":
+            "Garde Astrale",
+        "Bastion Knight":
+            "Chevalier Bastion",
+        "Blade Dash":
+            "Ruée de Lame",
+        "Blink onto the enemy and stab rapidly, briefly invulnerable.":
+            "Clignez jusqu’à l’ennemi et poignardez rapidement, brièvement invulnérable.",
+        "Bramble Lash":
+            "Cinglée de Ronces",
+        "Call a bolt down directly onto the enemy — cannot be sidestepped.":
+            "Appelez un éclair directement sur l’ennemi — impossible à esquiver sur le côté.",
+        "Cinder Pugilist":
+            "Pugiliste de Braise",
+        "Cinder Spray":
+            "Gerbe de Braises",
+        "Cowled Harvester":
+            "Moissonneur Encapuchonné",
+        "Cycles between a shockwave Ground Slam, a telegraphed Charge, and an Ember Nova spread.":
+            "Alterne entre un Brise-Sol à onde de choc, une Charge télégraphiée et une gerbe de Nova de Braises.",
+        "Darts through its target.":
+            "Fonce à travers sa cible.",
+        "Dash through the enemy, cutting them on the pass and ending behind them.":
+            "Traversez l’ennemi d’une ruée, en le tranchant au passage et en finissant derrière lui.",
+        "Ember Jab":
+            "Jab de Braise",
+        "Erupt in flame, leaving the enemy burning over time.":
+            "Explosez en flammes, laissant l’ennemi brûler dans la durée.",
+        "Fires a single fast shard in a straight line. Long range, but it is a real projectile — it can miss, and it can be sidestepped or blocked by cover.":
+            "Tire un unique éclat rapide en ligne droite. Longue portée, mais c’est un vrai projectile — il peut manquer, et il peut être esquivé sur le côté ou bloqué par un couvert.",
+        "Flicker Cutthroat":
+            "Égorgeur Fugace",
+        "Forge Hammerfist":
+            "Poing-Marteau de Forge",
+        "Fragile and deadly at range. She loses any melee exchange she is dragged into, so the whole game is keeping the gap open — the volley is as much a wall as it is damage.":
+            "Fragile et mortelle à distance. Elle perd tout échange au corps à corps dans lequel on la traîne, donc tout le jeu consiste à garder l’écart ouvert : la volée est autant un mur qu’un dégât.",
+        "Gaunt Wraith":
+            "Spectre Décharné",
+        "Glass Shard":
+            "Éclat de Verre",
+        "Granite Colossus":
+            "Colosse de Granit",
+        "Ground Breaker":
+            "Brise-Sol",
+        "Haloed Aegis":
+            "Égide Nimbée",
+        "Hangs back and lobs fire. Punish it for existing.":
+            "Reste en retrait et lance du feu. Punissez-le d’exister.",
+        "Inferno Burst":
+            "Explosion Infernale",
+        "Ironclad Smash":
+            "Fracas Cuirassé",
+        "Lobs a slow-building orb of light down a long, narrow line. Low damage per shot — it is chip damage meant to be applied constantly from a safe distance.":
+            "Lance un orbe de lumière à montée lente sur une ligne longue et étroite. Peu de dégâts par tir — c’est du grignotage, à appliquer sans relâche depuis une distance sûre.",
+        "Long reach that drags foes into the blade. The special pulls a runaway opponent from well outside her range and roots them there, which turns a fleeing ranged fighter into a free follow-up.":
+            "Une grande allonge qui traîne les ennemis jusqu’à la lame. La spéciale tire un adversaire en fuite depuis bien au-delà de sa portée et l’enracine sur place, ce qui transforme un tireur qui s’échappe en enchaînement gratuit.",
+        "Prism Volley":
+            "Volée Prismatique",
+        "Quickstab":
+            "Estoc Rapide",
+        "Raise a strong shield that halves incoming damage for several seconds.":
+            "Levez un bouclier solide qui divise par deux les dégâts subis pendant plusieurs secondes.",
+        "Rhythm Slash":
+            "Taillade Rythmée",
+        "Scrap Gremlin":
+            "Gremlin de Ferraille",
+        "Seismic Slam":
+            "Choc Sismique",
+        "Shadow Flurry":
+            "Rafale d’Ombres",
+        "Shardwing Sylph":
+            "Sylphide Aile-d’Éclat",
+        "Skitter":
+            "Trottinement",
+        "Slow, heavy, and unbothered by your first few hits.":
+            "Lent, lourd, et indifférent à vos premiers coups.",
+        "Spits a fan of molten shards.":
+            "Crache un éventail d’éclats en fusion.",
+        "Spray a wide 5-shard fan to wall off space.":
+            "Projetez un large éventail de 5 éclats pour barrer l’espace.",
+        "Storm Bolt":
+            "Éclair d’Orage",
+        "Stormcrown Valkyrie":
+            "Valkyrie Couronne-Orage",
+        "Tectonic Brute":
+            "Brute Tectonique",
+        "Tempo Duelist":
+            "Duelliste de Tempo",
+        "The fastest basic in the game — a near-instant dagger poke with almost no recovery. The reach is the shortest in the game, so you have to be genuinely on top of someone.":
+            "La base la plus rapide du jeu — un coup de dague quasi instantané, sans presque aucune récupération. L’allonge est la plus courte du jeu : il faut être vraiment collé à l’adversaire.",
+        "The hardest-hitting basic on the roster, and by far the most committal — a long wind-up and a long recovery. Two of these end most fights; two whiffs end yours.":
+            "La base la plus puissante du roster, et de loin la plus engageante : une longue préparation et une longue récupération. Deux de celles-ci terminent la plupart des combats ; deux coups dans le vide terminent le vôtre.",
+        "The largest health pool in the game, on the slowest fighter in it. He cannot chase anyone, so he wins by making the space directly in front of him unaffordable to stand in — and the slam clears that space again whenever someone gets comfortable.":
+            "La plus grande réserve de santé du jeu, sur le combattant le plus lent qui soit. Il ne peut poursuivre personne, alors il gagne en rendant intenable l’espace juste devant lui — et le choc dégage cet espace dès que quelqu’un s’y installe.",
+        "The longest melee reach in the game, but through a narrow cone — it is a line, not a sweep, so it needs to be aimed rather than swung in someone’s general direction.":
+            "La plus grande allonge au corps à corps du jeu, mais dans un cône étroit — c’est une ligne, pas un balayage : il faut la viser plutôt que l’agiter dans la direction générale de quelqu’un.",
+        "The longest-range basic in the game: a fast bolt down a very tight line. It demands real aim — the cone is the narrowest on the roster and it is still a dodgeable projectile.":
+            "La base avec la plus grande portée du jeu : un éclair rapide sur une ligne très serrée. Elle exige une vraie visée — le cône est le plus étroit du roster et cela reste un projectile esquivable.",
+        "The only fighter whose special deals no damage at all. She survives instead of trading: the ward halves everything for over three seconds, which is long enough to walk through a special that would have killed her. Her meter builds slowest, so spend it deliberately.":
+            "La seule combattante dont la spéciale n’inflige aucun dégât. Elle survit au lieu d’échanger : la garde divise tout par deux pendant plus de trois secondes, assez pour traverser une spéciale qui l’aurait tuée. Sa jauge se remplit le plus lentement, alors dépensez-la à bon escient.",
+        "Thornwhip":
+            "Fouet d’Épines",
+        "Thunderstrike":
+            "Frappe de Tonnerre",
+        "Tiny, frantic, and never alone.":
+            "Minuscule, frénétique, et jamais seul.",
+        "Titan’s Wrath":
+            "Courroux du Titan",
+        "Umbral Reap":
+            "Fauche Ombreuse",
+        "Yank the enemy in, cut them, and root them in place.":
+            "Tirez l’ennemi à vous, tranchez-le et enracinez-le sur place.",
     },
 };
 
@@ -494,6 +794,9 @@ function setLang(id) {
     location.reload();
 }
 
+// Kept for the keyboard and gamepad paths, which step through a setting rather
+// than open a menu. The settings row itself is a <select> now: three languages
+// is already too many to reach by pressing until the one you want comes round.
 function cycleLang() {
     const at = AC_LANGS.findIndex(l => l.id === curLang());
     setLang(AC_LANGS[(at + 1) % AC_LANGS.length].id);
@@ -505,7 +808,15 @@ function langLabel() {
 }
 
 function refreshLangUI() {
-    setOptState('btn-lang', langLabel(), curLang() !== 'en');
+    const sel = document.getElementById('sel-lang');
+    if (!sel) return;
+    // Rebuilt rather than written once at startup: AC_LANGS is the list, and a
+    // control populated from it cannot fall out of step with it.
+    if (sel.options.length !== AC_LANGS.length) {
+        sel.innerHTML = AC_LANGS
+            .map(l => '<option value="' + l.id + '">' + l.label + '</option>').join('');
+    }
+    sel.value = curLang();
 }
 
 // How much of each language is actually written, for the checker and for

@@ -21,7 +21,7 @@ groundwork that cannot be wrong later.
 
 WHAT COUNTS. Text a player can see: markup text nodes, button labels,
 placeholders, titles and aria-labels, and the string literals in code that reach
-textContent, innerHTML or the HUD. Identifiers, CSS, element ids, colours, URLs
+textContent, innerHTML or the HUD. Identifiers, CSS, element ids, colors, URLs
 and debug output do not - and are excluded by shape rather than by a list, so the
 count does not quietly drift as code moves.
 """
@@ -40,7 +40,7 @@ WORDY = re.compile(r'[A-Za-z]')
 # Shapes that are never shown to a player, whatever they contain.
 NOT_PROSE = re.compile(
     r'^(?:[a-z-]+/[a-z0-9+.-]+'           # media types
-    r'|#[0-9a-fA-F]{3,8}'                  # colours
+    r'|#[0-9a-fA-F]{3,8}'                  # colors
     r'|[a-z]+:[^ ]*'                       # urls, data:, javascript:
     r'|[\w.-]+\.(?:js|css|html|png|jpg|webp|woff2?|glb|gltf|mp3|json)'
     r'|[A-Za-z_$][\w$]*'                   # a bare identifier or key

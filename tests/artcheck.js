@@ -84,7 +84,7 @@ const H = require('./harness');
     check('every surface using the ORM has a uv2 attribute for aoMap',
         big.filter(x => x.hasOrm).every(x => x.uv2),
         JSON.stringify(big.filter(x => x.hasOrm && !x.uv2).slice(0, 3)));
-    // Colour is colour; normals and ORM are DATA. Tagging data sRGB
+    // Color is color; normals and ORM are DATA. Tagging data sRGB
     // gamma-decodes the vectors and flattens the lighting.
     const LINEAR = await page.evaluate(() => THREE.LinearEncoding);
     const SRGB = await page.evaluate(() => THREE.sRGBEncoding);

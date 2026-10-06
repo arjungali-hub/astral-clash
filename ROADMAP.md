@@ -285,12 +285,12 @@ it depends on determinism the netcode does not currently guarantee.
 These are small, and their absence is the kind of thing that quietly excludes
 people.
 
-### 13. Colourblind support
+### 13. Colorblind support
 **Size: small. Risk: none.**
 
 The game distinguishes sides by **cyan and pink**, and the two co-op rings by
-blue and orange. For the most common forms of colourblindness some of those pairs
-are much closer than intended. Adding a shape or icon alongside the colour — and
+blue and orange. For the most common forms of colorblindness some of those pairs
+are much closer than intended. Adding a shape or icon alongside the color — and
 a palette option — is a contained change with a real audience.
 
 ### 14. A screen-reader pass
@@ -401,29 +401,61 @@ started without a plan for what replaces the nine interface lists.
 
 ## Finishing accounts
 
-The code is done and tested. What is missing is a Supabase project, which only
-somebody with the account can create.
+Project created, migrations 0001-0003 applied, the `account` Edge Function
+deployed, and the build pointed at it. **One step is left**, and it needs doing
+by hand:
 
-1. **Create a project.** Free tier is enough — one small row per player.
-2. **Run the migration** in `supabase/migrations/0001_saves.sql`. It creates the
-   `saves` table, its row level security policies, and the grant that exposes it
-   to the Data API. **The policies are not optional:** the anon key ships inside
-   a static page anybody can read, so RLS is the entire access control. Without
-   it that key opens every save.
+1. **Run `supabase/migrations/0004_profiles.sql`** in the SQL Editor. It creates
+   `profiles` (username, display name), its RLS policies, and
+   `username_available()`. Safe to run twice.
 
-   At project creation, under Security: **Enable Data API** on (supabase-js
-   needs it), **Enable automatic RLS** on, and **Automatically expose new
-   tables** OFF - Supabase's own recommendation, and the migration grants this
-   one table explicitly so it does not need the blanket version.
-3. **Point the build at it.** Call `accountConfigure(url, anonKey)` before
-   `initAccounts()` — both values are public by design.
-4. **Turn on email sign-in** in the project's auth settings, and add the site's
-   URL to the allowed redirect list, or the emailed link lands nowhere.
+2. **Authentication → Providers → Email**: enabled, **Confirm email ON**. The
+   email exists for exactly one reason - password reset - and an unconfirmed
+   address might be a typo, which would mean reset silently never works. The
+   client handles the flow: sign-up comes back "check your email to confirm it",
+   and a sign-in before confirming says so specifically.
 
-Until then the build reports "Accounts are not set up for this build. Your
-progress is still saved on this device." and everything else works unchanged —
-which is the designed behaviour, not a degraded one, and `accountcheck` asserts
-it.
+3. **Authentication → URL Configuration**: Site URL and Redirect URLs set to the
+   deployed address with a `/**` suffix. Both the confirmation link and the
+   reset link come back here, and `cleanUrls` means the path can be `/` or
+   `/index` - a bare URL rejects one of them and not the other, which is
+   maddening to diagnose.
+
+Until 0004 is run, sign-up fails on a missing `profiles` table and the panel
+says so. Everything else in the game works unchanged.
+
+### How the pieces fit
+
+| | |
+| --- | --- |
+| `profiles` | username, display name. Own-row RLS. |
+| `saves` | one row per account, the whole progression blob. |
+| `username_available()` | returns one boolean, so sign-up can check a name without a session. |
+| `functions/account` | signs in and sends resets **server-side**. |
+
+**The Edge Function is the interesting one.** Supabase authenticates with an
+email; players sign in with a username. Something has to map one to the other,
+and the first attempt did it with a SQL function the browser called - which
+works and hands the mapping to anyone who asks. It was defended on the grounds
+that usernames appear nowhere public in this game: true, and a defence resting
+on today's feature set rather than on anything structural.
+
+So the sign-in moved off the browser. The function does the lookup and the auth
+call with the service role and returns only a session token. The address never
+reaches a client. Password reset goes the same way - the player types their
+**username**, and the function mails whatever is on the account.
+
+It takes care over two things worth keeping: an unknown username and a wrong
+password return the same error *and* take comparably long (an unknown username
+still runs a real password check against a throwaway address, because replying
+faster for "no such user" is the same leak measured with a stopwatch), and the
+reset branch always reports success, so it cannot be used to test which
+usernames exist.
+
+`verify_jwt` is **off** on that function, which is correct rather than careless:
+it is a sign-in endpoint, so by definition the caller has no token yet, and the
+function does its own authentication.
+
 
 Deliberately NOT next: item 19, the 563KB single file. It is the largest and
 riskiest thing on this list and it would invalidate most of the machinery

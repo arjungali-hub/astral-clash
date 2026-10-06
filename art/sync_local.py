@@ -740,7 +740,7 @@ def force_online_bodies(src, dst):
 # CSS rules that differ on purpose, and WHICH DECLARATIONS do.
 #
 # Per-property, not per-rule. #lock-hint differs in two declarations and agrees
-# on fourteen, and an all-or-nothing exemption froze all sixteen - so a colour
+# on fourteen, and an all-or-nothing exemption froze all sixteen - so a color
 # fix in a rule on this list was two edits. Same contract as FIGHTER_INTERFACE:
 # the container is exempt, the parts are not, and the sync reports any property
 # that differs without being named here.
@@ -2804,10 +2804,10 @@ if (location.protocol === 'https:'
     # twice." displayName() already returns 'Bot' for a bot side - a deliberate
     # earlier decision, since the name belongs to the person and not to the slot
     # the AI is driving - and the heading appended the tag on top of it. One
-    # marker, kept in the tag's colour so it still reads at a glance.
+    # marker, kept in the tag's color so it still reads at a glance.
     dst = rep(dst, """    const botTag = isBotSide ? ' <span style="color:#f59e0b">[BOT]</span>' : '';""",
               """    // NOT a [BOT] tag on top of displayName's 'Bot'. Reported as "the header
-    // reads 'Bot [BOT]', which says the same thing twice" - the tag colours the
+    // reads 'Bot [BOT]', which says the same thing twice" - the tag colors the
     // name instead.
     const botTag = '';""",
               'bot tag says it once', required=False)
@@ -2849,9 +2849,9 @@ if (location.protocol === 'https:'
     # Rings that identify the SIDE, not the fighter.
     dst = rep(dst, """        ring.material.color.set(f.color);""",
               """        // BY SIDE, not by fighter. A mirror match gave both fighters the same
-        // ring colour and the same HUD colour, so from overhead there was
+        // ring color and the same HUD color, so from overhead there was
         // nothing to tell them apart - reported for Ignis vs Ignis. A side
-        // colour is the one thing that is always different.
+        // color is the one thing that is always different.
         ring.material.color.set(WATCH_RING_SIDE[i === 0 ? 'p1' : 'p2']);""",
               'rings identify the side', required=False)
 
@@ -2865,11 +2865,11 @@ if (location.protocol === 'https:'
     if False and 'WATCH_RING_SIDE' not in dst:
       dst = rep(dst, """const WATCH_RING_INNER = 26, WATCH_RING_OUTER = 34;""",
               """const WATCH_RING_INNER = 26, WATCH_RING_OUTER = 34;
-// Deliberately NOT the fighter's colour: see the note where these are applied.
+// Deliberately NOT the fighter's color: see the note where these are applied.
 // Blue and orange, which no character on the roster uses as its identity and
 // which stay distinguishable against every arena floor.
 const WATCH_RING_SIDE = { p1: '#38bdf8', p2: '#fb923c' };""",
-                'side ring colours', required=False)
+                'side ring colors', required=False)
 
     # THE SPECTATOR CAMERA IS SHARED NOW, so the step that used to lift it out
     # of art/local_extras.js and swap it in is gone. It lives in index.html
@@ -3473,6 +3473,28 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     for sel in ('#account-screen', '.account-row', '.account-status',
                 '.account-conflict', '.account-choices', '.account-save-line'):
         dst = _drop_rules(dst, sel)
+
+    # The daily panel's STYLES, copied wholesale from the online build.
+    #
+    # The CSS porter could not carry three of them - .daily-row, .daily-mark and
+    # .daily-mark.done - and the result was visible: the heading was styled, the
+    # rows were not, so each challenge rendered as unflexed list text at the body
+    # font size with its coin value jammed against the sentence and both player
+    # ticks run together. Reported as "the UI looks weird for this", which it was.
+    #
+    # The cause is ordering. That porter decides what to copy by asking which
+    # rules THIS build uses, and it runs before the step below inserts the panel
+    # - so at the moment it looks, the markup it would have found is not there
+    # yet. Copying the block from `src` keeps one source of truth rather than
+    # restating the rules here; only the decision to copy lives in this file.
+    if '.daily-row {' not in dst:
+        _daily_css = block(src, '        .daily-panel { margin: 10px 0 2px;',
+                           '        .daily-mark.done {')
+        if _daily_css:
+            dst = rep(dst, '        #desktop-only {',
+                      _daily_css
+                      + '        .daily-mark.done { color: #34d399; font-weight: 700; }' + chr(10)
+                      + '        #desktop-only {', 'daily panel css')
 
     # ------------------------------------------- today's challenges, placed here
     # Under the mode and How-to-Play buttons on the picker, which is this
@@ -4612,7 +4634,7 @@ def wiring_inserts(src, dst, shared_texts=()):
     invisible to it: the button travels (markup_inserts), its refresh call
     travels (statement_inserts), and the line joining the two does not - leaving
     a control that looks right and does nothing when pressed. Which is exactly
-    what happened to the Player Colours row.
+    what happened to the Player Colors row.
 
     Ported when the element EXISTS here, is not wired here, and every name the
     wiring mentions resolves here. Placed after the wiring of whichever control

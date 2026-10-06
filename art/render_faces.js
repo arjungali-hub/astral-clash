@@ -4,7 +4,7 @@
 //     node art/render_faces.js Lyra Nyx   # some
 //
 // The roster grid, the armory cards and the room's player slots all showed a
-// flat disc of the character's accent colour, because until Batch 35 there was
+// flat disc of the character's accent color, because until Batch 35 there was
 // nothing else to show - the fighters were assembled primitives with no face.
 // Now that every character has one, the circles should hold it.
 //

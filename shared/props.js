@@ -9,7 +9,7 @@
 //
 // RULES
 //   1. NO DOM, NO RENDERER, NO CLOSURE STATE. A builder here takes numbers and
-//      colours and returns a THREE.Group. It does not know which game is
+//      colors and returns a THREE.Group. It does not know which game is
 //      asking, what the arena is, or who is holding the result.
 //   2. Neither build may re-declare these names - a `const` or `function`
 //      inside bootGame() shadows the global and silently restores the drift
@@ -67,7 +67,7 @@ function leatherMat(hex) {
 }
 // The glowing edge/energy line. Unlit on purpose: the arenas are bright and
 // tone-mapped at exposure 1.1, so an emissive standard material clips to white
-// and loses its colour - the lesson the Karrigos ember seams already taught.
+// and loses its color - the lesson the Karrigos ember seams already taught.
 function energyMat(hex) {
     return getCachedMaterial('energy:' + hex, () => new THREE.MeshBasicMaterial({ color: hexNum(hex) }));
 }
@@ -154,7 +154,7 @@ function buildPommel(g, mats, x, r, hex) {
 // viewmodel branch.
 //   grip:  how much of the handle sticks out behind the hand
 //   guard: cross-guard scale, which otherwise follows the blade's width
-//   diffuse: keep some of the blade's own colour instead of reflecting the
+//   diffuse: keep some of the blade's own color instead of reflecting the
 //            arena entirely
 function buildSwordProp(bladeHex, emissiveHex, len, wide, opts) {
     const g = new THREE.Group();
@@ -166,8 +166,8 @@ function buildSwordProp(bladeHex, emissiveHex, len, wide, opts) {
     const bl = len;                    // blade length
     // Wide at the base, narrowing through the length, then a long point: the
     // profile of an actual cutting sword rather than a constant-width bar.
-    // A blade that holds its own colour. metalness 1.0 means no diffuse term -
-    // all colour comes from the environment - which is right for a sword seen
+    // A blade that holds its own color. metalness 1.0 means no diffuse term -
+    // all color comes from the environment - which is right for a sword seen
     // across an arena and wrong for the one in your hand, reported as "tinted
     // pinkish-brown, so it blends into the floor".
     const bladeMat = o.diffuse
@@ -186,7 +186,7 @@ function buildSwordProp(bladeHex, emissiveHex, len, wide, opts) {
     g.add(blade);
     mats.push(bladeMat);
 
-    // A glowing fuller down the spine - the character's accent colour, thin
+    // A glowing fuller down the spine - the character's accent color, thin
     // enough to read as an energy line rather than a painted stripe.
     const eMat = energyMat(emissiveHex || bladeHex);
     const fuller = new THREE.Mesh(
@@ -547,7 +547,7 @@ function propForAtkType(f, forVm) {
         // what makes a sword read as a sword a foot from the camera; width
         // mostly scales the furniture, and the cross-guard - sized from the
         // blade's width - was reported as dominating the frame. Plus a short
-        // grip and a blade that keeps its own colour; see buildSwordProp's opts.
+        // grip and a blade that keeps its own color; see buildSwordProp's opts.
         case 'slash': return buildSwordProp('#f2fbff', '#38bdf8',
             forVm ? 36 : 17, forVm ? 6 : 5,
             forVm ? { grip: 3.2, guard: 0.7, diffuse: true } : null);

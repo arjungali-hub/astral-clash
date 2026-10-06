@@ -1,12 +1,12 @@
 // Every visible label clears WCAG AA against what is actually behind it.
 //
 // WHY A CHECKER AND NOT AN AUDIT. A one-off measurement is true on the day it is
-// taken. Colours get adjusted - a muted grey here, a dimmer secondary there -
+// taken. Colors get adjusted - a muted grey here, a dimmer secondary there -
 // and nothing notices until somebody cannot read a button. This walks every
 // visible text leaf on every screen it can open and computes the real ratio.
 //
 // IT ACCOUNTS FOR `filter`, which is the whole reason the first pass of this
-// reported a false failure. `.fighter-btn .fname` takes its colour from the
+// reported a false failure. `.fighter-btn .fname` takes its color from the
 // fighter's identity accent, and Draven's is #6b7280 - a grey that lands at
 // 3.8:1. Both builds brighten it with `filter: brightness(1.45) saturate(1.15)`,
 // which is a rendering effect: getComputedStyle().color still reports the
@@ -63,7 +63,7 @@ const SCREENS = [
             };
             const parse = (s) => (s.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
             // A brightness() filter multiplies each channel before it is drawn.
-            // Reading only the declared colour is how this check first reported
+            // Reading only the declared color is how this check first reported
             // a failure that is not visible on screen.
             const applyFilter = (rgb, filter) => {
                 const m = /brightness\(([\d.]+)\)/.exec(filter || '');

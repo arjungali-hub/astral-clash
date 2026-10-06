@@ -29,11 +29,27 @@
 // anything. A forgotten password meant a lost account.
 //
 // So the email is real now and it is the auth identity, which makes reset work
-// with no custom machinery. Signing in is still by USERNAME, because that is
-// the name a player chose; login_email_for() in the migration is what maps one
-// to the other, and its header explains what that costs.
+// with no custom machinery.
 //
-// Entering an email at the sign-in prompt also works, and skips the lookup.
+// ============================================================================
+// AND THE BROWSER STILL NEVER LEARNS THE ADDRESS
+// ============================================================================
+//
+// Signing in is by USERNAME, because that is the name a player chose. Supabase
+// authenticates with an address, so something has to map one to the other - and
+// the first attempt did it with a SQL function the browser called, which works
+// and hands the mapping to anyone who asks.
+//
+// That was defended on the grounds that usernames appear nowhere public in this
+// game. True, and a defence resting on today's feature set rather than on
+// anything structural - one leaderboard away from being wrong.
+//
+// So the sign-in moved OFF the browser. supabase/functions/account does the
+// lookup and the auth call with the service role and returns only a session;
+// nothing here ever holds an address. Password reset goes the same way: the
+// player types their username and the function mails whatever is on the
+// account. That is why neither accountSignIn nor accountRequestReset touches
+// the Supabase auth API directly - see accountCall.
 
 // Set by the build with accountConfigure(). Both are PUBLIC by design - this
 // page is static and anyone can read it - which is why the row level security
@@ -50,6 +66,12 @@ function accountConfigure(url, key) {
 // Collapses the burst of writes one match-end produces - coins, then unlocks,
 // then challenges - into a single request. Not a rate limit; a tidy-up.
 const ACCOUNT_PUSH_MS = 2000;
+
+const ELLIPSIS = String.fromCharCode(0x2026);
+// ONE MESSAGE for a wrong username and a wrong password. Telling them apart
+// hands out which usernames exist and tells an honest player nothing they
+// could act on differently. The function says the same thing.
+const SIGNIN_FAILED = 'That username and password do not match';
 
 // Matches the CHECK constraints in the migration deliberately: a rule enforced
 // in one place and described in another drifts, and a player should hear about
@@ -233,10 +255,9 @@ function accountRedirectTo() {
 // ---------------------------------------------------------------------------
 
 async function accountSignUp(username, displayName, email, password) {
-    // THE FIELDS FIRST. These are client-side rules and answering them needs no
-    // backend - reporting "accounts are unavailable" for a username with a
-    // punctuation mark in it blames the wrong thing and sends somebody to check
-    // their connection over a typo.
+    // THE FIELDS FIRST. Client-side rules need no backend, and reporting
+    // "accounts are unavailable" for a punctuation mark in a username blames
+    // the wrong thing.
     const u = String(username || '').trim().toLowerCase();
     const d = String(displayName || '').trim();
     const e = String(email || '').trim();
@@ -245,113 +266,118 @@ async function accountSignUp(username, displayName, email, password) {
     if (bad) { accountSetStatus('error', bad); return { ok: false, error: bad }; }
     if (!accountAvailable()) return { ok: false, error: accountDetail || 'Accounts are unavailable' };
 
-    accountSetStatus('busy', 'Creating your account…');
+    accountSetStatus('busy', 'Creating your account' + ELLIPSIS);
     try {
-        // ASKED BEFORE TRYING, so a taken name is a clear sentence rather than
-        // a unique-constraint violation surfacing as "duplicate key value".
-        const { data: free, error: checkErr } =
-            await sb.rpc('username_available', { candidate: u });
-        if (checkErr) throw checkErr;
-        if (free === false) {
-            accountSetStatus('error', 'That username is taken');
+        // CREATED SERVER-SIDE, as one operation. Doing it here was the bug the
+        // first version shipped: the client called auth.signUp and then
+        // inserted the profile row itself, which only works if sign-up returns
+        // a SESSION - and with email confirmation on, which is the right
+        // setting, it does not. The client was still anonymous when it tried to
+        // write, `anon` has no insert grant on profiles, and it failed with
+        // "permission denied for table profiles" having already created the
+        // auth user. Every attempt left an account with no profile behind it.
+        const { ok, body } = await accountCall({
+            action: 'signup', username: u, displayName: d, email: e,
+            password: String(password), redirectTo: accountRedirectTo(),
+        });
+        if (!ok) {
+            accountSetStatus('error', body.error || 'Could not create the account');
             return { ok: false, error: accountDetail };
         }
-
-        const { data, error } = await sb.auth.signUp({
-            email: e,
-            password: String(password),
-            options: { emailRedirectTo: accountRedirectTo() },
-        });
-        if (error) throw error;
-        const id = data && data.user && data.user.id;
-        if (!id) throw new Error('no user came back');
-
-        // The profile row is what makes the username real. If this fails the
-        // auth user exists without one - recoverable, because accountAfterSignIn
-        // treats a missing profile as "finish signing up" rather than a crash.
-        const { error: pErr } = await sb.from('profiles')
-            .insert({ user_id: id, username: u, display_name: d });
-        if (pErr) throw pErr;
-
-        // With email confirmation ON there is no session yet: the account
-        // exists but cannot be used until the link is clicked. Saying so beats
-        // a sign-in that mysteriously fails a moment later.
-        if (!data.session) {
-            accountSetStatus('sent', 'Account created — check ' + e
-                + ' to confirm it, then sign in.');
+        // Confirmation on means there is no session yet. Saying so beats a
+        // sign-in that fails a moment later for a reason nobody mentioned.
+        if (body.confirm) {
+            accountSetStatus('sent', 'Account created ' + String.fromCharCode(0x2014)
+                + ' check ' + e + ' to confirm it, then sign in.');
             return { ok: true, confirm: true };
         }
-        await accountAfterSignIn(id);
-        return { ok: true };
-    } catch (ex) {
-        const msg = (ex && ex.message) || 'Could not create the account';
-        accountSetStatus('error', /already registered|duplicate|unique/i.test(msg)
-            ? 'That username or email is already in use' : msg);
-        return { ok: false, error: accountDetail };
-    }
-}
-
-// Accepts a username OR an email. An address is used directly; a username is
-// looked up first (see login_email_for in the migration).
-async function accountSignIn(usernameOrEmail, password) {
-    const raw = String(usernameOrEmail || '').trim();
-    if (!raw) { accountSetStatus('error', 'Enter your username'); return { ok: false, error: accountDetail }; }
-    if (!password) { accountSetStatus('error', 'Enter your password'); return { ok: false, error: accountDetail }; }
-    if (!accountAvailable()) return { ok: false, error: accountDetail || 'Accounts are unavailable' };
-
-    accountSetStatus('busy', 'Signing in…');
-    try {
-        let email = raw;
-        if (raw.indexOf('@') === -1) {
-            const { data, error } = await sb.rpc('login_email_for', { candidate: raw.toLowerCase() });
-            if (error) throw error;
-            // A username nobody has. Fall through to the auth call anyway with
-            // an address that cannot match, so an unknown username takes the
-            // same path, and the same time, as a wrong password.
-            email = data || (' unknown@' + location.hostname);
-        }
-        const { data, error } = await sb.auth.signInWithPassword({
-            email, password: String(password),
+        const { data, error } = await sb.auth.setSession({
+            access_token: body.access_token, refresh_token: body.refresh_token,
         });
         if (error) throw error;
         await accountAfterSignIn(data.user.id);
         return { ok: true };
     } catch (ex) {
-        const msg = (ex && ex.message) || '';
-        // ONE MESSAGE for a wrong username and a wrong password. Telling them
-        // apart hands out which usernames exist and tells an honest player
-        // nothing they could act on differently. The unconfirmed-email case IS
-        // worth separating, because the fix is in their inbox.
-        accountSetStatus('error', /not confirmed|confirm/i.test(msg)
-            ? 'Confirm your email address first — check your inbox'
-            : 'That username and password do not match');
+        accountSetStatus('error', (ex && ex.message) || 'Could not create the account');
         return { ok: false, error: accountDetail };
     }
 }
 
-// SENDS THE LINK. Takes an email, not a username: asking for the address means
-// somebody who has forgotten their username can still get in, and it keeps this
-// path from depending on the username lookup at all.
-async function accountRequestReset(email) {
-    const e = String(email || '').trim();
-    const bad = emailProblem(e);
-    if (bad) { accountSetStatus('error', bad); return { ok: false, error: bad }; }
+// Where sign-in and reset actually happen. See supabase/functions/account for
+// why they are not done here: the browser must never learn which address is
+// behind a username, and signInWithPassword would require exactly that.
+function accountFunctionURL() { return SUPABASE_URL + '/functions/v1/account'; }
+
+async function accountCall(payload) {
+    const res = await fetch(accountFunctionURL(), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            // The function runs without JWT verification - it is a sign-in
+            // endpoint, so by definition the caller has no token yet - but the
+            // gateway in front of it still wants a project key.
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(payload),
+    });
+    let body = {};
+    try { body = await res.json(); } catch (e) { /* a non-JSON reply is a failure anyway */ }
+    return { ok: res.ok, body };
+}
+
+// BY USERNAME. The address is not involved on this side at all.
+async function accountSignIn(username, password) {
+    const u = String(username || '').trim().toLowerCase();
+    if (!u) { accountSetStatus('error', 'Enter your username'); return { ok: false, error: accountDetail }; }
+    if (!password) { accountSetStatus('error', 'Enter your password'); return { ok: false, error: accountDetail }; }
     if (!accountAvailable()) return { ok: false, error: accountDetail || 'Accounts are unavailable' };
 
-    accountSetStatus('busy', 'Sending…');
+    accountSetStatus('busy', 'Signing in' + ELLIPSIS);
     try {
-        const { error } = await sb.auth.resetPasswordForEmail(e, {
-            redirectTo: accountRedirectTo(),
+        const { ok, body } = await accountCall({
+            action: 'login', username: u, password: String(password),
+        });
+        if (!ok || !body.access_token) {
+            // Whatever the function said. It returns ONE message for a wrong
+            // username and a wrong password deliberately, and separates only
+            // the unconfirmed-email case, where the fix is in their inbox.
+            accountSetStatus('error', body.error || SIGNIN_FAILED);
+            return { ok: false, error: accountDetail };
+        }
+        // The session arrives as tokens rather than as a signed-in client,
+        // because the signing in happened somewhere else. Handing them to the
+        // local client is what makes every later request authenticated.
+        const { data, error } = await sb.auth.setSession({
+            access_token: body.access_token, refresh_token: body.refresh_token,
         });
         if (error) throw error;
+        await accountAfterSignIn(data.user.id);
+        return { ok: true };
     } catch (ex) {
-        // Deliberately NOT reported as a failure. Supabase answers the same way
-        // whether or not the address has an account, and so does this: saying
-        // "no account with that email" would turn the reset form into a way of
-        // testing which addresses are registered.
+        accountSetStatus('error', SIGNIN_FAILED);
+        return { ok: false, error: accountDetail };
     }
-    accountSetStatus('sent', 'If there is an account for ' + e
-        + ', a reset link is on its way.');
+}
+
+// SENDS THE LINK, BY USERNAME. The player types the name they remember and the
+// function mails whatever address is on the account - this side never sees it,
+// and never needed to.
+async function accountRequestReset(username) {
+    const u = String(username || '').trim().toLowerCase();
+    if (!u) { accountSetStatus('error', 'Enter your username'); return { ok: false, error: accountDetail }; }
+    if (!accountAvailable()) return { ok: false, error: accountDetail || 'Accounts are unavailable' };
+
+    accountSetStatus('busy', 'Sending' + ELLIPSIS);
+    try {
+        await accountCall({ action: 'reset', username: u, redirectTo: accountRedirectTo() });
+    } catch (ex) {
+        // Deliberately not reported as a failure, and the function answers the
+        // same way regardless: anything else turns this form into a way of
+        // testing which usernames exist.
+    }
+    accountSetStatus('sent', 'If there is an account called ' + u
+        + ', a reset link is on its way to the email on it.');
     return { ok: true };
 }
 
@@ -508,9 +534,10 @@ function accountPanelHTML() {
     }
 
     if (st.mode === 'forgot') {
-        return '<p class="account-status">We will email you a link to set a new one.</p>'
-            + accountField('input-account-email', 'Email', 'email',
-                'the address on your account', 'email', 120, dis)
+        return '<p class="account-status">Enter your username and we will email a '
+            + 'link to the address on the account.</p>'
+            + accountField('input-account-user', 'Username', 'text',
+                '', 'username', 20, dis)
             + '<button id="btn-account-go"' + dis + '>'
             + (busy ? '…' : 'Send reset link') + '</button>'
             + note('')
@@ -527,8 +554,8 @@ function accountPanelHTML() {
         + '<button id="btn-account-mode-in" class="account-tab' + (up ? '' : ' on') + '">Sign in</button>'
         + '<button id="btn-account-mode-up" class="account-tab' + (up ? ' on' : '') + '">Create account</button>'
         + '</div>'
-        + accountField('input-account-user', up ? 'Username' : 'Username or email', 'text',
-            up ? '3-20 characters' : '', 'username', 120, dis)
+        + accountField('input-account-user', 'Username', 'text',
+            up ? '3-20 characters' : '', 'username', 20, dis)
         + (up ? accountField('input-account-display', 'Display name', 'text',
             'what other players see', 'nickname', DISPLAY_MAX, dis) : '')
         + (up ? accountField('input-account-email', 'Email', 'email',
@@ -568,7 +595,7 @@ function wireAccountPanel() {
     const submit = () => {
         let go;
         if (accountMode === 'recover') go = accountSetNewPassword(val('input-account-pass'));
-        else if (accountMode === 'forgot') go = accountRequestReset(val('input-account-email'));
+        else if (accountMode === 'forgot') go = accountRequestReset(val('input-account-user'));
         else if (accountMode === 'up') {
             go = accountSignUp(val('input-account-user'), val('input-account-display'),
                 val('input-account-email'), val('input-account-pass'));

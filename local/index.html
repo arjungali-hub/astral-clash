@@ -451,7 +451,7 @@
             margin-right: 7px;
         }
         /* Batch 49: a floor under the accent's brightness. Draven's identity
-           colour is #6b7280, a mid grey - which as a card NAME is exactly what
+           color is #6b7280, a mid grey - which as a card NAME is exactly what
            a disabled control looks like, so an unlocked fighter read as locked.
            The accent still tints it; it just cannot go dim. */
         .fighter-btn .fname {
@@ -745,7 +745,7 @@
             color: #94a3b8; font-size: 0.74rem; font-weight: 700;
             letter-spacing: 0.04em;
         }
-        /* ON is the only state that gets colour, so a glance finds it. */
+        /* ON is the only state that gets color, so a glance finds it. */
         .opt.is-on .opt-state {
             background: rgba(0, 243, 255, 0.14); border-color: #00f3ff; color: #00f3ff;
         }
@@ -910,6 +910,30 @@
         #match-summary { font-size: 0.72rem; color: #94a3b8; text-align: left; margin: 8px 0; line-height: 1.5; }
         #match-summary b { color: #e2e8f0; }
         #pause-controls-reminder { font-size: 0.72rem; line-height: 1.6; text-align: left; }
+        .daily-panel { margin: 10px 0 2px; text-align: left; }
+        .daily-panel h4 {
+            margin: 0 0 6px; font-size: 0.68rem; letter-spacing: 0.1em;
+            /* #64748b read 4.02:1 against this panel - under AA's 4.5 for text
+               this size, and caught by contrastcheck the first time CI managed
+               to run it. #7c8ba3 is the smallest step that clears it (5.17:1)
+               and keeps the heading quieter than the challenge text it labels,
+               which was the point of the grey. */
+            text-transform: uppercase; color: #7c8ba3; font-weight: 700;
+        }
+        .daily-list { list-style: none; margin: 0; padding: 0;
+                      display: flex; flex-direction: column; gap: 5px; }
+        .daily-row {
+            display: flex; align-items: baseline; gap: 8px;
+            font-size: 0.72rem; line-height: 1.35; color: #cbd5e1;
+            /* The text column takes the slack so the coin value and the ticks
+               stay in a line down the panel instead of wandering with the
+               length of each challenge. */
+        }
+        .daily-text { flex: 1 1 auto; }
+        .daily-coins { flex: none; color: #f59e0b; font-weight: 700;
+                       font-variant-numeric: tabular-nums; }
+        .daily-mark { flex: none; color: #475569; font-size: 0.68rem; }
+        .daily-mark.done { color: #34d399; font-weight: 700; }
         #desktop-only {
             display: none;
             position: fixed;
@@ -1119,7 +1143,7 @@
            alpha - measured, and indistinguishable at a glance. Reported as "the
            loading animation doesn't actually shift between the four bars, it
            just stays on the first bar": the wave was there and too faint to
-           read. Same four segments, same skew, same colour; the timing is what
+           read. Same four segments, same skew, same color; the timing is what
            changes. */
         .ld-seg:nth-child(2) { animation-delay: .3s; }
         .ld-seg:nth-child(3) { animation-delay: .6s; }
@@ -1480,7 +1504,7 @@
                     <div class="settings-list">
                         <button id="btn-open-rebind" class="btn-secondary">Rebind Keys</button>
                         <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
-                        <button id="btn-side-palette" class="opt" title="Switch the two player colours to a colourblind-safe pair">Player Colours<span class="opt-state">Standard</span></button>
+                        <button id="btn-side-palette" class="opt" title="Switch the two player colors to a colorblind-safe pair">Player Colors<span class="opt-state">Standard</span></button>
 
                         <button id="btn-lang" class="opt" title="Language of menus and help text">Language<span class="opt-state">English</span></button>
 
@@ -2555,7 +2579,7 @@ function hudFont(px, bold) {
     return `${bold ? 700 : 500} ${Math.max(9, Math.round(size))}px ${HUD_FAMILY}`;
 }
 // Writes an option row's current state into its pill. `on` is what gives it
-// colour - the only state that gets any, so a glance finds what is enabled.
+// color - the only state that gets any, so a glance finds what is enabled.
 function cycleHudScale() {
     HUD_TEXT_SCALE = HUD_TEXT_SCALE >= 1.3 ? 1 : 1.3;
     safeLSSet('astralClashHudScale', HUD_TEXT_SCALE);
@@ -2888,7 +2912,7 @@ function buildSkyDome() {
     // 256x128 equirectangular, not a 16-pixel-wide strip. The width is what
     // makes the environment DIRECTIONAL: with one column of pixels there is no
     // such thing as a sun azimuth, so every horizontal direction reflects the
-    // same colour and the PMREM lights all four walls identically.
+    // same color and the PMREM lights all four walls identically.
     skyTexCanvas = document.createElement('canvas');
     skyTexCanvas.width = 256; skyTexCanvas.height = 128;
     const tex = new THREE.CanvasTexture(skyTexCanvas);
@@ -2925,10 +2949,10 @@ buildSkyDome();
 // painted, and it fixed a bug that looked like a material mistake.
 //
 // The rebuilt weapons use physically-correct metal (metalness 1.0), and a fully
-// metallic surface in three.js takes its colour ENTIRELY from what it reflects.
+// metallic surface in three.js takes its color ENTIRELY from what it reflects.
 // With no environment map there is nothing to reflect, so a polished steel
 // blade renders pure BLACK - which is exactly how the first sword screenshot
-// came out. Metals need an environment, not a brighter base colour.
+// came out. Metals need an environment, not a brighter base color.
 //
 // The environment is generated from the same sky gradient the player is
 // actually standing under, so reflections match the arena's own palette and
@@ -2969,8 +2993,8 @@ function applySky(theme) {
     // THE GROUND HALF. An equirect's lower half is what a downward-facing
     // surface reflects, and a sky gradient there means the underside of every
     // ledge is lit by sky - which is half of why nothing had a dark side. The
-    // map's own floor colour is the honest answer to "what is below".
-    // Theme colours are hex NUMBERS (0xaecbe6), and a canvas gradient throws on
+    // map's own floor color is the honest answer to "what is below".
+    // Theme colors are hex NUMBERS (0xaecbe6), and a canvas gradient throws on
     // one - "The value provided ('16767136') could not be parsed as a color".
     // theme.sky[] is already a CSS string; floorColor and sun.color are not.
     const cssHex = (c) => (typeof c === 'number'
@@ -3423,7 +3447,7 @@ let currentMapName = '';
 // stone pillar, sleek energy pylon, fluted marble column, natural red-rock
 // spire, or an ice-crystal cluster. Solid cover you fight around.
 // Batch 34: columns were the last untextured thing in the arena - flat
-// MeshStandardMaterial colours with no map of any kind - so once the walls and
+// MeshStandardMaterial colors with no map of any kind - so once the walls and
 // floors became photographic they were what still read as clay. They take the
 // theme's WALL set, which is also correct art direction: a stone arena's
 // pillars are cut from the same stone as its walls.
@@ -4011,7 +4035,7 @@ function positionWatchCamera(aspect) {
     watchCam.updateProjectionMatrix();
 }
 
-// A ring on the ground under each fighter, in that fighter's own colour. The
+// A ring on the ground under each fighter, in that fighter's own color. The
 // other half of "tiny and pale": from overhead a fighter is a few dozen pixels
 // of mostly-dark mesh against a lit floor, and which one is which is the first
 // thing a spectator needs. Built on demand (a spectator match is the only
@@ -4046,9 +4070,9 @@ function syncWatchRings(on) {
         // Just above the floor: coplanar with it would z-fight.
         ring.position.set(worldX(f.x + f.width / 2), 1.5, worldZ(f.y + f.height / 2));
         // BY SIDE, not by fighter. A mirror match gave both fighters the same
-        // ring colour and the same HUD colour, so from overhead there was
+        // ring color and the same HUD color, so from overhead there was
         // nothing to tell them apart - reported for Ignis vs Ignis. A side
-        // colour is the one thing that is always different.
+        // color is the one thing that is always different.
         ring.material.color.set(WATCH_RING_SIDE[i === 0 ? 'p1' : 'p2']);
     }
 }
@@ -4218,7 +4242,7 @@ function attachSurfaceMaps(mat, key, opts) {
         const t = new THREE.CanvasTexture(cv);
         t.wrapS = t.wrapT = THREE.RepeatWrapping;
         t.anisotropy = 8;
-        // A normal/roughness map is DATA, not colour: tagging it sRGB would
+        // A normal/roughness map is DATA, not color: tagging it sRGB would
         // gamma-decode the vectors and flatten the lighting.
         t.encoding = THREE.LinearEncoding;
         t.repeat.copy(r);
@@ -4245,7 +4269,7 @@ function attachSurfaceMaps(mat, key, opts) {
 // the complaint this work exists to answer.
 //
 // So: real 1k PBR sets from PolyHaven (CC0), three files each -
-//   Diffuse  base colour, sRGB
+//   Diffuse  base color, sRGB
 //   nor_gl   normal, OPENGL convention. Not nor_dx - three.js is GL, and the
 //            DirectX variant has Y inverted, which lights everything backwards.
 //   arm      AO + Roughness + Metalness packed in R/G/B, which is exactly the
@@ -4339,16 +4363,16 @@ function attachPhotoSurface(mat, kind, texId, rx, ry, opts) {
         }
         // Soften the theme tint. `color` multiplies the albedo, and the
         // procedural canvases were near-grey by design so a strong tint WAS
-        // the map's colour. A real photograph already carries its own colour,
+        // the map's color. A real photograph already carries its own color,
         // so multiplying it by, say, Voltaic Nexus' blue-grey turned green
         // industrial steel into mud. Pulling the tint most of the way toward
         // white keeps each arena's cast - which is what makes them
         // recognisable - without fighting the albedo for control of the hue.
-        // 0.72 rather than 0.55: the theme wall colours are genuinely dark
+        // 0.72 rather than 0.55: the theme wall colors are genuinely dark
         // (Voltaic Nexus is 0x3a557e), and multiplying an already mid-dark
         // steel albedo by a dark blue produced near-black walls - the opposite
         // of the problem the tint fade was added to solve. A photographic
-        // albedo needs the tint as a CAST, not as the colour.
+        // albedo needs the tint as a CAST, not as the color.
         //
         // KEYED BY THE TINT, not by "has this ever been tinted". These
         // materials are cached and shared across arenas (see getCachedMaterial
@@ -4360,7 +4384,7 @@ function attachPhotoSurface(mat, kind, texId, rx, ry, opts) {
         // bright tan canyon".
         //
         // The guard cannot just be dropped: lerp compounds, so a material would
-        // creep toward white on every load. The base colour is kept instead and
+        // creep toward white on every load. The base color is kept instead and
         // the tint recomputed from it, which is idempotent for a repeat and
         // correct for a change.
         const fade = opts.tintFade != null ? opts.tintFade : 0.72;
@@ -4843,7 +4867,7 @@ function buildScenery(map, theme) {
 }
 // ONE PROJECTILE'S VISUALS. Lifted out of syncProjectiles, which is a loop and
 // was no place for a builder - and, more to the point, so that a round can
-// build one of these per colour BEFORE the fight and compile it. See
+// build one of these per color BEFORE the fight and compile it. See
 // warmCombatShaders.
 function buildProjectileVisual(p) {
     // An actual energy bolt, not a dot: a stretched crystalline
@@ -4864,7 +4888,7 @@ function buildProjectileVisual(p) {
     // 16-frame cooldown and her special is a five-shard volley, so
     // that is a constant churn of GPU objects - the same shape of
     // problem as the Batch 30 crush stutter. Materials are cached
-    // per colour now: a projectile allocates one Group and three
+    // per color now: a projectile allocates one Group and three
     // Meshes, and no GPU resources at all.
     const key = (p.color || '#00f3ff');
     const c = new THREE.Color(key);
@@ -4955,7 +4979,7 @@ function warmMuzzleFlashPool() {
 // whatever the player happened to be doing.
 //
 // renderer.compile() is exactly the tool for this. The projectile visuals are
-// built per colour, compiled, and taken out again: the MATERIALS stay in the
+// built per color, compiled, and taken out again: the MATERIALS stay in the
 // cache, already compiled, and the real shots pick them up for free.
 function warmCombatShaders(colors) {
     warmMuzzleFlashPool();
@@ -6473,7 +6497,7 @@ class Fighter {
             p.mesh.position.set(worldX(p.x), p.z, worldZ(p.y));
             p.mesh.rotation.y = -Math.atan2(p.vy, p.vx); // face travel direction (X→X, Y→Z world mapping)
             // The shimmer scales the halo instead of fading a material: the
-            // materials are shared per colour now, so writing opacity here
+            // materials are shared per color now, so writing opacity here
             // would make every bolt on screen pulse in lockstep - and would
             // write the same value once per projectile per frame for nothing.
             const flick = 0.92 + Math.sin(arenaTime * 0.6 + p.x) * 0.08;
@@ -7427,7 +7451,7 @@ function buildGrid(gridId, keyList, side) {
         btn.dataset.key = keyList[i].toUpperCase();
         btn.style.setProperty('--accent', c.color);
         // The face chip goes FIRST so the card reads portrait-then-name, and
-        // it carries the accent colour behind it as both a tint and a fallback
+        // it carries the accent color behind it as both a tint and a fallback
         // for a missing file. Batch 37.
         btn.innerHTML =
             `<span class="fface" style="background-color:${c.color};background-image:url('${faceUrl(c.name)}')"></span>`
@@ -7560,7 +7584,7 @@ function headingHTML(num, stage) {
     const side = num === 1 ? 'p1' : 'p2', b = BINDINGS[side];
     const isBotSide = num === 1 ? p1IsBot : p2IsBot;
     // NOT a [BOT] tag on top of displayName's 'Bot'. Reported as "the header
-    // reads 'Bot [BOT]', which says the same thing twice" - the tag colours the
+    // reads 'Bot [BOT]', which says the same thing twice" - the tag colors the
     // name instead.
     const botTag = '';
     const padTag = padSlots[side] != null ? ` <span class="pad-badge" title="Gamepad connected"><svg viewBox="0 0 24 16" width="1.1em" height="0.73em" fill="currentColor" aria-hidden="true" style="vertical-align:middle"><rect x="1" y="3" width="22" height="10" rx="5"/><circle cx="7" cy="8" r="1.5" fill="#0d0f18"/><circle cx="17" cy="8" r="1.5" fill="#0d0f18"/></svg></span>` : '';
@@ -8184,7 +8208,7 @@ document.getElementById('btn-quit-to-menu').addEventListener('click', (e) => {
 // dashed collar that makes it read as active rather than painted on, four
 // corner ticks pointing in, and a wide column of light standing over it that
 // can be seen from across the arena and over cover. Nothing here is per-frame
-// allocation - syncZone only writes colours, opacities and one rotation.
+// allocation - syncZone only writes colors, opacities and one rotation.
 function buildZoneMesh() {
     disposeZoneMesh();
     const g = new THREE.Group();
@@ -8245,7 +8269,7 @@ function updateZoneControl(dt) {
     // rather than only on the HUD.
     if (zoneMesh) {
         const u = zoneMesh.userData;
-        // Held: the holder's colour, pulsing. EMPTY: a bright amber beacon, and
+        // Held: the holder's color, pulsing. EMPTY: a bright amber beacon, and
         // MORE visible than when held - an unclaimed zone is the one asking you
         // to come and stand in it. It used to be dimmest exactly then.
         const held = zoneHolder ? sideColorHex(zoneHolder) : 0xffd166;
@@ -8259,7 +8283,7 @@ function updateZoneControl(dt) {
         for (const seg of u.collar.children) seg.material.opacity = zoneHolder ? 0.55 : 0.8;
         for (const t of u.ticks.children) t.material.opacity = zoneHolder ? 0.3 : 0.6;
         // Turning while empty, still while held: motion is what the eye finds,
-        // and once somebody owns it the colour says so.
+        // and once somebody owns it the color says so.
         u.collar.rotation.y += (zoneHolder ? 0.004 : 0.011) * dt;
     }
 }

@@ -61,10 +61,10 @@ const PROGRESSION_KEY = 'astralClashProgression';
 
 const SIDES = ['p1', 'p2'];
 
-// ------------------------------------------------------- side colours
-// WHICH SIDE IS WHICH, as a colour. Cyan against pink reads clearly to most
+// ------------------------------------------------------- side colors
+// WHICH SIDE IS WHICH, as a color. Cyan against pink reads clearly to most
 // people and poorly to anyone with deuteranopia or protanopia - together the
-// great majority of colourblindness - and in three places the colour is the
+// great majority of colorblindness - and in three places the color is the
 // only channel: the zone pillar in the arena, the two zone tracks on the HUD,
 // and the rings under each fighter in a spectator match.
 //
@@ -73,10 +73,17 @@ const SIDES = ['p1', 'p2'];
 // for exactly this reason; this makes the choice available everywhere.
 const SIDE_PALETTES = {
     standard:    { p1: '#00f3ff', p2: '#f472b6' },
-    colourblind: { p1: '#0072b2', p2: '#e69f00' },
+    colorblind: { p1: '#0072b2', p2: '#e69f00' },
 };
 const SIDE_PALETTE_KEY = 'astralClashSidePalette';
-let sidePalette = safeLSGet(SIDE_PALETTE_KEY) === 'colourblind' ? 'colourblind' : 'standard';
+// BOTH SPELLINGS ARE ACCEPTED ON READ. The stored value used to be
+// 'colourblind'; renaming the constant without this would silently put anybody
+// who had already switched back onto cyan-and-pink - the exact pair they
+// switched away from because they could not tell it apart. Written back as the
+// new spelling on the next change, so the old one fades out on its own.
+const _savedPalette = safeLSGet(SIDE_PALETTE_KEY);
+let sidePalette = (_savedPalette === 'colorblind' || _savedPalette === 'colourblind')
+    ? 'colorblind' : 'standard';
 
 function sideColor(side) {
     return (SIDE_PALETTES[sidePalette] || SIDE_PALETTES.standard)[side === 'p2' ? 'p2' : 'p1'];
@@ -89,11 +96,11 @@ function sideColorHex(side) {
 }
 
 // THE RINGS UNDER EACH FIGHTER in a spectator match, by SIDE rather than by
-// fighter: a mirror match gave both the same ring and the same HUD colour, so
+// fighter: a mirror match gave both the same ring and the same HUD color, so
 // from overhead there was nothing to tell them apart.
 //
 // DECLARED HERE BECAUSE IT WAS DECLARED NOWHERE. Both builds referenced it
-// and neither defined it, so the line that colours a ring threw a
+// and neither defined it, so the line that colors a ring threw a
 // ReferenceError - in the one view it exists for, a two-bot match. The
 // dangling-reference guard could not see it: that guard is bounded by the
 // online build's vocabulary, and this name was in neither build's.
@@ -115,13 +122,13 @@ function setSidePalette(key) {
 }
 
 function toggleSidePalette() {
-    setSidePalette(sidePalette === 'standard' ? 'colourblind' : 'standard');
+    setSidePalette(sidePalette === 'standard' ? 'colorblind' : 'standard');
 }
 
 function refreshSidePaletteUI() {
     setOptState('btn-side-palette',
-                sidePalette === 'colourblind' ? 'Colourblind' : 'Standard',
-                sidePalette === 'colourblind');
+                sidePalette === 'colorblind' ? 'Colorblind' : 'Standard',
+                sidePalette === 'colorblind');
 }
 
 
@@ -356,7 +363,7 @@ function _canvas() {
 }
 
 // --- Derived PBR maps. -----------------------------------------------------
-// The arena had colour textures and nothing else, so every surface was
+// The arena had color textures and nothing else, so every surface was
 // perfectly smooth: mortar courses, panel seams and cracks were painted on and
 // vanished the moment you looked along a wall.
 //
@@ -563,7 +570,7 @@ function accentEmissiveTexture(sourceCanvas, accentHex, key) {
             const r = src.data[i * 4], g = src.data[i * 4 + 1], b = src.data[i * 4 + 2];
             // Distance in RGB is crude but sufficient here: the accents are
             // saturated and the base palettes are greys and browns, so the
-            // two are far apart in any colour space.
+            // two are far apart in any color space.
             const d = Math.hypot(r - ar, g - ag, b - ab);
             const k = Math.max(0, 1 - d / 92);          // 1 at the accent, 0 well away
             const v = k * k;                            // bias toward the strongest matches
@@ -579,7 +586,7 @@ function accentEmissiveTexture(sourceCanvas, accentHex, key) {
         ctx.putImageData(img, 0, 0);
         out = new THREE.CanvasTexture(cv);
         out.wrapS = out.wrapT = THREE.RepeatWrapping;
-        out.encoding = THREE.sRGBEncoding;   // it IS colour, unlike normal/ORM
+        out.encoding = THREE.sRGBEncoding;   // it IS color, unlike normal/ORM
         out.anisotropy = 4;
     } catch (e) {
         out = null;                          // tainted canvas or no 2d context
@@ -608,7 +615,7 @@ function attachAccentGlow(mat, sourceTexture, theme, key, rx, ry, intensity) {
         _accentTiled[ck] = t;
     }
     mat.emissiveMap = t;
-    mat.emissive = new THREE.Color(0xffffff);   // the MAP carries the colour
+    mat.emissive = new THREE.Color(0xffffff);   // the MAP carries the color
     mat.emissiveIntensity = intensity != null ? intensity : 0.85;
     mat.userData.keepMap = true;
     mat.needsUpdate = true;
@@ -1071,7 +1078,7 @@ function _bakePosedGeometry(skinned, keep) {
         positions[i * 3 + 2] = tmp.z;
     }
     out.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    // Carry UVs and vertex colours; they are pose-independent.
+    // Carry UVs and vertex colors; they are pose-independent.
     for (const name of ['uv', 'uv2', 'color']) {
         const attr = geo.attributes[name];
         if (!attr) continue;
@@ -1324,7 +1331,7 @@ function markSelected(side, name) {
 
 // Batch 37: the circles hold the character's FACE.
 //
-// They were a flat disc of the character's accent colour, which was the right
+// They were a flat disc of the character's accent color, which was the right
 // answer when the fighters were assembled primitives with no face to show.
 // Every character has one now, so `assets/faces/<name>.png` is a baked
 // head-and-shoulders portrait rendered from the actual model by
@@ -1336,7 +1343,7 @@ function markSelected(side, name) {
 // portrait wants its own framing and lighting rather than whatever the arena
 // happens to have.
 //
-// The accent colour stays as the border and glow - it is how a fighter is
+// The accent color stays as the border and glow - it is how a fighter is
 // identified everywhere else - and stays as the FALLBACK fill, so a missing
 // portrait file degrades to exactly the old behaviour instead of a blank hole.
 function faceUrl(name) { return AC_ASSET_BASE + 'faces/' + String(name).toLowerCase() + '.png'; }
@@ -1349,7 +1356,7 @@ function arenaSlug(name) {
 //
 // Reported: "the arena previews when you are selecting one don't look like the
 // actual arenas... they should literally be the arenas from a top down view."
-// They were flat rectangles on a flat floor colour, which says where things are
+// They were flat rectangles on a flat floor color, which says where things are
 // and nothing about what the place looks like.
 //
 // art/render_arenas.js renders each one with its real textures and lighting.
@@ -1646,7 +1653,7 @@ function loadPhotoSet(setId) {
             t => {
                 t.wrapS = t.wrapT = THREE.RepeatWrapping;
                 t.anisotropy = 8;
-                // Colour is colour; normals and packed ORM are DATA. Tagging
+                // Color is color; normals and packed ORM are DATA. Tagging
                 // data as sRGB gamma-decodes the vectors and flattens the
                 // lighting - the single easiest way to make PBR look wrong.
                 t.encoding = srgb ? THREE.sRGBEncoding : THREE.LinearEncoding;
@@ -1682,7 +1689,7 @@ let vmP1 = null, vmP2 = null;
 // Without this, a viewmodel built during the load window keeps the PROCEDURAL
 // arm for the whole match: a primitive forearm tinted by the arena's light,
 // holding a fist prop that the real arm does not want. Reported as Gorgonok's
-// "large yellow/gold hexagonal block" and an arm that changed colour between
+// "large yellow/gold hexagonal block" and an arm that changed color between
 // arenas - neither of which was his arm at all.
 //
 // Guarded on actually needing it, so a match that started with both models
@@ -1940,7 +1947,7 @@ const MAP_THEMES = {
     // Volcanic foundry — black basalt with glowing lava seams, smoky warm daylight.
     'Molten Foundry': {
         // Its whole identity is being nearly black, so this is the one theme
-        // that needs its own colour to actually apply (see themeTintFade) AND
+        // that needs its own color to actually apply (see themeTintFade) AND
         // its own exposure, the same lever the three pale arenas use in the
         // other direction. A foundry should be the darkest room in the game.
         tintFade: 0.10,
@@ -1984,10 +1991,10 @@ const MAP_THEMES = {
         fog: { color: 0xd6f0ee, near: 1700, far: 5400 }, scenery: 'coral'
     }
 };
-// How much of a theme's COLOUR survives onto the photographic albedo.
+// How much of a theme's COLOR survives onto the photographic albedo.
 //
 // 0.62 means "mostly faded", which Batch 34 chose because a real photograph
-// carries its own colour and multiplying medieval blocks by a courtyard's
+// carries its own color and multiplying medieval blocks by a courtyard's
 // grey-green turned them to mud. That reasoning holds for every theme whose
 // identity is its architecture - and fails completely for one whose identity is
 // being nearly black: Molten Foundry's basalt and lava both map to a TAN rock
@@ -2411,8 +2418,8 @@ const _charModelPromises = {};   // name -> Promise, so N callers cause 1 fetch
 
 let _charLoader = null;
 
-// A character's accent colour, as a portrait swatch. A real portrait would mean
-// rendering ten headshots; the accent colour is already the fighter's identity
+// A character's accent color, as a portrait swatch. A real portrait would mean
+// rendering ten headshots; the accent color is already the fighter's identity
 // everywhere else in the UI (card border, detail panel, HUD), so reusing it
 // keeps the slot readable without inventing new art.
 function paintSlotPortrait(el, name) {
@@ -3164,7 +3171,7 @@ function groundLevelAt(x, y) {
 // places (steel, sandstone, granite, marble, red rock, ice). ---
 const derivedCanvasCache = {};
 
-// The procedural canvas, reduced to just its accent-coloured pixels, as an
+// The procedural canvas, reduced to just its accent-colored pixels, as an
 // emissive overlay. This is what keeps each arena recognisable once a shared
 // photographic base is doing the heavy lifting: Voltaic Nexus' glowing seams,
 // Molten Foundry's lava cracks and the Colosseum's ivy are all painted in the
@@ -3788,10 +3795,10 @@ function makeNameSprite(text, color) {
 // free), add a slightly-scaled BackSide clone sharing the same geometry.
 // Front faces of the real mesh still win the depth test everywhere except
 // right at the silhouette edge, which is exactly where a rim should show.
-// `opts.color` overrides the derived rim colour and `opts.scale` its thickness.
+// `opts.color` overrides the derived rim color and `opts.scale` its thickness.
 // Both exist for Batch 17's boss: this shell is an UNLIT MeshBasicMaterial, so
 // it renders at flat full brightness regardless of scene lighting, and the
-// default (body colour lightened 25%) on a 1.5x-scaled boss with chunky limbs
+// default (body color lightened 25%) on a 1.5x-scaled boss with chunky limbs
 // produced a thick pale-cream border that swamped the actual stone body and made
 // the whole boss read as beige plastic. A dark, tighter rim instead gives it a
 // crisp silhouette that holds up on both pale and dark maps.
@@ -3841,7 +3848,7 @@ function addRimOutline(group, colorHex, opts) {
 // Batch 28: the first-person arm.
 //
 // This used to be one BoxGeometry(3.4, 3.4, 11) - a bare rectangular stick in
-// the character's flat body colour. It is on screen every frame of every match,
+// the character's flat body color. It is on screen every frame of every match,
 // so it was the single most-seen piece of art in the game and also the crudest,
 // and it looked nothing like the armoured arm the same character has in third
 // person now that the bodies are Blender-authored.
@@ -3859,7 +3866,7 @@ function addRimOutline(group, colorHex, opts) {
 // exactly like they do in third-person view, with the same hands and
 // everything else". The viewmodel arm was a hand-built assembly of primitives
 // - a tapered cylinder, a bracer, a box palm, four sphere knuckles - wearing
-// the character's accent colour. That is the best you can do with no model;
+// the character's accent color. That is the best you can do with no model;
 // with a real rigged model in memory it is strictly worse than the truth, and
 // it means Draven's steel gauntlet and Lyra's sleeve look like the same arm
 // painted differently.

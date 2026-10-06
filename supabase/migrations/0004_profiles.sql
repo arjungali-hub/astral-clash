@@ -12,24 +12,11 @@
 -- So: auth.users.email holds the player's real address, and
 -- resetPasswordForEmail() works with no custom machinery at all.
 --
--- WHICH LEAVES ONE PROBLEM. Signing in needs the email, and the player types a
--- USERNAME. Something has to map one to the other before the auth call, and
--- there is no server of ours to do it in - this is a static page talking
--- straight to Supabase.
---
--- login_email_for() below is that mapping, and it DOES let anyone who guesses a
--- username learn the address behind it. That is a real cost and it is taken
--- knowingly:
---
---   * usernames are not published anywhere in this game. There are no profiles,
---     no leaderboards and no player list; an opponent sees your DISPLAY name,
---     never your username. So there is nothing to enumerate from.
---   * the alternative is email-only sign-in, which removes the function
---     entirely. If that trade ever looks wrong, deleting login_email_for and
---     the one branch that calls it is the whole change.
---
--- Every real site that offers username login either does it server-side or
--- accepts this. With no server, those are the two options.
+-- SIGNING IN DOES NOT HAPPEN HERE. The player types a username and Supabase
+-- wants an address, so something must map one to the other - and if the browser
+-- does that mapping, the mapping is public. It happens in the `account` Edge
+-- Function instead, which looks the address up with the service role, performs
+-- the sign-in, and returns only a session. See supabase/functions/account.
 
 create table if not exists public.profiles (
     -- Same key shape as `saves`: the user IS the row.
@@ -90,32 +77,26 @@ as $$
     );
 $$;
 
--- THE USERNAME -> EMAIL MAPPING signing in needs. See the header for why this
--- exists and what it costs.
+-- THERE IS NO USERNAME -> EMAIL FUNCTION HERE, and that is the point.
 --
--- Returns null for an unknown username rather than raising: "no such user" and
--- "wrong password" must be indistinguishable to the caller, and the client
--- reports one message for both.
-create or replace function public.login_email_for(candidate text)
-returns text
-language sql
-security definer
-set search_path = pg_catalog, public
-stable
-as $$
-    select u.email
-    from public.profiles p
-    join auth.users u on u.id = p.user_id
-    where p.username = lower(candidate);
-$$;
+-- An earlier draft had `login_email_for(username)`, which the browser called
+-- before signing in. It worked, and it handed the mapping to anyone who asked:
+-- guess a username, learn the address behind it. The defence was that usernames
+-- are published nowhere in this game - true, and a defence that rests on a fact
+-- about today's features rather than on anything structural.
+--
+-- The sign-in moved off the browser instead. supabase/functions/account does
+-- the lookup and the auth call server-side with the service role and returns
+-- only a session, so the address never reaches a client at all.
+--
+-- Dropped rather than merely omitted, in case the earlier version was ever run.
+drop function if exists public.login_email_for(text);
 
--- Both are called before sign-up and sign-in, so anon needs them. Granted
--- explicitly rather than relying on the default grant to PUBLIC, which 0002 and
--- 0003 both had to go back and remove.
+-- Called before sign-up, so anon needs it. Granted explicitly rather than
+-- relying on the default grant to PUBLIC, which 0002 and 0003 both had to go
+-- back and remove.
 revoke execute on function public.username_available(text) from public;
-revoke execute on function public.login_email_for(text) from public;
 grant execute on function public.username_available(text) to anon, authenticated;
-grant execute on function public.login_email_for(text) to anon, authenticated;
 
 -- Same shape as `saves` in 0003: state the whole intended set rather than
 -- subtracting from whatever Postgres' defaults happened to hand out.

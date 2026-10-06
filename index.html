@@ -511,7 +511,7 @@
             margin-right: 7px;
         }
         /* BRIGHTENED, because a roster accent doubles as body text here. Draven's
-           identity colour is #6b7280, a grey, which renders his name at 3.8:1 -
+           identity color is #6b7280, a grey, which renders his name at 3.8:1 -
            below WCAG AA for text this size. The accent still tints it; it just
            cannot go dim. The split-screen build has had this for a while and the
            reason was never build-specific. */
@@ -937,7 +937,7 @@
             color: #94a3b8; font-size: 0.74rem; font-weight: 700;
             letter-spacing: 0.04em;
         }
-        /* ON is the only state that gets colour, so a glance finds it. */
+        /* ON is the only state that gets color, so a glance finds it. */
         .opt.is-on .opt-state {
             background: rgba(0, 243, 255, 0.14); border-color: #00f3ff; color: #00f3ff;
         }
@@ -1020,7 +1020,11 @@
         .audio-row input[type="range"] { flex: 1; }
         /* Single "Settings" entry point gathering Rebind/HUD-scale/Audio —
            these used to be three separate buttons in the footer. */
-        #settings-screen {
+        /* #account-screen rides with #settings-screen through every one of
+           these groups. It was added to MODAL_EL - which opens and closes it -
+           and to none of the STYLES, so it had no position, no backdrop and no
+           z-index, and drew itself inline underneath the home card. */
+        #settings-screen, #account-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(10,13,20,0.92);
@@ -1059,7 +1063,7 @@
            container's own height (100%, with the container's padding taken out
            via border-box) keeps every panel inside its parent and lets its own
            overflow-y actually do the scrolling. */
-        #mapselect-screen, #shop-screen, #tutorial-screen, #settings-screen, #audio-screen, #rebind-screen, #modeselect-screen {
+        #mapselect-screen, #shop-screen, #tutorial-screen, #settings-screen, #audio-screen, #rebind-screen, #modeselect-screen, #account-screen {
             box-sizing: border-box;
         }
         /* Batch 38: `.shop-panel` is deliberately NOT in this list any more.
@@ -1069,7 +1073,8 @@
            batch removed. Every other panel here is still a centred modal card
            and still wants the cap. */
         .mapselect-panel, .tutorial-panel, .modeselect-panel,
-        #settings-screen .menu-section, #audio-screen .menu-section, #rebind-screen .menu-section {
+        #settings-screen .menu-section, #audio-screen .menu-section,
+        #rebind-screen .menu-section, #account-screen .menu-section {
             max-height: 100%;
             box-sizing: border-box;
         }
@@ -1325,6 +1330,21 @@
         }
         /* Sign in / Create account. Two states of one panel rather than two
            screens - see the note in accountPanelHTML. */
+        /* A select dressed as one of the .opt rows beside it, so the settings
+           list still reads as one column of controls rather than one odd one
+           out. The label IS the row; the select sits on its right like the
+           .opt-state pill does. */
+        .opt-select {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 10px; cursor: pointer;
+        }
+        .opt-select select {
+            font-family: inherit; font-size: 0.78rem;
+            background: rgba(15,23,42,0.85); color: #e2e8f0;
+            border: 1px solid rgba(148,163,184,0.4); border-radius: 6px;
+            padding: 4px 8px; cursor: pointer; max-width: 55%;
+        }
+        .opt-select select:focus-visible { outline: 2px solid #00f3ff; outline-offset: 2px; }
         .account-tabs { display: flex; gap: 6px; margin: 0 0 12px; }
         .account-tab {
             flex: 1 1 0; margin: 0;
@@ -1434,7 +1454,8 @@
            openModal() scrolls the overlay to the top and locks it, so this
            container is the only scroller while a modal is up. */
         #settings-screen, #audio-screen, #rebind-screen, #tutorial-screen,
-        #mapselect-screen, #modeselect-screen, #shop-screen, #lobby-screen {
+        #mapselect-screen, #modeselect-screen, #shop-screen, #lobby-screen,
+        #account-screen {
             align-items: flex-start !important;
             overflow-y: auto;
             padding: 24px 16px;
@@ -1443,6 +1464,7 @@
         /* ...and no panel inside them keeps a scrollbar of its own. */
         #settings-screen .menu-section, #audio-screen .menu-section,
         #rebind-screen .menu-section, #lobby-screen .menu-section,
+        #account-screen .menu-section,
         .tutorial-panel, .mapselect-panel, .modeselect-panel, .shop-panel {
             max-height: none !important;
             overflow-y: visible !important;
@@ -1557,7 +1579,7 @@
            alpha - measured, and indistinguishable at a glance. Reported as "the
            loading animation doesn't actually shift between the four bars, it
            just stays on the first bar": the wave was there and too faint to
-           read. Same four segments, same skew, same colour; the timing is what
+           read. Same four segments, same skew, same color; the timing is what
            changes. */
         .ld-seg:nth-child(2) { animation-delay: .3s; }
         .ld-seg:nth-child(3) { animation-delay: .6s; }
@@ -1656,7 +1678,7 @@
                     <p>Dimensional Arena Fighter</p>
                 </div>
                 <div class="menu-section home-card">
-                    <button id="btn-home-play" class="btn-online">Play Online</button>
+                    <button id="btn-home-play" class="btn-online">Play</button>
                     <p class="home-note">One of you hosts and shares a room code; the other joins with it.
                        Two players, one fighter each, on separate machines.</p>
                     <div class="home-name-row">
@@ -1843,8 +1865,9 @@
             <div id="account-screen">
                 <div class="menu-section">
                     <h3>Account</h3>
-                    <p class="settings-note">Your coins, unlocks and upgrades are saved on
-                       this device. Sign in and they follow you to any other one.</p>
+                    <p class="settings-note">Your coins, unlocks and upgrades live on
+                       your account, not on this machine — sign in on any device and
+                       they are there.</p>
                     <div id="account-body"></div>
                     <button id="btn-account-back" class="btn-back">← Back</button>
                 </div>
@@ -1855,9 +1878,15 @@
                     <h3>Settings</h3>
                     <div class="settings-list">
                         <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
-                        <button id="btn-side-palette" class="opt" title="Switch the two player colours to a colourblind-safe pair">Player Colours<span class="opt-state">Standard</span></button>
+                        <button id="btn-side-palette" class="opt" title="Switch the two player colors to a colorblind-safe pair">Player Colors<span class="opt-state">Standard</span></button>
                         <button id="btn-account" class="opt" title="Keep your coins and unlocks on every device">Account<span class="opt-state">Off</span></button>
-                        <button id="btn-lang" class="opt" title="Language of menus and help text">Language<span class="opt-state">English</span></button>
+                        <!-- A SELECT, not a cycle button. Three languages is already
+                             too many to reach by pressing until the one you want
+                             comes round - and a cycle gives no way to see what the
+                             choices are before committing to one. -->
+                        <label class="opt opt-select" for="sel-lang">Language
+                            <select id="sel-lang" title="Language of menus and help text"></select>
+                        </label>
                         <button id="btn-bloom" class="opt">Glow<span class="opt-state">On</span></button>
                         <!-- These two DO something when pressed, so they keep
                              the primary style. See the .opt note in the CSS. -->
@@ -1898,7 +1927,7 @@
                         </div>
                         <div class="tutorial-card">
                             <h4>Online Play</h4>
-                            <p>Every match is <b>two people on two machines</b>. One of you presses <b>Play Online &rarr; Host Game</b> and reads out the room code; the other pastes it into <b>Join</b>. You both land in the <b>room</b>, where you each pick your own fighter &mdash; you can only pick yours, and you'll see theirs appear as they choose.</p>
+                            <p>Every match is <b>two people on two machines</b>. One of you presses <b>Play &rarr; Host Game</b> and reads out the room code; the other pastes it into <b>Join</b>. You both land in the <b>room</b>, where you each pick your own fighter &mdash; you can only pick yours, and you'll see theirs appear as they choose.</p>
                             <p>The <b>host is Player 1</b> and owns the match settings: they choose the mode and the arena, and they press <b>Start Match</b> once you're both locked in. If your opponent drops mid-fight the match pauses and tells you.</p>
                         </div>
                         <div class="tutorial-card">
@@ -2883,7 +2912,7 @@ function hudFont(px, bold) {
     return `${bold ? 700 : 500} ${Math.max(9, Math.round(size))}px ${HUD_FAMILY}`;
 }
 // Writes an option row's current state into its pill. `on` is what gives it
-// colour - the only state that gets any, so a glance finds what is enabled.
+// color - the only state that gets any, so a glance finds what is enabled.
 function cycleHudScale() {
     HUD_TEXT_SCALE = HUD_TEXT_SCALE >= 1.3 ? 1 : 1.3;
     safeLSSet('astralClashHudScale', HUD_TEXT_SCALE);
@@ -2892,7 +2921,7 @@ function cycleHudScale() {
 document.getElementById('btn-sandbox').addEventListener('click', () => setSandboxMatch(!sandboxMatch));
 document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale);
 document.getElementById('btn-side-palette').addEventListener('click', toggleSidePalette);
-document.getElementById('btn-lang').addEventListener('click', cycleLang);
+document.getElementById('sel-lang').addEventListener('change', (e) => setLang(e.target.value));
 document.getElementById('btn-account').addEventListener('click', openAccountPanel);
 document.getElementById('btn-account-back').addEventListener('click', () => openModal('settings'));
 document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
@@ -3280,7 +3309,7 @@ function buildSkyDome() {
     // 256x128 equirectangular, not a 16-pixel-wide strip. The width is what
     // makes the environment DIRECTIONAL: with one column of pixels there is no
     // such thing as a sun azimuth, so every horizontal direction reflects the
-    // same colour and the PMREM lights all four walls identically.
+    // same color and the PMREM lights all four walls identically.
     skyTexCanvas = document.createElement('canvas');
     skyTexCanvas.width = 256; skyTexCanvas.height = 128;
     const tex = new THREE.CanvasTexture(skyTexCanvas);
@@ -3317,10 +3346,10 @@ buildSkyDome();
 // painted, and it fixed a bug that looked like a material mistake.
 //
 // The rebuilt weapons use physically-correct metal (metalness 1.0), and a fully
-// metallic surface in three.js takes its colour ENTIRELY from what it reflects.
+// metallic surface in three.js takes its color ENTIRELY from what it reflects.
 // With no environment map there is nothing to reflect, so a polished steel
 // blade renders pure BLACK - which is exactly how the first sword screenshot
-// came out. Metals need an environment, not a brighter base colour.
+// came out. Metals need an environment, not a brighter base color.
 //
 // The environment is generated from the same sky gradient the player is
 // actually standing under, so reflections match the arena's own palette and
@@ -3361,8 +3390,8 @@ function applySky(theme) {
     // THE GROUND HALF. An equirect's lower half is what a downward-facing
     // surface reflects, and a sky gradient there means the underside of every
     // ledge is lit by sky - which is half of why nothing had a dark side. The
-    // map's own floor colour is the honest answer to "what is below".
-    // Theme colours are hex NUMBERS (0xaecbe6), and a canvas gradient throws on
+    // map's own floor color is the honest answer to "what is below".
+    // Theme colors are hex NUMBERS (0xaecbe6), and a canvas gradient throws on
     // one - "The value provided ('16767136') could not be parsed as a color".
     // theme.sky[] is already a CSS string; floorColor and sun.color are not.
     const cssHex = (c) => (typeof c === 'number'
@@ -3832,7 +3861,7 @@ function positionWatchCamera(aspect) {
     watchCam.updateProjectionMatrix();
 }
 
-// A ring on the ground under each fighter, in that fighter's own colour. The
+// A ring on the ground under each fighter, in that fighter's own color. The
 // other half of "tiny and pale": from overhead a fighter is a few dozen pixels
 // of mostly-dark mesh against a lit floor, and which one is which is the first
 // thing a spectator needs. Built on demand (a spectator match is the only
@@ -3867,9 +3896,9 @@ function syncWatchRings(on) {
         // Just above the floor: coplanar with it would z-fight.
         ring.position.set(worldX(f.x + f.width / 2), 1.5, worldZ(f.y + f.height / 2));
         // BY SIDE, not by fighter. A mirror match gave both fighters the same
-        // ring colour and the same HUD colour, so from overhead there was
+        // ring color and the same HUD color, so from overhead there was
         // nothing to tell them apart - reported for Ignis vs Ignis. A side
-        // colour is the one thing that is always different.
+        // color is the one thing that is always different.
         ring.material.color.set(WATCH_RING_SIDE[i === 0 ? 'p1' : 'p2']);
     }
 }
@@ -4139,7 +4168,7 @@ function attachSurfaceMaps(mat, key, opts) {
         const t = new THREE.CanvasTexture(cv);
         t.wrapS = t.wrapT = THREE.RepeatWrapping;
         t.anisotropy = 8;
-        // A normal/roughness map is DATA, not colour: tagging it sRGB would
+        // A normal/roughness map is DATA, not color: tagging it sRGB would
         // gamma-decode the vectors and flatten the lighting.
         t.encoding = THREE.LinearEncoding;
         t.repeat.copy(r);
@@ -4166,7 +4195,7 @@ function attachSurfaceMaps(mat, key, opts) {
 // the complaint this work exists to answer.
 //
 // So: real 1k PBR sets from PolyHaven (CC0), three files each -
-//   Diffuse  base colour, sRGB
+//   Diffuse  base color, sRGB
 //   nor_gl   normal, OPENGL convention. Not nor_dx - three.js is GL, and the
 //            DirectX variant has Y inverted, which lights everything backwards.
 //   arm      AO + Roughness + Metalness packed in R/G/B, which is exactly the
@@ -4260,16 +4289,16 @@ function attachPhotoSurface(mat, kind, texId, rx, ry, opts) {
         }
         // Soften the theme tint. `color` multiplies the albedo, and the
         // procedural canvases were near-grey by design so a strong tint WAS
-        // the map's colour. A real photograph already carries its own colour,
+        // the map's color. A real photograph already carries its own color,
         // so multiplying it by, say, Voltaic Nexus' blue-grey turned green
         // industrial steel into mud. Pulling the tint most of the way toward
         // white keeps each arena's cast - which is what makes them
         // recognisable - without fighting the albedo for control of the hue.
-        // 0.72 rather than 0.55: the theme wall colours are genuinely dark
+        // 0.72 rather than 0.55: the theme wall colors are genuinely dark
         // (Voltaic Nexus is 0x3a557e), and multiplying an already mid-dark
         // steel albedo by a dark blue produced near-black walls - the opposite
         // of the problem the tint fade was added to solve. A photographic
-        // albedo needs the tint as a CAST, not as the colour.
+        // albedo needs the tint as a CAST, not as the color.
         //
         // KEYED BY THE TINT, not by "has this ever been tinted". These
         // materials are cached and shared across arenas (see getCachedMaterial
@@ -4281,7 +4310,7 @@ function attachPhotoSurface(mat, kind, texId, rx, ry, opts) {
         // bright tan canyon".
         //
         // The guard cannot just be dropped: lerp compounds, so a material would
-        // creep toward white on every load. The base colour is kept instead and
+        // creep toward white on every load. The base color is kept instead and
         // the tint recomputed from it, which is idempotent for a repeat and
         // correct for a change.
         const fade = opts.tintFade != null ? opts.tintFade : 0.72;
@@ -4316,7 +4345,7 @@ function getTiledWallTexture(theme, rx, ry) {
 // stone pillar, sleek energy pylon, fluted marble column, natural red-rock
 // spire, or an ice-crystal cluster. Solid cover you fight around.
 // Batch 34: columns were the last untextured thing in the arena - flat
-// MeshStandardMaterial colours with no map of any kind - so once the walls and
+// MeshStandardMaterial colors with no map of any kind - so once the walls and
 // floors became photographic they were what still read as clay. They take the
 // theme's WALL set, which is also correct art direction: a stone arena's
 // pillars are cut from the same stone as its walls.
@@ -4785,7 +4814,7 @@ function buildScenery(map, theme) {
 }
 // ONE PROJECTILE'S VISUALS. Lifted out of syncProjectiles, which is a loop and
 // was no place for a builder - and, more to the point, so that a round can
-// build one of these per colour BEFORE the fight and compile it. See
+// build one of these per color BEFORE the fight and compile it. See
 // warmCombatShaders.
 function buildProjectileVisual(p) {
     // An actual energy bolt, not a dot: a stretched crystalline
@@ -4806,7 +4835,7 @@ function buildProjectileVisual(p) {
     // 16-frame cooldown and her special is a five-shard volley, so
     // that is a constant churn of GPU objects - the same shape of
     // problem as the Batch 30 crush stutter. Materials are cached
-    // per colour now: a projectile allocates one Group and three
+    // per color now: a projectile allocates one Group and three
     // Meshes, and no GPU resources at all.
     const key = (p.color || '#00f3ff');
     const c = new THREE.Color(key);
@@ -4897,7 +4926,7 @@ function warmMuzzleFlashPool() {
 // whatever the player happened to be doing.
 //
 // renderer.compile() is exactly the tool for this. The projectile visuals are
-// built per colour, compiled, and taken out again: the MATERIALS stay in the
+// built per color, compiled, and taken out again: the MATERIALS stay in the
 // cache, already compiled, and the real shots pick them up for free.
 function warmCombatShaders(colors) {
     warmMuzzleFlashPool();
@@ -6572,7 +6601,7 @@ class Fighter {
             p.mesh.position.set(worldX(p.x), p.z, worldZ(p.y));
             p.mesh.rotation.y = -Math.atan2(p.vy, p.vx); // face travel direction (X→X, Y→Z world mapping)
             // The shimmer scales the halo instead of fading a material: the
-            // materials are shared per colour now, so writing opacity here
+            // materials are shared per color now, so writing opacity here
             // would make every bolt on screen pulse in lockstep - and would
             // write the same value once per projectile per frame for nothing.
             const flick = 0.92 + Math.sin(arenaTime * 0.6 + p.x) * 0.08;
@@ -7535,7 +7564,7 @@ function buildGrid(gridId, keyList, side) {
         btn.dataset.key = keyList[i].toUpperCase();
         btn.style.setProperty('--accent', c.color);
         // The face chip goes FIRST so the card reads portrait-then-name, and
-        // it carries the accent colour behind it as both a tint and a fallback
+        // it carries the accent color behind it as both a tint and a fallback
         // for a missing file. Batch 37.
         btn.innerHTML =
             `<span class="fface" style="background-color:${c.color};background-image:url('${faceUrl(c.name)}')"></span>`
@@ -9430,7 +9459,7 @@ document.getElementById('btn-quit-to-menu').addEventListener('click', (e) => {
 // dashed collar that makes it read as active rather than painted on, four
 // corner ticks pointing in, and a wide column of light standing over it that
 // can be seen from across the arena and over cover. Nothing here is per-frame
-// allocation - syncZone only writes colours, opacities and one rotation.
+// allocation - syncZone only writes colors, opacities and one rotation.
 function buildZoneMesh() {
     disposeZoneMesh();
     const g = new THREE.Group();
@@ -9491,7 +9520,7 @@ function updateZoneControl(dt) {
     // rather than only on the HUD.
     if (zoneMesh) {
         const u = zoneMesh.userData;
-        // Held: the holder's colour, pulsing. EMPTY: a bright amber beacon, and
+        // Held: the holder's color, pulsing. EMPTY: a bright amber beacon, and
         // MORE visible than when held - an unclaimed zone is the one asking you
         // to come and stand in it. It used to be dimmest exactly then.
         const held = zoneHolder ? sideColorHex(zoneHolder) : 0xffd166;
@@ -9505,7 +9534,7 @@ function updateZoneControl(dt) {
         for (const seg of u.collar.children) seg.material.opacity = zoneHolder ? 0.55 : 0.8;
         for (const t of u.ticks.children) t.material.opacity = zoneHolder ? 0.3 : 0.6;
         // Turning while empty, still while held: motion is what the eye finds,
-        // and once somebody owns it the colour says so.
+        // and once somebody owns it the color says so.
         u.collar.rotation.y += (zoneHolder ? 0.004 : 0.011) * dt;
     }
 }
@@ -11174,6 +11203,7 @@ if (DEBUG) {
         accountSignIn, accountSignUp, accountSignOut, accountPanelHTML,
         refreshAccountUI, initAccounts, accountSignedIn,
         accountRequestReset, accountSetNewPassword, accountRedirectTo,
+        accountFunctionURL,
         usernameProblem, passwordProblem, displayProblem, emailProblem,
         accountForgetProgress, accountQueuePush,
         // Drives states a real backend would otherwise be needed to produce.

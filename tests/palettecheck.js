@@ -1,10 +1,10 @@
-// The colourblind palette is actually more distinguishable, not just different.
+// The colorblind palette is actually more distinguishable, not just different.
 //
-// WHY SIMULATE RATHER THAN TRUST THE HEX. "Blue and orange are colourblind-safe"
+// WHY SIMULATE RATHER THAN TRUST THE HEX. "Blue and orange are colorblind-safe"
 // is received wisdom, and received wisdom is how you end up shipping a second
 // pair that is just as bad. The claim this setting makes is specific and
 // testable: under deuteranopia and protanopia - together the great majority of
-// colourblindness - the two side colours must stay further apart than cyan and
+// colorblindness - the two side colors must stay further apart than cyan and
 // pink do.
 //
 // THE SIMULATION is the Brettel/Vienot LMS projection, the standard approach:
@@ -26,7 +26,7 @@ const MIN_DELTA = 25;
     await H.startServer();
     const { check, section, finish } = H.makeChecker();
 
-    const COLOUR_MATHS = () => {
+    const COLOR_MATHS = () => {
         const srgb = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
         const hex = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
         // Linear RGB -> LMS cone response (Hunt-Pointer-Estevez, as used by
@@ -70,14 +70,14 @@ const MIN_DELTA = 25;
         const errors = [];
         page.on('pageerror', e => errors.push(String(e.message || e)));
         await H.boot(page, { clearStorage: true, path });
-        await page.evaluate(COLOUR_MATHS);
+        await page.evaluate(COLOR_MATHS);
 
         section(name + ' build:');
         const r = await page.evaluate(() => {
             const D = window.ACDebug;
             D.setSidePalette('standard');
             const std = [D.sideColor('p1'), D.sideColor('p2')];
-            D.setSidePalette('colourblind');
+            D.setSidePalette('colorblind');
             const cb = [D.sideColor('p1'), D.sideColor('p2')];
             const label = (document.querySelector('#btn-side-palette .opt-state') || {}).textContent;
             const d = (pair, kind) => +window.__delta(pair[0], pair[1], kind).toFixed(1);
@@ -90,9 +90,9 @@ const MIN_DELTA = 25;
         });
         console.log('    ' + JSON.stringify(r));
 
-        check('the two palettes are different colours',
+        check('the two palettes are different colors',
             r.std[0] !== r.cb[0] && r.std[1] !== r.cb[1], JSON.stringify({ std: r.std, cb: r.cb }));
-        check('the state pill says which is on', r.label === 'Colourblind', String(r.label));
+        check('the state pill says which is on', r.label === 'Colorblind', String(r.label));
         check('under deuteranopia the alternative separates better',
             r.deuter.cb > r.deuter.std, JSON.stringify(r.deuter));
         check('under protanopia the alternative separates better',
@@ -107,7 +107,7 @@ const MIN_DELTA = 25;
         await page.reload({ waitUntil: 'load' });
         await H.sleep(1800);
         const kept = await page.evaluate(() => window.ACDebug && window.ACDebug.sidePalette);
-        check('the choice survives a reload', kept === 'colourblind', String(kept));
+        check('the choice survives a reload', kept === 'colorblind', String(kept));
         check('no errors thrown', errors.length === 0, errors.slice(0, 2).join(' | ') || 'none');
         await page.close();
     }

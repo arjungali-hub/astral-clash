@@ -432,7 +432,7 @@ Verified for both batches with `cheatcheck.js` (33 assertions, all passing): the
 - *Three attacks on a fixed cycle* (`special: 'titan'` → Ground Slam → Charge → Ember Nova), so the fight has a rhythm you can learn rather than random pressure. Each is built from mechanics already in the file: the slam reuses the shockwave-ring + radial-launch pattern, the charge reuses the `teleportTo` gap-close every dash special uses, and the nova reuses the ordinary projectile struct (so its shots collide with geometry and can be dodged like any other). All of them resolve through Batch 16's target seam, so they hit **both** players where that makes sense — an attack only one player had to respect wouldn't create a shared problem to solve. Its basic melee sweep was likewise widened to catch anyone standing in the cone, so two players couldn't stand shoulder to shoulder with one immune.
 - *Difficulty reuses `BOT_DIFFICULTY`'s existing tiers* — no parallel system and no new UI; the difficulty cycler already on the select screen drives it. HP ×5→×11, damage ×1→×1.75, and a new `telegraphMult` that scales **only the wind-up** (never the active or recovery windows, so a harder boss is harder to *read* without shrinking the punish window that makes it fair).
 - **A balance bug the checker caught:** the first telegraph scaling (0.15/tier) dropped Insane's basic tell to **14.3 frames — shorter than Draven's 16**, making the boss's attacks *less* readable than an ordinary fighter's, the exact opposite of the design. Retuned to 0.10/tier, flooring it at 18.2, still the longest tell in the game. This is now an explicit assertion rather than a hope.
-- **Three visual iterations, each driven by an actual screenshot, worth recording because the cause was non-obvious every time.** (1) The fists rendered as pale cream plastic — `buildFistProp`'s hardcoded gold knuckles. (2) The whole body rendered as beige plastic despite a mid-grey albedo: the arenas are brightly lit (sun + hemisphere + ambient) and the renderer tone-maps at exposure 1.1, which multiplies a lit diffuse surface roughly 3x here, so "mid-grey" became pale tan. Fixed by pitching the palette down to match the existing dark trim (`#3f2a20`) that already reads as dark under that lighting. I confirmed the materials were actually being applied by probing them at runtime rather than guessing from pixels — which ruled out a config bug and pointed at lighting. (3) The ember seams and eyes still washed out to pale yellow: a *lit* emissive material can't win against that much light, so they're now an **unlit `MeshBasicMaterial`**, which is the only way to guarantee the colour on screen is the colour chosen. Also found and fixed a related trap: `addRimOutline` uses an unlit basic material at 25%-lightened body colour, which on a 1.5x boss with chunky limbs became a thick pale border — it now takes optional colour/scale overrides and the boss gets a dark, tighter rim. **The look is a reasoned pass verified by screenshot, not an art-directed result** — proportions, palette and ember placement would all benefit from a real eye.
+- **Three visual iterations, each driven by an actual screenshot, worth recording because the cause was non-obvious every time.** (1) The fists rendered as pale cream plastic — `buildFistProp`'s hardcoded gold knuckles. (2) The whole body rendered as beige plastic despite a mid-grey albedo: the arenas are brightly lit (sun + hemisphere + ambient) and the renderer tone-maps at exposure 1.1, which multiplies a lit diffuse surface roughly 3x here, so "mid-grey" became pale tan. Fixed by pitching the palette down to match the existing dark trim (`#3f2a20`) that already reads as dark under that lighting. I confirmed the materials were actually being applied by probing them at runtime rather than guessing from pixels — which ruled out a config bug and pointed at lighting. (3) The ember seams and eyes still washed out to pale yellow: a *lit* emissive material can't win against that much light, so they're now an **unlit `MeshBasicMaterial`**, which is the only way to guarantee the color on screen is the color chosen. Also found and fixed a related trap: `addRimOutline` uses an unlit basic material at 25%-lightened body color, which on a 1.5x boss with chunky limbs became a thick pale border — it now takes optional color/scale overrides and the boss gets a dark, tighter rim. **The look is a reasoned pass verified by screenshot, not an art-directed result** — proportions, palette and ember placement would all benefit from a real eye.
 - *Three test-sequencing bugs fixed in the checkers* (harness wrong, not code): the Ember Nova check sampled projectile count *after* the shots had already connected and despawned (now tracks the peak); the co-op victory check ran against a match Karrigos had **already ended as a Defeat** by killing a player during the preceding damage check (now starts a fresh match); and the PvP-unaffected check insisted on `ROUND_END` when `DEATH` already proves the versus path ran (co-op never enters it at all) and was just timing out mid-animation.
 - Verified with `bosscheck.js` (**22 assertions**): the boss builds with its mesh/embers/enlarged hurtbox and is absent from the roster; all three cycled moves enter a startup phase, have a long readable wind-up, rotate through all three, at least one hits both players, and one fires projectiles; its melee catches two adjacent players; HP/damage rise and the telegraph shortens across all four tiers while staying longer than any roster fighter's; and a **full fight terminates in a win at both the easiest and hardest tiers** rather than stalemating. All nine other suites still green, zero console errors. Tutorial gained a co-op card.
 
@@ -454,7 +454,7 @@ Survival was one strong enemy at a time; it's now a squad of purpose-built weakl
 - *Generalized the single co-op enemy slot into a list* (`coopEnemies`). Batch 16 deliberately deferred arbitrary-N because one slot was all the boss fight needed; multi-enemy waves make it mandatory. `pickTarget` now aims at the **nearest** live enemy, a player's shot can hit **any** live enemy, and a wave clears only when every member is down. All three are pure pass-throughs outside co-op, so PvP is byte-for-byte untouched.
 - *Three Survival-only enemies rather than reskinned roster fighters* (Grint 130hp/speed 4.4, Slagling 150hp ranged, Hollowkin 260hp tank). A wave of "Thornes" reads as a mirror match gone wrong; and because these are only ever AI-controlled they can be lopsided in ways a player-pickable character couldn't fairly be. They live in `BOSS_MAP` for the same load-bearing reason as Karrigos: **anything in `CHARACTERS` becomes a pickable fighter on the select screen.**
 - *Wave composition:* 2 enemies growing to a cap of 5, drawn **without replacement** from a shuffled pool. Independent per-slot rolls produced "two Hollowkin" - the same silhouette twice, and a wave of two tanks is far harder than two skitterers, so same-numbered waves swung wildly in difficulty. Every 5th wave is a Karrigos boss wave instead of a squad.
-- *The HUD has two layouts:* the full-width bar for a lone notable enemy, and a compact colour-coded row for a squad (six full-width bars would bury the arena). Dead minions keep their slot so the row doesn't re-flow mid-fight.
+- *The HUD has two layouts:* the full-width bar for a lone notable enemy, and a compact color-coded row for a squad (six full-width bars would bury the arena). Dead minions keep their slot so the row doesn't re-flow mid-fight.
 - *A 30% heal on wave clear*, reversing the Batch 22 note above. That note flagged the per-wave heal as "the single knob" if longer runs were wanted; they were, so it's in. `hpGhost` is snapped up with it or the HUD shows a phantom damage trail.
 - *`startRound` now clears the field first*, since `spawnCoopEntity` appends - otherwise a rematch stacked new enemies on top of the old ones.
 
@@ -482,11 +482,11 @@ Five requests that turned out to share one root cause: **the UI was lying by omi
 
 ## Batches 25-29 - The art overhaul
 
-The brief: characters should have faces and read as human/robot/animal rather than differing only by colour, the arenas should look refined and be *fair*, the crush should be a real cinematic, and the whole thing should look like a commercial shooter instead of clay.
+The brief: characters should have faces and read as human/robot/animal rather than differing only by color, the arenas should look refined and be *fair*, the crush should be a real cinematic, and the whole thing should look like a commercial shooter instead of clay.
 
 ### The pipeline (Batch 25)
 
-- *Characters are Blender-authored now, not primitives.* Kaelen is a 23,332-triangle humanoid with full PBR (base colour + metallic-roughness + normal), a 19-joint skeleton, and six skeletal clips: Idle, Walk, Run, Jump, Hit, Death. The game had **no walk cycle at all** - characters slid with rigid legs - so locomotion is the single biggest contributor to it reading as finished.
+- *Characters are Blender-authored now, not primitives.* Kaelen is a 23,332-triangle humanoid with full PBR (base color + metallic-roughness + normal), a 19-joint skeleton, and six skeletal clips: Idle, Walk, Run, Jump, Hit, Death. The game had **no walk cycle at all** - characters slid with rigid legs - so locomotion is the single biggest contributor to it reading as finished.
 - *Additive by construction.* `initMesh` prefers `buildRiggedCharacter(name)` and falls back to `PROC_MESH_BUILDERS[name]`. Both produce the same `userData` contract, so `animateWeapon`, the hit flash and the death fade need no branching, the roster converts one character at a time, and the game is never in a broken half-state.
 - *Locomotion on an AnimationMixer, attacks still procedural.* The mixer updates BEFORE `animateWeapon` so the tuned per-character attack swing wins on the arms it drives. That layering is what let baked walk/run coexist with all thirteen existing `weaponAnim` types instead of replacing them. `_applyArms` gained an `axis`: a procedural arm is a Group swung about Z, a skeleton's bone about local X with the opposite sign.
 - *Weapons are transplanted off the procedural build* rather than re-declared beside the rig, so there is no second copy of each character's weapon and swing timings to drift.
@@ -502,13 +502,13 @@ The brief: characters should have faces and read as human/robot/animal rather th
 - **Skyward Temple's central dais was unclimbable for half the roster.** Its side steps sat 142 units from the dais edge; clearing that needs the full ~43-frame airtime *and* a fast character - Kaelen covers ~145 units, Draven only ~81. The map's own documented "dais climbed via a ramp and low side platforms" simply did not work for slow characters. Now a 42-unit gap.
 - *A stale comment corrected rather than left to mislead:* Overgrown Sanctuary claimed its 222-high wall was "comfortable Double Jump reach from the height-60 cover blocks (gap 162)". Only the HEIGHT gap is 162 - those blocks are 227 units away horizontally, so it is reachable from them by no jump at all. That is intended (it is a lane divider, not a perch), but the comment said otherwise.
 - *A test that asserted the wrong thing, and was corrected instead of the maps.* A first version required dividers to be Double-Jump reachable; `index.html` defines them as "interior walls / lane dividers", so making six maps' sight blockers climbable would have defeated their purpose. `mapscheck.js` now asserts the opposite - that they stay **unclimbable**, so a divider cannot become a 26-unit-wide camping ledge over the lane it closes off.
-- **Surface relief on every map.** Canvases 256 -> 512, and normal + roughness maps *derived* from each existing canvas rather than authored: the art already encodes relief as brightness (mortar is dark because it is recessed), so a Sobel gradient of luminance is a serviceable height field. All twenty surfaces gain relief at once and each map keeps its hand-drawn identity, which swapping in a few photographic textures would have flattened. The gradient sample **wraps** (a non-wrapping Sobel seams every tile boundary), derived maps are tagged `LinearEncoding` (a normal map is data, not colour), and each material gets its own texture object wrapping the shared canvas because `repeat` lives on the texture and a wall, a platform and the floor tile the same source at different densities.
+- **Surface relief on every map.** Canvases 256 -> 512, and normal + roughness maps *derived* from each existing canvas rather than authored: the art already encodes relief as brightness (mortar is dark because it is recessed), so a Sobel gradient of luminance is a serviceable height field. All twenty surfaces gain relief at once and each map keeps its hand-drawn identity, which swapping in a few photographic textures would have flattened. The gradient sample **wraps** (a non-wrapping Sobel seams every tile boundary), derived maps are tagged `LinearEncoding` (a normal map is data, not color), and each material gets its own texture object wrapping the shared canvas because `repeat` lives on the texture and a wall, a platform and the floor tile the same source at different densities.
 
 ### Weapons, the first-person arm, and lighting (Batch 28)
 
 - *The blades were a flat `BoxGeometry` slab with a 4-sided cone glued on* - no taper, no cutting edge, no central ridge - so they caught light like a painted plank. The fix is shape: `bladeGeometry()` builds a **diamond cross-section** (two edges, a raised spine) from a list of cross-sections, giving four long faces at different angles to the light. Sword, dagger, hammer, scythe and gauntlet all rebuilt on it.
-- *The first-person arm was one `BoxGeometry(3.4, 3.4, 11)`* - a bare stick in the character's flat body colour, on screen every frame of every match, and looking nothing like the armoured arm the same character now has in third person. Now a tapered forearm with a plated bracer, an armoured glove with knuckle plates, and a thumb over the grip.
-- **Image-based lighting, and the bug that revealed why it was needed.** The rebuilt weapons use physically-correct metal (metalness 1.0), and a fully metallic surface takes its colour *entirely* from what it reflects - so with no environment map a polished steel blade renders **pure black**, which is exactly how the first sword screenshot came out. Metals need an environment, not a brighter base colour. `PMREMGenerator` builds one from the same sky gradient the player is standing under, so reflections match each arena's palette and change with the map; every rough surface gets soft ambient bounce for free.
+- *The first-person arm was one `BoxGeometry(3.4, 3.4, 11)`* - a bare stick in the character's flat body color, on screen every frame of every match, and looking nothing like the armoured arm the same character now has in third person. Now a tapered forearm with a plated bracer, an armoured glove with knuckle plates, and a thumb over the grip.
+- **Image-based lighting, and the bug that revealed why it was needed.** The rebuilt weapons use physically-correct metal (metalness 1.0), and a fully metallic surface takes its color *entirely* from what it reflects - so with no environment map a polished steel blade renders **pure black**, which is exactly how the first sword screenshot came out. Metals need an environment, not a brighter base color. `PMREMGenerator` builds one from the same sky gradient the player is standing under, so reflections match each arena's palette and change with the map; every rough surface gets soft ambient bounce for free.
 - *A precedence bug worth remembering:* `new THREE.CapsuleGeometry ? A : B` constructs before it tests, and `CapsuleGeometry` does not exist until three r140 - so it threw inside `startRound` and produced a black screen with no console error at boot.
 
 ### The crush cinematic (Batch 27)
@@ -713,7 +713,7 @@ actually do this:
 - a **connection bar** with the status pill and, for the host only, the room code
   and a Copy button - a joiner already typed it, so showing it back is noise;
 - **two player slots**, yours accented and theirs observed, each showing the
-  fighter, a portrait swatch in that fighter's accent colour, and whether they
+  fighter, a portrait swatch in that fighter's accent color, and whether they
   are locked in;
 - **one roster - yours.** Both grids stay in the DOM (`buildGrid` and the
   keyboard dispatcher address them by id) but only the local side's wrapper is
@@ -796,7 +796,7 @@ Three things make it safe:
    playable, fully textured arena. The game never waits on the network.
 2. **Each map keeps its identity.** `theme.wallColor`/`floorColor` still tint the
    albedo, and the procedural canvas is kept as an **emissive overlay** -
-   extracted by pulling out the accent-coloured pixels - so Voltaic Nexus keeps
+   extracted by pulling out the accent-colored pixels - so Voltaic Nexus keeps
    its glowing seams, Molten Foundry its lava cracks, the Colosseum its ivy.
    Dropping those would have flattened ten arenas into two rock textures.
 3. **Textures are cached by tiling, never cloned per mesh** - see the leaks below.
@@ -881,7 +881,7 @@ threw" test while still being the broken UI that was reported.
 
 `tests/artcheck.js` is new: 16 assertions covering the photographic swap
 actually happening, `uv2` present wherever the packed ORM's AO channel is used
-(it samples `vUv2` in r128), encodings correct (colour sRGB, data Linear),
+(it samples `vUv2` in r128), encodings correct (color sRGB, data Linear),
 metalness capped, the accent overlay surviving, the texture leak, and the shadow
 frustum genuinely refitting between two differently-lit maps.
 
@@ -1161,7 +1161,7 @@ legibility problem.
 in third-person view, with the same hands and everything else."
 
 The viewmodel arm was a hand-built assembly of primitives wearing the character's
-accent colour, so Draven's steel gauntlet and Lyra's sleeve were the same arm
+accent color, so Draven's steel gauntlet and Lyra's sleeve were the same arm
 painted differently. It is now taken from the loaded SkinnedMesh: keep the
 triangles weighted to the weapon-side arm chain, bake them into a static mesh,
 and mount that. Static is correct rather than a compromise — `syncViewmodels`
@@ -1204,7 +1204,7 @@ Named here rather than quietly dropped:
 - **Character faces in the roster circles.** `art/render_faces.js` is written and
   renders head-and-shoulders portraits from the models; it has not been run or
   wired into the grid, the armory or the room slots, which still show a flat
-  accent-coloured disc.
+  accent-colored disc.
 - **The crush cinematic is still one character, not two side by side.** Batch 27
   built it for split-screen, where each half already had its own camera; the
   online build has one view and it was never re-done for that.
@@ -1350,7 +1350,7 @@ core rather than a second solid).
 The lag was three materials **constructed and later disposed for every single
 projectile**. Lyra fires on a 16-frame cooldown and her special is a five-shard
 volley, so that is constant GPU-object churn - the same shape of problem as the
-Batch 30 crush stutter. Materials are cached per colour now, so a projectile
+Batch 30 crush stutter. Materials are cached per color now, so a projectile
 allocates one Group and three Meshes and no GPU resources at all. The shimmer
 scales the halo mesh instead of writing opacity, because a shared material
 cannot carry per-bolt opacity. Projectiles also no longer **cast shadows**: each
@@ -1484,7 +1484,7 @@ without a network connection stays behind.
 
 Now carried, on top of the art and balance: the teleport smear **and its camera
 fix** (the half that made it visible to the player using it), the projectile
-sphere and per-colour material cache, the extracted first-person arm, the
+sphere and per-color material cache, the extracted first-person arm, the
 death/crush scale fix, the tutorial auto-open flag, and the roster faces.
 Deliberately not carried: the room, player names, netcode, away-pause, and
 anything keyed on `LOCAL_SIDE`.
@@ -1703,7 +1703,7 @@ All ten planned batches (11-21) are in and pushed, each as its own commit with i
 **Recurring lessons this arc kept re-teaching, worth reading before the next change:**
 - **TDZ is this file's most common self-inflicted wound** — four instances across the arc (`shopSide`, `MATCH_MODES`, plus the historical `camera` and `geometryCache`). The rule is now explicit in comments: *anything the load-time menu build touches must be declared before it*, regardless of where it thematically belongs.
 - **CSS specificity and the box model bite repeatedly.** `.menu-section button { width: 100% }` has now broken two different features (the bot toggle, then the shop buttons); `max-height: 90vh` on modal panels positioned against a *container* clipped content at both ends with nothing scrollable to reach it.
-- **Lighting, not albedo, decides how something looks here.** The arenas are bright and the renderer tone-maps at exposure 1.1, multiplying a lit diffuse surface roughly 3x — a mid-grey reads as beige. Unlit `MeshBasicMaterial` is the only way to guarantee an on-screen colour (which is also why `addRimOutline`'s unlit shell can swamp a large body).
+- **Lighting, not albedo, decides how something looks here.** The arenas are bright and the renderer tone-maps at exposure 1.1, multiplying a lit diffuse surface roughly 3x — a mid-grey reads as beige. Unlit `MeshBasicMaterial` is the only way to guarantee an on-screen color (which is also why `addRimOutline`'s unlit shell can swamp a large body).
 - **Screenshots catch what assertions can't, and vice versa.** The HUD-overlap bug, the co-op arena-collapse bug, and all three Karrigos material problems were only visible in a rendered frame; the impossible jump gap, the telegraph regression, and the projectile-liveness subtlety were only visible to a computed assertion.
 - **When a check fails, suspect the harness first if the mechanism is sound.** Roughly half the failures in this arc were the test measuring at the wrong moment (after projectiles had despawned, before a KO was detected, against a match that had already ended) or pinning coordinates the simulation then moved.
 
@@ -2671,7 +2671,7 @@ makes the same change twice" is.
       and a comment left behind is still adjacent; it only showed at a boundary.
 
       And it had already done damage: twenty lines about baked portrait
-      rendering, plus a block about accent-colour swatches, were sitting directly
+      rendering, plus a block about accent-color swatches, were sitting directly
       above `function localPlayerNumber()` — a two-line function about which side
       you are. They document `faceUrl` and `paintSlotPortrait`, both in
       shared/common.js, and are now back with them. In a codebase that keeps its

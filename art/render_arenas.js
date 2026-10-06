@@ -3,7 +3,7 @@
 // Reported: "the arena previews when you are selecting one don't look like the
 // actual arenas... they should literally be the arenas from a top down view."
 // They were a procedural plan view - flat rectangles for the platforms on a
-// flat floor colour - which says where things are and nothing about what the
+// flat floor color - which says where things are and nothing about what the
 // place looks like.
 //
 // This renders the real arena with its real textures and lighting from the

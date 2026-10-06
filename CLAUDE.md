@@ -146,7 +146,7 @@ this machine unusable. `node tests/run.js smoke localcombatcheck` runs a subset.
 `tests/cssparitycheck.js` compares against a local snapshot
 (`tests/.css-baseline.json`, git-ignored). After an intended visual change,
 re-save it: `node tests/cssparitycheck.js --save`. It samples mid-transition
-colours occasionally, so confirm a failure reproduces before chasing it.
+colors occasionally, so confirm a failure reproduces before chasing it.
 
 ## CI
 

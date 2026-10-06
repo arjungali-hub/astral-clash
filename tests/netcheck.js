@@ -95,7 +95,11 @@ process.on('unhandledRejection', e => {
     // assertion after that failed for that single reason. In a real match STATE
     // flows continuously at 30Hz, so the client is right to treat silence as a
     // dropped connection; it was the test that went quiet.
-    async function waitPumping(pg, expr, label, ms = 30000) {
+    // The budget is scaled like every other one: this helper predates
+    // H.budget and kept its own hand-written 30000, which is why CI reported
+    // "timed out after 30000ms" on a run that had 3x scaling switched on
+    // everywhere else.
+    async function waitPumping(pg, expr, label, ms = H.budget(30000)) {
         const t0 = Date.now();
         let iter = 0;
         while (Date.now() - t0 < ms) {

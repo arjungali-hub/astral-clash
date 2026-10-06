@@ -243,7 +243,7 @@ const CFG = ['https://example.supabase.co', 'not-a-real-key'];
         // The reply must be the same whether or not the address has an account:
         // anything else turns this form into a way of testing which addresses
         // are registered.
-        const sent = await D.accountRequestReset('nobody@example.com');
+        const sent = await D.accountRequestReset('nobody_at_all');
         const sentPanel = D.accountPanelHTML();
         D.__accountSetMode('recover');
         D.__accountSetState('signed-out', 'Choose a new password');
@@ -252,12 +252,15 @@ const CFG = ['https://example.supabase.co', 'not-a-real-key'];
         D.__accountSetState('signed-out', '');
         return { forgot, sent, sentPanel, recover, redirect: D.accountRedirectTo() };
     }, CFG);
-    check('the forgot form asks for an email, not a username',
-        /input-account-email/.test(reset.forgot) && !/input-account-user/.test(reset.forgot),
-        reset.forgot.slice(0, 160));
+    // BY USERNAME, which is the point of putting the lookup server-side: the
+    // player types the name they remember and the function mails whatever
+    // address is on the account. This side never sees it.
+    check('the forgot form asks for a username, not an email',
+        /input-account-user/.test(reset.forgot) && !/input-account-email/.test(reset.forgot),
+        reset.forgot.slice(0, 180));
     check('and offers a way back', /btn-account-mode-in/.test(reset.forgot),
         reset.forgot.slice(-160));
-    check('an unknown address is NOT reported as unknown',
+    check('an unknown username is NOT reported as unknown',
         reset.sent.ok === true && /if there is an account/i.test(reset.sentPanel),
         JSON.stringify(reset.sent) + ' | ' + reset.sentPanel.slice(0, 120));
     check('the recover form asks for a new password and nothing else',
@@ -268,6 +271,27 @@ const CFG = ['https://example.supabase.co', 'not-a-real-key'];
     // gets in the way.
     check('the link comes back to a bare page URL',
         !/[?#]/.test(reset.redirect), reset.redirect);
+
+    section('THE ADDRESS NEVER REACHES THIS SIDE:');
+    // The reason the Edge Function exists. Asserted structurally rather than by
+    // reading the panel, because the claim is about what the client is CAPABLE
+    // of, not about what it happens to display.
+    const noLeak = await page.evaluate(() => {
+        const D = window.ACDebug;
+        return {
+            // The function the browser used to call to resolve a username.
+            hasLookup: typeof D.accountEmailFor === 'function',
+            // Sign-in and reset both go through one place now.
+            url: D.accountFunctionURL(),
+            state: Object.keys(D.accountState()),
+        };
+    });
+    check('there is no username-to-email resolver left on the client',
+        noLeak.hasLookup === false, String(noLeak.hasLookup));
+    check('sign-in and reset go to the account function',
+        /\/functions\/v1\/account$/.test(noLeak.url), noLeak.url);
+    check('and nothing about an email is exposed in the account state',
+        !noLeak.state.some(k => /email/i.test(k)), JSON.stringify(noLeak.state));
 
     section('Signed in, it shows who you are:');
     const inPanel = await page.evaluate(() => {
@@ -317,6 +341,13 @@ const CFG = ['https://example.supabase.co', 'not-a-real-key'];
     check('and progress IS written to this machine there',
         lp.stored === lp.coins && lp.coins >= 250, JSON.stringify(lp));
 
+    // THE ONE EXPECTED NOISE. This file configures a project that does not
+    // exist, so the reset call genuinely tries to reach example.supabase.co and
+    // genuinely fails to resolve it - the correct outcome of the test's own
+    // setup. Dropped from what finish() grades on, by exact shape, so every
+    // other console error stays fatal.
+    page.errors = (page.errors || []).filter(
+        e => !/ERR_NAME_NOT_RESOLVED|example\.supabase\.co/.test(String(e)));
     check('no errors thrown', errors.length === 0, errors.slice(0, 3).join(' | ') || 'none');
     await finish(browser, page);
 })();

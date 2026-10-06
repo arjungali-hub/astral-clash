@@ -89,7 +89,7 @@ ember materials, and damage numbers.
   geometry using the packed AO channel needs a `uv2` attribute - see
   `ensureUV2`. Roughness and metalness use `vUv` and work without it.
 - **Normal/roughness/AO must be `LinearEncoding`**, never sRGB: they are data,
-  not colour.
+  not color.
 - **Rodin's `bbox_condition` is not a hint** - it stretched a humanoid into a
   cone. Control proportion through the prompt.
 - **Blender's glTF importer normalises to Z-up.** Do not "detect" the up axis

@@ -12,7 +12,7 @@
 // the render layers, none of which are shared.
 //
 // RULES (the same as shared/props.js)
-//   1. NO DOM, NO RENDERER, NO CLOSURE STATE. A builder takes a colour and
+//   1. NO DOM, NO RENDERER, NO CLOSURE STATE. A builder takes a color and
 //      returns a THREE.Group with a documented userData contract.
 //   2. Neither build may re-declare these names; art/sync_local.py checks.
 
@@ -93,8 +93,8 @@ function buildHumanoidBase(color, opts) {
 // scythe blades at any taper.
 
 // Physically-plausible metal beats the old flat-ish look immediately: real
-// polished steel is fully metallic and quite smooth, and its colour comes from
-// reflection rather than a bright base colour.
+// polished steel is fully metallic and quite smooth, and its color comes from
+// reflection rather than a bright base color.
 // EVERY WEAPON A FIGHTER CAN HOLD lives in shared/props.js, loaded above:
 // one copy, shared with the local build. See that file's header for why.
 function buildKaelenMesh(color) {
@@ -297,7 +297,7 @@ function buildKarrigosMesh(color) {
     // tone-maps at exposure 1.1, which multiplies a lit surface's albedo by
     // roughly 3x here — a lit orange plus emissive clipped straight to
     // pale yellow-white, so the "embers" rendered as blank beige panels. Unlit
-    // means the colour on screen is exactly the colour chosen, which is the only
+    // means the color on screen is exactly the color chosen, which is the only
     // reliable way to get a hot-crack read against every map's lighting.
     const emberMat = new THREE.MeshBasicMaterial({ color: hexNum('#ff4d0d') });
     const seams = [];

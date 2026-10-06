@@ -53,7 +53,7 @@ async function step(page, frames) {
 
     // A fresh page per difficulty: botDifficulty is read when the AI thinks, but
     // a match carries momentum - hp, cooldowns, positions - and reusing one
-    // would let an earlier arm colour the next.
+    // would let an earlier arm color the next.
     async function run(difficulty) {
         const page = await H.newPage(browser);
         const errors = [];
