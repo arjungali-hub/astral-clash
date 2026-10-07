@@ -50,22 +50,48 @@ const SLACK = 12;
 
     // End a match by winning rounds until it is actually over - classic versus
     // is best of three, so one knockout is a round, not the match.
+    //
+    // CLEAR THE INVULNERABILITY FIRST. A fighter has invuln frames at the start
+    // of a round, and takeDamage honours them, so a kill fired the instant
+    // FIGHT arrives is silently dropped - the round never ends, and after four
+    // passes this reported "never reached GAMEOVER", which reads as a
+    // lifecycle bug rather than a swing that never landed. netcheck zeroes
+    // invulnFrames before its damage for the same reason and says so; this
+    // copy of the idea was missing it.
+    //
+    // The loop also reports WHAT it was looking at when it gave up. "never
+    // reached GAMEOVER" names the symptom and hides every cause, and this is a
+    // slow checker whose failures arrive from CI an hour after the fact.
+    let endWhy = '';
     const endMatch = async () => {
-        for (let round = 0; round < 4; round++) {
+        for (let round = 0; round < 6; round++) {
             const inFight = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 60000);
-            if (!inFight) break;
+            if (!inFight) {
+                endWhy = 'never got back to FIGHT for round ' + (round + 1);
+                break;
+            }
             await page.evaluate(() => {
                 const D = window.ACDebug;
+                D.player2.invulnFrames = 0;      // see above
                 D.player2.takeDamage(D.player2.hp + 50, D.player1);
             });
             if (await H.waitInPage(page, "window.ACDebug.gameState === 'GAMEOVER'", 12000)) return true;
+        }
+        if (!endWhy) {
+            const at = await page.evaluate(() => ({
+                state: window.ACDebug.gameState,
+                wins: window.ACDebug.roundWins,
+                round: window.ACDebug.currentRound,
+                p2hp: Math.round(window.ACDebug.player2.hp),
+            }));
+            endWhy = 'rounds kept resetting: ' + JSON.stringify(at);
         }
         return false;
     };
 
     section('GPU resources do not accumulate across rematches:');
     check('the first match starts', await startMatch(), 'never reached FIGHT');
-    check('and it can be finished', await endMatch(), 'never reached GAMEOVER');
+    check('and it can be finished', await endMatch(), endWhy || 'never reached GAMEOVER');
 
     const sample = () => page.evaluate(() => {
         const r = window.ACDebug.rendererInfo();

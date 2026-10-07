@@ -70,24 +70,38 @@ async function step(page, frames) {
         const isBot = await page.evaluate(() => window.ACDebug.p2IsBot);
         await page.evaluate((d) => window.ACDebug.setBotDifficulty(d), difficulty);
         // Only P1 is picked by hand; a bot side chooses for itself.
+        // CONDITIONS, not durations - the same change framerateccheck needed and
+        // for the same reason. A 500ms gap after Confirm and 300ms after Start
+        // Match are both bets that the menu repaints inside a fixed wall-clock
+        // window, and this is a checker that may spend ninety minutes before
+        // reporting, so a lost bet costs an entire CI run to say "never reached
+        // FIGHT" without saying why. Start Match only unhides once both sides
+        // are ready, which is exactly the precondition for clicking it.
         await page.evaluate(() => {
             const b = document.querySelector('#p1-grid .fighter-btn');
             if (b) b.click();
             const c = document.querySelector('#p1-detail .btn-confirm');
             if (c) c.click();
         });
-        await H.sleep(500);
-        await page.evaluate(() => {
-            const s = document.getElementById('btn-start-match');
-            if (s) s.click();
-        });
-        await H.sleep(300);
-        await page.evaluate(() => {
-            const c = document.querySelectorAll('#mapselect-grid .map-card')[0];
-            if (c) c.click();
-        });
+        const ready = await H.waitInPage(page,
+            "(() => { const s = document.getElementById('btn-start-match');"
+            + " return s && s.style.display !== 'none'; })()", 30000);
+        if (!ready) {
+            await page.close();
+            return { difficulty, isBot, failed: 'Start Match stayed hidden after P1 confirmed' };
+        }
+        await page.evaluate(() => document.getElementById('btn-start-match').click());
+        if (!await H.waitInPage(page, "document.querySelectorAll('#mapselect-grid .map-card').length > 0", 30000)) {
+            await page.close();
+            return { difficulty, isBot, failed: 'the arena picker never rendered' };
+        }
+        await page.evaluate(() => document.querySelectorAll('#mapselect-grid .map-card')[0].click());
         const live = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 90000);
-        if (!live) { await page.close(); return { difficulty, isBot, failed: 'never reached FIGHT' }; }
+        if (!live) {
+            const where = await page.evaluate(() => window.ACDebug.gameState);
+            await page.close();
+            return { difficulty, isBot, failed: 'never reached FIGHT (stuck in ' + where + ')' };
+        }
         // The drop-in cinematic holds control at the start of a match; firing
         // into it and calling the refusal a bad bot would be the same mistake
         // localcombatcheck documents.

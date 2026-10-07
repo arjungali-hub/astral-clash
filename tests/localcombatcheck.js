@@ -102,9 +102,18 @@ async function pick(page, side, name) {
 
         // Fire basic, let it play out, then special with a full meter. Real time
         // rather than a frame stepper: the loop is driven by rAF here.
-        const fired = await page.evaluate(async () => {
+        // THE SCALE HAS TO BE PASSED IN. This loop runs inside the page, so
+        // H.sleep - which scales itself - is not available to it, and the 4
+        // seconds it allowed were measured on a machine that renders this
+        // faster than a CI runner does. When idle() gave up early the basic
+        // attack was still running, the special was refused for that reason,
+        // and all ten characters failed with specialStarted false while
+        // specialState read "startup" - which is the BASIC's state, not the
+        // special's. The same systematic shape for every fighter is what says
+        // "one budget", not "ten broken characters".
+        const fired = await page.evaluate(async (scale) => {
             const D = window.ACDebug;
-            const wait = ms => new Promise(r => setTimeout(r, ms));
+            const wait = ms => new Promise(r => setTimeout(r, ms * scale));
             const out = {};
             // tryStartAction RETURNS the answer and sets atkState; there is no
             // `.action` field. Reading a field that does not exist reported
@@ -129,7 +138,7 @@ async function pick(page, side, name) {
                              specialStarted, specialState };
             }
             return out;
-        });
+        }, H.TIME_SCALE);
 
         const rej = await page.evaluate(() => window.__acRej || []);
         for (const [side, name] of [['p1', a], ['p2', b]]) {

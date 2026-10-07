@@ -254,6 +254,20 @@ process.on('unhandledRejection', e => {
         JSON.stringify(puppet));
 
     // The host moves; the joiner's copy of p1 should follow.
+    //
+    // PUMP AND CHECK, not pump-then-look. A fixed `pump(8)` is a bet on frame
+    // rate, and that bet lost on CI: the position only lands when the JOINER
+    // renders a frame, because netApplyState writes hp and meter while x and y
+    // are eased in by netApplyRemote from the game loop. Two software renderers
+    // sharing one runner do about a frame a second, so eight pumps bought
+    // roughly two joiner frames and the puppet was still sitting at spawn -
+    // reported as "joiner saw p1 move 230 -> 230" with the host at 970, which
+    // reads exactly like a dead relay rather than a slow one.
+    //
+    // Same lesson as the wait-loop above: relay WHILE waiting, and let the
+    // condition decide when to stop. The budget scales with AC_TIME_SCALE; the
+    // packet tally is reported either way, so a genuinely dead relay still
+    // names itself instead of looking like a timing fluke.
     const follow = await (async () => {
         await host.evaluate(() => {
             const f = window.ACDebug.player1;
@@ -265,14 +279,32 @@ process.on('unhandledRejection', e => {
             const f = window.ACDebug.player1;
             f.x = 1000; f.y = 470;
         });
-        await pump(8);
-        const after = await join.evaluate(() => ({ x: window.ACDebug.player1.x, y: window.ACDebug.player1.y }));
+        let after = before, pumps = 0;
+        const deadline = Date.now() + H.budget(30000);
+        while (Date.now() < deadline) {
+            await pumpOnce();
+            pumps++;
+            await H.sleep(120);
+            after = await join.evaluate(() => ({ x: window.ACDebug.player1.x, y: window.ACDebug.player1.y }));
+            if (after.x > before.x + 50) break;
+        }
         const target = await host.evaluate(() => ({ x: window.ACDebug.player1.x }));
-        return { before, after, target: target.x };
+        // What the joiner actually has to work with, so a failure says which
+        // half broke: no remoteState means nothing crossed, a remoteState the
+        // position has not caught up to means the joiner is not rendering.
+        const seen = await join.evaluate(() => ({
+            remoteX: window.ACDebug.net.remoteState ? window.ACDebug.net.remoteState.x : null,
+            puppet: window.ACDebug.player1.isNetPuppet(),
+            state: window.ACDebug.gameState,
+            fps: Math.round(window.ACDebug.fpsSmoothed || 0),
+        }));
+        return { before, after, target: target.x, pumps, seen };
     })();
     check('the puppet follows the owner across the network',
         follow.after.x > follow.before.x + 50,
-        `joiner saw p1 move ${follow.before.x.toFixed(0)} -> ${follow.after.x.toFixed(0)} (host at ${follow.target.toFixed(0)})`);
+        `joiner saw p1 move ${follow.before.x.toFixed(0)} -> ${follow.after.x.toFixed(0)}`
+        + ` (host at ${follow.target.toFixed(0)}, ${follow.pumps} pumps,`
+        + ` joiner ${JSON.stringify(follow.seen)})`);
 
     // The property here is that the puppet's OWN PHYSICS is suppressed - before
     // the guard, gravity pulled it down between packets and resolveObstacles
@@ -381,17 +413,53 @@ process.on('unhandledRejection', e => {
     stopRelay();   // this section kills the link on purpose
 
     // The silence timeout, tested on purpose rather than tripped over.
+    //
+    // WHAT THIS ASSERTS CHANGED, deliberately. Silence during a match no longer
+    // ends it outright - it opens a grace window, and netActive() is TRUE for
+    // the whole of one on purpose (see its comment in shared/common.js: dozens
+    // of guards hang off that answer, including the one deciding whether the
+    // opponent is driven by the wire or by this machine, so letting it go false
+    // would have this client drive BOTH fighters for fifteen seconds).
+    //
+    // So the old assertion - netActive() false right after the timeout - was
+    // asserting the bug the grace window exists to avoid. The contract now has
+    // three parts, and all three are worth holding onto: the silence IS
+    // noticed, the match is HELD rather than ended, and the hold EXPIRES.
     const timedOut = await host.evaluate(async () => {
         const D = window.ACDebug;
         D.netFakeConnect('host');
         D.netSetTimeout(300);              // 300ms of silence is a dead link
         const before = D.netActive();
         await new Promise(r => setTimeout(r, 1200));   // say nothing
-        return { before, after: D.netActive(), status: D.net.status, detail: D.net.detail };
+        return {
+            before,
+            after: D.netActive(),
+            status: D.net.status,
+            detail: D.net.detail,
+            grace: D.netInGrace(),
+            left: D.netGraceSecondsLeft(),
+        };
     });
-    check('silence past the timeout tears the connection down',
-        timedOut.before === true && timedOut.after === false, JSON.stringify(timedOut));
+    check('silence past the timeout is noticed', timedOut.status === 'dropped',
+        JSON.stringify(timedOut));
     check('and reports why', /timed out/i.test(timedOut.detail || ''), timedOut.detail);
+    check('the match is held in a grace window rather than ended',
+        timedOut.grace === true && timedOut.after === true, JSON.stringify(timedOut));
+    check('with a countdown that has not already run out', timedOut.left > 0,
+        String(timedOut.left));
+
+    // ...and the window CLOSES. A hold that never expires is a hang, which is
+    // the failure mode a reconnect feature adds if nobody checks for it. Driven
+    // by expiring the deadline and ticking the heartbeat, rather than by
+    // sleeping fifteen seconds in a checker.
+    const gaveUp = await host.evaluate(() => {
+        const D = window.ACDebug;
+        D.net.graceUntil = performance.now() - 1;   // the window has just closed
+        D.netGraceTick();                           // what the heartbeat would do
+        return { active: D.netActive(), grace: D.netInGrace(), status: D.net.status };
+    });
+    check('and the grace window expires into a real teardown',
+        gaveUp.active === false && gaveUp.grace === false, JSON.stringify(gaveUp));
 
     await host.evaluate(() => window.ACDebug.netFeed({ t: 'BYE' }));
     await H.sleep(400);

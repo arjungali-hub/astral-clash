@@ -34,35 +34,60 @@ async function travelAt(browser, fps) {
     const url = H.GAME_URL.replace('/index.html?debug=1',
         '/local/index.html?debug=1&fps=' + fps);
     await page.goto(url, { waitUntil: 'load' });
-    await H.sleep(900);
+    // WAIT FOR THE CONDITION, never for a duration.
+    //
+    // This ladder used to be fixed sleeps - 900ms to boot, 500ms after the
+    // picks, 300ms after Start Match - with a comment explaining that the menu
+    // needs to repaint between steps. The comment was right about the cause and
+    // wrong about the cure: a sleep long enough on a desktop is a bet on frame
+    // rate, and on CI, where two arms of this checker software-render in turn at
+    // about a frame a second, the bet lost. Both arms reported "never reached
+    // FIGHT", which reads as a frame-cap bug in a frame-cap checker and is not
+    // one - the match simply had not started yet.
+    //
+    // Every step here has a real precondition, so none of them need a guess.
+    // The one that matters is Start Match: refreshSelectUI only unhides that
+    // button when BOTH sides are confirmed, so waiting for it to be visible is
+    // waiting for exactly the state the click requires. And when it never
+    // appears, that is reported as its own failure instead of being laundered
+    // into "never reached FIGHT" one step later.
+    if (!await H.waitInPage(page, "window.ACDebug && window.ACDebug.gameState", 30000)) {
+        await page.close();
+        return { fps, failed: 'the game never booted' };
+    }
     await page.evaluate(() => { const c = document.querySelector('#btn-tutorial-close'); if (c) c.click(); });
     await page.evaluate(() => window.ACDebug.setDebugUnlockAll(true));
-    await page.evaluate(() => {
-        const pick = (grid, detail) => {
-            document.querySelectorAll(grid + ' .fighter-btn')[0].click();
-            const c = document.querySelector(detail + ' .btn-confirm');
-            if (c) c.click();
-        };
-        pick('#p1-grid', '#p1-detail');
-        pick('#p2-grid', '#p2-detail');
-    });
-    // LET THE MENU REPAINT between steps. Doing all of this in one synchronous
-    // evaluate clicked Start Match in the same tick as the second confirm, and
-    // the arena card in the tick after that - so the match never started and
-    // both arms reported "never reached FIGHT", which reads as a frame-cap bug
-    // and is not one. mobilecheck had the same shape.
-    await H.sleep(500);
-    await page.evaluate(() => {
-        const s = document.getElementById('btn-start-match');
-        if (s) s.click();
-    });
-    await H.sleep(300);
-    await page.evaluate(() => {
-        const card = document.querySelectorAll('#mapselect-grid .map-card')[0];
-        if (card) card.click();
-    });
+    for (const [grid, detail] of [['#p1-grid', '#p1-detail'], ['#p2-grid', '#p2-detail']]) {
+        if (!await H.waitInPage(page, `document.querySelectorAll('${grid} .fighter-btn').length > 0`, 30000)) {
+            await page.close();
+            return { fps, failed: 'the roster never rendered in ' + grid };
+        }
+        await page.evaluate(g => document.querySelectorAll(g + ' .fighter-btn')[0].click(), grid);
+        if (!await H.waitInPage(page, `document.querySelector('${detail} .btn-confirm')`, 30000)) {
+            await page.close();
+            return { fps, failed: 'no Confirm button appeared in ' + detail };
+        }
+        await page.evaluate(d => document.querySelector(d + ' .btn-confirm').click(), detail);
+    }
+    const ready = await H.waitInPage(page,
+        "(() => { const s = document.getElementById('btn-start-match');"
+        + " return s && s.style.display !== 'none'; })()", 30000);
+    if (!ready) {
+        await page.close();
+        return { fps, failed: 'both sides confirmed but Start Match stayed hidden' };
+    }
+    await page.evaluate(() => document.getElementById('btn-start-match').click());
+    if (!await H.waitInPage(page, "document.querySelectorAll('#mapselect-grid .map-card').length > 0", 30000)) {
+        await page.close();
+        return { fps, failed: 'the arena picker never rendered' };
+    }
+    await page.evaluate(() => document.querySelectorAll('#mapselect-grid .map-card')[0].click());
     const live = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 90000);
-    if (!live) { await page.close(); return { fps, failed: 'never reached FIGHT' }; }
+    if (!live) {
+        const where = await page.evaluate(() => window.ACDebug.gameState);
+        await page.close();
+        return { fps, failed: 'never reached FIGHT (stuck in ' + where + ')' };
+    }
 
     // Count frames as well as distance, so the arms can be shown to have
     // actually run at different rates - otherwise a cap that silently did
