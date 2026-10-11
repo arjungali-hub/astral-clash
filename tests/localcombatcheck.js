@@ -86,13 +86,25 @@ async function pick(page, side, name) {
         }
 
         // Start Fight opens the arena picker; choosing the arena starts the match.
+        //
+        // WAITING FOR THE PICKER, rather than relying on two CDP round-trips to
+        // leave enough of a gap. framerateccheck documents this exact pair of
+        // clicks producing "never reached FIGHT" when they landed too close
+        // together; it survives here only because each evaluate is its own
+        // round-trip. That is luck with a plausible explanation, which is the
+        // kind that stops being true on a slower machine.
         await page.evaluate(() => {
             const s = document.getElementById('btn-start-match');
             if (s) s.click();
         });
+        const picker = await H.waitInPage(page,
+            "document.querySelectorAll('#mapselect-grid .map-card').length > 0", 30000);
+        if (!picker) {
+            check(`${a} / ${b}: the arena picker opens`, false, 'no .map-card appeared');
+            continue;
+        }
         await page.evaluate(() => {
-            const c = document.querySelectorAll('#mapselect-grid .map-card')[0];
-            if (c) c.click();
+            document.querySelectorAll('#mapselect-grid .map-card')[0].click();
         });
         const live = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 90000);
         if (!live) {
@@ -134,8 +146,13 @@ async function pick(page, side, name) {
             };
             for (const [key, me, foe] of [['p1', D.player1, D.player2], ['p2', D.player2, D.player1]]) {
                 if (!me) { out[key] = { missing: true }; continue; }
-                // The intro cinematic holds control at match start; wait it out
-                // rather than firing into it and calling the refusal a bug.
+                // A CHEAP GUARD, not the intro handling - the comment here used
+                // to claim it waited out the drop-in cinematic, and it cannot:
+                // idle() waits for atkState to reach 'idle', which is already
+                // true throughout INTRO, so this returns at once. The intro is
+                // handled by the wait for gameState === 'FIGHT' above. This is
+                // worth keeping anyway, for whatever the fighter is mid-way
+                // through when a previous iteration hands it over.
                 const readyForBasic = await idle(me);
                 const basicStarted = me.tryStartAction('basic', foe);
                 const basicState = me.atkState;
