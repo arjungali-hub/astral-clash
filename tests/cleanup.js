@@ -36,7 +36,24 @@ const MARKERS = ['*swiftshader*', '*--headless*'];
 // because the next run of the same checker contends with it for the HTTP port
 // and the CDP relay, which is why netcheck appeared to hang rather than fail.
 // Matched on the script path, so nothing but this repo's own tests can match.
-const NODE_MARKERS = ['*astral-clash*tests*', '*tests/netcheck.js*', '*tests\netcheck.js*'];
+// ONE PATTERN, AND NOT A PATH-SHAPED ONE.
+//
+// This was three, and the third was '*tests\netcheck.js*' - which in a JS
+// single-quoted string is not a Windows path at all. \n is a line feed, so
+// the pattern was '*tests<LF>etcheck.js*' and could never match any command
+// line on any platform. It was added to catch a checker launched with a
+// backslash path and had never once matched one.
+//
+// Dropping it loses nothing, because a slash-direction-dependent marker was
+// the wrong idea to begin with: every checker launched from this repo has the
+// repo's own directory in its command line, with whichever separator the
+// caller used, and '*astral-clash*tests*' matches all of them. Naming no
+// separator is what makes it correct rather than lucky.
+//
+// Still matched on the repo path and never on the process name, for the same
+// reason the browser markers are: a blanket kill by name closed the user's
+// real browser windows once.
+const NODE_MARKERS = ['*astral-clash*tests*'];
 
 const ps = `
 # Suppresses the CLIXML progress stream PowerShell writes to stderr on a
