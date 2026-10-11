@@ -132,6 +132,7 @@ const SLACK = 12;
                  heapMB: m ? Math.round(m.usedJSHeapSize / 1048576) : null };
     });
 
+    const runStart = Date.now();
     const baseline = await sample();
     const series = [baseline];
     for (let i = 0; i < REMATCHES; i++) {
@@ -142,8 +143,19 @@ const SLACK = 12;
             return true;
         });
         if (!again) { check('a rematch is offered every time', false, 'no #btn-rematch on pass ' + i); break; }
-        if (!await endMatch()) { check('every rematch can be finished', false, 'pass ' + i); break; }
+        if (!await endMatch()) {
+            check('every rematch can be finished', false, 'pass ' + i + ': ' + endWhy);
+            break;
+        }
         series.push(await sample());
+        // SAY WHERE IT GOT TO, per pass. Seven matches, each with two knockouts
+        // and their frame-counted death sequences, is the bulk of this
+        // checker's wall clock - so if the watchdog ever fires, the question is
+        // which pass, and a timeout cannot answer it after the fact. The
+        // per-pass seconds are also the number that says whether the budget is
+        // close, which no amount of reasoning from a desktop can supply.
+        console.log(`    (rematch ${i + 1}/${REMATCHES} done`
+            + ` at ${Math.round((Date.now() - runStart) / 1000)}s)`);
     }
 
     const last = series[series.length - 1];

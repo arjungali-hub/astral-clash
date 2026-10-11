@@ -3311,8 +3311,64 @@ GAMEOVER" was a swing that never landed — `takeDamage` honours invuln frames
 and the kill fired the instant FIGHT arrived. `netcheck` zeroes `invulnFrames`
 before its damage and says why; this copy of the idea was missing the line.
 
-What this section can now say that it could not before: the game's behaviour was
-not what any of this was about. Six failures, zero of them in the game.
+**Then a second round, which corrected that.** The sentence that used to end
+this section - "six failures, zero of them in the game" - was true of the first
+round and wrong as a conclusion. Fixing the frame-rate bets let the checkers
+reach far enough to find real defects, which is what they are for:
+
+  * **The frame cap was broken, and had always been.** `AC_FPS_CAP` wraps
+    `requestAnimationFrame` with one shared `lastAt` for every callback. The
+    game loop re-registers itself each frame, so it claimed the slot and set
+    the timestamp; every other callback pending in that frame measured a zero
+    gap and re-queued. Forever. `afterPaint()` is a nested double rAF,
+    `withLoading()` runs its work inside one, and `startMatch()` loads assets
+    inside that - so with `?fps=` set the work was never invoked, and
+    `gameState` stayed MENU indefinitely. "Never reached FIGHT (stuck in MENU)"
+    in a frame-cap checker read as a frame-cap bug and this time was one.
+    framerateccheck could never have passed since the cap was written.
+  * **Telemetry was writing test results to the real balance table.** Every
+    checker that finishes a match ends through `endMatch()`, which calls
+    `reportMatchResult`: localmatchcheck a match and a rematch, leakcheck ten,
+    botcheck four. Dozens of synthetic rows per CI run, into the table whose
+    only purpose is to answer "is a fighter too strong", with no column that
+    could tell them from real ones. It surfaced only because
+    `0005_telemetry.sql` had not been applied, so PostgREST answered 404 and
+    Chrome logged it - **the symptom was load-bearing.** Applying the migration
+    would have removed the 404 and left the pollution.
+  * **A puppet carried one frame of gravity, permanently.** The jump block and
+    the position integration are both guarded for puppets; the `this.vz -=
+    GRAVITY * dt` between them was not. Nothing fell, because position ignores
+    `vz` for a puppet - but `vz` is the field anything would read to ask "is
+    this fighter falling", and for every remote player the answer was yes.
+    netcheck was asserting the mechanism rather than the outcome, and was right
+    to.
+
+Two of those were found by chasing a message that looked like something else: a
+bare 404, and a MENU that looked like a slow runner. Neither would have been
+found by reading the code looking for bugs.
+
+**And two guards that could not do their job.**
+
+  * `cssparitycheck` had no way to be told a change was intended. Its baseline
+    is git-ignored and restored from a CI cache, and it only wrote one when
+    missing - so the first deliberate layout change failed every run after it,
+    forever. There is a `BASELINE_EPOCH` in version control now, which makes
+    "I meant that" a reviewable line in a commit; an older epoch is stale
+    rather than failing.
+  * **Nothing checked that the checkers run.** The workflow names its fifty
+    checkers by hand in four places, and nothing compared that list to the
+    files - a new checker runs only if somebody remembers it. `fpscapcheck` was
+    written and committed and would have sat there untouched.
+    `art/ci_coverage.py` now fails the guards job in either direction, and was
+    proved able to fail before being trusted to pass.
+
+`tests/fpscapcheck.js` is the new one, and it is the shape worth having more
+of: it evaluates the real `shared/animation.js` against a fake window and a
+fake 60Hz clock, so it needs **no browser**, runs in milliseconds, and costs no
+memory on a machine that has had under 1GB free all week. Writing it
+immediately found two further faults in the fix - a rAF that returned no
+cancellable handle while three.js cancels the one it is given, and float drift
+that aliased a 30fps cap down to 24.
 
 **Needs a person, not a machine.**
 

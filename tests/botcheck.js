@@ -153,7 +153,20 @@ async function step(page, frames) {
     }
 
     const results = [];
-    for (const d of DIFFICULTIES) results.push(await run(d));
+    // SAY WHERE IT GOT TO. This is the longest checker in the suite - four
+    // fresh pages, each stepping 350 frames of a software-rendered match - and
+    // when its watchdog fired at 900s the report was "NO VERDICT" and nothing
+    // else. A timeout that cannot say which of four arms it died on costs a
+    // whole CI round to narrow down. The elapsed time per arm is also the
+    // number needed to judge whether the budget is near, which no amount of
+    // reasoning from a desktop can supply.
+    const t0 = Date.now();
+    for (const d of DIFFICULTIES) {
+        const armStart = Date.now();
+        console.log(`    (arm ${d}: starting at ${Math.round((armStart - t0) / 1000)}s)`);
+        results.push(await run(d));
+        console.log(`    (arm ${d}: done in ${Math.round((Date.now() - armStart) / 1000)}s)`);
+    }
     for (const r of results) console.log('    ' + JSON.stringify(r));
 
     section('The bot takes the field at all:');

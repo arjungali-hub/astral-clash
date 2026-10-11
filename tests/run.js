@@ -73,7 +73,17 @@ function freeMB() {
     catch (e) { return null; }
 }
 
+// Checkers that launch NO browser, and so need none of the memory below.
+//
+// The warning exists to stop somebody trusting a result the machine corrupted,
+// which means it has to be accurate: a warning that fires on a checker needing
+// 30MB teaches people to scroll past it, and then it is not there when it
+// matters. fpscapcheck evaluates shared/animation.js against a fake window and
+// a fake clock, which is the whole reason it was written that way.
+const NO_BROWSER_TESTS = new Set(['fpscapcheck']);
+
 function memoryWarning(name) {
+    if (NO_BROWSER_TESTS.has(name)) return null;
     const free = freeMB();
     if (free === null) return null;
     const need = TWO_BROWSER_TESTS.has(name) ? NEED_MB_TWO : NEED_MB;
