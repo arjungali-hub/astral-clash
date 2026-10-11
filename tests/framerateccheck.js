@@ -28,12 +28,31 @@ const TOLERANCE = 0.12;
 
 async function travelAt(browser, fps) {
     const page = await H.newPage(browser);
-    await H.startServer();
-    // Direct goto: the harness's URL builder appends ?debug=1 and cannot carry a
-    // second parameter, and ACDebug only exists with debug=1.
-    const url = H.GAME_URL.replace('/index.html?debug=1',
-        '/local/index.html?debug=1&fps=' + fps);
-    await page.goto(url, { waitUntil: 'load' });
+    // THROUGH boot(), like everything else.
+    //
+    // This used to be a hand-rolled goto, because gameUrl() could not carry the
+    // `?fps=` parameter this checker is built around. The cost of that shortcut
+    // was everything boot() does: clearing storage and reloading, dismissing
+    // the tutorial, naming the cause when a page fails to load, and waiting for
+    // the character GLBs. gameUrl() takes a `query` now, so the one thing this
+    // checker needs no longer costs it the other four.
+    //
+    // THIS IS NOT WHAT FIXED "stuck in MENU", and the record should say so. The
+    // cause was in the frame cap itself: its rAF wrapper shared one timestamp
+    // across all callbacks, so the self-re-registering game loop claimed every
+    // slot and starved everything else - including the nested double-rAF inside
+    // afterPaint, which is where withLoading runs startMatch's work. The work
+    // was never invoked at all, so nothing ever left MENU. See the note in
+    // shared/animation.js; a 40-line scheduling simulation reproduced it with
+    // no browser, and the cap had therefore never worked for anything but the
+    // game loop - meaning this checker could not have passed since it was
+    // written.
+    await H.boot(page, {
+        clearStorage: true,
+        models: true,
+        path: '/local/index.html',
+        query: 'fps=' + fps,
+    });
     // WAIT FOR THE CONDITION, never for a duration.
     //
     // This ladder used to be fixed sleeps - 900ms to boot, 500ms after the
@@ -51,11 +70,9 @@ async function travelAt(browser, fps) {
     // waiting for exactly the state the click requires. And when it never
     // appears, that is reported as its own failure instead of being laundered
     // into "never reached FIGHT" one step later.
-    if (!await H.waitInPage(page, "window.ACDebug && window.ACDebug.gameState", 30000)) {
-        await page.close();
-        return { fps, failed: 'the game never booted' };
-    }
-    await page.evaluate(() => { const c = document.querySelector('#btn-tutorial-close'); if (c) c.click(); });
+    // boot() has already proved ACDebug exists and dismissed the tutorial, and
+    // it throws with the reason if the page did not load - so neither needs
+    // repeating here.
     await page.evaluate(() => window.ACDebug.setDebugUnlockAll(true));
     for (const [grid, detail] of [['#p1-grid', '#p1-detail'], ['#p2-grid', '#p2-detail']]) {
         if (!await H.waitInPage(page, `document.querySelectorAll('${grid} .fighter-btn').length > 0`, 30000)) {

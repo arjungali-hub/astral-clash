@@ -3256,9 +3256,9 @@ and says what it found, loudly for the two-browser ones:
 Same lesson as the lockfile: contention does not announce itself, it corrupts the
 result and looks like a bug.
 
-**Still to do:** run `netcheck`, `leakcheck` and `framerateccheck` with ~2.5GB
-free. Nothing in the code is known to be wrong; nothing in those three is known
-to be right either.
+**Done, by CI rather than by this machine.** All three have now run on a runner
+with the memory they need. See "Still open" below for what they reported - the
+short version is six failures and none of them in the game.
 
 ### Still open
 
@@ -3267,22 +3267,52 @@ nothing open could be settled by a checker (two of the three now can be), it
 claimed `INTERFACE` had 114 entries (it has 18), and it described a forked
 boundary that four batches of work have since dissolved.
 
-**Written but never verified — three checkers, blocked on memory, not on code.**
+**The heavy checkers have now run — on CI, which is what this section was
+waiting for.** This machine never had the ~2.5GB they need; a runner does. What
+came back was not what "blocked on memory" predicted, and the difference is the
+whole lesson:
 
-  * `netcheck` — online multiplayer. Seven of its assertions pass and then a
-    browser dies: it is the only checker that launches TWO full Chrome instances,
-    each software-rendering a 3D match, and this machine has had under 1GB free
-    all week. Run it with ~2.5GB.
-  * `leakcheck` — ten rematches, no growth. Written for the old "needs a GPU"
-    item; headless runs on swiftshader, so what it can actually prove is that
-    ten rematches complete and JS heap does not climb, which is worth having.
-    Never executed successfully.
-  * `framerateccheck` — 30fps against uncapped, via the `?fps=` cap. Written for
-    the old parity item. `computeDt` is the thing under test. Never executed
-    successfully.
+**Five of the six failures were the harness, not the game.** Every one of them
+had the same shape — a fixed wall-clock sleep standing in for "the game has
+caught up". That is a bet on frame rate. It is winnable on a desktop and lost on
+a runner software-rendering an arena at about a frame a second, and when it
+loses, the message names a symptom with the cause hidden behind it:
 
-Nothing in the code is known to be wrong. Nothing in those three is known to be
-right either, and that is a different statement from "they pass".
+  * `localcombatcheck` — all ten fighters "failed to fire a special", with
+    `specialState: "startup"`. That is the BASIC attack's state. Its `idle()`
+    loop waited 80 × 50ms INSIDE `page.evaluate`, where the harness's own
+    scaling cannot reach, so it gave up while the basic was still swinging and
+    the special was then correctly refused. **Ten identical failures is one
+    budget, not ten broken characters** — the systematic shape was the tell.
+  * `framerateccheck` — "never reached FIGHT", in a frame-cap checker, which
+    reads as a frame-cap bug and is not one. The match had not started.
+  * `netcheck` — "joiner saw p1 move 230 -> 230" with the host at 970, which
+    reads exactly like a dead relay. The relay was fine; a position only lands
+    when the JOINER renders a frame, and eight pumps bought about two.
+  * `botcheck` — its outer watchdog, at a commit predating the scaling fix.
+
+All four now wait on **conditions rather than durations**. Where a precondition
+exists, it is waited for: Start Match is only unhidden once both sides are
+confirmed, so waiting for it to be visible is waiting for the exact state the
+click requires — and when it never appears, that is reported as itself rather
+than laundered into "never reached FIGHT" one step later.
+
+**One failure was a real behaviour change, asserted the old way.** `netcheck`
+asserted that silence past the timeout tears the connection down. That is now
+wrong on purpose: silence during a match opens a grace window, and
+`netActive()` is deliberately true throughout one — if it went false, this
+client would drive BOTH fighters for fifteen seconds. The old assertion was
+asserting the bug the grace window exists to avoid. The contract has three parts
+now, and all three are checked: the silence is noticed, the match is held, the
+hold expires.
+
+**And one was a genuine defect in a checker.** `leakcheck`'s "never reached
+GAMEOVER" was a swing that never landed — `takeDamage` honours invuln frames
+and the kill fired the instant FIGHT arrived. `netcheck` zeroes `invulnFrames`
+before its damage and says why; this copy of the idea was missing the line.
+
+What this section can now say that it could not before: the game's behaviour was
+not what any of this was about. Six failures, zero of them in the game.
 
 **Needs a person, not a machine.**
 

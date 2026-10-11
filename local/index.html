@@ -5808,7 +5808,19 @@ class Fighter {
         const footX = this.x + this.width / 2, footY = this.y + this.height / 2;
         const stepGround = groundLevelAt(footX, footY);
         if (puppet) { this.grounded = true; }  // its owner decides; see netApplyState
-        this.vz -= GRAVITY * dt;
+        // NOT FOR A PUPPET. The block comment above promises the gravity block
+        // is skipped for one, and the jump block honours that - this line did
+        // not. The position was still right, because the integration below
+        // ignores vz for a puppet, so nothing fell and nothing looked wrong.
+        //
+        // What was wrong was vz itself: update() re-zeroes a puppet's
+        // velocities at the top, so every frame ended with exactly one frame of
+        // gravity sitting in vz (-1.26 at the dt clamp) on a fighter standing
+        // still. That is the field anything would read to ask "is this fighter
+        // falling", and the answer was yes, permanently, for every remote
+        // player. netcheck asserts vz is zero for this reason - it was checking
+        // the mechanism rather than just the outcome, and it was right to.
+        if (!puppet) this.vz -= GRAVITY * dt;
         const nextZ = puppet ? this.z : this.z + this.vz * dt;
 
         // Steps/ramps give walkable ground, but only a rise up to

@@ -135,3 +135,29 @@ select message, build, count(*) as seen, max(seen_on) as last_seen
 from public.error_reports
 group by message, build
 order by seen desc;
+
+-- ---------------------------------------------------------------------------
+-- ...AND THE VIEWS MUST NOT BE THE WAY BACK IN
+-- ---------------------------------------------------------------------------
+-- A view in Postgres 15 runs as its OWNER unless told otherwise, so it reads
+-- straight through row level security. Both views above select from tables
+-- whose whole point is that nobody holding the public key can read them - so
+-- left as created, they are a readable copy of exactly what the policies above
+-- refuse, and the privacy design would have been undone by its own reporting
+-- query.
+--
+-- Supabase also grants anon and authenticated access to new objects in `public`
+-- by default, which is how this would have gone unnoticed: no GRANT appears
+-- anywhere in this file, and the access would have been there anyway. 0002 and
+-- 0003 each had to come back and remove the same default - third time, so it is
+-- stated up front here rather than discovered again.
+--
+-- Both halves, because either alone is enough and neither is obvious to the
+-- next reader: run as the CALLER so RLS applies, and grant nobody access.
+alter view public.balance_by_fighter set (security_invoker = on);
+alter view public.errors_by_message set (security_invoker = on);
+
+revoke all on public.balance_by_fighter from anon, authenticated;
+revoke all on public.errors_by_message from anon, authenticated;
+grant select on public.balance_by_fighter to service_role;
+grant select on public.errors_by_message to service_role;

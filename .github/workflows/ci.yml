@@ -66,6 +66,14 @@ jobs:
       - name: The two builds agree
         run: python art/sync_local.py --check
 
+      # Exits non-zero if a checker exists that no CI job names, or a CI job
+      # names one that does not exist. The lists in this file are written by
+      # hand in four places, so a new checker runs only if somebody remembers
+      # to add it - and a suite that silently runs one fewer than it reports
+      # looks exactly like a suite that passes.
+      - name: Every checker actually runs
+        run: python art/ci_coverage.py
+
       # Not a pass/fail gate - a number to watch. If the unkeyed count climbs
       # above 88, something new has no mechanism keeping it in step.
       - name: Coverage map
@@ -127,7 +135,8 @@ jobs:
             sandboxcheck batch24check batch38check symmetrycheck weaponcheck \
             deadcontrolcheck inputguardcheck knockbackcheck \
             contrastcheck padmenucheck palettecheck langcheck \
-            netsmoothcheck touchfpscheck reconnectcheck dailycheck accountcheck telemetrycheck
+            netsmoothcheck touchfpscheck reconnectcheck dailycheck accountcheck telemetrycheck \
+            fpscapcheck
 
   # ------------------------------------------------------------------ slow
   # Minutes each. Sharded three ways and run in parallel: as one job this took
@@ -140,7 +149,13 @@ jobs:
     name: Slow checkers (${{ matrix.shard }})
     runs-on: ubuntu-latest
     needs: guards
-    timeout-minutes: 45
+    # 75, not 45. The harness's own watchdog is 15 minutes scaled by
+    # AC_TIME_SCALE, which is 45 here - so at 45 the job ceiling and the
+    # per-run ceiling were the same number, and a single slow checker could
+    # eat the entire shard before anything had a chance to report. The inner
+    # watchdog should always be the one that fires, because it names the
+    # checker and exits cleanly; a job timeout just stops.
+    timeout-minutes: 75
     strategy:
       # One shard failing should not cancel the other two - the whole point is
       # to learn about all of them in one push.

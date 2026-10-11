@@ -167,15 +167,92 @@ const AC_FPS_CAP = (function () {
     return (n > 0 && n <= 240) ? n : 0;
 })();
 
+// ONE QUEUE, FLUSHED ONCE PER SLOT - not a gate each callback races.
+//
+// The first version of this wrapper gave every callback its own re-queueing
+// step() that consulted one SHARED `lastAt`. Whichever callback happened to run
+// first in a frame set that timestamp, and every other callback pending in the
+// same frame then measured a zero gap against it and re-queued. The game loop
+// re-registers itself every frame, so it won that race every time - and nothing
+// else ever ran.
+//
+// That is not a slow path, it is a dead one, and it broke the game rather than
+// the measurement. afterPaint() is a nested double rAF and withLoading() runs
+// its work inside one, so with ?fps= set, startMatch's work was never invoked:
+// matchAssetsReady never started, startMatchNow never ran, and gameState stayed
+// MENU indefinitely. Both arms of framerateccheck reported exactly that, which
+// read as a frame-cap bug in a frame-cap checker and this time WAS one.
+//
+// Batching is the fix and it is also the more honest model of a frame: real rAF
+// delivers every callback registered before the frame, together, once. So does
+// this - just less often. A callback registered DURING a flush lands in the
+// next slot, which is what makes afterPaint's two ticks take two slots (100ms
+// at 20fps) instead of never.
+//
+// REAL HANDLES, because a replacement for requestAnimationFrame has to keep
+// its contract. The project itself never calls cancelAnimationFrame - but
+// three.js does: WebGLAnimation keeps the handle from requestAnimationFrame and
+// cancels it in stop(). The game drives its own loop rather than
+// renderer.setAnimationLoop, so that path may never be reached here, which is
+// not a reason to install a rAF that quietly ignores a cancel.
 if (AC_FPS_CAP && typeof window !== 'undefined' && window.requestAnimationFrame) {
     const raf = window.requestAnimationFrame.bind(window);
+    const nativeCancel = typeof window.cancelAnimationFrame === 'function'
+        ? window.cancelAnimationFrame.bind(window) : null;
     const minGap = 1000 / AC_FPS_CAP;
     let lastAt = -1e9;
+    let pending = new Map();      // handle -> callback, in insertion order
+    let nextHandle = 1;
+    let scheduled = 0;            // the UNDERLYING handle, so this can cancel too
+
+    const schedule = () => {
+        if (scheduled) return;
+        scheduled = raf(flush) || -1;
+    };
+
+    function flush(now) {
+        scheduled = 0;
+        if (now - lastAt < minGap) { schedule(); return; }   // too soon; wait
+        // ADVANCE BY WHOLE SLOTS, rather than snapping to now.
+        //
+        // Snapping carries the leftover between the display's frame interval
+        // and minGap into the next comparison, where it accumulates: asked for
+        // 30fps on a 60Hz source - which should be exactly every other frame -
+        // it aliased down to 24, because each slot started its countdown a
+        // fraction of a frame late and every so often lost a whole one.
+        //
+        // Unless we are more than a slot behind, which means the page was not
+        // being painted at all (a backgrounded tab, a long stall). Catching up
+        // on that by firing a burst of slots would be worse than the drift, so
+        // that case resets to now.
+        lastAt = (now - lastAt > minGap * 2) ? now : lastAt + minGap;
+        // Taken before the loop: a callback that registers another one during
+        // the flush must land in the NEXT slot, not extend this one into an
+        // unbounded loop. Map preserves insertion order, which is the order a
+        // real rAF would deliver them in.
+        const batch = Array.from(pending.values());
+        pending = new Map();
+        for (let i = 0; i < batch.length; i++) {
+            // One throwing callback must not swallow the rest, and must still
+            // reach window.onerror the way an uncaught rAF callback would -
+            // which is where reportError is hooked.
+            try { batch[i](now); }
+            catch (e) { setTimeout(() => { throw e; }, 0); }
+        }
+    }
+
     window.requestAnimationFrame = function (cb) {
-        return raf(function step(now) {
-            if (now - lastAt < minGap) return raf(step);
-            lastAt = now;
-            cb(now);
-        });
+        const handle = nextHandle++;
+        pending.set(handle, cb);
+        schedule();
+        return handle;
+    };
+
+    window.cancelAnimationFrame = function (handle) {
+        // A handle this wrapper issued, or one from the native rAF that was
+        // taken before the wrapper was installed - try ours first, and only
+        // fall through when it is not one of ours.
+        if (pending.delete(handle)) return;
+        if (nativeCancel) nativeCancel(handle);
     };
 }

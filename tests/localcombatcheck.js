@@ -100,45 +100,60 @@ async function pick(page, side, name) {
             continue;
         }
 
-        // Fire basic, let it play out, then special with a full meter. Real time
-        // rather than a frame stepper: the loop is driven by rAF here.
-        // THE SCALE HAS TO BE PASSED IN. This loop runs inside the page, so
-        // H.sleep - which scales itself - is not available to it, and the 4
-        // seconds it allowed were measured on a machine that renders this
-        // faster than a CI runner does. When idle() gave up early the basic
-        // attack was still running, the special was refused for that reason,
-        // and all ten characters failed with specialStarted false while
-        // specialState read "startup" - which is the BASIC's state, not the
-        // special's. The same systematic shape for every fighter is what says
-        // "one budget", not "ten broken characters".
-        const fired = await page.evaluate(async (scale) => {
+        // Fire basic, let it play out, then special with a full meter.
+        //
+        // WAIT ON FRAMES, NOT ON MILLISECONDS. An attack is measured in frames -
+        // startup, active and recovery all count down by `dt` - so how long one
+        // takes in WALL CLOCK is entirely a function of frame rate. This loop
+        // allowed 80 x 50ms = 4 seconds, which is generous at 60fps and absurd
+        // at the ~1fps a CI runner manages software-rendering an arena, where a
+        // 60-frame attack can take a minute.
+        //
+        // Scaling that budget was the first attempt and it was the wrong cure:
+        // x3 moved every failure from specialState "startup" to "recovery",
+        // which is the same bug reported one stage later - still the BASIC's
+        // state, because idle() still gave up while the basic was running and
+        // the special was still refused for that reason.
+        //
+        // rAF is the right clock. It advances exactly once per rendered frame
+        // whatever the rate, so a budget counted in frames needs no scaling and
+        // cannot be invalidated by a slow machine. It is also generous in the
+        // direction that matters: at a low frame rate each frame carries a
+        // larger `dt`, so an attack completes in FEWER rendered frames, not
+        // more. Same clock botcheck's step() uses, for the same reason.
+        const fired = await page.evaluate(async () => {
             const D = window.ACDebug;
-            const wait = ms => new Promise(r => setTimeout(r, ms * scale));
+            const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
             const out = {};
             // tryStartAction RETURNS the answer and sets atkState; there is no
             // `.action` field. Reading a field that does not exist reported
             // every character as failing to attack while the build was fine.
             const idle = async (f) => {
-                for (let i = 0; i < 80 && f.atkState !== 'idle'; i++) await wait(50);
+                for (let i = 0; i < 300 && f.atkState !== 'idle'; i++) await frame();
                 return f.atkState === 'idle';
             };
             for (const [key, me, foe] of [['p1', D.player1, D.player2], ['p2', D.player2, D.player1]]) {
                 if (!me) { out[key] = { missing: true }; continue; }
                 // The intro cinematic holds control at match start; wait it out
                 // rather than firing into it and calling the refusal a bug.
-                await idle(me);
+                const readyForBasic = await idle(me);
                 const basicStarted = me.tryStartAction('basic', foe);
                 const basicState = me.atkState;
-                await idle(me);
+                // REPORTED, not inferred. When this is false the special was
+                // refused because the basic had not finished, and that is a
+                // budget running out rather than a fighter that cannot attack -
+                // which is exactly the distinction the old failure hid.
+                const readyForSpecial = await idle(me);
                 me.specialMeter = 100;
                 const specialStarted = me.tryStartAction('special', foe);
                 const specialState = me.atkState;
                 await idle(me);
                 out[key] = { name: me.name, basicStarted, basicState,
-                             specialStarted, specialState };
+                             specialStarted, specialState,
+                             readyForBasic, readyForSpecial };
             }
             return out;
-        }, H.TIME_SCALE);
+        });
 
         const rej = await page.evaluate(() => window.__acRej || []);
         for (const [side, name] of [['p1', a], ['p2', b]]) {

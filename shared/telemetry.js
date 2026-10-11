@@ -28,9 +28,15 @@
 // ============================================================================
 //
 // Every send is fire-and-forget: nothing awaits it, nothing retries, nothing
-// is queued for later, and a failure is swallowed in silence. A game that
-// stutters because a stats endpoint is slow has traded something real for
-// something that was only ever nice to have.
+// is queued for later, and a failure changes nothing the player can see. A
+// game that stutters because a stats endpoint is slow has traded something
+// real for something that was only ever nice to have.
+//
+// "Swallowed in silence" is what this said, and it was not true of the
+// console: fetch() resolves rather than rejects on an HTTP error, so the
+// .catch() never fires on a 404, and the browser logs the failed request no
+// matter what JS does about it. See telemetryPost - the answer is not to send
+// from somewhere the endpoint is not.
 
 const TELEMETRY_KEY = 'astralClashShareStats';
 
@@ -57,11 +63,59 @@ function refreshShareStatsUI() {
 // quietly become a place to put something else.
 function telemetryBuild() { return AC_ONE_SIDE_PER_CLIENT ? 'online' : 'local'; }
 
+// ===========================================================================
+// WHERE THIS IS ALLOWED TO REPORT FROM
+// ===========================================================================
+//
+// Not from localhost, and not from a file:// page. This is a correctness rule
+// about the DATA, not a convenience for tests.
+//
+// A test suite finishes matches. localmatchcheck plays one and then a rematch,
+// leakcheck plays ten, botcheck four, and every one of them ends through the
+// same endMatch() that calls reportMatchResult. So every CI run was posting
+// dozens of synthetic "Kaelen beat Lyra" rows into the table whose whole
+// purpose is to answer "is a fighter too strong" - and they look exactly like
+// real rows, because they are the same shape. There is no column that could
+// tell them apart afterwards, by design.
+//
+// That is the failure that matters, and it is the one that would never have
+// been noticed: it only surfaced because 0005_telemetry.sql has not been
+// applied yet, so PostgREST answered 404 and Chrome logged a failed request -
+// which localmatchcheck reads as a console error. Apply the migration and the
+// 404 disappears; the pollution does not. The symptom was load-bearing.
+//
+// Note also that the 404 could not have been handled in code. fetch() does not
+// reject on an HTTP error - it resolves with ok:false - so the .catch() below
+// never ran, and the browser logs a failed request whatever JS does with it.
+// "A failure is swallowed in silence", as the header of this file claimed, was
+// never true of the console. The only way not to log it is not to send it.
+//
+// telemetrycheck opts back in: it replaces window.fetch with a spy and asserts
+// the payload shape, so it needs the real code path with nothing leaving the
+// machine. An explicit opt-in for the one caller that has made it safe beats a
+// rule each of the fifty checkers has to remember.
+let telemetryAllowLocal = false;
+
+function setTelemetryAllowLocal(on) { telemetryAllowLocal = !!on; }
+
+function telemetryProductionOrigin() {
+    try {
+        const h = location.hostname;
+        if (!h) return false;                 // file://, or something stranger
+        return !(h === 'localhost' || h === '127.0.0.1'
+                 || h === '::1' || h === '[::1]'
+                 || /\.local$/.test(h) || /^192\.168\./.test(h));
+    } catch (e) {
+        return false;   // cannot tell where we are, so do not report
+    }
+}
+
 // Straight to PostgREST rather than through supabase-js: this needs one POST
 // and no session, and loading a client library for it would mean the stats
 // endpoint decides how fast the game starts.
 function telemetryPost(table, row) {
     if (!shareStats) return;
+    if (!telemetryAllowLocal && !telemetryProductionOrigin()) return;
     if (typeof SUPABASE_URL !== 'string' || !SUPABASE_URL || !SUPABASE_ANON_KEY) return;
     try {
         fetch(SUPABASE_URL + '/rest/v1/' + table, {

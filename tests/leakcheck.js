@@ -62,12 +62,30 @@ const SLACK = 12;
     // The loop also reports WHAT it was looking at when it gave up. "never
     // reached GAMEOVER" names the symptom and hides every cause, and this is a
     // slow checker whose failures arrive from CI an hour after the fact.
+    // What the game was actually doing when a wait ran out. Every failure in
+    // endMatch ends with one of these, because "never reached X" names the
+    // symptom and hides every cause - and this checker reports from CI an hour
+    // later.
+    //
+    // DECLARED BEFORE its caller, not merely before its first call. A `const`
+    // used inside a function defined above it works only as long as nobody
+    // reorders the calls, and this file is one of several here that has had a
+    // TDZ regression land exactly that way.
+    const describe = () => page.evaluate(() => JSON.stringify({
+        state: window.ACDebug.gameState,
+        wins: window.ACDebug.roundWins,
+        round: window.ACDebug.currentRound,
+        p1hp: Math.round(window.ACDebug.player1.hp),
+        p2hp: Math.round(window.ACDebug.player2.hp),
+    }));
+
     let endWhy = '';
     const endMatch = async () => {
         for (let round = 0; round < 6; round++) {
-            const inFight = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 60000);
+            const inFight = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 90000);
             if (!inFight) {
-                endWhy = 'never got back to FIGHT for round ' + (round + 1);
+                endWhy = 'never got back to FIGHT for round ' + (round + 1)
+                    + ' ' + await describe();
                 break;
             }
             await page.evaluate(() => {
@@ -75,19 +93,33 @@ const SLACK = 12;
                 D.player2.invulnFrames = 0;      // see above
                 D.player2.takeDamage(D.player2.hp + 50, D.player1);
             });
-            if (await H.waitInPage(page, "window.ACDebug.gameState === 'GAMEOVER'", 12000)) return true;
+            // EITHER STATE, one wait.
+            //
+            // A knockout is not instant: there is a death sequence, and on the
+            // deciding one the crush cinematic, all counted in FRAMES - so how
+            // long it takes in wall clock is a function of frame rate, and at
+            // the ~1fps of a CI runner it comfortably outlasts any window
+            // written on a desktop. This waited 12s for GAMEOVER, gave up, and
+            // went back to waiting for FIGHT - which was never coming, because
+            // the match was over. "Never got back to FIGHT for round 3" was a
+            // finished match being misread as a stuck one.
+            //
+            // Asking for either state removes the guess about which comes next,
+            // and removes the fixed window along with it.
+            const settled = await H.waitInPage(page,
+                "window.ACDebug.gameState === 'GAMEOVER'"
+                + " || window.ACDebug.gameState === 'FIGHT'", 90000);
+            if (!settled) {
+                endWhy = 'the knockout in round ' + (round + 1)
+                    + ' led to neither a next round nor a result ' + await describe();
+                break;
+            }
+            if (await page.evaluate(() => window.ACDebug.gameState === 'GAMEOVER')) return true;
         }
-        if (!endWhy) {
-            const at = await page.evaluate(() => ({
-                state: window.ACDebug.gameState,
-                wins: window.ACDebug.roundWins,
-                round: window.ACDebug.currentRound,
-                p2hp: Math.round(window.ACDebug.player2.hp),
-            }));
-            endWhy = 'rounds kept resetting: ' + JSON.stringify(at);
-        }
+        if (!endWhy) endWhy = 'rounds kept resetting ' + await describe();
         return false;
     };
+
 
     section('GPU resources do not accumulate across rematches:');
     check('the first match starts', await startMatch(), 'never reached FIGHT');

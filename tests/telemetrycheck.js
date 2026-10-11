@@ -29,7 +29,42 @@ const H = require('./harness');
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         };
     });
+    // Opting in is SEPARATE from spying, so the default can be asserted first.
+    const allowLocal = (on) => page.evaluate(
+        v => window.ACDebug.setTelemetryAllowLocal(v), on);
     await spy();
+
+    // ----------------------------------------------------------------------
+    section('A test run does not write to the real balance table:');
+    // THE REGRESSION GUARD FOR A BUG THAT HAD NO SYMPTOM OF ITS OWN.
+    //
+    // Every checker that finishes a match ends through endMatch(), which calls
+    // reportMatchResult - so localmatchcheck (a match and a rematch), leakcheck
+    // (ten) and botcheck (four) were each posting real rows to the real table
+    // on every CI run. They are indistinguishable from real matches afterwards,
+    // because by design there is no column that could tell them apart.
+    //
+    // It surfaced only by accident: 0005_telemetry.sql had not been applied, so
+    // PostgREST answered 404, Chrome logged a failed request, and
+    // localmatchcheck reads console errors. Applying the migration removes the
+    // 404 and leaves the pollution - so the guard goes here, where it is the
+    // assertion rather than a side effect of a missing table.
+    const refused = await page.evaluate(() => {
+        const D = window.ACDebug;
+        D.setShareStats(true);               // the switch is ON; the origin is not
+        window.__sent = [];
+        D.reportMatchResult('classic', 'Kaelen', 'Lyra', 1);
+        D.reportError('a fault that should not be reported from a test', 'x.js:1');
+        return { sent: window.__sent.length, prod: D.telemetryProductionOrigin() };
+    });
+    check('a page served from localhost is not a production origin',
+        refused.prod === false, String(refused.prod));
+    check('and it sends nothing, even with sharing switched on',
+        refused.sent === 0, refused.sent + ' request(s)');
+
+    // From here the checker opts in, which it has earned by replacing fetch:
+    // nothing below leaves the machine.
+    await allowLocal(true);
 
     section('A finished match reports who beat whom, and nothing more:');
     const sent = await page.evaluate(() => {

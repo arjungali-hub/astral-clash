@@ -23,6 +23,33 @@ const fs = require('fs');
 const path = require('path');
 const H = require('./harness');
 
+// WHEN THE LAYOUT WAS LAST MEANT TO CHANGE.
+//
+// Bump this in the same commit as a deliberate layout change, with a word about
+// what moved. Any baseline captured under an older epoch is treated as stale
+// rather than as a regression: it is reseeded, and the run says it compared
+// nothing - the same thing it already does on a first run.
+//
+// This exists because there was NO way to accept an intended change. The
+// baseline is git-ignored and comes from a CI cache, and the checker only wrote
+// it when absent, so the first intended change poisoned every later run. The
+// two that did it:
+//
+//   * the account panel became a modal, so #account-screen and its buttons are
+//     no longer part of the select-screen flow - reported as "gone", correctly;
+//   * the daily challenge panel changed the select screen's height, 936 -> 926
+//     online and a menu-section 684 -> 751 in the local build.
+//
+// Both were asked for. Neither is a cascade accident, which is what this
+// checker is for.
+//
+// Not committed as a file, deliberately: this records what the BROWSER
+// computes, and font metrics differ between a Windows dev machine and an Ubuntu
+// runner, so a committed snapshot would diff everywhere except where it was
+// made. The epoch is the part that belongs in version control; the measurements
+// belong to whichever machine took them.
+const BASELINE_EPOCH = '2026-10-11: account panel became a modal; daily panel added';
+
 // Enough to catch a cascade change; not so much that noise drowns it.
 const PROPS = ['display', 'position', 'width', 'height', 'margin', 'padding',
     'color', 'background-color', 'border', 'border-radius', 'font-size',
@@ -81,15 +108,17 @@ async function capture(page, build) {
     const save = process.argv[2] === '--save';
     const file = path.join(__dirname, '.css-baseline.json');
 
-    const data = {};
+    const data = { epoch: BASELINE_EPOCH };
     for (const [label, build] of [['online', null], ['local', '/local/index.html']]) {
         data[label] = await capture(page, build);
     }
 
     if (save) {
         fs.writeFileSync(file, JSON.stringify(data));
-        const n = Object.values(data).reduce((a, b) =>
-            a + Object.values(b).reduce((x, y) => x + Object.keys(y).length, 0), 0);
+        // Only the two builds; `epoch` is a string and has no screens to count.
+        const n = ['online', 'local'].reduce((a, label) =>
+            a + Object.values(data[label] || {})
+                .reduce((x, y) => x + Object.keys(y).length, 0), 0);
         console.log('baseline saved: %d element snapshots across %d screens x %d sizes',
             n, SCREENS.length, SIZES.length);
         await H.closeAllBrowsers();
@@ -113,6 +142,21 @@ async function capture(page, build) {
         return;
     }
     const base = JSON.parse(fs.readFileSync(file, 'utf8'));
+
+    // A BASELINE FROM BEFORE A DECLARED CHANGE IS STALE, NOT A REGRESSION.
+    // Same treatment as a missing one: reseed, say that nothing was compared,
+    // and let the next run do the comparing. The alternative is what happened
+    // before - an intended change failing this checker on every run until
+    // somebody gave up and stopped reading it.
+    if (base.epoch !== BASELINE_EPOCH) {
+        fs.writeFileSync(file, JSON.stringify(data));
+        section('The baseline predates a declared layout change:');
+        check('baseline reseeded - this run compared NOTHING', true,
+            'was ' + JSON.stringify(base.epoch || '(none)')
+            + ', now ' + JSON.stringify(BASELINE_EPOCH));
+        await finish(browser, page);
+        return;
+    }
 
     section('Computed styles are unchanged:');
     for (const build of ['online', 'local']) {
