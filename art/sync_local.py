@@ -3737,6 +3737,33 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         if markup in dst:
             dst = dst.replace(markup, '')
             print('  %-34s ok' % 'duplicate Close removed')
+    # THE LOOSE REMATCH PAIR. Same shape, worse symptom: this build carried two
+    # elements with id="btn-rematch" and two with id="btn-reroll-map" - one pair
+    # inside #gameover-actions and one loose beside it. getElementById returns
+    # the first, so the Game Over screen showed each button TWICE and the second
+    # of each pair was dead.
+    #
+    # #gameover-actions was added to the online build as a container holding
+    # those two buttons; markup_inserts brought the container over and nothing
+    # took away the originals already sitting here. A port that adds without
+    # removing. The indentation is what tells them apart - the container's
+    # copies are four spaces deeper - so these two patterns match only the
+    # loose ones.
+    # THE LEADING NEWLINE IS LOAD-BEARING, and leaving it out deleted both
+    # pairs instead of one. The container's copies are indented four spaces
+    # deeper, and a 24-space line CONTAINS "20 spaces then <button" as a
+    # substring starting at its fifth character - so the shallower pattern
+    # matched the deeper line too, str.replace took every occurrence, and
+    # #gameover-actions came out empty with no rematch button anywhere.
+    # Anchoring on the newline makes the indentation an exact prefix again.
+    n_loose = 0
+    for markup in (chr(10) + '                    <button id="btn-rematch">Rematch (Same Arena)</button>',
+                   chr(10) + '                    <button id="btn-reroll-map">Rematch (New Arena)</button>'):
+        if markup in dst:
+            dst = dst.replace(markup, '')
+            n_loose += 1
+    print('  %-34s %s' % ('loose rematch pair',
+                          ('%d removed' % n_loose) if n_loose else 'ok (none left)'))
     # `line`, not `wiring`: a loop variable of that name shadowed the
     # module-level wiring() helper for the rest of main(), which is the same
     # trap as the touch notice above and cost two runs to find.
@@ -4184,9 +4211,38 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         print('   Run: python art/sync_local.py')
         return 1
 
+    # NO ID TWICE. The last invariant between these builds with no check behind
+    # it, which is exactly how two dead Rematch buttons came to sit on a screen
+    # every player reaches: an id collision is invalid HTML, getElementById
+    # silently returns the first match, and the second element looks present and
+    # does nothing. Nothing in the suite could see it - a checker clicking by id
+    # gets the working one.
+    #
+    # Both builds are checked, because the online one is where markup is
+    # authored and a collision introduced there would be copied straight over.
+    dup_ids = []
+    for label, text in (('online', src), ('local', dst)):
+        seen, dups = set(), set()
+        for m in re.finditer(r'''id=["']([A-Za-z0-9_-]+)["']''', text):
+            i = m.group(1)
+            if i in seen:
+                dups.add(i)
+            seen.add(i)
+        for i in sorted(dups):
+            dup_ids.append('%s: %s' % (label, i))
+    print('  %-34s %s' % ('every id is unique',
+                          'ok' if not dup_ids else 'FAILED: ' + ', '.join(dup_ids)))
+
     io.open(DST, 'w', encoding='utf-8', newline='').write(dst)
     print('\nlocal build: %d -> %d bytes' % (before, len(dst)))
     rc = check_fixed_point()
+    if dup_ids:
+        print('')
+        print('DUPLICATE ELEMENT ID: %s.' % ', '.join(dup_ids))
+        print('Two elements cannot share an id. getElementById returns only the')
+        print('first, so the other is a control that looks present and does')
+        print('nothing - which is how this build shipped two Rematch buttons.')
+        return 1
     if undocumented_drift:
         print('')
         print('UNDOCUMENTED DIFFERENCE between the two builds: %s.'
