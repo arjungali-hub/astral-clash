@@ -1521,8 +1521,31 @@
            than painted: the fighters, the arena and the lighting are already
            here and already right, so the loading screen shows the actual thing
            being loaded. Re-run the script and the art follows the game. */
+        /* WEBP, 196 KB against the master PNG's 3,772 KB. The PNG is what
+           art/render_tableau.js renders; art/optimise_tableau.py converts it
+           into what ships, and the note there has the measurements and the
+           reason the alpha channel was dropped (every pixel was opaque).
+
+           This is not a micro-optimisation, it was the bug: the browser does
+           not start fetching a background image until the element enters
+           layout, which for this one is the moment the loading screen appears.
+           So several megabytes began downloading exactly when the screen went
+           up, the two radial glows below were all there was to look at, and the
+           tableau landed just as the match finished loading and the screen was
+           dismissed. The loading screen was waiting on itself. */
         .ld-art   { left: 14%; right: 14%; top: 9%; bottom: 3%;
-                    background-image: url('assets/loading-tableau.png');
+                    /* ROOT-RELATIVE, so this declaration is identical in both
+                       builds and stops being a fork. It was on the sync's
+                       CSS_INTERFACE as "the asset path, rewritten for a build
+                       one directory down" - and that entry excluded the whole
+                       background-image declaration from travelling, so changing
+                       the FILENAME here left the local build still asking for
+                       the 3.8 MB png. The interface surfaced the fork by
+                       hiding the fix, which is the one thing it must not do.
+                       shared/roster.js makes the same argument for JS assets:
+                       an absolute base is correct at every path a rewrite can
+                       invent. */
+                    background-image: url('/assets/loading-tableau.webp');
                     background-position: center; background-size: cover; background-repeat: no-repeat;
                     /* Sits under the vignette and the two fighter glows, which
                        is what ties it into the frame instead of looking pasted
@@ -2954,6 +2977,7 @@ initAccounts();
 // Balance data and error reports, both aggregate-only. See the header of
 // shared/telemetry.js for what is deliberately absent from them.
 initTelemetry();
+preloadLoadingArt();
 refreshAccountUI();
 // The touch scheme, which is a no-op on a desktop and in the local
 // build. Must run after the markup exists, which it does here.
@@ -9735,6 +9759,41 @@ function startMatch(mapOverride) {
             startMatchNow();
             return oneRenderedFrame();
         }));
+}
+
+// FETCH THE TABLEAU BEFORE IT IS WANTED.
+//
+// The loading screen's artwork is a background-image, and a browser does not
+// request one of those until the element enters layout - which for .ld-art is
+// the instant the loading screen is shown. Reported as "the loading screen
+// takes too long to load (ironic)... it shows the blank screen with glowing
+// lights for the majority of the time you are waiting", which is precisely
+// that: the vignette and the two radial gradients paint at once, the picture
+// does not.
+//
+// AT IDLE, not in the head. A <link rel="preload"> would start this in the
+// opening moments, competing with three.js and the character models for
+// bandwidth the boot actually needs - trading a slow loading screen for a slow
+// start. Nothing wants the tableau until a match begins, which is several
+// seconds of menu away at the very least.
+//
+// Failure is silence by design. A tableau that does not arrive costs a
+// loading screen some of its art; it must not cost anyone a console error, and
+// it must not be able to stop the game starting.
+function preloadLoadingArt() {
+    const go = () => {
+        try {
+            const img = new Image();
+            // The same URL the stylesheet asks for, so this warms the cache
+            // entry the CSS will go on to use rather than a second one beside
+            // it. AC_ASSET_BASE is absolute and correct in both builds - the
+            // local build sits a directory down, where a relative path would
+            // climb above the root (see shared/roster.js).
+            img.src = AC_ASSET_BASE + 'loading-tableau.webp';
+        } catch (e) { /* a lost preload is not worth a word to the player */ }
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 4000 });
+    else setTimeout(go, 1200);
 }
 
 function startMatchNow() {

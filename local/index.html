@@ -1092,13 +1092,31 @@
            than painted: the fighters, the arena and the lighting are already
            here and already right, so the loading screen shows the actual thing
            being loaded. Re-run the script and the art follows the game. */
-        .ld-art   { left: 14%; right: 14%; top: 9%; bottom: 3%;
-                    background-image: url('../assets/loading-tableau.png');
-                    background-position: center; background-size: cover; background-repeat: no-repeat;
-                    /* Sits under the vignette and the two fighter glows, which
+        .ld-art {
+            left: 14%;
+            right: 14%;
+            top: 9%;
+            bottom: 3%;
+            /* ROOT-RELATIVE, so this declaration is identical in both
+                       builds and stops being a fork. It was on the sync's
+                       CSS_INTERFACE as "the asset path, rewritten for a build
+                       one directory down" - and that entry excluded the whole
+                       background-image declaration from travelling, so changing
+                       the FILENAME here left the local build still asking for
+                       the 3.8 MB png. The interface surfaced the fork by
+                       hiding the fix, which is the one thing it must not do.
+                       shared/roster.js makes the same argument for JS assets:
+                       an absolute base is correct at every path a rewrite can
+                       invent. */
+                    background-image: url('/assets/loading-tableau.webp');
+            background-position: center;
+            background-size: cover;
+            background-repeat: no-repeat;
+            /* Sits under the vignette and the two fighter glows, which
                        is what ties it into the frame instead of looking pasted
                        onto it. */
-                    opacity: .92; }
+                    opacity: .92;
+        }
         /* The two fighters' light, implied. */
         .ld-glowA { left: 18%; top: 26%; width: 36%; height: 54%; filter: blur(26px);
                     background: radial-gradient(closest-side, rgba(0,243,255,.28), transparent 72%); }
@@ -2633,6 +2651,7 @@ onAccountChange = refreshAccountUI;
 accountConfigure('https://bndxnalnawxlqnpggnwb.supabase.co', 'sb_publishable_6nPMjevR8wYvv5kx9SWqHg_i4jxfOpf');
 initAccounts();
 initTelemetry();
+preloadLoadingArt();
 refreshAccountUI();
 
 function keyLabel(k) {
@@ -4191,6 +4210,41 @@ let padMenuConfirmHeld = false, padMenuBackHeld = false;
 // completed. A panel refreshed from its own call sites is a panel that goes
 // stale the first time somebody adds a new one.
 function openAccountPanel() { refreshAccountUI(); openModal('account'); }
+
+// FETCH THE TABLEAU BEFORE IT IS WANTED.
+//
+// The loading screen's artwork is a background-image, and a browser does not
+// request one of those until the element enters layout - which for .ld-art is
+// the instant the loading screen is shown. Reported as "the loading screen
+// takes too long to load (ironic)... it shows the blank screen with glowing
+// lights for the majority of the time you are waiting", which is precisely
+// that: the vignette and the two radial gradients paint at once, the picture
+// does not.
+//
+// AT IDLE, not in the head. A <link rel="preload"> would start this in the
+// opening moments, competing with three.js and the character models for
+// bandwidth the boot actually needs - trading a slow loading screen for a slow
+// start. Nothing wants the tableau until a match begins, which is several
+// seconds of menu away at the very least.
+//
+// Failure is silence by design. A tableau that does not arrive costs a
+// loading screen some of its art; it must not cost anyone a console error, and
+// it must not be able to stop the game starting.
+function preloadLoadingArt() {
+    const go = () => {
+        try {
+            const img = new Image();
+            // The same URL the stylesheet asks for, so this warms the cache
+            // entry the CSS will go on to use rather than a second one beside
+            // it. AC_ASSET_BASE is absolute and correct in both builds - the
+            // local build sits a directory down, where a relative path would
+            // climb above the root (see shared/roster.js).
+            img.src = AC_ASSET_BASE + 'loading-tableau.webp';
+        } catch (e) { /* a lost preload is not worth a word to the player */ }
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 4000 });
+    else setTimeout(go, 1200);
+}
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every

@@ -792,9 +792,13 @@ CSS_INTERFACE = {
     # so the fade syncLockHint drives had nothing to animate.
     '#lock-hint':
         ('positioned clear of two HUD panels rather than one', ['bottom']),
-    '.ld-art':
-        ('the asset path, rewritten for a build one directory down',
-         ['background-image']),
+    # '.ld-art' USED TO BE HERE, and its removal is the point. The entry said
+    # "the asset path, rewritten for a build one directory down" - true, and it
+    # excluded the whole background-image declaration from travelling. So when
+    # the tableau was re-encoded as WebP, the online build changed and the local
+    # build kept asking for the 3.8 MB png: the interface list hid the fix
+    # instead of surfacing the fork. The url is root-relative now, identical in
+    # both builds, and needs no entry at all.
     '.fighter-btn .fname':
         ('brightened for readability against this grid', ['filter']),
 }
