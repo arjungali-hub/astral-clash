@@ -196,6 +196,33 @@ const I18N = {
             "Tus monedas, desbloqueos y mejoras viven en tu cuenta, no en esta máquina: inicia sesión en cualquier dispositivo y ahí estarán.",
         "Your opponent sees your choice in the room. Nothing starts until you press":
             "Tu rival ve tu elección en la sala. No empieza nada hasta que pulses",
+        // ---- replays (roadmap 12) --------------------------------------
+        "Could not save the replay":
+            "No se pudo guardar la repetición",
+        "Exit Replay":
+            "Salir de la repetición",
+        "Open a replay you saved earlier":
+            "Abre una repetición que guardaste antes",
+        "Replay saved":
+            "Repetición guardada",
+        "Save Replay":
+            "Guardar repetición",
+        "That file could not be read.":
+            "No se pudo leer ese archivo.",
+        "That file is not a readable replay.":
+            "Ese archivo no es una repetición legible.",
+        "That file is not a replay.":
+            "Ese archivo no es una repetición.",
+        "That replay has no match in it.":
+            "Esa repetición no contiene ningún combate.",
+        "That replay is damaged.":
+            "Esa repetición está dañada.",
+        "That replay was made by a different version of the game.":
+            "Esa repetición se hizo con otra versión del juego.",
+        "Watch a Replay":
+            "Ver una repetición",
+        "Watching":
+            "Viendo",
         // ---- the split-screen build -------------------------------------
         "(keys on cards)":
             "(teclas en las tarjetas)",
@@ -661,6 +688,33 @@ const I18N = {
             "Vos pièces, déblocages et améliorations vivent sur votre compte, pas sur cette machine — connectez-vous sur n’importe quel appareil et ils y sont.",
         "Your opponent sees your choice in the room. Nothing starts until you press":
             "Votre adversaire voit votre choix dans le salon. Rien ne commence tant que vous n’appuyez pas sur",
+        // ---- replays (roadmap 12) --------------------------------------
+        "Could not save the replay":
+            "Impossible d’enregistrer le replay",
+        "Exit Replay":
+            "Quitter le replay",
+        "Open a replay you saved earlier":
+            "Ouvrir un replay enregistré plus tôt",
+        "Replay saved":
+            "Replay enregistré",
+        "Save Replay":
+            "Enregistrer le replay",
+        "That file could not be read.":
+            "Ce fichier n’a pas pu être lu.",
+        "That file is not a readable replay.":
+            "Ce fichier n’est pas un replay lisible.",
+        "That file is not a replay.":
+            "Ce fichier n’est pas un replay.",
+        "That replay has no match in it.":
+            "Ce replay ne contient aucun combat.",
+        "That replay is damaged.":
+            "Ce replay est endommagé.",
+        "That replay was made by a different version of the game.":
+            "Ce replay a été créé par une autre version du jeu.",
+        "Watch a Replay":
+            "Regarder un replay",
+        "Watching":
+            "Lecture",
         // ---- the split-screen build -------------------------------------
         "(keys on cards)":
             "(touches sur les cartes)",

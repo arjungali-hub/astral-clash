@@ -1368,6 +1368,10 @@
     <div id="game-container">
         <canvas id="gameCanvas" width="1170" height="650" role="img" aria-label="The arena, drawn from your fighter's eyes. This game needs sight to play."></canvas>
         <canvas id="hudCanvas" width="1170" height="650" role="img" aria-label="Health, special meter and round score for both fighters."></canvas>
+        <div id="replay-bar">
+        <span id="replay-caption"></span>
+        <button id="btn-exit-replay">Exit Replay</button>
+    </div>
 
     <!-- The loading screen. Implemented from the design canvas; see the CSS
          above for which artboard each layer comes from. It is a sibling of
@@ -1487,6 +1491,7 @@
                     <div id="gameover-actions">
                         <button id="btn-rematch">Rematch (Same Arena)</button>
                         <button id="btn-reroll-map">Rematch (New Arena)</button>
+                        <button id="btn-save-replay">Save Replay</button>
                     </div>
                     <button id="btn-play-again">Play Again</button>
                     <div id="gameover-wait" class="setup-note" style="display:none;">Waiting for the host to choose a rematch&hellip;</div>
@@ -1548,6 +1553,7 @@
                         <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
                         <button id="btn-side-palette" class="opt" title="Switch the two player colors to a colorblind-safe pair">Player Colors<span class="opt-state">Standard</span></button>
                         <button id="btn-share-stats" class="opt" title="Send which fighter won, with nothing about you">Share Stats<span class="opt-state">On</span></button>
+                        <button id="btn-watch-replay" class="opt" title="Open a replay you saved earlier">Watch a Replay<span class="opt-state">Open</span></button>
 
                         <label class="opt opt-select" for="sel-lang">Language
                             <select id="sel-lang" title="Language of menus and help text"></select>
@@ -1672,6 +1678,9 @@
             </div>
         </div>
         <div id="debug-toast"></div>
+        <input id="replay-file" type="file" accept=".json,application/json"
+               style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;"
+               aria-hidden="true" tabindex="-1">
     </div>
 
     <!-- ONE MESSAGE, NO ESCAPE HATCHES (Batch 41).
@@ -1818,7 +1827,8 @@ function startGame() {
 <script src="../shared/touch.js"></script>
 <script src="../shared/challenges.js"></script>
 <script src="../shared/account.js"></script>
-<script src="../shared/telemetry.js"></script><script>
+<script src="../shared/telemetry.js"></script>
+<script src="../shared/replay.js"></script><script>
 function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
     const canvas = document.getElementById('gameCanvas');
@@ -2641,6 +2651,25 @@ document.getElementById('btn-hud-scale').addEventListener('click', cycleHudScale
 document.getElementById('btn-side-palette').addEventListener('click', toggleSidePalette);
 document.getElementById('sel-lang').addEventListener('change', (e) => setLang(e.target.value));
 document.getElementById('btn-share-stats').addEventListener('click', toggleShareStats);
+document.getElementById('btn-save-replay').addEventListener('click', saveReplay);
+document.getElementById('btn-watch-replay').addEventListener('click', replayOpenPicker);
+document.getElementById('replay-file').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        const out = replayFromJSON(String(reader.result || ''));
+        // SAYS WHAT IS WRONG. replayFromJSON validates rather than trusts,
+        // because the failure mode of trusting a file off someone's disk is a
+        // half-built match with undefined coordinates that renders as nothing
+        // and reports no reason.
+        if (out.error) { showToast(out.error); return; }
+        watchReplay(out.rec);
+    };
+    reader.onerror = () => showToast('That file could not be read.');
+    reader.readAsText(file);
+});
+document.getElementById('btn-exit-replay').addEventListener('click', exitReplay);
 refreshHudScaleUI();
 refreshSidePaletteUI();
 refreshLangUI();
@@ -3324,7 +3353,7 @@ function renderViews(dt) {
     // Every frame, not inside the watch branch below: the rings have to be
     // HIDDEN when the view is not the watch view, and a call that only runs in
     // that branch can never do that.
-    syncWatchRings(botsOnly());
+    syncWatchRings(watchView());
     renderer.getSize(_rendSize);
     const W = _rendSize.x, H = _rendSize.y;
     // Batch 40: the crush is its own scene, so it replaces the view entirely
@@ -3335,7 +3364,7 @@ function renderViews(dt) {
     // NOBODY IS PLAYING: one camera, from above. Two halves of a fight neither
     // player is in is the least useful way to show it, and this is the only
     // view in the game that holds the whole arena at once.
-    if (botsOnly()) {
+    if (watchView()) {
         renderer.setScissorTest(false);
         renderer.setViewport(0, 0, W, H);
         positionWatchCamera(W / H);
@@ -4004,6 +4033,20 @@ function renderCrushCinematic(dt, W, HGT) {
 
 function startMatchNow() {
     awaitingModels = false;
+    // RECORD EVERY MATCH, and keep only the last one. Nothing is written to
+    // disk unless the player asks for it on the result screen, so the cost is
+    // one array of numbers for the length of a match - and the alternative,
+    // asking beforehand, means the match worth keeping is always the one you
+    // did not arm. Not while watching a replay, which would be recording a
+    // recording.
+    if (!replayActive()) {
+        replayStartRecording({
+            map: matchMap && matchMap.name,
+            mode: matchMode,
+            p1: p1Choice, p2: p2Choice,
+            n1: displayName('p1'), n2: displayName('p2'),
+        });
+    }
     roundWins = { p1: 0, p2: 0 };
     currentRound = 1;
     matchStats = { p1: freshStats(), p2: freshStats() };
@@ -4242,6 +4285,106 @@ function preloadLoadingArt() {
     };
     if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 4000 });
     else setTimeout(go, 1200);
+}
+
+// ===========================================================================
+// REPLAYS - the part that needs bootGame's scope
+// ===========================================================================
+// shared/replay.js owns the format, the timing and the easing. These four
+// functions are here because they touch things a shared module cannot see:
+// the fighters by side, the action pipeline, the screens and the HUD.
+
+// A recorded cue, run through the real action pipeline - the same choice
+// netApplyEvent makes for a peer, and for the same reason: a puppet that only
+// slides around in an idle pose does not read as fighting. Damage is
+// suppressed for these the way it is for a remote attack, so this is purely
+// presentational.
+function replayPlayEvent(side, kind) {
+    const f = side === 'p1' ? player1 : player2;
+    const foe = side === 'p1' ? player2 : player1;
+    if (!f || !foe) return;
+    if (kind === 'dodge') { f.tryStartAction('dodge', foe); return; }
+    if (kind === 'special') { f.specialMeter = 100; f.tryStartAction('special', foe); return; }
+    f.tryStartAction('basic', foe);
+}
+
+// Build the arena the recording was made in, then hand control to playback.
+// Goes through startMatch so the assets, the arena and the lighting are set up
+// by the one path that knows how - a replay is a match, shown rather than
+// played.
+function watchReplay(rec) {
+    const map = MAPS.find(m => m.name === rec.map) || null;
+    replayBegin(rec);
+    refreshReplayUI();
+    closeAllModals();
+    // Both sides need a fighter before a frame can be applied to one. The
+    // recording names them; an unknown name (a build with a different roster)
+    // falls back rather than refusing to show the match.
+    p1Choice = rec.chars.p1 || CHARACTERS[0].name;
+    p2Choice = rec.chars.p2 || CHARACTERS[0].name;
+    p1IsBot = false; p2IsBot = false;
+    matchMode = rec.mode || 'classic';
+    startMatch(map || undefined);
+}
+
+function exitReplay() {
+    if (!replayActive()) return;
+    replayEnd();
+    refreshReplayUI();
+    // NOT goHome(). That exists only in the online build - this one opens on
+    // the select screen and has no home screen at all (which is why
+    // #select-screen sits on the sync's CSS_INTERFACE). The sync caught it the
+    // right way round: it refused to port gameLoop into the local build,
+    // reporting "gameLoop needs exitReplay", rather than shipping a call to a
+    // function that is not there.
+    //
+    // So this does goHome's work using only what both builds have, and lands
+    // on the select screen, which both do.
+    gameState = 'MENU';
+    pausedFromState = null;
+    disposeZoneMesh();
+    resetCrush();
+    closeAllModals();
+    showScreen('select');
+}
+
+function refreshReplayUI() {
+    const bar = document.getElementById('replay-bar');
+    if (bar) {
+        bar.classList.toggle('on', replayActive());
+        const cap = document.getElementById('replay-caption');
+        if (cap && replayActive()) cap.textContent = replayCaption();
+    }
+    // Nothing to save until a match has finished. Hidden rather than disabled:
+    // a permanently dead button answering a question nobody asked is the
+    // complaint Batch 24 already settled for the bot toggles.
+    const save = document.getElementById('btn-save-replay');
+    if (save) save.style.display = replaySaved() ? '' : 'none';
+    refreshReplayRow();
+}
+
+// DOWNLOADED, not uploaded. A replay is the player's own file and has no
+// reason to leave their machine - which also means this needs no server, no
+// account and no permission.
+function saveReplay() {
+    const rec = replaySaved();
+    if (!rec) return;
+    try {
+        const blob = new Blob([replayToJSON(rec)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = replayFilename(rec);
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // Revoked on a timer rather than immediately: Safari has historically
+        // cancelled the download if the URL dies in the same tick as the click.
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        showToast('Replay saved');
+    } catch (e) {
+        showToast('Could not save the replay');
+    }
 }
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
@@ -5673,16 +5816,16 @@ class Fighter {
     // so this answers false and the shared update() runs its own physics, which
     // is what this build always did.
     isNetPuppet() {
+        // A REPLAY MAKES BOTH FIGHTERS PUPPETS, which is the whole of what
+        // playback needed from the fighter code. isLocalSide() is true for
+        // exactly one side by construction, so the netcode's version of this
+        // can only ever puppet the opponent - a recording drives both, and
+        // every physics-suppression guard downstream already honours the
+        // answer. See shared/replay.js.
+        if (replayActive()) return true;
         return netActive() && !this.isBot && !isLocalSide(sideOf(this));
     }
 
-    // WHO IS HOLDING THE KEYS. The one part of update() that genuinely differs
-    // between the builds: two players at one keyboard here, one with a mouse
-    // there.
-    //
-    // p1 and p2 used to be the same thirty lines with `.p1` swapped for `.p2`
-    // throughout, so this removes a copy-paste inside this file as well as the
-    // one between the two files.
     readHumanInput(dt, target) {
         // ONE HUMAN, so the reason for the split-keyboard scheme is gone: they
         // get the whole screen and a mouse, which is the other build's scheme
@@ -8923,7 +9066,7 @@ function drawHUDInner() {
     hudCtx.shadowColor = 'rgba(4, 6, 12, 0.92)';
     hudCtx.shadowBlur = 6;
     hudCtx.shadowOffsetY = 1;
-    if (!botsOnly()) drawCrosshairs(splitScreen());
+    if (!watchView()) drawCrosshairs(splitScreen());
     hudCtx.save();
     hudVirtualTransform();
     const leftSide = hudLeftSide(), rightSide = otherSide(leftSide);
@@ -9065,6 +9208,10 @@ function endRound() {
 
 function endMatch() {
     gameState = "GAMEOVER";
+    // Hands the finished recording to replaySaved() for the result screen's
+    // Save button. A recording of fewer than two frames is not one, and
+    // replayFinishRecording discards it rather than offering an empty file.
+    replayFinishRecording();
     // Use the winner/loser decided at the moment of the round-deciding
     // event, not whatever the hp values happen to be now — during the
     // death sequence, in-flight projectiles can still land and drop the
@@ -9743,6 +9890,25 @@ function gameLoop() {
         hudPainted = false;
     }
 
+    // RECORD, after every update has run and before anything is drawn - so a
+    // frame is written exactly as it will be shown. replaySample throttles
+    // itself to the format's rate; the caller does not get to decide that.
+    if (replayIsRecording()) replaySample(performance.now(), player1, player2);
+
+    // PLAY. Both fighters are puppets (see isNetPuppet), so their own physics
+    // is already suppressed and this is their only source of movement.
+    if (replayActive()) {
+        const due = replayAdvance(performance.now());
+        replayApplyTo(player1, due.p1, dt);
+        replayApplyTo(player2, due.p2, dt);
+        // The discrete cues a state stream cannot carry. Routed through the
+        // real action pipeline, exactly as netApplyEvent does for a peer, so
+        // the swing, the sound and the effects all play rather than the
+        // fighter sliding about in an idle pose.
+        for (const e of due.events) replayPlayEvent(e.side, e.kind);
+        if (replayFinished()) exitReplay();
+    }
+
     if (netActive()) {
         netApplyRemote(dt);            // ease the opponent toward their last report
         netTick(performance.now());    // and broadcast our own state
@@ -9822,6 +9988,12 @@ if (DEBUG) {
         Fighter, keys, pressed, BINDINGS,
         pollTouch, syncTouchFPS, syncTouchOrientation,
         releaseTouch, touchActive,
+        replayActive, replayIsRecording, replaySaved,
+        replayStartRecording, replayFinishRecording,
+        replayToJSON, replayFromJSON, replayFilename,
+        replayBegin, replayEnd, replayAdvance,
+        replayProgress, replayCaption, watchReplay,
+        exitReplay, refreshReplayUI, watchView,
         MOBILE_SOLO, hudViewports,
         // Batch 27 crush cinematic
         get crushTime() { return crushTime; },

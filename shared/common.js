@@ -2288,6 +2288,15 @@ function soloHumanSide() {
 // unless somebody has deliberately set up two of them.
 function botsOnly() { return p1IsBot && p2IsBot; }
 
+// IS THIS A FIGHT NOBODY IS PLAYING. The overhead camera, the two watch rings
+// and the absence of a crosshair all follow from this one answer.
+//
+// Separate from botsOnly() rather than folded into it: botsOnly() answers
+// "are both fighters AI", which several other things want, and a replay is not
+// that - both fighters are being driven by a recording. Overloading it would
+// have made every other caller quietly true during playback.
+function watchView() { return botsOnly() || replayActive(); }
+
 
 function wantsPointerLock() {
     // Two people at one keyboard have nothing to point with, so there is

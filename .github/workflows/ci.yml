@@ -136,7 +136,7 @@ jobs:
             deadcontrolcheck inputguardcheck knockbackcheck \
             contrastcheck padmenucheck palettecheck langcheck \
             netsmoothcheck touchfpscheck reconnectcheck dailycheck accountcheck telemetrycheck \
-            fpscapcheck
+            fpscapcheck replaycheck
 
   # ------------------------------------------------------------------ slow
   # Minutes each. Sharded three ways and run in parallel: as one job this took

@@ -53,7 +53,7 @@ SHARED_NAMES = set()
 # while missing the rest is what left the Language row in one build only.
 SHARED_PRE = ['roster.js', 'animation.js']
 SHARED_POST = ['props.js', 'characters.js', 'common.js', 'i18n.js', 'touch.js',
-               'challenges.js', 'account.js', 'telemetry.js']
+               'challenges.js', 'account.js', 'telemetry.js', 'replay.js']
 SHARED_MODULES = SHARED_PRE + SHARED_POST
 
 
@@ -3603,6 +3603,27 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
         dst = dst.replace('        MOBILE_SOLO, hudViewports,',
                           '        pollTouch, syncTouchFPS, syncTouchOrientation,' + chr(10)
                           + '        releaseTouch, touchActive,' + chr(10)
+                          + '        MOBILE_SOLO, hudViewports,')
+
+    # REPLAYS (roadmap 12). This build records and plays them exactly as the
+    # other one does - shared/replay.js samples the two fighters directly rather
+    # than hooking the netcode, precisely so a split-screen match is recordable
+    # in a build that has no netcode at all. So replaycheck has to be able to
+    # point at this build too, and it cannot without the handles.
+    #
+    # Same shape and same guard as the touch block above: ACDebug lists are
+    # per-build by design, so this is an addition rather than drift, and the
+    # `not in` keeps it from appending a second copy on every pass - which the
+    # fixed-point check would catch as a duplicate identifier in object
+    # shorthand, i.e. a load-time SyntaxError.
+    if 'replayActive,' not in dst:
+        dst = dst.replace('        MOBILE_SOLO, hudViewports,',
+                          '        replayActive, replayIsRecording, replaySaved,' + chr(10)
+                          + '        replayStartRecording, replayFinishRecording,' + chr(10)
+                          + '        replayToJSON, replayFromJSON, replayFilename,' + chr(10)
+                          + '        replayBegin, replayEnd, replayAdvance,' + chr(10)
+                          + '        replayProgress, replayCaption, watchReplay,' + chr(10)
+                          + '        exitReplay, refreshReplayUI, watchView,' + chr(10)
                           + '        MOBILE_SOLO, hudViewports,')
 
     # The retired scheme's CODE. Not optional: setupTouchJoystick reads
