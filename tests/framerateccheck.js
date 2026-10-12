@@ -113,22 +113,50 @@ async function travelAt(browser, fps) {
     // Count frames as well as distance, so the arms can be shown to have
     // actually run at different rates - otherwise a cap that silently did
     // nothing would produce a perfect, meaningless pass.
+    // DRIVEN BY THE REAL BINDING, from known open ground.
+    //
+    // This block had never run before - the checker could not reach a fight,
+    // so none of it was proven - and the first time it did, both arms reported
+    // a distance of zero. Setting `f.vx` on an interval and trusting the
+    // physics to carry it is not how any working checker here moves a fighter.
+    //
+    // controlscheck moves one reliably and passes: put it on open ground in
+    // the first arena, press the actual key binding, and clear hitstunTimer
+    // and rootedFrames EVERY frame. The last part is load-bearing - either one
+    // zeroes movement for reasons that have nothing to do with frame rate,
+    // which is exactly the kind of thing this checker would then blame on the
+    // cap.
+    //
+    // The window stays wall-clock. That is the whole proposition: the same
+    // wall-clock time should produce the same amount of game at any frame rate.
     const out = await page.evaluate(async (ms) => {
         const D = window.ACDebug;
         const f = D.player1;
         let frames = 0;
         const tick = () => { frames++; requestAnimationFrame(tick); };
         requestAnimationFrame(tick);
-        f.z = 0; f.vz = 0;
+        // Open ground in the first arena, the same spot controlscheck uses.
+        f.x = 850; f.y = 480; f.z = 0; f.vx = 0; f.vy = 0; f.vz = 0;
+        f.fx = 1; f.fy = 0;
+        const key = D.BINDINGS[D.LOCAL_SIDE].forward
+            || D.BINDINGS[D.LOCAL_SIDE].right;
         const x0 = f.x, y0 = f.y;
         const t0 = performance.now();
-        // A constant push, reasserted every frame so friction cannot end it
-        // early in one arm and not the other.
-        const hold = setInterval(() => { f.vx = 3; f.vy = 0; }, 8);
+        D.keys[key] = true;
+        // Reasserted on a short interval rather than per frame: at 20fps a
+        // per-frame loop would clear these only every 50ms, and a knockback or
+        // a root landing between frames would stop the run.
+        const unstick = setInterval(() => { f.hitstunTimer = 0; f.rootedFrames = 0; }, 8);
         await new Promise(r => setTimeout(r, ms));
-        clearInterval(hold);
+        clearInterval(unstick);
+        D.keys[key] = false;
         const elapsed = performance.now() - t0;
-        return { dist: Math.hypot(f.x - x0, f.y - y0), elapsed, frames };
+        return {
+            dist: Math.hypot(f.x - x0, f.y - y0), elapsed, frames,
+            // Reported so a zero distance says which half is wrong: no key
+            // binding found, or a binding that moved nothing.
+            key: key || null,
+        };
     }, TRAVEL_MS);
     await page.close();
     return Object.assign({ fps }, out);

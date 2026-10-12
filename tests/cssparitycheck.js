@@ -78,7 +78,41 @@ async function capture(page, build) {
             await H.boot(page, { path: build });
             const snap = await page.evaluate(async (openJs, props) => {
                 const wait = ms => new Promise(r => setTimeout(r, ms));
+                // SETTLE THE TRANSITIONS, rather than guessing a duration.
+                //
+                // index.html's `button` rule is `transition: 0.2s` - a bare
+                // shorthand, so the property is `all`, opacity included. Opening
+                // the arena picker adds `.locked` to the fighter grid (opacity
+                // 1 -> 0.4) and every button animates. The 350ms wait below was
+                // landing right on the edge of when that class gets applied, so
+                // six buttons were measured about 7% into a 200ms ease and CI
+                // reported opacity 0.957704 against 0.95735 as a regression.
+                //
+                // getAnimations() reports CSS transitions, so they can be
+                // awaited. The INFINITE ones must be filtered out first -
+                // `startPulse 1.3s infinite` never finishes, and awaiting its
+                // `finished` promise would hang this checker for good. The loop
+                // runs a few times because finishing one transition can start
+                // the next, and every wait is bounded so a surprise cannot
+                // become a hang.
+                const settle = async () => {
+                    for (let pass = 0; pass < 4; pass++) {
+                        const running = document.getAnimations().filter(a => {
+                            try {
+                                const t = a.effect && a.effect.getTiming
+                                    ? a.effect.getTiming() : {};
+                                return t.iterations !== Infinity;
+                            } catch (e) { return false; }
+                        });
+                        if (!running.length) return;
+                        await Promise.race([
+                            Promise.all(running.map(a => a.finished.catch(() => {}))),
+                            wait(1500),
+                        ]);
+                    }
+                };
                 if (openJs) { try { eval(openJs); } catch (e) { /* screen absent in this build */ } await wait(350); }
+                await settle();
                 const out = {};
                 for (const el of document.querySelectorAll('button, .menu-section, .shop-panel, .tutorial-panel, [id$="-screen"], .opt, .fighter-btn, .map-card, .modal-x')) {
                     if (el.getClientRects().length === 0) continue;
@@ -158,6 +192,15 @@ async function capture(page, build) {
         return;
     }
 
+    // Two decimal places on every number inside a computed value, so
+    // "0.957704" and "0.95735" are the same answer and "936px" and "926.016px"
+    // are still not. Declared before the loop that uses it; this file has no
+    // hoisting to rely on for a const.
+    const coarse = (v) => String(v).replace(/-?\d+\.\d+/g, (m) => {
+        const n = Number(m);
+        return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : m;
+    });
+
     section('Computed styles are unchanged:');
     for (const build of ['online', 'local']) {
         const diffs = [];
@@ -167,7 +210,17 @@ async function capture(page, build) {
                 if (!now[key]) { diffs.push(`${scene} ${key}: gone`); continue; }
                 for (const p of Object.keys(was[key])) {
                     const a = JSON.stringify(was[key][p]), b = JSON.stringify(now[key][p]);
-                    if (a !== b) diffs.push(`${scene} ${key}.${p}: ${a} -> ${b}`);
+                    // ROUNDED. A cascade mistake reads as 1 against 0.4, or 0px
+                    // against 240px - never as a difference in the fourth
+                    // decimal. Comparing raw computed strings let any sub-pixel
+                    // or sub-percent jitter on the page fail this checker, and a
+                    // checker that fails for reasons nobody can act on is one
+                    // that stops being read. The raw values are still what gets
+                    // REPORTED, so a real difference is never rounded away in
+                    // the message.
+                    if (coarse(a) !== coarse(b)) {
+                        diffs.push(`${scene} ${key}.${p}: ${a} -> ${b}`);
+                    }
                 }
             }
         }

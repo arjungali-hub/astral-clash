@@ -39,11 +39,38 @@ const DIFFICULTIES = ['easy', 'normal', 'hard', 'insane'];
 
 const CX = 877, CY = 487;      // open ground in the first arena
 
-async function step(page, frames) {
-    return page.evaluate(async (n) => {
-        const one = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        for (let i = 0; i < n; i++) await one();
-    }, frames);
+// FRAME-UNITS OF GAME TIME, not rendered frames.
+//
+// This used to await one rendered frame per unit, and arm "easy" took 2130
+// SECONDS on CI - the runner rasterises one full-screen arena in software at
+// about a third of a frame per second, so rendered frames are the scarce
+// resource and 350 of them per arm is unaffordable. Four arms would not have
+// finished inside any budget worth setting.
+//
+// They are also the wrong unit. The bot thinks in frame-units: aiThinkTimer
+// and every cooldown count down by `dt`, and computeDt clamps dt at 3 - so at
+// a low frame rate each rendered frame carries up to three units of game time.
+// Accumulating dt the way computeDt does means "150 frames of approach" gets
+// the 150 units of bot thinking it always meant, in a third of the renders.
+//
+// The clamp is replicated rather than read from the page because computeDt
+// lives inside bootGame() and a shared module cannot see in - and because the
+// number that matters here is what the SIMULATION advanced by, which is the
+// clamped one.
+async function step(page, units) {
+    return page.evaluate(async (target) => {
+        let acc = 0;
+        let last = performance.now();
+        // A hard ceiling on renders as well, so a page that has stopped
+        // painting fails the assertion that follows instead of hanging here.
+        for (let renders = 0; acc < target && renders < target * 2 + 60; renders++) {
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const now = performance.now();
+            acc += Math.min(3, (now - last) / (1000 / 60));
+            last = now;
+        }
+        return acc;
+    }, units);
 }
 
 (async () => {
@@ -56,6 +83,12 @@ async function step(page, frames) {
     // would let an earlier arm color the next.
     async function run(difficulty) {
         const page = await H.newPage(browser);
+        // SMALLER THAN THE HARNESS DEFAULT. Software rasterisation costs per
+        // pixel, and 1400x1000 is 1.4 megapixels of arena per frame; nothing
+        // about a bot's decisions depends on resolution. Kept comfortably
+        // above the ~400px the layout is responsive down to, so every button
+        // this checker clicks is still where it expects.
+        await page.setViewport({ width: 900, height: 700 });
         const errors = [];
         page.on('pageerror', e => errors.push(String(e.message || e)));
         await H.boot(page, { clearStorage: true, path: '/local/index.html', models: true });

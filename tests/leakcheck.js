@@ -71,13 +71,21 @@ const SLACK = 12;
     // used inside a function defined above it works only as long as nobody
     // reorders the calls, and this file is one of several here that has had a
     // TDZ regression land exactly that way.
-    const describe = () => page.evaluate(() => JSON.stringify({
-        state: window.ACDebug.gameState,
-        wins: window.ACDebug.roundWins,
-        round: window.ACDebug.currentRound,
-        p1hp: Math.round(window.ACDebug.player1.hp),
-        p2hp: Math.round(window.ACDebug.player2.hp),
-    }));
+    const describe = () => page.evaluate(() => {
+        const D = window.ACDebug;
+        // `?? null` because the LOCAL build's ACDebug does not export roundWins
+        // or currentRound, so these were undefined - and JSON.stringify drops
+        // undefined, which is why the reported diagnostic was quietly missing
+        // half the fields it claimed to carry. An explicit null says "this
+        // build does not tell us" rather than saying nothing.
+        return JSON.stringify({
+            state: D.gameState,
+            wins: D.roundWins ?? null,
+            round: D.currentRound ?? null,
+            p1hp: Math.round(D.player1.hp),
+            p2hp: Math.round(D.player2.hp),
+        });
+    });
 
     let endWhy = '';
     const endMatch = async () => {
@@ -93,22 +101,30 @@ const SLACK = 12;
                 D.player2.invulnFrames = 0;      // see above
                 D.player2.takeDamage(D.player2.hp + 50, D.player1);
             });
-            // EITHER STATE, one wait.
+            // WAIT FOR SOMETHING THAT WAS NOT ALREADY TRUE.
             //
             // A knockout is not instant: there is a death sequence, and on the
-            // deciding one the crush cinematic, all counted in FRAMES - so how
-            // long it takes in wall clock is a function of frame rate, and at
-            // the ~1fps of a CI runner it comfortably outlasts any window
-            // written on a desktop. This waited 12s for GAMEOVER, gave up, and
-            // went back to waiting for FIGHT - which was never coming, because
-            // the match was over. "Never got back to FIGHT for round 3" was a
-            // finished match being misread as a stuck one.
+            // deciding one the crush cinematic, all counted in FRAMES - so its
+            // wall-clock length is a function of frame rate, and at the ~1fps
+            // of a CI runner it outlasts any fixed window written on a desktop.
+            // The first attempt at that waited 12s for GAMEOVER, gave up, and
+            // went back to waiting for FIGHT, which was never coming because
+            // the match was over.
             //
-            // Asking for either state removes the guess about which comes next,
-            // and removes the fixed window along with it.
+            // The second attempt - "GAMEOVER or FIGHT" - was worse, and was my
+            // mistake: the kill happens while the state is ALREADY FIGHT, so
+            // the wait returned immediately, every time, having waited for
+            // nothing. Six iterations in sixty seconds, reporting "rounds kept
+            // resetting {state: FIGHT, p2hp: 0}" - the diagnostic accurately
+            // describing a test that never waited.
+            //
+            // So: wait for a thing that is false at the moment of asking.
+            // Either the match ended, or the next round restored the loser's
+            // health. p2 at 0 hp in FIGHT is the knockout still being
+            // processed; p2 above 0 is a new round genuinely under way.
             const settled = await H.waitInPage(page,
                 "window.ACDebug.gameState === 'GAMEOVER'"
-                + " || window.ACDebug.gameState === 'FIGHT'", 90000);
+                + " || window.ACDebug.player2.hp > 0", 90000);
             if (!settled) {
                 endWhy = 'the knockout in round ' + (round + 1)
                     + ' led to neither a next round nor a result ' + await describe();
