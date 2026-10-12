@@ -48,7 +48,19 @@ const H = require('./harness');
 // runner, so a committed snapshot would diff everywhere except where it was
 // made. The epoch is the part that belongs in version control; the measurements
 // belong to whichever machine took them.
-const BASELINE_EPOCH = '2026-10-11: account panel became a modal; daily panel added';
+const BASELINE_EPOCH = '2026-10-12: Watch a Replay row added to Settings';
+// The previous epoch was '2026-10-11: account panel became a modal; daily panel
+// added'. This one is the replay row, and the measurements say so cleanly: +50px
+// of menu-section in BOTH builds, on both the settings and rebind screens, which
+// is one `.opt` row and nothing else.
+//
+// It also reported `opt#5: gone` (online) and `opt#4: gone` (local), and that
+// part is SPURIOUS - nothing was deleted. The capture keys an element on its id
+// when it has one and falls back to `className#index`, and exactly one `.opt` has
+// no id: the Language row is a <label>, not a button. Inserting a row above it
+// shifts its index, so it appears to vanish and a different one appears. Worth
+// knowing before chasing it; not worth adding an id to markup to satisfy a test,
+// since an intended insertion is going to bump the epoch anyway.
 
 // Enough to catch a cascade change; not so much that noise drowns it.
 const PROPS = ['display', 'position', 'width', 'height', 'margin', 'padding',

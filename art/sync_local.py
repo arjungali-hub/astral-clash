@@ -3605,6 +3605,15 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
                           + '        releaseTouch, touchActive,' + chr(10)
                           + '        MOBILE_SOLO, hudViewports,')
 
+    # setBotFighter. botcheck drives THIS build, so the handle has to be here -
+    # and without it every arm tests a randomly chosen fighter, which is how a
+    # ranged bot keeping its distance came to be reported as a difficulty
+    # failure. Guarded like the others; ACDebug lists are per-build by design.
+    if 'setBotFighter(' not in dst:
+        dst = dst.replace('        setBotDifficulty(d) { botDifficulty = d; },',
+                          '        setBotDifficulty(d) { botDifficulty = d; },' + chr(10)
+                          + '        setBotFighter(name) { p2Choice = name; },')
+
     # REPLAYS (roadmap 12). This build records and plays them exactly as the
     # other one does - shared/replay.js samples the two fighters directly rather
     # than hooking the netcode, precisely so a split-screen match is recordable

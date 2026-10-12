@@ -11416,6 +11416,16 @@ if (DEBUG) {
         ARENA_LEFT, ARENA_RIGHT, ARENA_TOP, ARENA_BOTTOM, ARENA_CX, ARENA_CY,
         get botDifficulty() { return botDifficulty; },
         setBotDifficulty(d) { botDifficulty = d; },
+        // A BOT ROLLS A RANDOM FIGHTER. beginMatch picks one from the unlocked
+        // pool, which makes "does this difficulty fight well" unmeasurable:
+        // botcheck reported hard closing to 238 units and landing nothing while
+        // easy closed to 57, and that is the roster's variance - speed 1.5 to
+        // 3.4, melee to ranged - not the difficulty dial's. A ranged fighter
+        // refusing to walk into melee range is the AI being correct.
+        //
+        // Called AFTER Start Match, because that is when beginMatch does the
+        // roll; startRound reads p2Choice later, when the fighters are built.
+        setBotFighter(name) { p2Choice = name; },
         get matchMode() { return matchMode; },
         get zoneScore() { return zoneScore; },
         get zoneHolder() { return zoneHolder; },

@@ -41,6 +41,8 @@ const EXEMPT = {
     'btn-reset-progress': 'ARMS on the first click and wipes progression on the second; deliberately not pressed twice here',
     'btn-map-random': 'starts a match from the arena picker',
     'btn-reroll-map': 'only live in a match',
+    // the reason, not the convenience
+    'btn-watch-replay': 'opens the browser file picker - the one control whose whole effect is outside the DOM, so there is nothing here to observe; replaycheck drives the replay path end to end instead',
 };
 
 // The panels to walk, and how to open each. Opened fresh for every button,

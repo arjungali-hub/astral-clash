@@ -205,15 +205,25 @@ async function pick(page, side, name) {
         // and the progress is the highest seen, so neither depends on catching
         // a particular frame.
         const caption = D.replayCaption();
-        // MONOTONIC, not a threshold. How far a replay gets in fifty frames is
-        // a fact about the machine; that it gets FURTHER as time passes is the
-        // property, and it holds at any frame rate.
+        // MONOTONIC, and sampled ONLY WHILE IT IS PLAYING.
+        //
+        // How far a replay gets in fifty frames is a fact about the machine;
+        // that it gets FURTHER as time passes is the property. But pinning the
+        // two samples to fixed iterations was the same frame-rate bet a third
+        // time: `late` at i=49 read 0, because fifty double-rAF frames on a CI
+        // runner take longer than the sixty-second recording, so playback had
+        // ended and progress is 0 once there is nothing to be partway through.
+        //
+        // Taking the first and last readings from the frames where a replay is
+        // ACTUALLY ACTIVE removes every assumption about how long a frame is.
         let early = null, late = null;
         // Long enough for both frames to come due and the easing to converge.
         for (let i = 0; i < 50; i++) {
             await frame();
-            if (i === 1) early = D.replayProgress();
-            if (i === 49) late = D.replayProgress();
+            if (!D.replayActive()) continue;      // ended; nothing to measure
+            const p = D.replayProgress();
+            if (early === null) early = p;
+            late = p;
         }
         const got = {
             p1: { x: Math.round(D.player1.x), y: Math.round(D.player1.y), hp: Math.round(D.player1.hp) },

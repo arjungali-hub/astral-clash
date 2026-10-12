@@ -124,6 +124,20 @@ async function step(page, units) {
             return { difficulty, isBot, failed: 'Start Match stayed hidden after P1 confirmed' };
         }
         await page.evaluate(() => document.getElementById('btn-start-match').click());
+        // PIN THE BOT'S FIGHTER, so difficulty is the only thing that varies.
+        //
+        // beginMatch rolls one at random for a bot side, and it has just run -
+        // Start Match is what calls it - so this overwrites the roll before
+        // startRound reads p2Choice to build the fighters. Without it each arm
+        // tested a different fighter: `hard` drew one that stopped 238 units
+        // away and landed nothing, which read as a broken difficulty and was a
+        // ranged fighter correctly refusing to close.
+        //
+        // Kaelen because the two assertions below are about closing distance
+        // and connecting: a balanced melee duelist at speed 3.4 can cross the
+        // 500-unit gap inside the frame budget, so a failure means the AI, not
+        // the matchup.
+        await page.evaluate(() => window.ACDebug.setBotFighter('Kaelen'));
         if (!await H.waitInPage(page, "document.querySelectorAll('#mapselect-grid .map-card').length > 0", 30000)) {
             await page.close();
             return { difficulty, isBot, failed: 'the arena picker never rendered' };

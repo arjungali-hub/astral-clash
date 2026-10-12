@@ -140,12 +140,62 @@ const SLACK = 12;
     section('GPU resources do not accumulate across rematches:');
     check('the first match starts', await startMatch(), 'never reached FIGHT');
     check('and it can be finished', await endMatch(), endWhy || 'never reached GAMEOVER');
+    // The baseline for the origin comparison: one match's worth of textures is
+    // the legitimate cost, and anything that keeps growing after it is not.
+    const liveAfterFirst = await page.evaluate(() => window.__acTexLive ? window.__acTexLive() : null);
 
     const sample = () => page.evaluate(() => {
         const r = window.ACDebug.rendererInfo();
         const m = performance.memory;
         return { geometries: r.geometries, textures: r.textures, programs: r.programs,
                  heapMB: m ? Math.round(m.usedJSHeapSize / 1048576) : null };
+    });
+
+    // WHERE DID IT COME FROM. Installed before the first match, so every
+    // texture the game makes from here on carries the call site that made it.
+    //
+    // Constructors are wrapped rather than the base class, because three.js
+    // builds textures through these four and there is no single hook: the
+    // wrapper keeps the original prototype, so instanceof and everything
+    // downstream behave exactly as before. dispose() is patched on the base
+    // prototype, which all of them inherit.
+    //
+    // Textures created before this point are deliberately not tracked - the
+    // question is growth across rematches, not the fixed cost of booting.
+    await page.evaluate(() => {
+        const T = window.THREE;
+        if (!T || window.__acTexReg) return;
+        const reg = window.__acTexReg = [];
+        for (const name of ['CanvasTexture', 'DataTexture', 'Texture', 'WebGLRenderTarget']) {
+            const Orig = T[name];
+            if (typeof Orig !== 'function') continue;
+            const Wrapped = function (...args) {
+                const made = new Orig(...args);
+                // Four frames is enough to name the builder without turning the
+                // report into a stack dump.
+                const stack = (new Error().stack || '').split('\n').slice(2, 6)
+                    .map(l => l.trim().replace(/^at\s+/, '').replace(/\s*\(.*$/, ''))
+                    .filter(Boolean).join(' < ');
+                reg.push({ obj: made.texture || made, kind: name, where: stack });
+                return made;
+            };
+            Wrapped.prototype = Orig.prototype;
+            T[name] = Wrapped;
+        }
+        const origDispose = T.Texture.prototype.dispose;
+        T.Texture.prototype.dispose = function () {
+            this.__acDisposed = true;
+            return origDispose.apply(this, arguments);
+        };
+        window.__acTexLive = () => {
+            const out = {};
+            for (const r of window.__acTexReg) {
+                if (r.obj && r.obj.__acDisposed) continue;
+                const k = r.kind + ' @ ' + (r.where || '(no stack)');
+                out[k] = (out[k] || 0) + 1;
+            }
+            return out;
+        };
     });
 
     const runStart = Date.now();
@@ -172,6 +222,31 @@ const SLACK = 12;
         // close, which no amount of reasoning from a desktop can supply.
         console.log(`    (rematch ${i + 1}/${REMATCHES} done`
             + ` at ${Math.round((Date.now() - runStart) / 1000)}s)`);
+    }
+
+    // The undisposed-by-origin picture, first match against last. Reported
+    // whatever the verdict: when the counts are flat this is one quiet line,
+    // and when they are not it is the name of the thing to go and fix.
+    const liveEnd = await page.evaluate(() => window.__acTexLive ? window.__acTexLive() : null);
+    if (liveEnd && liveAfterFirst) {
+        const growers = Object.keys(liveEnd)
+            .map(k => ({ k, from: liveAfterFirst[k] || 0, to: liveEnd[k] }))
+            .filter(r => r.to > r.from)
+            .sort((a, b) => (b.to - b.from) - (a.to - a.from));
+        section('Undisposed textures, by where they were created:');
+        if (!growers.length) {
+            check('no origin accumulated textures across the rematches', true,
+                'nothing grew');
+        } else {
+            for (const g of growers.slice(0, 6)) {
+                console.log(`    +${g.to - g.from}  (${g.from} -> ${g.to})  ${g.k}`);
+            }
+            // NOT a second failure. The count assertion above is the verdict;
+            // this exists to name the cause, and reporting it twice would make
+            // one defect look like two.
+            check('the growth has an identified origin above - see the list', true,
+                growers.length + ' origin(s) grew');
+        }
     }
 
     const last = series[series.length - 1];

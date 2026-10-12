@@ -138,8 +138,17 @@ async function travelAt(browser, fps) {
         // Open ground in the first arena, the same spot controlscheck uses.
         f.x = 850; f.y = 480; f.z = 0; f.vx = 0; f.vy = 0; f.vz = 0;
         f.fx = 1; f.fy = 0;
-        const key = D.BINDINGS[D.LOCAL_SIDE].forward
-            || D.BINDINGS[D.LOCAL_SIDE].right;
+        // P1 EXPLICITLY, not via LOCAL_SIDE. This is the split-screen build, where
+        // LOCAL_SIDE is meaningless - isLocalSide() answers true for every side
+        // when AC_ONE_SIDE_PER_CLIENT is false, so nothing here maintains it and
+        // D.BINDINGS[D.LOCAL_SIDE] came back undefined. Reading .forward off that
+        // threw a TypeError and the whole run reported NO VERDICT, which is a
+        // worse outcome than any assertion failing.
+        //
+        // controlscheck gets away with D.BINDINGS[D.LOCAL_SIDE] because it runs
+        // against the ONLINE build, where LOCAL_SIDE is the whole point.
+        const binds = D.BINDINGS.p1 || D.BINDINGS[D.LOCAL_SIDE] || {};
+        const key = binds.forward || binds.right;
         const x0 = f.x, y0 = f.y;
         const t0 = performance.now();
         D.keys[key] = true;
