@@ -82,10 +82,23 @@ const W = 1920, HGT = 1080;
         // Foundry, inside the wall the line runs into. Perpendicular puts them
         // shoulder to shoulder in frame, still facing each other.
         const qx = -uy, qy = ux;
-        // A stride apart, which is what a clash looks like. 54/58 read as two
-        // people standing in the same room.
-        a.x = stageX - qx * 34; a.y = stageY - qy * 34;
-        b.x = stageX + qx * 38; b.y = stageY + qy * 38;
+        // WEAPONS CROSSING, not a stride apart.
+        //
+        // This was 34/38 - 72 units centre to centre, and a fighter's collision
+        // circle is 40 wide, so a full body-width of daylight sat between them.
+        // Reported as "pretty far away from each other", which it was; the
+        // comment this replaces had already tightened it once from 54/58 and
+        // stopped too early.
+        //
+        // 23/25 is 48 apart: close enough that two arms at full extension
+        // overlap, which is what makes it read as a clash rather than as two
+        // people having a disagreement across a room. reach() below measures
+        // the pose and the script prints it, so this number is checkable
+        // against what the fighters actually do instead of being taken on
+        // trust - the weapons meet while reach(a) + reach(b) > 48.
+        const NEAR_A = 23, NEAR_B = 25;
+        a.x = stageX - qx * NEAR_A; a.y = stageY - qy * NEAR_A;
+        b.x = stageX + qx * NEAR_B; b.y = stageY + qy * NEAR_B;
         a.fx = qx; a.fy = qy;
         b.fx = -qx; b.fy = -qy;
         a.vx = a.vy = b.vx = b.vy = 0;
@@ -120,13 +133,22 @@ const W = 1920, HGT = 1080;
         a.invulnFrames = b.invulnFrames = 9999;
         a.tryStartAction('basic', b);
         b.tryStartAction('basic', a);
-        // `a` lands on the first active frame - the contact pose, held since
-        // Batch 56 - and `b` is still winding up, fist coming round.
+        // BOTH ON THEIR FIRST ACTIVE FRAME - the contact pose for each.
+        //
+        // `b` used to be stepped to 60% of its startup, still winding up. One
+        // fighter extended and one with its arm half-raised is a strike, not a
+        // clash, and at this distance the half-raised one simply looked like it
+        // was not participating. Both at contact puts the two weapons in the
+        // same place at the same moment, which is the whole image.
+        //
+        // Neither can hit the other while this happens - invulnFrames is 9999
+        // just above - which matters more now that both have a live hitbox on
+        // the frame they are being held at.
         step(a, b, fdA.startup + 1);
-        step(b, a, Math.max(1, Math.round(fdB.startup * 0.6)));
+        step(b, a, fdB.startup + 1);
         // Standing still, facing each other, whatever the AI wanted.
-        a.x = stageX - qx * 34; a.y = stageY - qy * 34;
-        b.x = stageX + qx * 38; b.y = stageY + qy * 38;
+        a.x = stageX - qx * NEAR_A; a.y = stageY - qy * NEAR_A;
+        b.x = stageX + qx * NEAR_B; b.y = stageY + qy * NEAR_B;
         a.fx = qx; a.fy = qy; b.fx = -qx; b.fy = -qy;
         a.vx = a.vy = b.vx = b.vy = 0;
         a.invulnFrames = b.invulnFrames = 0;
@@ -191,6 +213,18 @@ const W = 1920, HGT = 1080;
 
     const pose = await page.evaluate(() => window.__tableauPose);
     console.log('pose:', JSON.stringify(pose));
+    // DID THEY ACTUALLY MEET. The gap is 48 units and each reach is measured
+    // from its own shoulder, so the weapons cross while the two reaches add up
+    // to more than that. Printed rather than asserted because this script
+    // produces art for a person to look at - but a negative margin means the
+    // image cannot be a clash, whatever it looks like at a glance.
+    if (pose && pose.a && pose.b && pose.a.reach != null && pose.b.reach != null) {
+        const gap = 48, total = pose.a.reach + pose.b.reach;
+        console.log(`reach: ${pose.a.reach} + ${pose.b.reach} = ${total.toFixed(2)}`
+            + ` against a ${gap}-unit gap -> `
+            + (total > gap ? `crossing by ${(total - gap).toFixed(2)}`
+                           : `SHORT by ${(gap - total).toFixed(2)} - not a clash`));
+    }
 
     if (!url || url.length < 5000) {
         console.error('render produced nothing usable');

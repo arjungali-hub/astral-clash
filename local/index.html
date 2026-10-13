@@ -34,6 +34,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Astral Clash</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%94%EF%B8%8F%3C/text%3E%3C/svg%3E">
+    <link rel="preload" as="image" fetchpriority="low" href="/assets/loading-tableau.webp">
     <style>
         /* ---- Batch 36: the game's own typeface --------------------------
            font/astral-type.css folded in here, because the game is one HTML
@@ -3021,25 +3022,18 @@ function buildSkyDome() {
 }
 buildSkyDome();
 
-// Redraw the sky gradient + reposition/recolor the sun for a map's theme.
-// --- Batch 28: image-based lighting. -------------------------------------
-// This is the single change that makes the whole game read as lit rather than
-// painted, and it fixed a bug that looked like a material mistake.
-//
-// The rebuilt weapons use physically-correct metal (metalness 1.0), and a fully
-// metallic surface in three.js takes its color ENTIRELY from what it reflects.
-// With no environment map there is nothing to reflect, so a polished steel
-// blade renders pure BLACK - which is exactly how the first sword screenshot
-// came out. Metals need an environment, not a brighter base color.
-//
-// The environment is generated from the same sky gradient the player is
-// actually standing under, so reflections match the arena's own palette and
-// change with every map. PMREM pre-filters it into the roughness mip chain that
-// MeshStandardMaterial samples, so rough surfaces get soft ambient bounce and
-// smooth ones get a sharp horizon - the armour, the blades and the arena metal
-// all pick this up for free.
-function updateEnvironment() {
+function updateEnvironment(signature) {
     if (!skyDome || !skyDome.material.map) return;
+    // SKIP AN IDENTICAL REBUILD. applySky calls this, and applySky runs from
+    // loadMap - which runs every ROUND, not every match. So a rematch into the
+    // same arena was recomputing a bit-identical PMREM map each round: a
+    // cubemap projection plus a roughness-mip convolution, among the most
+    // expensive things in a frame, for no change whatsoever.
+    //
+    // `signature` is passed rather than read, so this function keeps knowing
+    // nothing about themes. A caller with no signature always rebuilds, which
+    // is the safe default for any path that has changed the sky by hand.
+    if (signature != null && signature === envBuiltFor) return;
     try {
         if (!pmremGen) {
             pmremGen = new THREE.PMREMGenerator(renderer);
@@ -3051,6 +3045,7 @@ function updateEnvironment() {
         if (envRT) envRT.dispose();     // dispose AFTER the new one exists
         envRT = next;
         scene.environment = envRT.texture;
+        envBuiltFor = signature != null ? signature : null;
     } catch (e) {
         // Never let image-based lighting break the game; without it metals just
         // look flat rather than reflective.
@@ -3111,7 +3106,8 @@ function applySky(theme) {
     sunSprite.position.set(theme.sun.pos[0], theme.sun.pos[1], theme.sun.pos[2]);
     sunSprite.scale.set(theme.sun.size, theme.sun.size, 1);
     sunSprite.material.color.set(theme.sun.color);
-    updateEnvironment();   // reflections follow the map's own sky
+    // The theme IS the signature: applySky derives every pixel above from it.
+    updateEnvironment(theme && theme.id);   // reflections follow the map's own sky
 }
 
 // Add the cameras to the scene graph so their attached viewmodels (children
@@ -4386,6 +4382,29 @@ function saveReplay() {
         showToast('Could not save the replay');
     }
 }
+
+// Redraw the sky gradient + reposition/recolor the sun for a map's theme.
+// --- Batch 28: image-based lighting. -------------------------------------
+// This is the single change that makes the whole game read as lit rather than
+// painted, and it fixed a bug that looked like a material mistake.
+//
+// The rebuilt weapons use physically-correct metal (metalness 1.0), and a fully
+// metallic surface in three.js takes its color ENTIRELY from what it reflects.
+// With no environment map there is nothing to reflect, so a polished steel
+// blade renders pure BLACK - which is exactly how the first sword screenshot
+// came out. Metals need an environment, not a brighter base color.
+//
+// The environment is generated from the same sky gradient the player is
+// actually standing under, so reflections match the arena's own palette and
+// change with every map. PMREM pre-filters it into the roughness mip chain that
+// MeshStandardMaterial samples, so rough surfaces get soft ambient bounce and
+// smooth ones get a sharp horizon - the armour, the blades and the arena metal
+// all pick this up for free.
+// WHAT THE CURRENT ENVIRONMENT WAS BUILT FROM, so an identical one is not
+// built twice. Keyed on the theme because applySky draws the sky from the
+// theme and nothing else - same theme, same 256x128 gradient, same convolution,
+// same answer.
+let envBuiltFor = null;
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every
@@ -8181,7 +8200,17 @@ function syncShopPanels() {
     // one player per machine. The two-panel build names each panel in its own
     // heading instead, and has no #shop-title to find.
     const title = document.getElementById('shop-title');
-    if (title) title.textContent = `${playerLabel(shopSide)}\u2019s Armory`;
+    // WHOSE ARMORY. "Player 1's Armory" is right with two people at one
+    // keyboard and wrong in a build where one device is one player - there is
+    // no Player 2 here to distinguish it from, and the player has typed their
+    // own name on the home screen. shopOwnerPhrase already draws exactly this
+    // line for the card copy ('your' against "<name>'s"); this now matches it
+    // instead of contradicting it two inches above.
+    if (title) {
+        title.textContent = AC_ONE_SIDE_PER_CLIENT
+            ? 'Your Armory'
+            : `${playerLabel(shopSide)}\u2019s Armory`;
+    }
 }
 
 function closeShopSide(side) {

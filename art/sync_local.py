@@ -3605,6 +3605,29 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
                           + '        releaseTouch, touchActive,' + chr(10)
                           + '        MOBILE_SOLO, hudViewports,')
 
+    # THE LOADING-ARTWORK PRELOAD, into the head.
+    #
+    # head_drift() only REPORTS head differences - nothing ports them - so a new
+    # <link> reached the online build and sat there, and the sync said
+    # "document head: 1 only there". Correct, and useless on its own: the
+    # local build would have gone on fetching the tableau six seconds into a
+    # cold visit, which is the bug the tag exists to fix.
+    #
+    # Anchored on the favicon link, which both builds carry. Root-relative href,
+    # so it needs none of the ../ rewriting HEAD_INTERFACE exists for.
+    _preload = ('    <link rel="preload" as="image" fetchpriority="low"'
+                ' href="/assets/loading-tableau.webp">')
+    if 'loading-tableau.webp"' not in dst.split('<style')[0]:
+        anchor = [l for l in dst.splitlines() if 'rel="icon"' in l]
+        if anchor:
+            dst = dst.replace(anchor[0], anchor[0] + chr(10) + _preload, 1)
+            print('  %-34s ok' % 'tableau preload in the head')
+        else:
+            print('  %-34s SKIPPED (no favicon link to anchor on)'
+                  % 'tableau preload in the head')
+    else:
+        print('  %-34s ok (already there)' % 'tableau preload in the head')
+
     # setBotFighter. botcheck drives THIS build, so the handle has to be here -
     # and without it every arm tests a randomly chosen fighter, which is how a
     # ranged bot keeping its distance came to be reported as a difficulty

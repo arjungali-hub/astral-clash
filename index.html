@@ -5,6 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Astral Clash</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%94%EF%B8%8F%3C/text%3E%3C/svg%3E">
+    <!-- THE LOADING ARTWORK, declared here and fetched at LOW priority.
+
+         Measured on a cold visit: the Image() preload in preloadLoadingArt was
+         starting at 5,934ms and finishing at 6,601ms, because it waits for idle
+         and sits behind the character textures. A player who reaches an arena
+         inside the first six seconds still saw the old symptom - two gradients
+         and no picture.
+
+         fetchpriority="low" is what makes a <link rel=preload> the right answer
+         rather than the wrong one. The earlier reasoning against a tag stands
+         on its own - at default priority this competes with three.js and the
+         models for the opening moments, trading a slow loading screen for a
+         slow boot - and low priority keeps the early start without the
+         competition. 196KB, and nothing needs it until a match begins.
+
+         Root-relative so both builds say the same thing; the local build sits a
+         directory down, where a relative path would climb above the root. -->
+    <link rel="preload" as="image" fetchpriority="low" href="/assets/loading-tableau.webp">
     <style>
         /* ---- Batch 36: the game's own typeface --------------------------
            font/astral-type.css folded in here, because the game is one HTML
@@ -1330,7 +1348,21 @@
         }
         .account-row input {
             flex: 1 1 auto; min-width: 0;
+            /* THEMED, like every other input in the game. These carried only
+               `flex`, so they fell through to the browser default - two bright
+               white boxes in a dark panel, beside the dark home-screen name
+               field and the dark room-code field. Matches .home-name-row input
+               exactly rather than approximately, because two inputs that are
+               nearly the same read worse than two that differ on purpose. */
+            background: #0d1017; border: 1px solid #2e3a59; border-radius: 7px;
+            color: #e2e8f0; font-family: inherit; font-size: 0.9rem; padding: 8px 10px;
         }
+        .account-row input:focus { outline: none; border-color: #00f3ff; }
+        .account-row input::placeholder { color: #475569; font-style: italic; }
+        /* ...and the labels line up. "Nom d'utilisateur" wrapped to two lines
+           while "Mot de passe" stayed on one, so the two rows sat at different
+           heights. 96px fits the English but not its translations. */
+        .account-row label { flex-basis: 128px; }
         /* Sign in / Create account. Two states of one panel rather than two
            screens - see the note in accountPanelHTML. */
         /* A select dressed as one of the .opt rows beside it, so the settings
@@ -3475,8 +3507,24 @@ buildSkyDome();
 // MeshStandardMaterial samples, so rough surfaces get soft ambient bounce and
 // smooth ones get a sharp horizon - the armour, the blades and the arena metal
 // all pick this up for free.
-function updateEnvironment() {
+// WHAT THE CURRENT ENVIRONMENT WAS BUILT FROM, so an identical one is not
+// built twice. Keyed on the theme because applySky draws the sky from the
+// theme and nothing else - same theme, same 256x128 gradient, same convolution,
+// same answer.
+let envBuiltFor = null;
+
+function updateEnvironment(signature) {
     if (!skyDome || !skyDome.material.map) return;
+    // SKIP AN IDENTICAL REBUILD. applySky calls this, and applySky runs from
+    // loadMap - which runs every ROUND, not every match. So a rematch into the
+    // same arena was recomputing a bit-identical PMREM map each round: a
+    // cubemap projection plus a roughness-mip convolution, among the most
+    // expensive things in a frame, for no change whatsoever.
+    //
+    // `signature` is passed rather than read, so this function keeps knowing
+    // nothing about themes. A caller with no signature always rebuilds, which
+    // is the safe default for any path that has changed the sky by hand.
+    if (signature != null && signature === envBuiltFor) return;
     try {
         if (!pmremGen) {
             pmremGen = new THREE.PMREMGenerator(renderer);
@@ -3488,6 +3536,7 @@ function updateEnvironment() {
         if (envRT) envRT.dispose();     // dispose AFTER the new one exists
         envRT = next;
         scene.environment = envRT.texture;
+        envBuiltFor = signature != null ? signature : null;
     } catch (e) {
         // Never let image-based lighting break the game; without it metals just
         // look flat rather than reflective.
@@ -3548,7 +3597,8 @@ function applySky(theme) {
     sunSprite.position.set(theme.sun.pos[0], theme.sun.pos[1], theme.sun.pos[2]);
     sunSprite.scale.set(theme.sun.size, theme.sun.size, 1);
     sunSprite.material.color.set(theme.sun.color);
-    updateEnvironment();   // reflections follow the map's own sky
+    // The theme IS the signature: applySky derives every pixel above from it.
+    updateEnvironment(theme && theme.id);   // reflections follow the map's own sky
 }
 
 const localCamera = () => (LOCAL_SIDE === 'p1' ? camP1 : camP2);
@@ -8302,7 +8352,17 @@ function syncShopPanels() {
     // one player per machine. The two-panel build names each panel in its own
     // heading instead, and has no #shop-title to find.
     const title = document.getElementById('shop-title');
-    if (title) title.textContent = `${playerLabel(shopSide)}\u2019s Armory`;
+    // WHOSE ARMORY. "Player 1's Armory" is right with two people at one
+    // keyboard and wrong in a build where one device is one player - there is
+    // no Player 2 here to distinguish it from, and the player has typed their
+    // own name on the home screen. shopOwnerPhrase already draws exactly this
+    // line for the card copy ('your' against "<name>'s"); this now matches it
+    // instead of contradicting it two inches above.
+    if (title) {
+        title.textContent = AC_ONE_SIDE_PER_CLIENT
+            ? 'Your Armory'
+            : `${playerLabel(shopSide)}\u2019s Armory`;
+    }
 }
 
 function openShop(side) {

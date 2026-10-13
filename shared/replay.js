@@ -215,6 +215,19 @@ function replayFromJSON(text) {
     try { data = JSON.parse(text); }
     catch (e) { return { error: 'That file is not a readable replay.' }; }
     if (!data || typeof data !== 'object') return { error: 'That file is not a replay.' };
+    // IS IT A REPLAY AT ALL, before asking which version it is.
+    //
+    // The version test came first, so any JSON file without a `v` field - which
+    // is every JSON file in the world except a replay - was refused as "made by
+    // a different version of the game". Reported from a file containing
+    // {"not":"a replay"}: readable, translated, and about the wrong thing.
+    //
+    // Shape first, then version. The version message is worth keeping for the
+    // case it was written for: a real replay from a build that is genuinely not
+    // this one.
+    if (typeof data.v !== 'number' || !Array.isArray(data.frames)) {
+        return { error: 'That file is not a replay.' };
+    }
     if (data.v !== REPLAY_VERSION) {
         return { error: 'That replay was made by a different version of the game.' };
     }
