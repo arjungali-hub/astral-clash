@@ -137,20 +137,6 @@ const SLACK = 12;
     };
 
 
-    section('GPU resources do not accumulate across rematches:');
-    check('the first match starts', await startMatch(), 'never reached FIGHT');
-    check('and it can be finished', await endMatch(), endWhy || 'never reached GAMEOVER');
-    // The baseline for the origin comparison: one match's worth of textures is
-    // the legitimate cost, and anything that keeps growing after it is not.
-    const liveAfterFirst = await page.evaluate(() => window.__acTexLive ? window.__acTexLive() : null);
-
-    const sample = () => page.evaluate(() => {
-        const r = window.ACDebug.rendererInfo();
-        const m = performance.memory;
-        return { geometries: r.geometries, textures: r.textures, programs: r.programs,
-                 heapMB: m ? Math.round(m.usedJSHeapSize / 1048576) : null };
-    });
-
     // WHERE DID IT COME FROM. Installed before the first match, so every
     // texture the game makes from here on carries the call site that made it.
     //
@@ -198,6 +184,20 @@ const SLACK = 12;
         };
     });
 
+    section('GPU resources do not accumulate across rematches:');
+    check('the first match starts', await startMatch(), 'never reached FIGHT');
+    check('and it can be finished', await endMatch(), endWhy || 'never reached GAMEOVER');
+    // The baseline for the origin comparison: one match's worth of textures is
+    // the legitimate cost, and anything that keeps growing after it is not.
+    const liveAfterFirst = await page.evaluate(() => window.__acTexLive ? window.__acTexLive() : null);
+
+    const sample = () => page.evaluate(() => {
+        const r = window.ACDebug.rendererInfo();
+        const m = performance.memory;
+        return { geometries: r.geometries, textures: r.textures, programs: r.programs,
+                 heapMB: m ? Math.round(m.usedJSHeapSize / 1048576) : null };
+    });
+
     const runStart = Date.now();
     const baseline = await sample();
     const series = [baseline];
@@ -229,7 +229,16 @@ const SLACK = 12;
     // and when they are not it is the name of the thing to go and fix.
     const liveEnd = await page.evaluate(() => window.__acTexLive ? window.__acTexLive() : null);
     let originNote = '';
-    if (liveEnd && liveAfterFirst) {
+    if (!liveEnd || !liveAfterFirst) {
+        // SAYS SO, rather than skipping in silence. This exact condition was
+        // true for two full CI rounds - the install sat 22 lines after the
+        // snapshot that reads it, so __acTexLive was undefined and the section
+        // below never ran - and the report looked identical to one where the
+        // tracker had simply found nothing.
+        originNote = '  ORIGINS: tracker unavailable'
+            + ` (afterFirst=${liveAfterFirst ? 'ok' : 'null'},`
+            + ` end=${liveEnd ? 'ok' : 'null'}) - window.THREE missing at install time?`;
+    } else {
         const growers = Object.keys(liveEnd)
             .map(k => ({ k, from: liveAfterFirst[k] || 0, to: liveEnd[k] }))
             .filter(r => r.to > r.from)

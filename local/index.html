@@ -8206,11 +8206,12 @@ function syncShopPanels() {
     // own name on the home screen. shopOwnerPhrase already draws exactly this
     // line for the card copy ('your' against "<name>'s"); this now matches it
     // instead of contradicting it two inches above.
-    if (title) {
-        title.textContent = AC_ONE_SIDE_PER_CLIENT
-            ? 'Your Armory'
-            : `${playerLabel(shopSide)}\u2019s Armory`;
-    }
+    // NOT a build ternary. The comment above this says the split-screen build
+    // has no #shop-title - it titles its two panels from #shop-title-p1 and
+    // #shop-title-p2 - so `title` is null there, and a branch naming a side
+    // would be dead code in a shipped build. That is the trade roadmap item 18
+    // was declined for.
+    if (title) title.textContent = 'Your Armory';
 }
 
 function closeShopSide(side) {

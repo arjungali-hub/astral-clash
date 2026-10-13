@@ -230,6 +230,38 @@ const H = require('./harness');
         junk.round === junk.roundBefore, JSON.stringify(junk));
     check('and NaN does not reach a tally', junk.ko1 === 1, JSON.stringify(junk));
 
+    section('A grace window ends even with no heartbeat to drive it:');
+    // THE DELIVERY MECHANISM, which nothing covered. The section below calls
+    // netGraceTick() by hand - so it proves the tick behaves and says nothing
+    // about whether anything ever calls it. netGraceTick is driven by
+    // net.pingTimer, and netTeardown CLEARS that timer, so a teardown arriving
+    // during a grace window used to remove the only thing that could close the
+    // window: the countdown froze on screen and the hold lasted for ever.
+    // Reported as "stays at 1s indefinitely... the only way out is Return to
+    // Menu".
+    //
+    // The game loop is the backstop now, so the test kills the timer and waits
+    // for frames rather than ticking anything itself.
+    const noBeat = await page.evaluate(async () => {
+        const D = window.ACDebug;
+        const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        D.netFakeConnect('host');
+        D.netFakeDrop();
+        const held = D.netInGrace();
+        // The timer is what a teardown would have taken away.
+        if (D.net.pingTimer) { clearInterval(D.net.pingTimer); D.net.pingTimer = null; }
+        // Wind the clock past the end, then hand over to the loop alone.
+        D.net.graceUntil = performance.now() - 1;
+        let ended = false;
+        for (let i = 0; i < 40 && !ended; i++) { await frame(); ended = !D.netInGrace(); }
+        return { held, ended, active: D.netActive(), status: D.net.status };
+    });
+    check('it held the match first', noBeat.held === true, JSON.stringify(noBeat));
+    check('and the window still closed with the heartbeat gone',
+        noBeat.ended === true, JSON.stringify(noBeat));
+    check('leaving the connection genuinely down',
+        noBeat.active === false, JSON.stringify(noBeat));
+
     section('When the window really does expire, it ends properly:');
     const expired = await page.evaluate(() => {
         const D = window.ACDebug;

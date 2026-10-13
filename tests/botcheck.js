@@ -184,14 +184,27 @@ async function step(page, units) {
             window.__acHp0 = h.hp;
             // Re-zeroed every tick so knockback cannot drift the target out of
             // reach and end the sample somewhere the bot cannot follow.
-            window.__acHold = setInterval(() => { h.vx = 0; h.vy = 0; }, 16);
+            // SWINGS AS WELL AS DAMAGE. Counted on the same interval that
+            // holds the human still: a transition out of idle is the bot
+            // deciding to attack, whether or not it connects. Watched at 16ms
+            // rather than per stepped frame because a whole swing can start and
+            // finish inside one frame at a low frame rate.
+            window.__acSwings = 0;
+            window.__acPrevAtk = 'idle';
+            window.__acHold = setInterval(() => {
+                h.vx = 0; h.vy = 0;
+                const b = window.ACDebug.player2;
+                if (b && window.__acPrevAtk === 'idle' && b.atkState !== 'idle') window.__acSwings++;
+                if (b) window.__acPrevAtk = b.atkState;
+            }, 16);
             return h.hp;
         }, CX, CY);
         for (let i = 0; i < FIGHT_FRAMES; i += CHUNK) await step(page, CHUNK);
         const out = await page.evaluate(() => {
             clearInterval(window.__acHold);
             const D = window.ACDebug;
-            return { damage: +(window.__acHp0 - D.player1.hp).toFixed(1) };
+            return { damage: +(window.__acHp0 - D.player1.hp).toFixed(1),
+                     swings: window.__acSwings };
         });
 
         await page.close();
@@ -232,9 +245,33 @@ async function step(page, units) {
         JSON.stringify(results.map(r => [r.difficulty, r.closest])));
 
     section('It connects, and the difficulty dial does something:');
-    check('every difficulty damaged a target that never fights back',
-        results.every(r => r.damage > 0),
+    // EVERY DIFFICULTY SWINGS. A bot that never leaves idle is broken at any
+    // setting, and this is what "did it attack" should always have measured.
+    check('every difficulty actually tried to attack',
+        results.every(r => r.swings > 0),
+        JSON.stringify(results.map(r => [r.difficulty, r.swings + ' swings'])));
+    // ...BUT NOT EVERY DIFFICULTY HAS TO LAND ONE.
+    //
+    // This used to require damage > 0 from all four, and easy cannot promise
+    // that: thinkMin 30 / thinkMax 60 with atkChance 0.35 is about four
+    // decisions across this window at 35% each - ~1.4 expected attacks, and a
+    // double-digit chance of none. The assertion was sampling a coin flip, and
+    // would have passed and failed at random for as long as it stood.
+    //
+    // normal is 0.55 over roughly seven decisions, which is near-certain, so
+    // that is where the line goes.
+    const mustLand = results.filter(r => r.difficulty !== 'easy');
+    check('normal and above land hits on a target that never fights back',
+        mustLand.every(r => r.damage > 0),
         JSON.stringify(results.map(r => [r.difficulty, r.damage])));
+    // THE ACTUAL CLAIM: the dial does something. Monotonic across the four,
+    // which is a far stronger statement than "all of them did something" and
+    // is what the measured curve shows (0 / 90 / 251 / 452).
+    const order = ['easy', 'normal', 'hard', 'insane']
+        .map(d => (results.find(r => r.difficulty === d) || {}).damage);
+    check('damage rises with difficulty, every step',
+        order.every((v, i) => i === 0 || v >= order[i - 1]),
+        JSON.stringify(order));
     const easy = results.find(r => r.difficulty === 'easy');
     const insane = results.find(r => r.difficulty === 'insane');
     check('insane out-damages easy over the same number of frames',

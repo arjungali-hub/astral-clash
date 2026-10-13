@@ -208,8 +208,20 @@ const H = require('./harness');
             opened.cls === `side-${side}`, JSON.stringify(opened));
         check(`${role}: but it is centred and full-width, not squeezed into a half`,
             opened.justify === 'center', opened.justify);
+        // "YOUR ARMORY" HERE, not "Player 1's".
+        //
+        // This asserted the title names Player 1 or Player 2, which was right
+        // when the panel served two people at one keyboard. In this build one
+        // device is one player: there is no Player 2 to distinguish it from,
+        // the player has typed their own name on the home screen, and
+        // shopOwnerPhrase already says 'your' in the card copy below the
+        // title. Reported as a real confusion, so the title changed and this
+        // follows it.
+        //
+        // The local build still names the side, and localshopcheck covers that
+        // - which is why this is not simply relaxed to "contains Armory".
         check(`${role}: the panel says whose shop it is`,
-            opened.title.includes(side === 'p1' ? 'Player 1' : 'Player 2'), opened.title);
+            opened.title === 'Your Armory', opened.title);
         await page.evaluate(() => document.getElementById('btn-shop-close').click());
     }
 

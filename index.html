@@ -8358,11 +8358,12 @@ function syncShopPanels() {
     // own name on the home screen. shopOwnerPhrase already draws exactly this
     // line for the card copy ('your' against "<name>'s"); this now matches it
     // instead of contradicting it two inches above.
-    if (title) {
-        title.textContent = AC_ONE_SIDE_PER_CLIENT
-            ? 'Your Armory'
-            : `${playerLabel(shopSide)}\u2019s Armory`;
-    }
+    // NOT a build ternary. The comment above this says the split-screen build
+    // has no #shop-title - it titles its two panels from #shop-title-p1 and
+    // #shop-title-p2 - so `title` is null there, and a branch naming a side
+    // would be dead code in a shipped build. That is the trade roadmap item 18
+    // was declined for.
+    if (title) title.textContent = 'Your Armory';
 }
 
 function openShop(side) {
@@ -8736,7 +8737,19 @@ function netJoin(hostId) {
 // Losing the peer mid-match must not leave a half-driven puppet standing
 // there: pause and say so, rather than pretending the opponent is idle.
 function onNetLost() {
-    if (gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH') {
+    // PAUSED IS IN THIS LIST, and leaving it out is half of the stuck-countdown
+    // bug. A grace window pauses the match before this is ever reached, so a
+    // teardown that arrives DURING one - a BYE, a peer that got destroyed -
+    // used to fall past this branch into refreshMenuUI alone and leave the
+    // pause screen showing whatever it last said: "Trying to reconnect... 1s",
+    // for ever, over a connection that had already gone.
+    //
+    // togglePause is already guarded against double-pausing, so adding the
+    // state here only adds the repaint. netGraceTick works around the same gap
+    // with its own explicit refreshPauseUI; this is that fix in the place every
+    // caller benefits from.
+    if (gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH'
+        || gameState === 'PAUSED') {
         exitPointerLock();
         if (gameState !== 'PAUSED') togglePause();
         refreshMenuUI();
@@ -9010,7 +9023,12 @@ function netApplyLifecycle(msg) {
 // --- Per-frame send -------------------------------------------------------
 // Liveness, on its own interval so it survives a backgrounded tab. See the
 // note on NET_PING_HZ. Started by netBindConnection, cleared by netTeardown.
+// WHEN THE HEARTBEAT LAST RAN. Read by the grace backstop in the game loop:
+// the interval that drives netGraceTick is cancellable, and the loop is not.
+let netLastBeatAt = 0;
+
 function netHeartbeat() {
+    netLastBeatAt = performance.now();
     // The grace window first: netActive() is deliberately TRUE throughout one
     // (see its comment), so without this the code below would send PINGs into a
     // closed channel and the window would never close.
@@ -11382,6 +11400,19 @@ function gameLoop() {
         for (const e of due.events) replayPlayEvent(e.side, e.kind);
         if (replayFinished()) exitReplay();
     }
+
+    // A GRACE WINDOW MUST BE ABLE TO END.
+    //
+    // netGraceTick is driven by net.pingTimer, and netTeardown clears that
+    // timer - so a teardown during a grace window removes the only thing that
+    // can close the window. Reported as a countdown frozen at "1s" for fifty
+    // seconds with Resume disabled and no way out but Return to Menu.
+    //
+    // The game loop cannot be cleared, so it is the backstop. Time-based, not
+    // `!net.pingTimer`: a cancelled interval and a starved one are
+    // indistinguishable from here and need the same answer. 1s of silence is
+    // four missed beats at NET_PING_HZ.
+    if (netInGrace() && performance.now() - netLastBeatAt > 1000) netGraceTick();
 
     if (netActive()) {
         netApplyRemote(dt);            // ease the opponent toward their last report
