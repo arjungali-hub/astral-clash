@@ -228,6 +228,7 @@ const SLACK = 12;
     // whatever the verdict: when the counts are flat this is one quiet line,
     // and when they are not it is the name of the thing to go and fix.
     const liveEnd = await page.evaluate(() => window.__acTexLive ? window.__acTexLive() : null);
+    let originNote = '';
     if (liveEnd && liveAfterFirst) {
         const growers = Object.keys(liveEnd)
             .map(k => ({ k, from: liveAfterFirst[k] || 0, to: liveEnd[k] }))
@@ -235,25 +236,32 @@ const SLACK = 12;
             .sort((a, b) => (b.to - b.from) - (a.to - a.from));
         section('Undisposed textures, by where they were created:');
         if (!growers.length) {
-            check('no origin accumulated textures across the rematches', true,
-                'nothing grew');
+            console.log('    nothing grew');
         } else {
             for (const g of growers.slice(0, 6)) {
                 console.log(`    +${g.to - g.from}  (${g.from} -> ${g.to})  ${g.k}`);
             }
-            // NOT a second failure. The count assertion above is the verdict;
-            // this exists to name the cause, and reporting it twice would make
-            // one defect look like two.
-            check('the growth has an identified origin above - see the list', true,
-                growers.length + ' origin(s) grew');
         }
+        // INTO THE FAILING DETAIL, which is the only place that reaches anyone.
+        //
+        // The first version of this printed the list with console.log beside a
+        // check that always passed. CI's annotations carry FAILING checks only,
+        // so the report that came back was the same bare "50 -> 74" as before
+        // and a thirty-minute run bought nothing. A diagnostic nobody can read
+        // is not a diagnostic.
+        originNote = growers.length
+            ? '  ORIGINS: ' + growers.slice(0, 4)
+                .map(g => `+${g.to - g.from} ${g.k}`).join('  ||  ')
+            : '  ORIGINS: none grew (so the growth is in textures created before'
+              + ' the first match, or outside the four wrapped constructors)';
     }
 
     const last = series[series.length - 1];
     const grew = k => last[k] - baseline[k];
     for (const k of ['geometries', 'textures', 'programs']) {
         check(`${k}: no growth across ${series.length - 1} rematches (${baseline[k]} -> ${last[k]})`,
-            grew(k) <= SLACK, JSON.stringify(series.map(s => s[k])));
+            grew(k) <= SLACK,
+            JSON.stringify(series.map(s => s[k])) + (k === 'textures' ? originNote : ''));
     }
     check('enough rematches actually ran to mean anything',
         series.length >= 4, series.length - 1 + ' rematches');
