@@ -786,6 +786,14 @@ CSS_INTERFACE = {
     '#audio-screen, #rebind-screen, #modeselect-screen':
         ('top-aligned and self-scrolling here',
          ['align-items', 'overflow-y', 'padding-bottom', 'padding-top']),
+    '#mapselect-screen':
+        ('top-aligned here so a panel taller than the viewport stays reachable;'
+         ' the group rule says so and this one has to agree, because it comes'
+         ' after it and would otherwise win', ['align-items']),
+    '#tutorial-screen':
+        ('top-aligned here for the same reason as #mapselect-screen - reported'
+         ' as a tutorial opening 895px above its own scroll origin',
+         ['align-items']),
     '#select-screen':
         ('the online build opens on a home screen; this one opens here', ['display']),
     # `transition` is NOT here on purpose: it was missing rather than different,
@@ -1546,6 +1554,14 @@ def close_css_drift(src, dst, shared_texts=()):
         for sel in ported:
             if sel.startswith('@'):
                 continue          # at-rules are appended below, already whole
+            # ...and a rule ported INTO an existing media query was inserted in
+            # place above, so it must not be appended a second time - and its
+            # name here carries a " (conditional)" suffix for the report, which
+            # is not a key in `on` and raised KeyError the first time this path
+            # ever ran. It had never run because nothing had previously added a
+            # rule to a conditional block this build already had.
+            if sel.endswith(' (conditional)'):
+                continue
             # The indent goes in front of the SELECTOR too: _css_rule_text
             # starts at the selector because the in-place rebuild replaces a
             # match that does, and an appended rule has no such match.
@@ -3605,6 +3621,52 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
                           + '        releaseTouch, touchActive,' + chr(10)
                           + '        MOBILE_SOLO, hudViewports,')
 
+    # A STRAY CLOSING BRACE, left by a port or removal step. The online build
+    # balances and this one did not: a lone ` }` sat on its own line after the
+    # one-line reduced-motion rule. CSS error-recovery ignores a top-level
+    # stray brace, which is precisely why nobody saw it - and why the guard
+    # below matters more than this removal does.
+    _stray = ('@media (prefers-reduced-motion: reduce) { #debug-toast'
+              ' { transition: none; } }' + chr(10) + ' }' + chr(10))
+    if _stray in dst:
+        dst = dst.replace(_stray, _stray.replace(chr(10) + ' }' + chr(10), chr(10)), 1)
+        print('  %-34s ok (removed)' % 'stray closing brace')
+    else:
+        print('  %-34s ok (none)' % 'stray closing brace')
+
+    # TOP-ALIGN THE TWO MODALS WHOSE OWN RULE OUTRANKS THE GROUP FIX.
+    #
+    # The group selector above these sets `align-items: flex-start` so a panel
+    # taller than the viewport stays reachable - see its Batch 47 comment, which
+    # names the symptom. But the per-screen rules are also single-id selectors,
+    # so specificity ties and ORDER decides: #mapselect-screen (847) and
+    # #tutorial-screen (884) come after the group (828) and silently re-centre
+    # themselves, which puts the top of a tall panel above the scroll origin
+    # where nothing can reach it. Reported for the tutorial at 501px: first
+    # child at -895px with scrollTop 0.
+    #
+    # Set EXPLICITLY on each rule rather than by moving the group rule down.
+    # Reordering fixes it today and breaks again the next time a rule is
+    # inserted between them, which is exactly how this arrived.
+    n_align = 0
+    for _sel in ('#mapselect-screen', '#tutorial-screen'):
+        _at = dst.find('        ' + _sel + ' {')
+        if _at < 0:
+            continue
+        _end = dst.find('        }', _at)
+        if _end < 0:
+            continue
+        _rule = dst[_at:_end]
+        if 'align-items: center' not in _rule:
+            continue
+        dst = (dst[:_at]
+               + _rule.replace('align-items: center',
+                               'align-items: flex-start', 1)
+               + dst[_end:])
+        n_align += 1
+    print('  %-34s %s' % ('modals top-aligned',
+                          ('%d fixed' % n_align) if n_align else 'ok (already)'))
+
     # The accent/text contrast helpers. contrastcheck drives both builds, and
     # the Armory cards exist in both, so the rule has to be assertable in both.
     if 'accentTextColor,' not in dst:
@@ -4281,6 +4343,47 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     #
     # Both builds are checked, because the online one is where markup is
     # authored and a collision introduced there would be copied straight over.
+    # THE STYLESHEET MUST BALANCE.
+    #
+    # A stray `}` between two rules is ignored by every browser, so it survives
+    # indefinitely - and the same stray brace INSIDE a rule closes it early and
+    # silently drops every declaration after it. The first costs nothing and the
+    # second is invisible, which is the combination worth a guard.
+    #
+    # Comments and quoted strings are skipped: a `}` inside either is not a
+    # brace, and counting them reports phantoms.
+    def _css_balance(text):
+        a = text.find('<style>')
+        b = text.find('</style>')
+        if a < 0 or b < 0:
+            return 0
+        css, i, depth = text[a + 7:b], 0, 0
+        while i < len(css):
+            ch = css[i]
+            if ch == '/' and css[i:i + 2] == '/*':
+                j = css.find('*/', i + 2)
+                i = len(css) if j < 0 else j + 2
+                continue
+            if ch in '"' + chr(39):
+                q, i = ch, i + 1
+                while i < len(css) and css[i] != q:
+                    i += 2 if css[i] == chr(92) else 1
+                i += 1
+                continue
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+            i += 1
+        return depth
+
+    css_bal = [(label, _css_balance(text))
+               for label, text in (('online', src), ('local', dst))]
+    css_bad = [(l, d) for l, d in css_bal if d != 0]
+    print('  %-34s %s' % ('stylesheet braces balance',
+                          'ok' if not css_bad
+                          else 'FAILED: ' + ', '.join('%s %+d' % (l, d) for l, d in css_bad)))
+
     dup_ids = []
     for label, text in (('online', src), ('local', dst)):
         seen, dups = set(), set()
@@ -4297,6 +4400,14 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     io.open(DST, 'w', encoding='utf-8', newline='').write(dst)
     print('\nlocal build: %d -> %d bytes' % (before, len(dst)))
     rc = check_fixed_point()
+    if css_bad:
+        print('')
+        print('UNBALANCED STYLESHEET: %s.'
+              % ', '.join('%s %+d braces' % (l, d) for l, d in css_bad))
+        print('A stray closing brace between two rules is ignored by browsers')
+        print('and survives for ever; the same brace inside a rule closes it')
+        print('early and silently drops the rest of its declarations.')
+        return 1
     if dup_ids:
         print('')
         print('DUPLICATE ELEMENT ID: %s.' % ', '.join(dup_ids))

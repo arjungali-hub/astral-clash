@@ -1131,6 +1131,31 @@
             display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px;
         }
         @media (max-width: 720px) { .mapselect-grid { grid-template-columns: repeat(2, 1fr); } }
+
+        /* A REAL SIDE GUTTER AT PHONE WIDTH, and panels that can shrink.
+           Measured at 501px: 8px of gutter against the 16px minimum, and
+           #ui-overlay 481 wide against 490 of content with a horizontal
+           scrollbar along the bottom.
+
+           Two causes. #ui-overlay's padding is `16px 0 44px` - no horizontal
+           padding at all, so the only gutter was .menu-section's 10px margin.
+           And .menu-section is a FIXED `width: 350px` in content-box, which
+           with 24px padding and a border is ~400px that cannot shrink however
+           narrow the viewport gets.
+
+           Scoped to the breakpoint deliberately: at desktop width nothing
+           moves, so the CSS baseline does not need reseeding for a change that
+           only affects phones. box-sizing here because the global default is
+           content-box - without it max-width would still let padding push the
+           box past the gutter. */
+        @media (max-width: 720px) {
+            #ui-overlay { padding-left: 16px; padding-right: 16px; }
+            .menu-section {
+                width: auto; max-width: 100%;
+                box-sizing: border-box;
+                margin-left: 0; margin-right: 0;
+            }
+        }
         .map-card {
             position: relative; border-radius: 10px; overflow: hidden; cursor: pointer;
             border: 2px solid #ffffff14; background: #0d1420; transition: transform .12s, border-color .12s, box-shadow .12s;
