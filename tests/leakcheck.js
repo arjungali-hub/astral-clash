@@ -173,6 +173,49 @@ const SLACK = 12;
             this.__acDisposed = true;
             return origDispose.apply(this, arguments);
         };
+        // WHO UPLOADED IT. A Proxy on renderer.info.memory, which is the exact
+        // object the failing assertion reads.
+        //
+        // three.js does `info.memory.textures++` on every upload - a get then
+        // a set - so this sees all of them regardless of who constructed the
+        // texture. That is the difference from the constructor wrappers above,
+        // which only see `new THREE.X` from game code and reported "none grew".
+        // Watching the effect cannot miss a path; watching the cause can.
+        const renderer = D && D.renderer;
+        if (renderer && renderer.info && renderer.info.memory
+            && !renderer.info.memory.__acTrapped) {
+            const real = renderer.info.memory;
+            const tally = window.__acUploadTally = {};
+            real.__acTrapped = true;
+            const trapped = new Proxy(real, {
+                set(target, prop, value) {
+                    if (prop === 'textures' && value > target[prop]) {
+                        // Frames 2..8: frame 0 is this trap and frame 1 the
+                        // property set, identical for every upload. Frame 2
+                        // IS three's own counter line, and it is kept - in
+                        // minified three.js the name there is the only thing
+                        // telling a loader upload from a render-target one.
+                        const where = (new Error().stack || '').split('\n').slice(2, 8)
+                            .map(l => l.trim().replace(/^at\s+/, '').replace(/\s*\(.*$/, ''))
+                            .filter(Boolean).join(' < ') || '(no stack)';
+                        tally[where] = (tally[where] || 0) + (value - target[prop]);
+                    }
+                    target[prop] = value;
+                    return true;
+                },
+            });
+            try {
+                renderer.info.memory = trapped;
+                window.__acUploads = () => Object.assign({}, window.__acUploadTally);
+            } catch (e) {
+                // A build where info.memory is read-only: the census below and
+                // the constructor wrappers above still report.
+                window.__acUploads = () => null;
+            }
+        } else if (!window.__acUploads) {
+            window.__acUploads = () => null;
+        }
+
         // WHAT THE SCENE CAN REACH, by description. Independent of how a
         // texture was constructed, which is the whole point: the constructor
         // wrappers above can only see the game's own `new THREE.X` calls.
@@ -227,6 +270,7 @@ const SLACK = 12;
     // the legitimate cost, and anything that keeps growing after it is not.
     const liveAfterFirst = await page.evaluate(() => window.__acTexLive ? window.__acTexLive() : null);
     const censusFirst = await page.evaluate(() => window.__acTexCensus ? window.__acTexCensus() : null);
+    const upFirst = await page.evaluate(() => window.__acUploads ? window.__acUploads() : null);
 
     const sample = () => page.evaluate(() => {
         const r = window.ACDebug.rendererInfo();
@@ -266,6 +310,7 @@ const SLACK = 12;
     // and when they are not it is the name of the thing to go and fix.
     const liveEnd = await page.evaluate(() => window.__acTexLive ? window.__acTexLive() : null);
     const censusEnd = await page.evaluate(() => window.__acTexCensus ? window.__acTexCensus() : null);
+    const upEnd = await page.evaluate(() => window.__acUploads ? window.__acUploads() : null);
     let originNote = '';
 
     // THE REACHABLE CENSUS, first match against last. This is the half that can
@@ -323,6 +368,29 @@ const SLACK = 12;
                 .map(g => `+${g.to - g.from} ${g.k}`).join('  ||  ')
             : '  ORIGINS: none grew (so the growth is in textures created before'
               + ' the first match, or outside the four wrapped constructors)';
+    }
+
+    // WHERE THE UPLOADS CAME FROM, first match against the rest. This is the
+    // one diagnostic that watches the counter itself, so a path it does not
+    // name is a path that did not upload anything.
+    if (upFirst && upEnd) {
+        const rows = Object.keys(upEnd)
+            .map(k => ({ k, from: upFirst[k] || 0, to: upEnd[k] }))
+            .filter(r => r.to > r.from)
+            .sort((a, b) => (b.to - b.from) - (a.to - a.from));
+        section('Texture uploads by call path, first match vs last:');
+        for (const r of rows.slice(0, 8)) {
+            console.log(`    +${r.to - r.from}  (${r.from} -> ${r.to})  ${r.k}`);
+        }
+        if (!rows.length) console.log('    nothing uploaded after the first match');
+        originNote += rows.length
+            ? '  UPLOADS: ' + rows.slice(0, 3)
+                .map(r => `+${r.to - r.from} ${r.k}`).join(' || ')
+            : '  UPLOADS: no path uploaded a texture after the first match,'
+              + ' so the count is growing without an upload - which would mean'
+              + ' the dispose side, not the create side';
+    } else {
+        originNote += '  UPLOADS: trap unavailable (info.memory not writable?)';
     }
 
     const last = series[series.length - 1];
