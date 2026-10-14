@@ -254,7 +254,14 @@ const H = require('./harness');
         D.net.graceUntil = performance.now() - 1;
         let ended = false;
         for (let i = 0; i < 40 && !ended; i++) { await frame(); ended = !D.netInGrace(); }
-        return { held, ended, active: D.netActive(), status: D.net.status };
+        const out = { held, ended, active: D.netActive(), status: D.net.status };
+        // PUT THE CONNECTION BACK. This section deliberately ends with a
+        // teardown, and netTeardown nulls net.peer - so the section after it
+        // called netFakeDrop() on a dead connection, netDropped took its
+        // no-peer-to-hold branch, and "it held first" failed with held:false.
+        // A checker that borrows the state has to return it.
+        D.netFakeConnect('host');
+        return out;
     });
     check('it held the match first', noBeat.held === true, JSON.stringify(noBeat));
     check('and the window still closed with the heartbeat gone',

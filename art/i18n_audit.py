@@ -30,6 +30,16 @@ the output.
 """
 import html
 import io
+import sys as _sys
+
+# ENCODE THE REPORT. This prints strings lifted from a file full of accented
+# characters, to a console that is cp1252 on Windows - and it crashed partway
+# through its own --list output on the first U+2713. Reconfigured rather than
+# wrapped at each print, so nothing added later can forget.
+try:
+    _sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
 import os
 import re
 import sys
@@ -58,9 +68,29 @@ NOT_PROSE = re.compile(
 WORDY = re.compile(r'[A-Za-z]')
 
 
+# The shared modules that put words on the screen. common.js owns showToast and
+# the whole canvas HUD; the other three are the features whose own messages live
+# beside their logic.
+SHARED_FOR_AUDIT = ('common.js', 'replay.js', 'account.js', 'challenges.js')
+
+
 def visible_strings():
     """Every string a player can read, from both builds and the shared data."""
     out = {}
+
+    assembled = {}
+
+    def add_assembled(group, s):
+        # Same filters as add(), different destination. Anything that is already
+        # a whole translatable string - it appears in `out` - is not a fragment,
+        # so it is not reported twice.
+        s = html.unescape(str(s))
+        s = ' '.join(s.split())
+        if not s or s in KEEP or not WORDY.search(s):
+            return
+        if ' ' not in s and NOT_PROSE.match(s):
+            return
+        assembled.setdefault(s, group)
 
     def add(group, s):
         # DECODED FIRST. `&mdash;` reaches a text node as an em dash, and the
@@ -68,6 +98,16 @@ def visible_strings():
         # against them reported `Coins &amp; Unlocks` as untranslated while
         # `Coins & Unlocks` sat in the table.
         s = html.unescape(str(s))
+        # AND THE JS ESCAPES. A source that writes '\u2026' reaches the screen
+        # as an ellipsis, and the tables are keyed on the character - so
+        # comparing the raw escape reported "Press a key\u2026" as untranslated
+        # and no amount of translating it could ever have fixed that. Same
+        # reasoning as the html.unescape above, one layer over.
+        if '\\u' in s:
+            try:
+                s = s.encode('ascii', 'backslashreplace').decode('unicode_escape')
+            except Exception:
+                pass
         s = ' '.join(s.split())
         if not s or s in KEEP:
             return
@@ -105,12 +145,107 @@ def visible_strings():
         for m in re.finditer(key + r":\s*'((?:[^'\\]|\\.)+)'", blk):
             add('modes', m.group(1).replace("\\'", "'"))
 
+    # ---- strings JAVASCRIPT builds -------------------------------------
+    #
+    # The audit read markup and three data tables and reported "0 MISSING"
+    # while a hands-on pass found dozens of untranslated strings: the HUD,
+    # "Confirm (Left Click)", the role suffixes, the Armory prices, every
+    # Settings value chip. A green tick that measures the wrong thing is worse
+    # than a red one.
+    #
+    # Not "every string literal" - that is impossible from source, because
+    # 'p1', 'shop-title' and 'Unlocked' are the same shape and only one is
+    # prose. These are POSITIONS that are user-visible by construction.
+    js_positions = (
+        # setOptState(id, TEXT, on) - the second argument is the chip a player
+        # reads beside a settings label.
+        r"setOptState" + chr(92) + r"(" + chr(92) + r"s*'(?:[^'" + chr(92)
+        + chr(92) + r"]|" + chr(92) + chr(92) + r".)*'" + chr(92) + r"s*,"
+        + chr(92) + r"s*'((?:[^'" + chr(92) + chr(92) + r"]|" + chr(92)
+        + chr(92) + r".)+)'",
+        # showToast(TEXT)
+        r"showToast" + chr(92) + r"(" + chr(92) + r"s*'((?:[^'" + chr(92)
+        + chr(92) + r"]|" + chr(92) + chr(92) + r".)+)'",
+        # fillText(TEXT, ...) - the canvas HUD. No DOM pass can see this one,
+        # which makes it the part a rendered-output check would also miss.
+        r"fillText" + chr(92) + r"(" + chr(92) + r"s*'((?:[^'" + chr(92)
+        + chr(92) + r"]|" + chr(92) + chr(92) + r".)+)'",
+        # direct writes
+        r"textContent" + chr(92) + r"s*=" + chr(92) + r"s*'((?:[^'" + chr(92)
+        + chr(92) + r"]|" + chr(92) + chr(92) + r".)+)'",
+        r"placeholder" + chr(92) + r"s*=" + chr(92) + r"s*'((?:[^'" + chr(92)
+        + chr(92) + r"]|" + chr(92) + chr(92) + r".)+)'",
+    )
+    js_sources = [('online markup', 'index.html'),
+                  ('local markup', os.path.join('local', 'index.html'))]
+    for name in SHARED_FOR_AUDIT:
+        js_sources.append(('shared/' + name, os.path.join('shared', name)))
+    for label, rel in js_sources:
+        path = os.path.join(ROOT, rel)
+        if not os.path.exists(path):
+            continue
+        text = io.open(path, encoding='utf-8').read()
+        for pat in js_positions:
+            for m in re.finditer(pat, text):
+                add(label, m.group(1).replace("\\'", "'"))
+
+    # ---- prose assembled inside TEMPLATE LITERALS ----------------------
+    #
+    # The six positions above are call arguments; most of the interface is not.
+    # buildShop's cards, the stat rows, the "Main Attack - ..." headings and the
+    # HUD plates are all backtick strings written through innerHTML, invisible
+    # to both the markup scan (it stops at the first <script>) and the call scan.
+    #
+    # A template literal is markup with holes in it. Blank the holes, then run
+    # the markup extraction over what is left: `<span>${c.name}</span>` yields
+    # nothing, and `<span>Unlocked</span>` yields "Unlocked".
+    def _blank_holes(lit):
+        out, i, n = [], 0, len(lit)
+        while i < n:
+            if lit[i] == '$' and i + 1 < n and lit[i + 1] == '{':
+                depth, i = 1, i + 2
+                while i < n and depth:
+                    if lit[i] == '{':
+                        depth += 1
+                    elif lit[i] == '}':
+                        depth -= 1
+                    i += 1
+                continue
+            out.append(lit[i])
+            i += 1
+        return ''.join(out)
+
+    # INTO ASSEMBLED, not into `out`. What comes back from here is the text
+    # between the ${} holes, and the node a player sees interleaves the two -
+    # "Confirm (Left Click)", not "Confirm ()". No table entry can match a
+    # fragment, so reporting these as missing translations would be asking a
+    # translator to fix something only a code change can.
+    for label, rel in js_sources:
+        path = os.path.join(ROOT, rel)
+        if not os.path.exists(path):
+            continue
+        text = io.open(path, encoding='utf-8').read()
+        # Backtick strings, non-greedy, skipping escaped backticks.
+        for m in re.finditer(r'`((?:[^`' + chr(92) + chr(92) + r']|'
+                             + chr(92) + chr(92) + r'.)*)`', text, re.S):
+            frag = _blank_holes(m.group(1))
+            if '<' not in frag:
+                continue              # not markup; a selector or a class list
+            for t2 in re.finditer(r'>([^<>{}]+)<', frag):
+                add_assembled(label, t2.group(1))
+            for attr in ('placeholder', 'title', 'aria-label', 'alt'):
+                for t2 in re.finditer(attr + r'="([^"]+)"', frag):
+                    add_assembled(label, t2.group(1))
+
     # ---- the daily challenges ------------------------------------------
     chal = io.open(os.path.join(ROOT, 'shared', 'challenges.js'), encoding='utf-8').read()
     for m in re.finditer(r"text:\s*'((?:[^'\\]|\\.)+)'", chal):
         add('challenges', m.group(1).replace("\\'", "'"))
 
-    return out
+    for k in list(assembled):
+        if k in out:
+            del assembled[k]
+    return out, assembled
 
 
 def table_keys():
@@ -156,7 +291,7 @@ def table_keys():
 
 
 def main():
-    seen = visible_strings()
+    seen, assembled = visible_strings()
     tables = table_keys()
     want_lang = None
     for i, a in enumerate(sys.argv):
@@ -170,6 +305,35 @@ def main():
     for g in sorted(by_group):
         print('   %-16s %4d' % (g, len(by_group[g])))
     print()
+
+    # ASSEMBLED AT RUNTIME - counted, listed, and deliberately not in the exit
+    # code.
+    #
+    # These are the text pieces between a template literal's ${} holes. The node
+    # a player sees interleaves them with values - "Confirm (Left Click)", not
+    # "Confirm ()" - so localiseDOM, which keys on a whole text node, can never
+    # match one and no table entry can fix it. The fix is at the source:
+    # t('Confirm') + ' (' + keyLabel + ')', the way the arena label does it.
+    #
+    # They are real: every one below was independently found untranslated by a
+    # hands-on pass. They are just not a translator's job, and folding them into
+    # the exit code would hold the gate shut on work a table cannot do - a tick
+    # that can never go green reports as much as no tick at all.
+    if assembled:
+        print('ASSEMBLED AT RUNTIME: %d string(s) no table entry can reach.' % len(assembled))
+        print('  These are fragments around ${} holes in template literals, so the')
+        print('  text node they end up in is never equal to any key. Translating')
+        print('  them means calling t() at the source. Not counted as missing.')
+        a_groups = {}
+        for s2, g in assembled.items():
+            a_groups.setdefault(g, []).append(s2)
+        for g in sorted(a_groups):
+            print('   %-16s %4d' % (g, len(a_groups[g])))
+            if '--assembled' in sys.argv:
+                for s2 in sorted(a_groups[g]):
+                    print('      ' + s2)
+        print('  (run with --assembled to list them)')
+        print()
 
     worst = 0
     for lang in ('es', 'fr'):

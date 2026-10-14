@@ -264,14 +264,22 @@ async function step(page, units) {
     check('normal and above land hits on a target that never fights back',
         mustLand.every(r => r.damage > 0),
         JSON.stringify(results.map(r => [r.difficulty, r.damage])));
-    // THE ACTUAL CLAIM: the dial does something. Monotonic across the four,
-    // which is a far stronger statement than "all of them did something" and
-    // is what the measured curve shows (0 / 90 / 251 / 452).
+    // NOT MONOTONIC PER STEP, and asserting that was my mistake. One run per
+    // difficulty cannot establish it: two consecutive rounds measured easy at
+    // 0 then at 260.5, and [260.5, 251, 291.3, 460] has easy above normal by
+    // nine points. The bot rolls its attacks (atkChance) and its timing
+    // (thinkMin..thinkMax), so a single sample carries enough variance to
+    // reorder two adjacent tiers whose chances are 0.35 and 0.55.
+    //
+    // Establishing a per-step ordering needs repeated runs and a mean, and this
+    // checker already spends twenty minutes - four more arms to average is not
+    // worth it for a ranking nobody depends on. The claim that matters is the
+    // gap between the extremes, which the next assertion makes and which
+    // survives the variance: 0.35 against 0.98, 60 frames of thinking against
+    // 6.
     const order = ['easy', 'normal', 'hard', 'insane']
         .map(d => (results.find(r => r.difficulty === d) || {}).damage);
-    check('damage rises with difficulty, every step',
-        order.every((v, i) => i === 0 || v >= order[i - 1]),
-        JSON.stringify(order));
+    console.log('    damage by difficulty: ' + JSON.stringify(order));
     const easy = results.find(r => r.difficulty === 'easy');
     const insane = results.find(r => r.difficulty === 'insane');
     check('insane out-damages easy over the same number of frames',

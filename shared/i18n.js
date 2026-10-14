@@ -196,6 +196,17 @@ const I18N = {
             "Tus monedas, desbloqueos y mejoras viven en tu cuenta, no en esta máquina: inicia sesión en cualquier dispositivo y ahí estarán.",
         "Your opponent sees your choice in the room. Nothing starts until you press":
             "Tu rival ve tu elección en la sala. No empieza nada hasta que pulses",
+        // ---- what javascript builds -----------------------------------
+        "ARENA":
+            "ARENA",
+        "Click again to erase":
+            "Pulsa otra vez para borrar",
+        "Press a key…":
+            "Pulsa una tecla…",
+        "Progress reset":
+            "Progreso borrado",
+        "Your Armory":
+            "Tu arsenal",
         // ---- replays (roadmap 12) --------------------------------------
         "Could not save the replay":
             "No se pudo guardar la repetición",
@@ -688,6 +699,17 @@ const I18N = {
             "Vos pièces, déblocages et améliorations vivent sur votre compte, pas sur cette machine — connectez-vous sur n’importe quel appareil et ils y sont.",
         "Your opponent sees your choice in the room. Nothing starts until you press":
             "Votre adversaire voit votre choix dans le salon. Rien ne commence tant que vous n’appuyez pas sur",
+        // ---- what javascript builds -----------------------------------
+        "ARENA":
+            "ARÈNE",
+        "Click again to erase":
+            "Appuyez encore pour effacer",
+        "Press a key…":
+            "Appuyez sur une touche…",
+        "Progress reset":
+            "Progression réinitialisée",
+        "Your Armory":
+            "Votre arsenal",
         // ---- replays (roadmap 12) --------------------------------------
         "Could not save the replay":
             "Impossible d’enregistrer le replay",

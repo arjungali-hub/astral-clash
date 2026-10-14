@@ -173,6 +173,42 @@ const SLACK = 12;
             this.__acDisposed = true;
             return origDispose.apply(this, arguments);
         };
+        // WHAT THE SCENE CAN REACH, by description. Independent of how a
+        // texture was constructed, which is the whole point: the constructor
+        // wrappers above can only see the game's own `new THREE.X` calls.
+        window.__acTexCensus = () => {
+            const seen = new Set();
+            const out = {};
+            const SLOTS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap',
+                           'aoMap', 'emissiveMap', 'alphaMap', 'envMap',
+                           'lightMap', 'bumpMap', 'displacementMap', 'specularMap'];
+            const note = (tex) => {
+                if (!tex || typeof tex !== 'object' || seen.has(tex.uuid)) return;
+                seen.add(tex.uuid);
+                const img = tex.image;
+                const size = img && (img.width || img.videoWidth)
+                    ? (img.width || img.videoWidth) + 'x' + (img.height || img.videoHeight)
+                    : 'no-image';
+                const k = (tex.constructor && tex.constructor.name || 'Texture')
+                    + ' ' + (tex.name || '(unnamed)') + ' ' + size;
+                out[k] = (out[k] || 0) + 1;
+            };
+            const D = window.ACDebug;
+            const scene = D && D.scene;
+            if (scene) {
+                scene.traverse(node => {
+                    const mats = !node.material ? []
+                        : (Array.isArray(node.material) ? node.material : [node.material]);
+                    for (const m of mats) {
+                        if (!m) continue;
+                        for (const slot of SLOTS) note(m[slot]);
+                    }
+                });
+                note(scene.environment);
+                note(scene.background);
+            }
+            return out;
+        };
         window.__acTexLive = () => {
             const out = {};
             for (const r of window.__acTexReg) {
@@ -190,6 +226,7 @@ const SLACK = 12;
     // The baseline for the origin comparison: one match's worth of textures is
     // the legitimate cost, and anything that keeps growing after it is not.
     const liveAfterFirst = await page.evaluate(() => window.__acTexLive ? window.__acTexLive() : null);
+    const censusFirst = await page.evaluate(() => window.__acTexCensus ? window.__acTexCensus() : null);
 
     const sample = () => page.evaluate(() => {
         const r = window.ACDebug.rendererInfo();
@@ -228,7 +265,30 @@ const SLACK = 12;
     // whatever the verdict: when the counts are flat this is one quiet line,
     // and when they are not it is the name of the thing to go and fix.
     const liveEnd = await page.evaluate(() => window.__acTexLive ? window.__acTexLive() : null);
+    const censusEnd = await page.evaluate(() => window.__acTexCensus ? window.__acTexCensus() : null);
     let originNote = '';
+
+    // THE REACHABLE CENSUS, first match against last. This is the half that can
+    // see textures the game did not construct itself.
+    if (censusFirst && censusEnd) {
+        const keys = new Set(Object.keys(censusFirst).concat(Object.keys(censusEnd)));
+        const grew = [...keys]
+            .map(k => ({ k, from: censusFirst[k] || 0, to: censusEnd[k] || 0 }))
+            .filter(r => r.to > r.from)
+            .sort((a, b) => (b.to - b.from) - (a.to - a.from));
+        const total = (o) => Object.values(o).reduce((a, b) => a + b, 0);
+        section('Textures the scene can reach, first match vs last:');
+        console.log(`    reachable: ${total(censusFirst)} -> ${total(censusEnd)}`);
+        for (const g of grew.slice(0, 8)) {
+            console.log(`    +${g.to - g.from}  (${g.from} -> ${g.to})  ${g.k}`);
+        }
+        originNote += `  REACHABLE: ${total(censusFirst)} -> ${total(censusEnd)}`;
+        originNote += grew.length
+            ? '  GREW: ' + grew.slice(0, 3).map(g => `+${g.to - g.from} ${g.k}`).join(' || ')
+            : '  GREW: nothing reachable grew, so the leaked textures are ORPHANED'
+              + ' - unreferenced and undisposed, which points at a loader or a'
+              + ' render target held inside three.js rather than at game code';
+    }
     if (!liveEnd || !liveAfterFirst) {
         // SAYS SO, rather than skipping in silence. This exact condition was
         // true for two full CI rounds - the install sat 22 lines after the

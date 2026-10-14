@@ -1438,7 +1438,15 @@ function showLoading(arenaName) {
     if (!el) return;
     loadingDepth++;
     const label = document.getElementById('ld-arena');
-    if (label) label.textContent = 'ARENA // ' + String(arenaName || 'ASTRAL CLASH').toUpperCase();
+    // THE PREFIX IS LOOKED UP, the arena name is not. localiseDOM keys on whole
+    // text nodes and this one reads "ARENA // VOLTAIC NEXUS", so no key could
+    // ever match it - t() is what i18n.js exposes for a string assembled in
+    // code rather than written in markup. The name stays as it is: an arena is
+    // called what it is called in every language.
+    if (label) {
+        label.textContent = (typeof t === 'function' ? t('ARENA') : 'ARENA')
+            + ' // ' + String(arenaName || 'ASTRAL CLASH').toUpperCase();
+    }
     const tip = document.getElementById('ld-tip');
     if (tip) tip.textContent = LOADING_TIPS[Math.floor(Math.random() * LOADING_TIPS.length)];
     el.classList.add('on');
