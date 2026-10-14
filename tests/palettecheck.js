@@ -108,6 +108,35 @@ const MIN_DELTA = 25;
         await H.sleep(1800);
         const kept = await page.evaluate(() => window.ACDebug && window.ACDebug.sidePalette);
         check('the choice survives a reload', kept === 'colorblind', String(kept));
+
+        // AND IT REACHES THE SCREEN. Every assertion above is about the palette
+        // TABLE - that the two pairs differ, that one separates better under
+        // deuteranopia and protanopia, that the choice persists. All true, and
+        // all true of a feature that is not plugged in: the health bar was
+        // painted with the FIGHTER's accent, so flipping the palette changed
+        // its label and nothing else. A checker can be entirely correct about
+        // something that does nothing.
+        //
+        // So: ask the game what colour it would actually paint each side's bar,
+        // in both palettes. Cheaper and far less brittle than sampling canvas
+        // pixels, and it fails for the same reason the pixels would.
+        const applied = await page.evaluate(() => {
+            const D = window.ACDebug;
+            const read = () => ({ p1: D.sideColor('p1'), p2: D.sideColor('p2') });
+            D.setSidePalette('standard');
+            const std = read();
+            D.setSidePalette('colorblind');
+            const cb = read();
+            return { std, cb };
+        });
+        check('the palette the HUD asks for actually changes with the setting',
+            applied.std.p1 !== applied.cb.p1 && applied.std.p2 !== applied.cb.p2,
+            JSON.stringify(applied));
+        // ...and a mirror match is still two colours. The bar used to take the
+        // fighter's accent, so Kaelen vs Kaelen was two identical blue bars.
+        check('the two sides differ from each other in both palettes',
+            applied.std.p1 !== applied.std.p2 && applied.cb.p1 !== applied.cb.p2,
+            JSON.stringify(applied));
         check('no errors thrown', errors.length === 0, errors.slice(0, 2).join(' | ') || 'none');
         await page.close();
     }

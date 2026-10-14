@@ -10452,14 +10452,31 @@ function drawPlayerHUD(f, x, label, isMine) {
     hudCtx.fillRect(x, 56, BW, 24);
 
     // Ghost trail: a lighter afterimage of HP just lost, drawn first so the
-    // real (character-colored) bar sits on top of it and looks like it's
-    // "pulling away" from a fading remnant.
+    // real bar sits on top of it and looks like it's "pulling away" from a
+    // fading remnant.
     if (f.hpGhost > f.hp) {
         hudCtx.fillStyle = "#64748b";
         hudCtx.fillRect(x, 56, (f.hpGhost / f.maxHp) * BW, 24);
     }
     const lowHp = f.hp / f.maxHp < 0.25 && f.hp > 0;
-    hudCtx.fillStyle = lowHp && Math.sin(arenaTime * 0.3) > 0 ? "#ef4444" : f.color;
+    // BY SIDE, NOT BY FIGHTER - and this one line was two reported bugs.
+    //
+    // It used to be f.color, the fighter's own accent, which meant the
+    // colourblind palette could not reach the health bar at all: Player Colors
+    // flipped its label and the HUD stayed pixel-identical. It also meant
+    // Kaelen vs Kaelen gave both players the same blue bar, with nothing to
+    // say which was which.
+    //
+    // sideColor's own comment already names both the intent and the symptom -
+    // "by SIDE rather than by fighter: a mirror match gave both the same ring
+    // and the same HUD color, so from overhead there was nothing to tell them
+    // apart". The ground rings were switched over; the bar was missed.
+    //
+    // The character is still named in the label directly above the bar, so
+    // nothing is lost by colouring the bar for the side.
+    const hudSide = f.isPlayerOne ? 'p1' : 'p2';
+    hudCtx.fillStyle = lowHp && Math.sin(arenaTime * 0.3) > 0
+        ? "#ef4444" : sideColor(hudSide);
     hudCtx.fillRect(x, 56, (f.hp / f.maxHp) * BW, 24);
     hudCtx.strokeStyle = "rgba(255,255,255,0.2)"; hudCtx.lineWidth = 1.5;
     hudCtx.strokeRect(x, 56, BW, 24);
