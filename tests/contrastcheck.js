@@ -124,6 +124,50 @@ const SCREENS = [
         }
     }
 
+    section('Every fighter name is readable on an Armory card:');
+    // THE RULE, NOT A SAMPLE. This checker measures what rendered, and the
+    // Armory shows one card per fighter - so Nyx at 3.21:1 and Karrigos at
+    // 1.51:1 were never in a frame it looked at. Five of the fourteen failed
+    // and a hands-on pass caught three.
+    //
+    // A fighter's accent is their identity, so the fix was a derived text
+    // variant (accentTextColor) rather than a new accent. This asserts the
+    // derivation over the WHOLE roster: arithmetic over fourteen values, so it
+    // cannot be flaky, and a fifteenth fighter with an unlucky colour fails
+    // here instead of shipping.
+    const accents = await page.evaluate(() => {
+        const D = window.ACDebug;
+        if (!D || typeof D.accentTextColor !== 'function') return null;
+        const names = (typeof CHARACTERS !== 'undefined' ? CHARACTERS : [])
+            .map(c => ({ name: c.name, color: c.color }));
+        return names.map(c => {
+            const text = D.accentTextColor(c.color);
+            return {
+                name: c.name, accent: c.color, text,
+                before: +D.contrastRatio(c.color, D.ACCENT_TEXT_BG).toFixed(2),
+                after: +D.contrastRatio(text, D.ACCENT_TEXT_BG).toFixed(2),
+            };
+        });
+    });
+    if (!accents) {
+        check('the accent/text helpers are exported', false, 'ACDebug.accentTextColor missing');
+    } else {
+        const failing = accents.filter(a => a.after < 4.5);
+        check(`every one of the ${accents.length} fighters clears 4.5:1 as card text`,
+            failing.length === 0,
+            JSON.stringify(failing.map(a => [a.name, a.text, a.after])));
+        // ...and the accent itself is untouched for the ones that already
+        // passed, because changing a colour that was fine would be a redesign
+        // nobody asked for.
+        const needed = accents.filter(a => a.before < 4.5);
+        const changedAnyway = accents.filter(a => a.before >= 4.5 && a.text !== a.accent);
+        check('only the fighters that needed lifting were changed',
+            changedAnyway.length === 0,
+            JSON.stringify(changedAnyway.map(a => [a.name, a.accent, a.text])));
+        console.log(`    lifted ${needed.length} of ${accents.length}: `
+            + needed.map(a => `${a.name} ${a.before}->${a.after}`).join(', '));
+    }
+
     section('Every visible label clears WCAG AA:');
     console.log('    screens read: ' + opened.join(', '));
     for (const f of failures.slice(0, 8)) console.log('    ' + JSON.stringify(f));

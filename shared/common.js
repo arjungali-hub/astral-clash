@@ -833,6 +833,87 @@ const TELEPORT_VIS_MAX = 150;
 // Deliberately NOT longer than that: the offset is a lie about where you are,
 // and the longer it lasts the longer your camera disagrees with your hitbox.
 
+// A FIGHTER'S COLOUR, MADE READABLE AS TEXT - without changing the colour.
+//
+// An accent is an identity: it is the HUD bar, the ground ring, the name plate
+// and the card border. Five of the fourteen fail 4.5:1 as text on a dark card
+// (Nyx 3.21, Draven 3.78, Ignis 3.78, Hollowkin 3.84, Karrigos 1.51), and
+// lightening the accent itself to fix that would recolour those fighters
+// everywhere - a redesign, not a contrast fix.
+//
+// So this derives a text variant: same hue, same saturation, lightness raised
+// only as far as the ratio requires. --accent goes on borders and rings;
+// --accent-text goes on words.
+//
+// COMPUTED, not a table of hand-picked colours per fighter. Three of the five
+// failures were noticed by a person and two were not, which is exactly what a
+// per-fighter table would keep doing - the fifteenth fighter would arrive with
+// whatever ratio its colour happened to have.
+const WCAG_TEXT_MIN = 4.5;
+
+function _srgbToLin(c) {
+    c /= 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+function relativeLuminance(hex) {
+    const h = String(hex).replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return 0.2126 * _srgbToLin(r) + 0.7152 * _srgbToLin(g) + 0.0722 * _srgbToLin(b);
+}
+
+function contrastRatio(a, b) {
+    const la = relativeLuminance(a), lb = relativeLuminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+function _hexToHsl(hex) {
+    const h = String(hex).replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16) / 255,
+          g = parseInt(h.slice(2, 4), 16) / 255,
+          b = parseInt(h.slice(4, 6), 16) / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+    if (mx === mn) return [0, 0, l];
+    const d = mx - mn;
+    const sat = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    let hue;
+    if (mx === r) hue = ((g - b) / d + (g < b ? 6 : 0));
+    else if (mx === g) hue = (b - r) / d + 2;
+    else hue = (r - g) / d + 4;
+    return [hue * 60, sat, l];
+}
+
+function _hslToHex(hue, sat, light) {
+    const f = (n) => {
+        const k = (n + hue / 30) % 12;
+        const a = sat * Math.min(light, 1 - light);
+        const v = light - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+        return Math.round(Math.max(0, Math.min(1, v)) * 255);
+    };
+    const hx = (v) => v.toString(16).padStart(2, '0');
+    return '#' + hx(f(0)) + hx(f(8)) + hx(f(4));
+}
+
+// The dark card these sit on. One constant rather than a parameter at every
+// call site: every surface that uses --accent-text is this colour or darker,
+// so clearing it here clears all of them.
+const ACCENT_TEXT_BG = '#10151f';
+
+function accentTextColor(hex, bg) {
+    const against = bg || ACCENT_TEXT_BG;
+    try {
+        if (contrastRatio(hex, against) >= WCAG_TEXT_MIN) return hex;
+        const [hue, sat, l0] = _hexToHsl(hex);
+        for (let l = l0; l <= 1.0001; l += 0.005) {
+            const cand = _hslToHex(hue, sat, l);
+            if (contrastRatio(cand, against) >= WCAG_TEXT_MIN) return cand;
+        }
+        return '#ffffff';     // a colour that cannot be lifted far enough
+    } catch (e) {
+        return hex;           // never let a palette calculation break a panel
+    }
+}
+
 function hexToCss(hexNumber, alpha) {
     const r = (hexNumber >> 16) & 255, g = (hexNumber >> 8) & 255, b = hexNumber & 255;
     return `rgba(${r},${g},${b},${alpha})`;

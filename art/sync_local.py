@@ -3605,6 +3605,14 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
                           + '        releaseTouch, touchActive,' + chr(10)
                           + '        MOBILE_SOLO, hudViewports,')
 
+    # The accent/text contrast helpers. contrastcheck drives both builds, and
+    # the Armory cards exist in both, so the rule has to be assertable in both.
+    if 'accentTextColor,' not in dst:
+        dst = dst.replace('        MOBILE_SOLO, hudViewports,',
+                          '        accentTextColor, contrastRatio,' + chr(10)
+                          + '        ACCENT_TEXT_BG, WCAG_TEXT_MIN,' + chr(10)
+                          + '        MOBILE_SOLO, hudViewports,')
+
     # THE LOADING-ARTWORK PRELOAD, into the head.
     #
     # head_drift() only REPORTS head differences - nothing ports them - so a new

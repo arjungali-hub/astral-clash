@@ -618,7 +618,11 @@
         }
         .shop-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
         .shop-card-head > div:first-child { min-width: 0; } /* let the label shrink instead of squeezing the button */
-        .shop-name { font-weight: bold; color: var(--accent, #00f3ff); font-size: 0.92rem; }
+        .shop-name {
+            font-weight: bold;
+            color: var(--accent-text, var(--accent, #00f3ff));
+            font-size: 0.92rem;
+        }
         .shop-title { font-size: 0.66rem; color: #94a3b8; font-weight: normal; }
         .shop-upgrades { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 6px 10px; }
         .upg-row { display: flex; align-items: center; gap: 6px; font-size: 0.66rem; color: #94a3b8; }
@@ -642,7 +646,11 @@
         .shop-card-head .shop-buy { margin-left: auto; }
         .upg-row .shop-buy { min-width: 44px; text-align: center; }
         .menu-section .shop-buy:hover { background: #fbbf24; box-shadow: 0 0 10px rgba(245,158,11,0.5); }
-        .menu-section .shop-buy:disabled { background: #334155; color: #64748b; box-shadow: none; }
+        .menu-section .shop-buy:disabled {
+            background: #334155;
+            color: #a1acbb;
+            box-shadow: none;
+        }
         .menu-section .shop-buy.maxed { background: #1e2637; color: #64748b; border: 1px solid #2e3a59; }
         .shop-locked-note { font-size: 0.66rem; color: #f59e0b; }
         .shop-owned { font-size: 0.66rem; color: #4ade80; font-weight: bold; flex: 0 0 auto; white-space: nowrap; }
@@ -7714,6 +7722,10 @@ function buildGrid(gridId, keyList, side) {
         btn.dataset.name = c.name;
         btn.dataset.key = keyList[i].toUpperCase();
         btn.style.setProperty('--accent', c.color);
+        // ...and the readable variant for text on a dark card. See
+        // accentTextColor: the accent itself is unchanged, because it is
+        // this fighter's identity on every other surface.
+        btn.style.setProperty('--accent-text', accentTextColor(c.color));
         // The face chip goes FIRST so the card reads portrait-then-name, and
         // it carries the accent color behind it as both a tint and a fallback
         // for a missing file. Batch 37.
@@ -7819,6 +7831,10 @@ function showDetail(side, name, confirmed) {
     const backKey = keyLabel(BINDINGS[side].special);
     const detail = document.getElementById(`${side}-detail`);
     detail.style.setProperty('--accent', c.color);
+    // ...and the readable variant for text on a dark card. See
+    // accentTextColor: the accent itself is unchanged, because it is
+    // this fighter's identity on every other surface.
+    detail.style.setProperty('--accent-text', accentTextColor(c.color));
     detail.innerHTML = buildDetailHTML(side, c, confirmKey, backKey, confirmed);
     detail.classList.toggle('confirmed', confirmed);
     // Confirm is absent once the pick is locked in, so this is a lookup rather
@@ -8055,6 +8071,7 @@ function buildShop(only) {
     const djCard = document.createElement('div');
     djCard.className = 'shop-card';
     djCard.style.setProperty('--accent', '#22d3ee');
+    djCard.style.setProperty('--accent-text', accentTextColor('#22d3ee'));
     const djOwned = isDoubleJumpUnlocked(side);
     djCard.innerHTML = `<div class="shop-card-head">
             <div><span class="shop-name">Double Jump</span> <span class="shop-title">— all of ${shopOwnerPhrase(side)} fighters</span></div>
@@ -8073,6 +8090,10 @@ function buildShop(only) {
         const card = document.createElement('div');
         card.className = 'shop-card';
         card.style.setProperty('--accent', c.color);
+        // ...and the readable variant for text on a dark card. See
+        // accentTextColor: the accent itself is unchanged, because it is
+        // this fighter's identity on every other surface.
+        card.style.setProperty('--accent-text', accentTextColor(c.color));
 
         const head = document.createElement('div');
         head.className = 'shop-card-head';
@@ -8112,6 +8133,10 @@ function buildShop(only) {
             const det = document.createElement('div');
             det.className = 'shop-detail';
             det.style.setProperty('--accent', c.color);
+            // ...and the readable variant for text on a dark card. See
+            // accentTextColor: the accent itself is unchanged, because it is
+            // this fighter's identity on every other surface.
+            det.style.setProperty('--accent-text', accentTextColor(c.color));
             det.innerHTML = characterInfoHTML(side, c); // same source as the select screen
             card.appendChild(det);
         }
@@ -10025,6 +10050,8 @@ if (DEBUG) {
         replayBegin, replayEnd, replayAdvance,
         replayProgress, replayCaption, watchReplay,
         exitReplay, refreshReplayUI, watchView,
+        accentTextColor, contrastRatio,
+        ACCENT_TEXT_BG, WCAG_TEXT_MIN,
         MOBILE_SOLO, hudViewports,
         // Batch 27 crush cinematic
         get crushTime() { return crushTime; },

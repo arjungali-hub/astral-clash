@@ -294,7 +294,8 @@
         .home-roster { color: #64748b; font-size: 0.74rem; margin-left: 4px; }
         .home-name-row { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
         .home-name-row label {
-            color: #64748b; font-size: 0.7rem; text-transform: uppercase;
+            /* 4.00:1 at #64748b; 4.54:1 here, same hue. */
+            color: #6c7d95; font-size: 0.7rem; text-transform: uppercase;
             letter-spacing: 0.07em; white-space: nowrap;
         }
         .home-name-row input {
@@ -630,7 +631,8 @@
         .lobby-status.live    { color: #4ade80; border-color: #4ade80; }
         .lobby-status.bad     { color: #f87171; border-color: #ef4444; }
         .lobby-block { margin-bottom: 10px; }
-        .lobby-or { color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.14em; margin: 4px 0 10px; }
+        /* 3.66:1 at #64748b against this panel; 4.51:1 here, same hue. */
+        .lobby-or { color: #73839a; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.14em; margin: 4px 0 10px; }
         .lobby-code-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
         .lobby-code-label { font-size: 0.66rem; color: #8aa0b8; white-space: nowrap; }
         .menu-section .lobby-code {
@@ -785,7 +787,12 @@
         }
         .shop-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
         .shop-card-head > div:first-child { min-width: 0; } /* let the label shrink instead of squeezing the button */
-        .shop-name { font-weight: bold; color: var(--accent, #00f3ff); font-size: 1rem; }
+        /* --accent-text, not --accent. Five of the fourteen fighters fail
+           4.5:1 as text on this card - Nyx at 3.21, Karrigos at 1.51 - and
+           their accent is their identity everywhere else, so the TEXT gets a
+           lightened variant of the same hue instead. accentTextColor computes
+           it; the fallback chain keeps a card that never ran the JS readable. */
+        .shop-name { font-weight: bold; color: var(--accent-text, var(--accent, #00f3ff)); font-size: 1rem; }
         .shop-title { font-size: 0.72rem; color: #94a3b8; font-weight: normal; }
         /* The "Unlock to buy upgrades" line in the second screenshot sat hard
            against the card edge below it. */
@@ -812,7 +819,12 @@
         .shop-card-head .shop-buy { margin-left: auto; }
         .upg-row .shop-buy { min-width: 44px; text-align: center; }
         .menu-section .shop-buy:hover { background: #fbbf24; box-shadow: 0 0 10px rgba(245,158,11,0.5); }
-        .menu-section .shop-buy:disabled { background: #334155; color: #64748b; box-shadow: none; }
+        /* 2.18:1 BEFORE, and with no coins EVERY price chip in the Armory is
+           disabled - so the price you need in order to decide what to save for
+           was the least readable text on the screen. #a1acbb is 4.50:1 on the
+           same #334155, which keeps the "you cannot press this" read while
+           leaving the number legible. */
+        .menu-section .shop-buy:disabled { background: #334155; color: #a1acbb; box-shadow: none; }
         .menu-section .shop-buy.maxed { background: #1e2637; color: #64748b; border: 1px solid #2e3a59; }
         .shop-locked-note { font-size: 0.66rem; color: #f59e0b; }
         .shop-owned { font-size: 0.66rem; color: #4ade80; font-weight: bold; flex: 0 0 auto; white-space: nowrap; }
@@ -7756,6 +7768,10 @@ function buildGrid(gridId, keyList, side) {
         btn.dataset.name = c.name;
         btn.dataset.key = keyList[i].toUpperCase();
         btn.style.setProperty('--accent', c.color);
+        // ...and the readable variant for text on a dark card. See
+        // accentTextColor: the accent itself is unchanged, because it is
+        // this fighter's identity on every other surface.
+        btn.style.setProperty('--accent-text', accentTextColor(c.color));
         // The face chip goes FIRST so the card reads portrait-then-name, and
         // it carries the accent color behind it as both a tint and a fallback
         // for a missing file. Batch 37.
@@ -7871,6 +7887,10 @@ function showDetail(side, name, confirmed) {
     const backKey = keyLabel(BINDINGS[side].special);
     const detail = document.getElementById(`${side}-detail`);
     detail.style.setProperty('--accent', c.color);
+    // ...and the readable variant for text on a dark card. See
+    // accentTextColor: the accent itself is unchanged, because it is
+    // this fighter's identity on every other surface.
+    detail.style.setProperty('--accent-text', accentTextColor(c.color));
     detail.innerHTML = buildDetailHTML(side, c, confirmKey, backKey, confirmed);
     detail.classList.toggle('confirmed', confirmed);
     // Confirm is absent once the pick is locked in, so this is a lookup rather
@@ -8199,6 +8219,7 @@ function buildShop(only) {
     const djCard = document.createElement('div');
     djCard.className = 'shop-card';
     djCard.style.setProperty('--accent', '#22d3ee');
+    djCard.style.setProperty('--accent-text', accentTextColor('#22d3ee'));
     const djOwned = isDoubleJumpUnlocked(side);
     djCard.innerHTML = `<div class="shop-card-head">
             <div><span class="shop-name">Double Jump</span> <span class="shop-title">— all of ${shopOwnerPhrase(side)} fighters</span></div>
@@ -8217,6 +8238,10 @@ function buildShop(only) {
         const card = document.createElement('div');
         card.className = 'shop-card';
         card.style.setProperty('--accent', c.color);
+        // ...and the readable variant for text on a dark card. See
+        // accentTextColor: the accent itself is unchanged, because it is
+        // this fighter's identity on every other surface.
+        card.style.setProperty('--accent-text', accentTextColor(c.color));
 
         const head = document.createElement('div');
         head.className = 'shop-card-head';
@@ -8256,6 +8281,10 @@ function buildShop(only) {
             const det = document.createElement('div');
             det.className = 'shop-detail';
             det.style.setProperty('--accent', c.color);
+            // ...and the readable variant for text on a dark card. See
+            // accentTextColor: the accent itself is unchanged, because it is
+            // this fighter's identity on every other surface.
+            det.style.setProperty('--accent-text', accentTextColor(c.color));
             det.innerHTML = characterInfoHTML(side, c); // same source as the select screen
             card.appendChild(det);
         }
@@ -11670,6 +11699,9 @@ if (DEBUG) {
         // window.fetch with a spy, which is the one place where posting is
         // safe because nothing leaves the machine.
         setTelemetryAllowLocal, telemetryProductionOrigin,
+        // The accent/text contrast rule, so contrastcheck can assert it over
+        // the whole roster instead of over whichever cards happened to render.
+        accentTextColor, contrastRatio, ACCENT_TEXT_BG, WCAG_TEXT_MIN,
         // Roadmap 12: replays. The format and timing live in shared/replay.js;
         // these are the handles a checker needs to drive one end to end.
         replayActive, replayIsRecording, replaySaved, replayStartRecording,
