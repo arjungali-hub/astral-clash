@@ -196,6 +196,42 @@ const I18N = {
             "Tus monedas, desbloqueos y mejoras viven en tu cuenta, no en esta máquina: inicia sesión en cualquier dispositivo y ahí estarán.",
         "Your opponent sees your choice in the room. Nothing starts until you press":
             "Tu rival ve tu elección en la sala. No empieza nada hasta que pulses",
+        // ---- looked up by t() in code, not written in markup ----------
+        "Both fighters fell on wave":
+            "Ambos luchadores cayeron en la oleada",
+        "Change Fighter":
+            "Cambiar luchador",
+        "Round times:":
+            "Tiempos de ronda:",
+        "Waves cleared:":
+            "Oleadas superadas:",
+        "all of":
+            "para todos",
+        "dmg dealt, largest hit":
+            "de daño, golpe más fuerte",
+        "special(s) used":
+            "especial(es) usados",
+        // ---- the controls card and the rest of the assembled UI --------
+        "Alone against a bot:":
+            "Solo contra un bot:",
+        "Gamepad connected":
+            "Mando conectado",
+        "Gamepad:":
+            "Mando:",
+        "Jump a second time in mid-air — reaches the highest platforms.":
+            "Salta por segunda vez en el aire: alcanza las plataformas más altas.",
+        "No coins earned in the \"unlock everything\" sandbox":
+            "No se ganan monedas en el modo de pruebas «desbloquear todo»",
+        "Two players:":
+            "Dos jugadores:",
+        "the screen splits and each side uses its own keys, above — turn to look, then walk in the direction you face.":
+            "la pantalla se divide y cada lado usa sus propias teclas, arriba: gira para mirar y luego camina hacia donde mires.",
+        "to strafe, left click to attack. Click the arena once to capture the mouse.":
+            "para desplazarte de lado, clic izquierdo para atacar. Haz clic una vez en la arena para capturar el ratón.",
+        "you get the whole screen and the online scheme — mouse look,":
+            "tienes toda la pantalla y el esquema en línea: vista con el ratón,",
+        "✓ Locked in":
+            "✓ Confirmado",
         // ---- what javascript builds -----------------------------------
         "ARENA":
             "ARENA",
@@ -699,6 +735,42 @@ const I18N = {
             "Vos pièces, déblocages et améliorations vivent sur votre compte, pas sur cette machine — connectez-vous sur n’importe quel appareil et ils y sont.",
         "Your opponent sees your choice in the room. Nothing starts until you press":
             "Votre adversaire voit votre choix dans le salon. Rien ne commence tant que vous n’appuyez pas sur",
+        // ---- looked up by t() in code, not written in markup ----------
+        "Both fighters fell on wave":
+            "Les deux combattants sont tombés à la vague",
+        "Change Fighter":
+            "Changer de combattant",
+        "Round times:":
+            "Temps des manches :",
+        "Waves cleared:":
+            "Vagues terminées :",
+        "all of":
+            "pour tous",
+        "dmg dealt, largest hit":
+            "de dégâts, plus gros coup",
+        "special(s) used":
+            "spéciale(s) utilisée(s)",
+        // ---- the controls card and the rest of the assembled UI --------
+        "Alone against a bot:":
+            "Seul contre un bot :",
+        "Gamepad connected":
+            "Manette connectée",
+        "Gamepad:":
+            "Manette :",
+        "Jump a second time in mid-air — reaches the highest platforms.":
+            "Sautez une seconde fois en plein vol — atteint les plates-formes les plus hautes.",
+        "No coins earned in the \"unlock everything\" sandbox":
+            "Aucune pièce gagnée dans le bac à sable « tout débloquer »",
+        "Two players:":
+            "Deux joueurs :",
+        "the screen splits and each side uses its own keys, above — turn to look, then walk in the direction you face.":
+            "l’écran se divise et chaque côté utilise ses propres touches, ci-dessus — tournez pour regarder, puis marchez dans la direction où vous faites face.",
+        "to strafe, left click to attack. Click the arena once to capture the mouse.":
+            "pour vous déplacer latéralement, clic gauche pour attaquer. Cliquez une fois sur l’arène pour capturer la souris.",
+        "you get the whole screen and the online scheme — mouse look,":
+            "vous avez tout l’écran et le schéma en ligne — visée à la souris,",
+        "✓ Locked in":
+            "✓ Verrouillé",
         // ---- what javascript builds -----------------------------------
         "ARENA":
             "ARÈNE",

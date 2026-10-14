@@ -1507,7 +1507,17 @@
            the in-fight hint line. A corner is out of the way of every
            screen this can appear over. */
         #debug-toast {
-            position: absolute; right: 14px; bottom: 14px; transform: translateY(8px);
+            /* FIXED, not absolute. #ui-overlay is a scroll container, so
+               `bottom: 14px` on an absolutely positioned child is 14px from
+               the bottom of its CONTENT - which on the tall select screen is
+               far below the viewport. Reported as a toast that is "easy to
+               miss"; it was sometimes not on screen at all. Same reasoning as
+               the Batch 48 modal fix below: `top: 0` and `bottom: 0` inside
+               that container mean the content, not the window.
+
+               z-index 60 is already above every modal (30), so a toast fired
+               from inside Settings draws over it rather than under. */
+            position: fixed; right: 14px; bottom: 14px; transform: translateY(8px);
             z-index: 60; pointer-events: none; opacity: 0; transition: opacity .18s, transform .18s;
             background: rgba(8, 11, 18, 0.94); border: 1px solid #00f3ff; border-radius: 6px;
             color: #00f3ff; font-size: 0.76rem; font-weight: bold; padding: 8px 14px;
@@ -1686,7 +1696,13 @@
         .ld-seg {
             width: 7px; height: 26px; border-radius: 1px;
             transform: skewX(-12deg);
-            background: rgba(0,243,255,.12);
+            /* STATIC colour and glow; the animation moves opacity and transform
+               only. See the keyframes below - those two are the properties a
+               browser animates on the compositor, so the wave keeps moving
+               while the main thread is busy parsing character models. */
+            background: #7fe9ff;
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.45);
+            opacity: .18;
             animation: ld-seg 1.2s linear infinite;
         }
         /* A QUARTER OF THE CYCLE APART, so exactly one segment is lit at a time
@@ -1701,13 +1717,24 @@
         .ld-seg:nth-child(2) { animation-delay: .3s; }
         .ld-seg:nth-child(3) { animation-delay: .6s; }
         .ld-seg:nth-child(4) { animation-delay: .9s; }
+        /* OPACITY AND TRANSFORM ONLY, and that is the fix rather than a
+           simplification.
+
+           These are the two properties a browser can animate on the compositor
+           thread. The previous version animated `background` and `box-shadow`,
+           which need main-thread style and paint every frame - so on a cold
+           first match the indicator froze for 6.7 seconds while GLTFLoader
+           parsed the character models on that same thread. Measured: a 50ms
+           interval logged nothing between 37,100ms and 43,811ms.
+
+           An indicator that stops during the work is worse than no indicator,
+           because a frozen animation reads as a hung page. The stall itself is
+           inherent to synchronous GLTF parsing; the freeze was not. */
         @keyframes ld-seg {
-            0%   { background: rgba(0,243,255,.1); box-shadow: none; transform: skewX(-12deg) scaleY(.82); }
-            10%  { background: #d8fcff; box-shadow: 0 0 14px #00f3ff, 0 0 34px rgba(0,243,255,.55);
-                   transform: skewX(-12deg) scaleY(1.08); }
-            30%  { background: rgba(0,243,255,.45); box-shadow: 0 0 8px rgba(0,243,255,.3);
-                   transform: skewX(-12deg) scaleY(1); }
-            55%, 100% { background: rgba(0,243,255,.1); box-shadow: none; transform: skewX(-12deg) scaleY(.82); }
+            0%        { opacity: .18; transform: skewX(-12deg) scaleY(.82); }
+            10%       { opacity: 1;   transform: skewX(-12deg) scaleY(1.08); }
+            30%       { opacity: .55; transform: skewX(-12deg) scaleY(1); }
+            55%, 100% { opacity: .18; transform: skewX(-12deg) scaleY(.82); }
         }
         @media (prefers-reduced-motion: reduce) {
             .ld-seg { animation-duration: 3s; }
@@ -7878,8 +7905,8 @@ function characterInfoHTML(side, c) {
             ${statRow('Special', specialDamageValue(c), STAT_MAX.special, 0, specialDamageText(c))}
             ${statRow('Speed', speed, STAT_MAX.speed, upgradeLevel(side, c.name, 'speed'))}
         </div>
-        <div class="detail-ability"><span class="ability-label">Main Attack &mdash; ${c.atkName}</span><p>${c.atkDesc}</p></div>
-        <div class="detail-ability"><span class="ability-label">Special &mdash; ${c.specialName}</span><p>${c.specialDesc}</p></div>`;
+        <div class="detail-ability"><span class="ability-label">${t('Main Attack')} &mdash; ${c.atkName}</span><p>${c.atkDesc}</p></div>
+        <div class="detail-ability"><span class="ability-label">${t('Special')} &mdash; ${c.specialName}</span><p>${c.specialDesc}</p></div>`;
 }
 
 function buildDetailHTML(side, c, confirmKey, backKey, confirmed) {
@@ -7897,9 +7924,9 @@ function buildDetailHTML(side, c, confirmKey, backKey, confirmed) {
     // allowed.
     const actions = confirmed
         ? `<span class="detail-locked">\u2713 Locked in</span>
-           <button class="btn-back">Change Fighter (${backKey})</button>`
-        : `<button class="btn-confirm">Confirm (${confirmKey})</button>
-           <button class="btn-back">Back (${backKey})</button>`;
+           <button class="btn-back">${t('Change Fighter')} (${backKey})</button>`
+        : `<button class="btn-confirm">${t('Confirm')} (${confirmKey})</button>
+           <button class="btn-back">${t('Back')} (${backKey})</button>`;
     return `<div class="detail-scroll">${characterInfoHTML(side, c)}</div>` + `
         <div class="detail-actions">${actions}</div>`;
 }
@@ -8247,7 +8274,7 @@ function buildShop(only) {
     djCard.style.setProperty('--accent-text', accentTextColor('#22d3ee'));
     const djOwned = isDoubleJumpUnlocked(side);
     djCard.innerHTML = `<div class="shop-card-head">
-            <div><span class="shop-name">Double Jump</span> <span class="shop-title">— all of ${shopOwnerPhrase(side)} fighters</span></div>
+            <div><span class="shop-name">${t('Double Jump')}</span> <span class="shop-title">— ${t('all of')} ${shopOwnerPhrase(side)} ${t('fighters')}</span></div>
             <button class="shop-buy${djOwned ? ' maxed' : ''}" ${djOwned ? 'disabled' : ''} data-dj="1">${djOwned ? 'Owned' : DOUBLE_JUMP_COST + ' coins'}</button>
         </div>
         <div class="upg-row"><span>Jump a second time in mid-air — reaches the highest platforms.</span></div>`;
@@ -10915,11 +10942,11 @@ function endMatch() {
         : '';
     const coinLine = matchIsSandbox()
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
-        : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} coins &nbsp;·&nbsp; P2 +${earnedP2} coins</div>`;
+        : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} ${t('coins')} &nbsp;·&nbsp; P2 +${earnedP2} ${t('coins')}</div>`;
     document.getElementById('match-summary').innerHTML =
-        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
-        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
-        `<div>Round times: ${roundTimesStr}</div>` +
+        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t('special(s) used')}</div>` +
+        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} ${t('special(s) used')}</div>` +
+        `<div>${t('Round times:')} ${roundTimesStr}</div>` +
         coinLine + challengeLine;
 
     showScreen('gameover');
@@ -10988,11 +11015,11 @@ function endCoopMatch(won, detail) {
     const s1 = matchStats.p1, s2 = matchStats.p2;
     const coinLine = matchIsSandbox()
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
-        : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">Each player +${earned} coins</div>`;
+        : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">${t('Each player')} +${earned} ${t('coins')}</div>`;
     document.getElementById('match-summary').innerHTML =
         `<div>${coopResultText}</div>` +
-        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} dmg dealt, largest hit ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} special(s) used</div>` +
-        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} dmg dealt, largest hit ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} special(s) used</div>` +
+        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t('special(s) used')}</div>` +
+        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} ${t('special(s) used')}</div>` +
         coinLine;
     showScreen('gameover');
     refreshGameOverUI();   // the guest gets no rematch buttons
@@ -11185,7 +11212,7 @@ function resolveCoopMode(dt) {
 
     if (player1.downed && player2.downed) {
         endCoopMatch(false, matchMode === 'survival'
-            ? `Both fighters fell on wave ${waveNumber + 1}.  <b>Waves cleared: ${waveNumber}</b>`
+            ? `${t('Both fighters fell on wave')} ${waveNumber + 1}.  <b>${t('Waves cleared:')} ${waveNumber}</b>`
             : `Both fighters fell. ${(() => {
                 const b = liveEnemies()[0];
                 return b ? `${b.name} had ${Math.max(0, Math.ceil(b.hp))} HP (${Math.round(100 * b.hp / b.maxHp)}%) left.` : '';

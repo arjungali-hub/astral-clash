@@ -49,6 +49,12 @@ ROOT = os.path.dirname(HERE)
 
 # Proper nouns and non-words. A name is a name in every language.
 KEEP = set([
+    # A PLAYER NUMBER AND A SEPARATOR. What is left of the two-player coin line
+    # once its words are in t() is "P1 +", " · P2 +" and the numbers - and P1,
+    # P2 and a middle dot read the same in every language this ships in. Listed
+    # rather than silently filtered, so the next fragment like it has to be
+    # argued for too.
+    'P1 + · P2 +',
     'Astral Clash', 'ASTRAL CLASH', 'Kaelen', 'Lyra', 'Gorgonok', 'Voss',
     'Draven', 'Seraphine', 'Nyx', 'Ignis', 'Aurelia', 'Thorne', 'Grint',
     'Slagling', 'Hollowkin', 'Karrigos',
@@ -85,6 +91,14 @@ def visible_strings():
         # a whole translatable string - it appears in `out` - is not a fragment,
         # so it is not reported twice.
         s = html.unescape(str(s))
+        # AND THE SAME ESCAPE DECODING. Without it this bucket reported
+        # "\u2713 Locked in" - the escape rather than the tick - which is the
+        # identical bug add() had one layer up.
+        if '\\u' in s:
+            try:
+                s = s.encode('ascii', 'backslashreplace').decode('unicode_escape')
+            except Exception:
+                pass
         s = ' '.join(s.split())
         if not s or s in KEEP or not WORDY.search(s):
             return
@@ -163,6 +177,15 @@ def visible_strings():
         + chr(92) + r"]|" + chr(92) + chr(92) + r".)*'" + chr(92) + r"s*,"
         + chr(92) + r"s*'((?:[^'" + chr(92) + chr(92) + r"]|" + chr(92)
         + chr(92) + r".)+)'",
+        # t(TEXT) - the direct lookup, for strings assembled in code.
+        #
+        # ADDED THE MOMENT t() STARTED BEING USED, because routing a string
+        # through t() with no table entry changes nothing at all: the lookup
+        # misses, the English falls through, and the audit reports a clean zero
+        # because it was only ever reading markup. The fix for an untranslated
+        # fragment would have silently produced an untranslated fragment.
+        r"(?:^|[^A-Za-z0-9_$.])t" + chr(92) + r"(" + chr(92) + r"s*'((?:[^'"
+        + chr(92) + chr(92) + r"]|" + chr(92) + chr(92) + r".)+)'" + chr(92) + r"s*" + chr(92) + r")",
         # showToast(TEXT)
         r"showToast" + chr(92) + r"(" + chr(92) + r"s*'((?:[^'" + chr(92)
         + chr(92) + r"]|" + chr(92) + chr(92) + r".)+)'",
@@ -199,6 +222,13 @@ def visible_strings():
     # A template literal is markup with holes in it. Blank the holes, then run
     # the markup extraction over what is left: `<span>${c.name}</span>` yields
     # nothing, and `<span>Unlocked</span>` yields "Unlocked".
+    # A SENTINEL, not nothing. Blanking a ${} hole to the empty string loses the
+    # one fact that decides where the string belongs: a text node that had a
+    # hole in it is assembled from parts and needs t() at the source, and a text
+    # node that never had one is a whole string a table entry reaches. Replacing
+    # the hole with a character that cannot occur in markup keeps them apart.
+    HOLE = chr(1)
+
     def _blank_holes(lit):
         out, i, n = [], 0, len(lit)
         while i < n:
@@ -210,6 +240,7 @@ def visible_strings():
                     elif lit[i] == '}':
                         depth -= 1
                     i += 1
+                out.append(HOLE)
                 continue
             out.append(lit[i])
             i += 1
@@ -229,13 +260,36 @@ def visible_strings():
         for m in re.finditer(r'`((?:[^`' + chr(92) + chr(92) + r']|'
                              + chr(92) + chr(92) + r'.)*)`', text, re.S):
             frag = _blank_holes(m.group(1))
-            if '<' not in frag:
-                continue              # not markup; a selector or a class list
+            # A REAL TAG, not just a '<'. The guard used to be `'<' not in frag`,
+            # which every JS expression containing a less-than passes - so
+            # `if (lateral > 140) ... const lateral = Math.hypot(...) <` was
+            # extracted as prose. Six of the twenty-seven reported strings were
+            # code read as markup.
+            # A CLOSING TAG OR AN ATTRIBUTE, not merely an opening angle bracket.
+            # `<[a-zA-Z/]` still let through literals that are mostly code and
+            # happen to contain one tag-shaped sequence, which is how
+            # "40) return; const ax = a.x + a.width / 2, ..." arrived as prose.
+            # Real markup in this file always closes a tag or sets a class.
+            if not ('</' in frag or 'class="' in frag):
+                continue              # not markup; a selector, a class list, or code
+            # ...and never extract from something carrying statement syntax. A
+            # template literal that builds markup does not contain `return` or
+            # `const` between its tags.
+            if re.search(r'(?:^|[^A-Za-z])(?:return|const|let|function)[^A-Za-z]', frag):
+                continue
+            def _route(text):
+                # The sentinel is the whole decision: with it, the node is built
+                # from parts and no key can match; without it, the node is this
+                # string and a table entry reaches it.
+                if HOLE in text:
+                    add_assembled(label, text.replace(HOLE, ''))
+                else:
+                    add(label, text)
             for t2 in re.finditer(r'>([^<>{}]+)<', frag):
-                add_assembled(label, t2.group(1))
+                _route(t2.group(1))
             for attr in ('placeholder', 'title', 'aria-label', 'alt'):
                 for t2 in re.finditer(attr + r'="([^"]+)"', frag):
-                    add_assembled(label, t2.group(1))
+                    _route(t2.group(1))
 
     # ---- the daily challenges ------------------------------------------
     chal = io.open(os.path.join(ROOT, 'shared', 'challenges.js'), encoding='utf-8').read()
