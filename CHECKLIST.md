@@ -3363,6 +3363,76 @@ scope (`i18n_audit`), the right assertion over too small a sample
 never tested (`reconnectcheck`). None of them was a careless test. Each was
 carefully correct about something adjacent to the thing that mattered.
 
+## Batch 108 - a browser fitted in memory, and two confident answers were wrong
+
+Every batch since 103 was settled by arithmetic, by parsing, by brace-balance
+and by CI, because this machine has had between 89MB and 760MB free against the
+~1200MB one browser needs. One fitted. The first thing pointed at it was the
+oldest unanswered report - "Kaelen has these weird things on both sides of his
+hips sticking out" - and the interesting part is that **the two explanations
+already written down were both wrong, and each was wrong in a way that reading
+the code could not have caught.**
+
+**"The two weapon props."** Commit `a9233e3` recorded the hypothesis that what
+hangs at his hips is a pair of weapons, held at hip height because that is
+where the hands rest. Walking his scene graph: there is exactly one. Ten
+meshes, every one of them under `HandL < LowerArmL < UpperArmL < ShoulderL <
+Chest < Spine < Hips`. Nothing is parented to the hips. A sweep of every scene
+child within 90 units found nothing else near him but the muzzle-flash pool,
+which is invisible.
+
+**"The bone is at the wrist, the fist is further along."** That is the obvious
+way a prop ends up beside a hand rather than in it, and unlike the first it is
+directly testable: take the vertices `HandL` skins at more than half weight and
+compare their centroid against the bone's own origin. 35 vertices, 1.49 units
+apart. The prop is not parented away from the fist - it is parented exactly at
+it.
+
+**What it is.** A prop's origin is its POMMEL. `buildSwordProp` puts the grip at
+x 0.5..7.5 and starts the blade at x=8, so attaching one at the origin puts the
+fist on the counterweight and leaves seven units of handle, the crossguard and
+the entire blade hanging past the fingers and across the thigh. The procedural
+bodies have done this from the beginning and it never showed, because their
+"hand" is an empty `Group` at the end of a box arm - there is no modelled fist
+to disagree with it. A rigged character has one, and it showed.
+
+`buildGrip` now records where the hand belongs, because it is the one place
+that knows how long a handle is, and each caller already passes its own
+measurements - sword 4.7, dagger 2.84, scythe 5.8. Weapons with no authored
+grip (the fists, the orbs, the staff, the whip, the hammer) have no `gripAt`
+and are untouched, so this moves three weapon types rather than the roster.
+
+### Two things that cost a round each, neither of them a bug
+
+* **A fighter's rig is on its own layer** so its owner's camera does not draw
+  it in first person. An inspection camera that forgets to enable layer 1
+  photographs an empty arena and looks exactly like a camera pointed the wrong
+  way - which is what it was mistaken for.
+* **`visible = false` does not stop raycasting.** Probing a point against the
+  hidden map hits the hidden map.
+
+### The tableau renders now, and the script says it is not a clash
+
+`node art/render_tableau.js` ran for the first time since the pose was changed.
+It prints its own verdict - `reach: 6.79 + 14.16 = 20.95 against a 48-unit gap
+-> SHORT by 27.05` - and the image agrees: both fighters stand with their arms
+down. `atkState` is `active` for both, so the state is being set and the pose
+is not following it, which is the same symptom the comment above the stepping
+loop already describes having fixed once. **Not shipped**: the PNG is the render
+output and `assets/loading-tableau.webp` is what the game loads, so the loading
+screen still shows the previous art. Nothing half-finished reached it.
+
+### Still unexplained, and it is art rather than code
+
+The report says "both sides" and only one side is now accounted for. The other
+candidate is visible in the renders: an angular armour plate flares off each
+outer thigh at exactly hip height, symmetrical, in the character's own
+material. It is welded into the single skinned mesh of Kaelen's GLB, so it
+cannot be moved from game code at all - it needs the model regenerating
+through `art/pipeline.py`, which the arms-down note in `index.html` records
+going badly the last time it was attempted. Left alone and asked about, with
+renders to point at, rather than guessed at a third time.
+
 ### Still open
 
 Rewritten, because this section had gone stale in three ways at once: it said

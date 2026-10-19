@@ -7598,6 +7598,25 @@ function buildRiggedCharacter(name) {
                 // body that is no longer there.
                 const off = child.position.length();
                 if (off > PROP_OFFSET_MAX) child.position.multiplyScalar(PROP_OFFSET_MAX / off);
+                // HOLD IT BY THE HANDLE, not by the pommel.
+                //
+                // Measured rather than assumed, because the obvious suspect was
+                // wrong: the hand BONE is only 1.4 units from the centroid of
+                // the vertices it skins, so the prop is not being parented away
+                // from the fist. It is parented exactly at it - and a prop's
+                // origin is its pommel, so "exactly at the fist" means the fist
+                // closes on the counterweight and the grip, guard and blade all
+                // hang past the fingers.
+                //
+                // buildGrip records where the hand belongs on each weapon that
+                // has a handle, so this shifts by that weapon's own measurement
+                // instead of one number for all of them. The holder carries the
+                // rotation, so the child's local +X IS the prop's length axis
+                // and this slides the weapon along itself. Props with no
+                // authored grip - fists, orbs, the whip - have no gripAt and are
+                // left exactly as they were.
+                const gripAt = child.userData && child.userData.gripAt;
+                if (gripAt) child.position.x -= gripAt;
                 holder.add(child);
             }
         }

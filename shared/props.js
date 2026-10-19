@@ -134,6 +134,22 @@ function buildGrip(g, mats, x0, len, r, wrapColor) {
         g.add(band);
     }
     mats.push(bandMat);
+    // WHERE THE FIST GOES, recorded here because this is the one place that
+    // knows how long the handle is. A prop's origin is its POMMEL - x0 is the
+    // butt of the grip and the blade starts past it - so attaching a prop at
+    // the origin puts the hand on the counterweight and leaves the whole
+    // handle and guard hanging past the fingers. On the procedural bodies that
+    // was invisible: their "hand" is an empty Group at the end of a box arm,
+    // with no modelled fist to disagree with. A rigged character has one, and
+    // it showed: reported as a weird thing sticking out at Kaelen's hip, which
+    // is a sword held by the pommel with 7 units of grip and a crossguard
+    // dangling over his thigh.
+    //
+    // 0.6 rather than the midpoint: a sword is gripped with the fist up near
+    // the guard and the pommel behind the heel of the hand, which is also what
+    // buildSwordProp's own `grip` option describes - "how much of the handle
+    // sticks out behind the hand".
+    g.userData.gripAt = x0 + len * 0.6;
     return grip;
 }
 
