@@ -310,7 +310,14 @@
 
         .room-bar {
             display: flex; align-items: center; justify-content: space-between; gap: 10px;
-            width: min(880px, 94vw); margin: 0 auto 12px; padding: 8px 10px;
+            /* calc(100vw - 32px) GUARANTEES THE 16px GUTTER, and cannot widen
+           anything: min() returns the smallest term, so above ~533px the
+           94vw already wins and nothing changes. Padding the container
+           instead was the first attempt, and it overflowed - these widths
+           are measured against the VIEWPORT, not the container, so a 94vw
+           child does not shrink when its parent gains padding. layoutcheck
+           caught it: "nor the page, with the room bar full". */
+        width: min(880px, 94vw, calc(100vw - 32px)); margin: 0 auto 12px; padding: 8px 10px;
             background: rgba(0,0,0,0.3); border: 1px solid #2e3a59; border-radius: 10px;
             box-sizing: border-box; flex-wrap: wrap;
         }
@@ -336,7 +343,7 @@
            panels: yours carries the accent, theirs is observed. */
         .room-slots {
             display: flex; align-items: stretch; justify-content: center; gap: 10px;
-            width: min(880px, 94vw); margin: 0 auto 14px;
+            width: min(880px, 94vw, calc(100vw - 32px)); margin: 0 auto 14px;
         }
         .pslot {
             flex: 1; min-width: 0; padding: 12px;
@@ -371,7 +378,7 @@
 
         .room-main {
             display: flex; align-items: flex-start; justify-content: center; gap: 10px;
-            width: min(880px, 94vw); margin: 0 auto;
+            width: min(880px, 94vw, calc(100vw - 32px)); margin: 0 auto;
         }
         .picker-panel { flex: 1 1 auto; min-width: 0; margin: 0; }
         /* Roster and detail side by side: the detail panel appears the moment
@@ -620,7 +627,7 @@
             background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
             align-items: center; justify-content: center; z-index: 30; padding: 20px; box-sizing: border-box;
         }
-        .lobby-panel { width: min(460px, 94vw); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
+        .lobby-panel { width: min(460px, 94vw, calc(100vw - 32px)); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
         .lobby-panel h3 { color: #4ade80; margin: 0 0 4px; font-size: 1.3rem; }
         .lobby-sub { color: #8aa0b8; font-size: 0.78rem; line-height: 1.5; margin: 0 0 12px; }
         .lobby-status {
@@ -704,7 +711,7 @@
             background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
             align-items: center; justify-content: center; z-index: 30; padding: 20px; box-sizing: border-box;
         }
-        .modeselect-panel { width: min(560px, 94vw); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
+        .modeselect-panel { width: min(560px, 94vw, calc(100vw - 32px)); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
         .modeselect-panel h3 { color: #a855f7; margin: 0 0 4px; font-size: 1.3rem; }
         .mode-card {
             display: block; width: 100%; text-align: left; margin: 0 0 8px; padding: 11px 14px;
@@ -1116,7 +1123,7 @@
             align-items: center; justify-content: center; z-index: 25;
             padding: 20px;
         }
-        .mapselect-panel { width: min(1000px, 96vw); max-height: 92vh; overflow-y: auto; text-align: center; }
+        .mapselect-panel { width: min(1000px, 96vw, calc(100vw - 32px)); max-height: 92vh; overflow-y: auto; text-align: center; }
         .mapselect-panel h3 { color: #00f3ff; margin: 0 0 4px; font-size: 1.5rem; letter-spacing: 1px; }
         .mapselect-sub { color: #8aa0b8; margin: 0 0 14px; font-size: 0.9rem; }
         /* Random Arena is a secondary (outline) action — the default choice,
@@ -1132,30 +1139,6 @@
         }
         @media (max-width: 720px) { .mapselect-grid { grid-template-columns: repeat(2, 1fr); } }
 
-        /* A REAL SIDE GUTTER AT PHONE WIDTH, and panels that can shrink.
-           Measured at 501px: 8px of gutter against the 16px minimum, and
-           #ui-overlay 481 wide against 490 of content with a horizontal
-           scrollbar along the bottom.
-
-           Two causes. #ui-overlay's padding is `16px 0 44px` - no horizontal
-           padding at all, so the only gutter was .menu-section's 10px margin.
-           And .menu-section is a FIXED `width: 350px` in content-box, which
-           with 24px padding and a border is ~400px that cannot shrink however
-           narrow the viewport gets.
-
-           Scoped to the breakpoint deliberately: at desktop width nothing
-           moves, so the CSS baseline does not need reseeding for a change that
-           only affects phones. box-sizing here because the global default is
-           content-box - without it max-width would still let padding push the
-           box past the gutter. */
-        @media (max-width: 720px) {
-            #ui-overlay { padding-left: 16px; padding-right: 16px; }
-            .menu-section {
-                width: auto; max-width: 100%;
-                box-sizing: border-box;
-                margin-left: 0; margin-right: 0;
-            }
-        }
         .map-card {
             position: relative; border-radius: 10px; overflow: hidden; cursor: pointer;
             border: 2px solid #ffffff14; background: #0d1420; transition: transform .12s, border-color .12s, box-shadow .12s;
@@ -1185,7 +1168,7 @@
             align-items: center; justify-content: center; z-index: 30;
             padding: 20px;
         }
-        .tutorial-panel { width: min(760px, 94vw); max-height: 90vh; overflow-y: auto; text-align: left; }
+        .tutorial-panel { width: min(760px, 94vw, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; text-align: left; }
         .tutorial-panel h3 { text-align: center; color: #00f3ff; margin: 0 0 14px; font-size: 1.1rem; }
         .tutorial-grid {
             display: grid;

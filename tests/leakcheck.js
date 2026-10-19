@@ -181,6 +181,12 @@ const SLACK = 12;
         // texture. That is the difference from the constructor wrappers above,
         // which only see `new THREE.X` from game code and reported "none grew".
         // Watching the effect cannot miss a path; watching the cause can.
+        // ACDebug READ HERE, not borrowed from an outer scope. This evaluate
+        // runs in the page and had no `D` - the name belongs to other
+        // evaluates in this file - so the trap threw ReferenceError on install
+        // and the whole checker reported NO VERDICT in 11 seconds. A diagnostic
+        // that cannot install is worse than none: it took the checker with it.
+        const D = window.ACDebug;
         const renderer = D && D.renderer;
         if (renderer && renderer.info && renderer.info.memory
             && !renderer.info.memory.__acTrapped) {

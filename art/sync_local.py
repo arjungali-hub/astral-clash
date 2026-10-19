@@ -3621,6 +3621,30 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
                           + '        releaseTouch, touchActive,' + chr(10)
                           + '        MOBILE_SOLO, hudViewports,')
 
+    # THE REVERTED GUTTER RULES. This file is PATCHED, not regenerated, so
+    # deleting a rule upstream leaves this build's copy behind - the same
+    # reason the duplicate Close buttons and the loose Rematch pair each need
+    # an explicit removal.
+    #
+    # These two were a wrong first attempt at the phone gutter: padding on
+    # #ui-overlay shrinks its content box but not the SIX children sized
+    # min(Npx, 94vw) against the viewport, so a 94vw panel overflowed below
+    # ~533px. layoutcheck named it - "nor the page, with the room bar full".
+    # The gutter is a third min() term on those panels now, which cannot widen
+    # anything.
+    _gutter = ('     #ui-overlay { padding-left: 16px; padding-right: 16px; }' + chr(10)
+               + '            .menu-section {' + chr(10)
+               + '                width: auto; max-width: 100%;' + chr(10)
+               + '                box-sizing: border-box;' + chr(10)
+               + '                margin-left: 0; margin-right: 0;' + chr(10)
+               + '            }' + chr(10)
+               + '        }')
+    if _gutter in dst:
+        dst = dst.replace(_gutter, ' }', 1)
+        print('  %-34s ok (removed)' % 'reverted gutter rules')
+    else:
+        print('  %-34s ok (none)' % 'reverted gutter rules')
+
     # A STRAY CLOSING BRACE, left by a port or removal step. The online build
     # balances and this one did not: a lone ` }` sat on its own line after the
     # one-line reduced-motion rule. CSS error-recovery ignores a top-level

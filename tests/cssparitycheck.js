@@ -48,7 +48,26 @@ const H = require('./harness');
 // runner, so a committed snapshot would diff everywhere except where it was
 // made. The epoch is the part that belongs in version control; the measurements
 // belong to whichever machine took them.
-const BASELINE_EPOCH = '2026-10-12: Watch a Replay row added to Settings';
+const BASELINE_EPOCH = '2026-10-18: contrast fixes, modal top-align, phone gutter';
+// Previous epochs: '2026-10-12: Watch a Replay row added to Settings', and
+// before that the account modal and daily panel.
+//
+// This one covers a batch of deliberate visual changes from a hands-on pass:
+//
+//   * .shop-buy:disabled goes #64748b -> #a1acbb. A `button` IS sampled here
+//     and `color` IS in PROPS, so this one is genuinely visible to the
+//     comparison - it is the reason the epoch moves.
+//   * the two modals that were re-centring themselves over a group rule now
+//     top-align. Invisible to this checker as it happens: `align-items` is not
+//     in PROPS, and a flex child's vertical position is its static position,
+//     not a computed `top`. Listed anyway, because "it did not show up" is
+//     luck rather than a reason.
+//   * the phone gutter is a third term in the min() those panels already use,
+//     so at both sampled sizes - 1400x1000 and 640x530 - the value is
+//     unchanged BY CONSTRUCTION: min() returns the smallest term and 94vw
+//     already wins above ~533px. The first attempt at that gutter padded
+//     #ui-overlay instead and moved things at 640x530, which is what taught me
+//     this checker does not only sample the desktop size.
 // The previous epoch was '2026-10-11: account panel became a modal; daily panel
 // added'. This one is the replay row, and the measurements say so cleanly: +50px
 // of menu-section in BOTH builds, on both the settings and rebind screens, which

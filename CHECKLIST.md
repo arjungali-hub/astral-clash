@@ -3260,6 +3260,109 @@ result and looks like a bug.
 with the memory they need. See "Still open" below for what they reported - the
 short version is six failures and none of them in the game.
 
+## Batch 107 - a hands-on pass, and four green ticks that measured nothing
+
+Fourteen findings from somebody actually using both builds. Twelve were real,
+one was already correct by design, and one was a miscount. The interesting part
+is not the fixes - it is that **four separate checkers were passing while the
+thing they test was broken**, each for a different reason.
+
+### The four that measured nothing
+
+**`palettecheck`** asserted that the two colour palettes differ, that the
+alternative separates better under deuteranopia and protanopia, that it
+separates clearly rather than merely more, and that the choice survives a
+reload. Every one of those is about the palette TABLE. Nothing asserted that
+anything on screen used it - and `drawPlayerHUD` painted the health bar with
+`f.color`, the fighter's own accent. So Player Colors flipped its label and the
+HUD was pixel-identical, and Kaelen vs Kaelen gave both players the same blue
+bar. One line, two reported bugs, and `sideColor`'s own comment already named
+the symptom: "a mirror match gave both the same ring and the same HUD color".
+The rings were switched over when that was written. The bar was missed.
+
+**`i18n_audit`** reported "0 MISSING" while dozens of strings were English. It
+read markup text nodes plus three data tables and stopped at the first
+`<script>`, so every string JavaScript builds was invisible: the HUD, the role
+suffixes, "Confirm (Left Click)", the Armory prices, every Settings value chip.
+True of its scope, false about the game.
+
+It now reads six user-visible call positions, `t()` arguments, and template
+literals - and getting there needed three corrections of its own. Six of the
+first 27 strings it surfaced were CODE (`if (lateral > 140) ... <` is a pair of
+comparison operators, and the markup extraction matched between them). Ten were
+whole strings wrongly filed as unfixable, which hid work that only needed
+translating. And it crashed printing its own report, on the first U+2713
+against a cp1252 console.
+
+Then the blind spot created by the fix itself: routing a string through `t()`
+with no table entry changes nothing - the lookup misses and the English falls
+through. Scanning `t()` arguments found seven such keys immediately. 319
+translated, 0 missing, and the "assembled at runtime" bucket empty.
+
+**`contrastcheck`** measures what rendered, and the Armory shows one card per
+fighter - so Nyx at 3.21:1 and Karrigos at 1.51:1 were never in a frame it
+sampled. Five of fourteen failed and a person caught three. It now asserts the
+RULE over the whole roster instead of a sample: arithmetic over fourteen
+values, so a fifteenth fighter with an unlucky colour fails immediately.
+
+A fighter's accent is their identity - their bar, their ring, their card border
+- so the fix derives a text-only variant at the same hue rather than recolouring
+anyone. All fourteen clear 4.5:1; the nine that already passed come back byte
+identical, which a second assertion holds.
+
+**`cssparitycheck`** compares the two builds against each other over time, not
+either build against its own stated intent - so it could not see a rule fighting
+a rule. local/index.html top-aligns its modal overlays on a group selector, with
+a comment naming the symptom ("the thing that pops up is shifted upwards"), and
+then the per-screen rules re-assert `align-items: center`. Both are single-id
+selectors, so specificity ties and ORDER decides: the two rules that sit AFTER
+the group silently undid it. The tutorial was reported; **the arena picker had
+the same bug and nobody noticed.**
+
+### The rest, briefly
+
+* The loading screen was waiting on its own artwork - a 3.8 MB PNG that only
+  began downloading when the screen appeared. 196 KB WebP, preloaded from the
+  head at `fetchpriority="low"` so it does not compete with three.js.
+* The loading INDICATOR froze for the 6.7 seconds that matter. It animated
+  `background` and `box-shadow`, both main-thread paint; now opacity and
+  transform, which the compositor runs while GLTFLoader parses. An indicator
+  that stops during the work reads as a hung page.
+* The reconnect countdown could not end. `netGraceTick` is driven by a timer
+  that `netTeardown` clears, so a teardown during a grace window removed the
+  only thing that could close it. The game loop is the backstop now. And
+  `reconnectcheck` drove `netGraceTick()` by hand, which is why nothing saw it:
+  **a test that drives the mechanism cannot see a broken mechanism.**
+* A non-replay file was refused as "made by a different version of the game",
+  because the version test ran before the shape test.
+* The local Game Over screen had two of each Rematch button, the duplicates
+  dead. `#gameover-actions` was ported in and the loose originals never
+  removed. The sync now refuses any build with a duplicate element id - proved
+  able to fail before being trusted.
+* A stray `}` in the generated stylesheet, which browsers ignore between rules
+  and which silently eats the rest of a rule from inside one. Found by counting
+  braces while skipping comments and strings. Guarded.
+
+### Two that were not bugs
+
+* **No Glow row in the local build.** `AC_BLOOM` is false there: one composer
+  sized to the whole canvas paints the second viewport over the first, so bloom
+  needs one composer per half before it can exist. Nothing to toggle.
+* **Two idle players never finishing a match.** `endRound` increments
+  `currentRound` on a draw as well as a win, and `MAX_ROUNDS` is 5 with a
+  comment naming this exact case. The pass observed four cycles and stopped one
+  short.
+
+### The lesson worth keeping
+
+A green tick that measures the wrong thing is worse than a red one, and this
+batch has four examples of it in four different shapes: the right assertion
+about the wrong object (`palettecheck`), the right assertion over the wrong
+scope (`i18n_audit`), the right assertion over too small a sample
+(`contrastcheck`), and the right assertion driven by hand so the delivery was
+never tested (`reconnectcheck`). None of them was a careless test. Each was
+carefully correct about something adjacent to the thing that mattered.
+
 ### Still open
 
 Rewritten, because this section had gone stale in three ways at once: it said
@@ -3369,6 +3472,57 @@ memory on a machine that has had under 1GB free all week. Writing it
 immediately found two further faults in the fix - a rAF that returned no
 cancellable handle while three.js cancels the one it is given, and float drift
 that aliased a 30fps cap down to 24.
+
+**WHERE THE FOUR HEAVY CHECKERS ACTUALLY STAND NOW.** This section has been
+rewritten twice for going stale and had done it again, in the other direction:
+it read as though all four were unsettled.
+
+  * `netcheck` — **passes**, three rounds running.
+  * `framerateccheck` — **passes**. The last thing wrong with it was its own
+    measurement: it poked `f.vx` and hoped, where every working checker here
+    drives the real key binding, places the fighter on known ground and clears
+    `hitstunTimer`/`rootedFrames` every frame.
+  * `botcheck` — **passes**, after its budget moved from rendered frames to
+    frame-units of game time. One arm had taken 2,130 seconds: the bot thinks
+    in frame-units, `computeDt` clamps `dt` at 3, and a runner renders about a
+    third of a frame per second — so rendered frames were both the scarce
+    resource and the wrong unit. Two of its assertions were also mine and were
+    wrong: requiring `easy` to land a hit is a coin flip at `atkChance` 0.35
+    over four decisions, and requiring the four tiers to be monotonic cannot be
+    established from one sample each (easy measured 0 one round and 260.5 the
+    next).
+  * `leakcheck` — **red, for a real reason.** See the open bug below.
+
+**ONE REAL BUG IS OPEN: four textures leak per match.** `leakcheck` reported
+`textures: 50 -> 74` across six rematches, perfectly linear. It is the first
+genuine defect this checker has ever been able to report, and it is worth
+recording what has been ruled OUT, because each of these looked right:
+
+  * `warmCombatShaders` leaves four projectile groups in the scene undisposed —
+    but `buildProjectileVisual` takes every material and geometry from the
+    shared caches and says so, so there is nothing there to free.
+  * PMREM looked decisive: `_allocateTargets` reassigns `_pingPongRenderTarget`
+    on every call, which is a known leak shape. `_cleanup` disposes it. Reading
+    `_cleanup` before believing it is the only reason a wrong fix is not in the
+    tree — and the environment map has since stopped being rebuilt per round,
+    so it is ruled out by elimination too.
+  * the name sprites, the viewmodels, the sky dome, the crush rigs, and every
+    keyed texture clone are all accounted for.
+
+The tracker that wraps `new THREE.X` came back "none grew", which is itself the
+finding: three.js's own modules hold direct references to those classes, so
+anything it constructs internally is invisible to that approach. The next run
+traps `renderer.info.memory` — the exact counter the assertion reads — and
+records the call path of every upload. Watching the effect cannot miss a path;
+watching the cause can.
+
+**AND THE ONE THING THAT HAS SHAPED EVERY ROUND OF THIS.** The machine doing
+the work has had between 89MB and 760MB free against the ~1200MB one browser
+needs. Not one browser checker has run locally in days. Everything above was
+settled by arithmetic, by parsing, by brace-balance, by the sync's guards and
+by CI — which is why so much of this batch is about making a failure name its
+own cause: when the only feedback loop is twenty-five minutes long, a message
+that says "50 -> 74" and nothing else costs a round.
 
 **Needs a person, not a machine.**
 

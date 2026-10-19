@@ -546,7 +546,13 @@
             background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
             align-items: center; justify-content: center; z-index: 30; padding: 20px; box-sizing: border-box;
         }
-        .modeselect-panel { width: min(560px, 94vw); max-height: none; overflow-y: visible; box-sizing: border-box; text-align: center; }
+        .modeselect-panel {
+            width: min(560px, 94vw, calc(100vw - 32px));
+            max-height: none;
+            overflow-y: visible;
+            box-sizing: border-box;
+            text-align: center;
+        }
         .modeselect-panel h3 { color: #a855f7; margin: 0 0 4px; font-size: 1.3rem; }
         .mode-card {
             display: block; width: 100%; text-align: left; margin: 0 0 8px; padding: 11px 14px;
@@ -851,7 +857,12 @@
             align-items: flex-start; justify-content: center; z-index: 25;
             padding: 20px;
         }
-        .mapselect-panel { width: min(1000px, 96vw); max-height: none; overflow-y: visible; text-align: center; }
+        .mapselect-panel {
+            width: min(1000px, 96vw, calc(100vw - 32px));
+            max-height: none;
+            overflow-y: visible;
+            text-align: center;
+        }
         .mapselect-panel h3 { color: #00f3ff; margin: 0 0 4px; font-size: 1.5rem; letter-spacing: 1px; }
         .mapselect-sub { color: #8aa0b8; margin: 0 0 14px; font-size: 0.9rem; }
         /* Random Arena is a secondary (outline) action — the default choice,
@@ -865,13 +876,7 @@
         .mapselect-grid {
             display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px;
         }
-        @media (max-width: 720px) { .mapselect-grid { grid-template-columns: repeat(2, 1fr); }     #ui-overlay { padding-left: 16px; padding-right: 16px; }
-            .menu-section {
-                width: auto; max-width: 100%;
-                box-sizing: border-box;
-                margin-left: 0; margin-right: 0;
-            }
-        }
+        @media (max-width: 720px) { .mapselect-grid { grid-template-columns: repeat(2, 1fr); } }
         .map-card {
             position: relative; border-radius: 10px; overflow: hidden; cursor: pointer;
             border: 2px solid #ffffff14; background: #0d1420; transition: transform .12s, border-color .12s, box-shadow .12s;
@@ -894,7 +899,12 @@
             align-items: flex-start; justify-content: center; z-index: 30;
             padding: 20px;
         }
-        .tutorial-panel { width: min(760px, 94vw); max-height: none; overflow-y: visible; text-align: left; }
+        .tutorial-panel {
+            width: min(760px, 94vw, calc(100vw - 32px));
+            max-height: none;
+            overflow-y: visible;
+            text-align: left;
+        }
         .tutorial-panel h3 { text-align: center; color: #00f3ff; margin: 0 0 14px; font-size: 1.1rem; }
         .tutorial-grid {
             display: grid;
