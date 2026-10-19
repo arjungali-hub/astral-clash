@@ -96,7 +96,12 @@ const W = 1920, HGT = 1080;
         // the pose and the script prints it, so this number is checkable
         // against what the fighters actually do instead of being taken on
         // trust - the weapons meet while reach(a) + reach(b) > 48.
-        const NEAR_A = 23, NEAR_B = 25;
+        // These are a STARTING point now, not the answer - see the solve below,
+        // which measures where the two weapons actually ended up and closes the
+        // gap until they meet. Hand-tuning this pair is what produced "pretty
+        // far away from each other" twice: 54/58, then 34/38, then 23/25, each
+        // picked by looking at a number rather than at the weapons.
+        let NEAR_A = 23, NEAR_B = 25;
         a.x = stageX - qx * NEAR_A; a.y = stageY - qy * NEAR_A;
         b.x = stageX + qx * NEAR_B; b.y = stageY + qy * NEAR_B;
         a.fx = qx; a.fy = qy;
@@ -154,6 +159,70 @@ const W = 1920, HGT = 1080;
         a.invulnFrames = b.invulnFrames = 0;
         a.render3D(null, 0); b.render3D(null, 0);
         D.animateWeapon(a); D.animateWeapon(b);
+
+        // CLOSE THE GAP UNTIL THE WEAPONS MEET, measured from the weapons.
+        //
+        // The old check compared the sum of the two reaches against the gap and
+        // printed "SHORT by 27.05". That verdict could never be anything else:
+        // `reach` is how far a hand has TRAVELLED along the fighter's forward
+        // axis during the swing - a displacement of a few units - and it was
+        // being held against the centre-to-centre DISTANCE between two bodies.
+        // No arm displaces itself by the whole distance to the other fighter,
+        // so the comparison says SHORT at every spacing including ones where
+        // the blades are through each other. A number that cannot distinguish
+        // the two cases it exists to distinguish is worse than no number.
+        //
+        // What the image is about is where the WEAPONS are, so measure those:
+        // take each weapon's world bounding box and the corner of it furthest
+        // from its owner, which is the tip whichever way the swing is pointing.
+        const tipOf = (f) => {
+            let w = f.mesh.userData.weapon;
+            if (Array.isArray(w)) w = w[0];
+            if (!w) return null;
+            f.mesh.updateWorldMatrix(true, true);
+            const bb = new THREE.Box3().setFromObject(w);
+            if (bb.isEmpty()) return null;
+            const home = f.mesh.getWorldPosition(new THREE.Vector3());
+            let best = null, bestD = -1;
+            for (const cx of [bb.min.x, bb.max.x])
+                for (const cy of [bb.min.y, bb.max.y])
+                    for (const cz of [bb.min.z, bb.max.z]) {
+                        const p = new THREE.Vector3(cx, cy, cz), d = p.distanceTo(home);
+                        if (d > bestD) { bestD = d; best = p; }
+                    }
+            return best;
+        };
+        // Solve along q, the axis the two of them are separated on. Each tip
+        // sits some distance along that axis from its owner's centre; the gap
+        // between the tips is what is left of the spacing once both of those
+        // are taken out, so the spacing that leaves CLASH_GAP between them
+        // follows directly. One step, no searching - moving a fighter
+        // translates its pose without changing it.
+        const CLASH_GAP = 5;            // "blade stops 20cm short" - the design canvas
+        const qw = new THREE.Vector3(D.worldX(qx) - D.worldX(0), 0, D.worldZ(qy) - D.worldZ(0)).normalize();
+        const tipA = tipOf(a), tipB = tipOf(b);
+        let solved = null;
+        if (tipA && tipB) {
+            const ca = a.mesh.getWorldPosition(new THREE.Vector3());
+            const cb = b.mesh.getWorldPosition(new THREE.Vector3());
+            const reachA = tipA.clone().sub(ca).dot(qw);    // toward b is +q
+            const reachB = cb.clone().sub(tipB).dot(qw);    // toward a is -q
+            const want = CLASH_GAP + reachA + reachB;       // NEAR_A + NEAR_B
+            const have = NEAR_A + NEAR_B;
+            if (want > 8 && want < 200) {
+                const k = want / have;
+                NEAR_A *= k; NEAR_B *= k;
+                a.x = stageX - qx * NEAR_A; a.y = stageY - qy * NEAR_A;
+                b.x = stageX + qx * NEAR_B; b.y = stageY + qy * NEAR_B;
+                a.render3D(null, 0); b.render3D(null, 0);
+                D.animateWeapon(a); D.animateWeapon(b);
+            }
+            solved = { reachA: +reachA.toFixed(2), reachB: +reachB.toFixed(2),
+                       was: +have.toFixed(1), now: +(NEAR_A + NEAR_B).toFixed(1) };
+        }
+        const t2 = { a: tipOf(a), b: tipOf(b) };
+        window.__tableauTips = Object.assign({ gap: (t2.a && t2.b)
+            ? +t2.a.distanceTo(t2.b).toFixed(2) : null }, solved || {});
 
         // The camera: low, three-quarter, off to one side. The perpendicular
         // offset is small on purpose - a wide one walks into the arena's
@@ -213,17 +282,21 @@ const W = 1920, HGT = 1080;
 
     const pose = await page.evaluate(() => window.__tableauPose);
     console.log('pose:', JSON.stringify(pose));
-    // DID THEY ACTUALLY MEET. The gap is 48 units and each reach is measured
-    // from its own shoulder, so the weapons cross while the two reaches add up
-    // to more than that. Printed rather than asserted because this script
-    // produces art for a person to look at - but a negative margin means the
-    // image cannot be a clash, whatever it looks like at a glance.
-    if (pose && pose.a && pose.b && pose.a.reach != null && pose.b.reach != null) {
-        const gap = 48, total = pose.a.reach + pose.b.reach;
-        console.log(`reach: ${pose.a.reach} + ${pose.b.reach} = ${total.toFixed(2)}`
-            + ` against a ${gap}-unit gap -> `
-            + (total > gap ? `crossing by ${(total - gap).toFixed(2)}`
-                           : `SHORT by ${(gap - total).toFixed(2)} - not a clash`));
+    // DID THEY ACTUALLY MEET - measured between the two weapon tips, which is
+    // the thing the image is of. The previous version of this line held the sum
+    // of the two hand DISPLACEMENTS against the centre-to-centre DISTANCE and
+    // so reported "SHORT" at every spacing that exists; it is replaced rather
+    // than tuned. Printed, not asserted, because this script makes art for a
+    // person to look at - but a tip gap of 40 units is not a clash whatever the
+    // thumbnail suggests.
+    const tips = await page.evaluate(() => window.__tableauTips);
+    if (tips) {
+        console.log('spacing: solved ' + tips.was + ' -> ' + tips.now
+            + ' from reaches ' + tips.reachA + ' / ' + tips.reachB);
+        console.log('tip gap: ' + tips.gap + ' units -> '
+            + (tips.gap == null ? 'no weapon to measure'
+               : tips.gap < 12 ? 'clashing'
+               : 'APART - not a clash'));
     }
 
     if (!url || url.length < 5000) {
