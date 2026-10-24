@@ -11,6 +11,12 @@ tests/screenshots/
 # they are a few KB and they document what was generated and from which job.
 art/raw/*.glb
 art/raw/_build_log.txt
+# Portraits from art/render_fighter.js - a look at one character, re-rendered
+# whenever a report is about how somebody LOOKS rather than how they play.
+# Reproducible from the committed model, so they are output, not source. The
+# *.preview.webp above are kept and are a different thing: those document what
+# was generated, these document what it looks like now.
+art/raw/fighter-*.png
 art/__pycache__/
 tests/.run.lock
 tests/.css-baseline.json
