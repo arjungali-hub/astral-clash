@@ -166,9 +166,13 @@ const W = 1920, HGT = 1080;
         // be wrong the first time the swing is retuned.
         const TRAVEL = (typeof SWING_TRAVEL_FRAMES !== 'undefined')
             ? SWING_TRAVEL_FRAMES : (D.SWING_TRAVEL_FRAMES || 5);
-        // Capped at the window: a six-frame active window spends all of itself
-        // travelling, so its most extended frame is its last.
-        const contact = (fd) => fd.startup + Math.min(fd.active, TRAVEL);
+        // STRICTLY INSIDE THE ACTIVE WINDOW. `startup + active` steps are
+        // exactly enough to consume the whole window, so the fighter comes out
+        // the far side in RECOVERY with its arm already on the way back -
+        // which is what happened: Kaelen reported state "recovery" and a reach
+        // of -8.4, his sword trailing behind him. One frame short keeps the
+        // held contact pose, which is where the hold lives.
+        const contact = (fd) => fd.startup + Math.max(1, Math.min(fd.active - 1, TRAVEL));
         step(a, b, contact(fdA));
         step(b, a, contact(fdB));
         // Standing still, facing each other, whatever the AI wanted.
@@ -229,8 +233,23 @@ const W = 1920, HGT = 1080;
             const reachB = cb.clone().sub(tipB).dot(qw);    // toward a is -q
             const want = CLASH_GAP + reachA + reachB;       // NEAR_A + NEAR_B
             const have = NEAR_A + NEAR_B;
-            if (want > 8 && want < 200) {
-                const k = want / have;
+            // A NEGATIVE REACH IS NOT A MEASUREMENT, it is a fighter whose
+            // weapon is behind it, and feeding one into the solve is worse
+            // than not solving at all: a reach of -8.4 closed the spacing from
+            // 48 to 18.1, and a fighter's collision circle is 40 WIDE, so the
+            // two of them were standing inside each other.
+            //
+            // The floor is that collision diameter. No pose, however extended,
+            // justifies a centre-to-centre distance that puts one body through
+            // the other - and a solve that can produce one is a solve that
+            // needs a bound, not a better input.
+            const BODY = 40, MAX_APART = 64;
+            const usable = reachA > 0 && reachB > 0;
+            if (usable && want < 200) {
+                // Clamped at both ends: never closer than two bodies, never so
+                // far that the pair stops reading as one subject.
+                const target = Math.max(BODY, Math.min(MAX_APART, want));
+                const k = target / have;
                 NEAR_A *= k; NEAR_B *= k;
                 a.x = stageX - qx * NEAR_A; a.y = stageY - qy * NEAR_A;
                 b.x = stageX + qx * NEAR_B; b.y = stageY + qy * NEAR_B;
@@ -238,7 +257,8 @@ const W = 1920, HGT = 1080;
                 D.animateWeapon(a); D.animateWeapon(b);
             }
             solved = { reachA: +reachA.toFixed(2), reachB: +reachB.toFixed(2),
-                       was: +have.toFixed(1), now: +(NEAR_A + NEAR_B).toFixed(1) };
+                       was: +have.toFixed(1), now: +(NEAR_A + NEAR_B).toFixed(1),
+                       usable: usable };
         }
         const t2 = { a: tipOf(a), b: tipOf(b) };
         window.__tableauTips = Object.assign({ gap: (t2.a && t2.b)
@@ -311,7 +331,7 @@ const W = 1920, HGT = 1080;
     // thumbnail suggests.
     const tips = await page.evaluate(() => window.__tableauTips);
     if (tips) {
-        console.log('spacing: solved ' + tips.was + ' -> ' + tips.now
+        console.log('spacing: solved ' + tips.was + ' -> ' + tips.now + (tips.usable ? '' : '  (reach unusable - spacing left alone)')
             + ' from reaches ' + tips.reachA + ' / ' + tips.reachB);
         console.log('tip gap: ' + tips.gap + ' units -> '
             + (tips.gap == null ? 'no weapon to measure'
