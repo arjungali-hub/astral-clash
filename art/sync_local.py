@@ -3731,6 +3731,27 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
                           '        setBotDifficulty(d) { botDifficulty = d; },' + chr(10)
                           + '        setBotFighter(name) { p2Choice = name; },')
 
+    # startRound. THE TEXTURE LEAK IS PER ROUND, and it is this build that
+    # leakcheck measures - so art/roundprobe.js has to be able to provoke a
+    # round HERE. Without the handle it can only get at one by winning fights,
+    # which on a machine software-rendering a 3D scene takes half an hour a run
+    # and makes no difference to what is being measured.
+    #
+    # Note the guard tests for the EXPORT, not the word: `startRound,` appears
+    # in a comment in this file ("Called from startRound, so the cost lands...")
+    # so a bare `'startRound,' not in dst` matched that comment, skipped the
+    # insertion, and the probe failed with "startRound is not a function" while
+    # a grep for the name said it was there.
+    # ANCHORED ON A LINE THIS BUILD ACTUALLY HAS. The first attempt anchored on
+    # the online build's `chooseMap, previewPick, confirmPick, beginMatch,`,
+    # which does not appear here at all - the two ACDebug lists are per-build by
+    # design - so the replace matched nothing and silently did nothing. The
+    # insertion reported success and the handle was still missing.
+    if 'startRound,' not in dst.split('window.ACDebug = {')[-1]:
+        dst = dst.replace('        setBotFighter(name) { p2Choice = name; },',
+                          '        setBotFighter(name) { p2Choice = name; },' + chr(10)
+                          + '        startRound,')
+
     # REPLAYS (roadmap 12). This build records and plays them exactly as the
     # other one does - shared/replay.js samples the two fighters directly rather
     # than hooking the netcode, precisely so a split-screen match is recordable

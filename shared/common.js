@@ -2384,7 +2384,7 @@ function botsOnly() { return p1IsBot && p2IsBot; }
 // "are both fighters AI", which several other things want, and a replay is not
 // that - both fighters are being driven by a recording. Overloading it would
 // have made every other caller quietly true during playback.
-function watchView() { return botsOnly() || replayActive(); }
+function watchView() { return botsOnly() || replayActive() || netIsWatching(); }
 
 
 function wantsPointerLock() {
@@ -2650,6 +2650,19 @@ const net = {
     remoteName: '',        // the opponent's chosen name, cleared on teardown
     remoteReady: false,    // joiner has acknowledged SETUP
     pendingSetup: null,    // joiner: setup received before it could be applied
+    // SPECTATORS. A list on the HOST, because a match can be watched by more
+    // than one person and `conn` is the one channel that carries the fight.
+    // Watchers are deliberately NOT in `conn`: everything that asks "is there
+    // an opponent" asks about conn, and a spectator is not one.
+    watchers: [],
+    // ...and on a SPECTATOR, the last state of BOTH fighters. The playing
+    // clients each buffer one remote fighter in `remoteState`; a spectator is
+    // remote from both, so it needs two.
+    watchState: { p1: null, p2: null },
+    // ...and what to call them. A spectator is neither side, so the usual
+    // "mine, or the one that arrived in their HELLO" does not resolve either
+    // name - both come from the host's WATCH_SETUP.
+    watchNames: { p1: '', p2: '' },
 };
 // IS THIS AN ONLINE MATCH. Note that a grace window counts.
 //
@@ -2742,6 +2755,10 @@ const localNames = { p1: '', p2: '' };
 function nameForSide(side) {
     // Two people at one keyboard: each typed their own, and both are present.
     if (!AC_ONE_SIDE_PER_CLIENT) return localNames[side] || '';
+    // A SPECTATOR IS NEITHER SIDE, so neither branch below resolves: the local
+    // test is true for exactly one side on every client, and a watcher would
+    // have printed its OWN name over one of the two people it is watching.
+    if (netIsWatching()) return (net.watchNames && net.watchNames[side]) || '';
     // One player per machine: mine, or whatever arrived in the other client's
     // HELLO packet - which may not have arrived yet (see remoteNamePending).
     return isLocalSide(side) ? myPlayerName : ((net && net.remoteName) || '');
@@ -2782,6 +2799,14 @@ function displayName(side) {
 // netcheck within a minute, which is the argument for running it.
 
 function netIsHost() { return net.role === 'host'; }
+// A CLIENT THAT IS WATCHING, not playing. It has a live channel, so netActive()
+// is true and every online guard still applies - what differs is that it owns
+// NEITHER fighter, which is why isNetPuppet() answers yes for both and why
+// netTick must not try to broadcast a fighter this client does not drive.
+function netIsWatching() { return net.role === 'watch'; }
+// Spectating does not exist without the netcode, so the local build - which has
+// no peer at all - answers no to all of it and the shared guards fold away.
+function netHasWatchers() { return !!(net.watchers && net.watchers.length); }
 
 function coopIsHost() { return !netActive() || netIsHost(); }
 function coopIsPuppet() { return netActive() && !netIsHost(); }
@@ -4929,10 +4954,21 @@ const NET_SNAP_DIST = 220;
 function netEaseK(dt) { return 1 - Math.pow(1 - NET_LERP, Math.max(0, dt)); }
 
 function netApplyRemote(dt) {
-    const st = net.remoteState;
-    const f = remoteFighter();
+    // A SPECTATOR EASES BOTH, and is the only client that does. The easing
+    // itself is identical, so it is the same function applied twice rather
+    // than a second copy of it - the alternative was netApplyRemote growing a
+    // `which` argument and every existing caller passing a constant.
+    if (netIsWatching()) {
+        const k = netEaseK(dt);
+        netEaseFighter(player1, net.watchState.p1, k);
+        netEaseFighter(player2, net.watchState.p2, k);
+        return;
+    }
+    netEaseFighter(remoteFighter(), net.remoteState, netEaseK(dt));
+}
+
+function netEaseFighter(f, st, k) {
     if (!st || !f || !f.isNetPuppet()) return;
-    const k = netEaseK(dt);
     if (Math.hypot(st.x - f.x, st.y - f.y) > NET_SNAP_DIST) {
         f.x = st.x; f.y = st.y; f.z = st.z;
     } else {
@@ -4944,6 +4980,27 @@ function netApplyRemote(dt) {
     // as laggy in exactly the situation where you are judging where they point.
     f.fx = st.fx; f.fy = st.fy;
     f.pitch = st.pitch || 0;
+}
+
+// The snapped half of a state packet - hp, meter, grounded, downed - applied to
+// whichever fighter it describes. Shared by the opponent path and the
+// spectator's two, for the same reason netFighterState is shared by the
+// senders: these fields have been added to once already.
+function netSnapFighter(f, msg) {
+    if (!f || !msg) return;
+    // hp and meter are owner-authoritative and snap: a health bar that eases is
+    // actively misleading about how close someone is to dying.
+    if (typeof msg.hp === 'number') {
+        f.hp = msg.hp;
+        if (f.hpGhost < f.hp) f.hpGhost = f.hp;
+    }
+    if (typeof msg.meter === 'number') f.specialMeter = msg.meter;
+    f.grounded = !!msg.g;
+    // Their respawn clock, display-only: they own it (see coopOwnsRespawn).
+    if (msg.dn !== undefined) {
+        f.downed = msg.dn > 0;
+        f.respawnTimer = msg.dn > 0 ? msg.dn : 0;
+    }
 }
 
 // ===========================================================================
@@ -4997,16 +5054,14 @@ function netBroadcastCoopState() {
     });
 }
 
-function netTick(now) {
-    if (!netActive()) return;
-    if (now - net.lastSendAt < NET_SEND_MS) return;
-    const f = localFighter();
-    // No fighter means we are on a menu, and the heartbeat interval is already
-    // keeping the link alive - there is no state worth broadcasting.
-    if (!f) return;
-    net.lastSendAt = now;
-    netSend({
-        t: 'STATE',
+// ONE DEFINITION OF WHAT A FIGHTER'S STATE IS, because there are now two
+// senders. netTick sends the local fighter to the opponent, and a host with
+// spectators sends BOTH fighters on to them; two hand-written copies of this
+// object would drift the first time a field is added, and the spectator's
+// copy would be the one nobody noticed was short. The rounding is part of the
+// format, not a detail - it is what keeps a 30Hz packet small.
+function netFighterState(f) {
+    return {
         x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10, z: Math.round(f.z * 10) / 10,
         fx: Math.round(f.fx * 1000) / 1000, fy: Math.round(f.fy * 1000) / 1000,
         pitch: Math.round((f.pitch || 0) * 1000) / 1000,
@@ -5016,7 +5071,108 @@ function netTick(now) {
         // than inferred from hp, because hp 0 is also what a fighter looks
         // like in the instant before their own client has downed them.
         dn: f.downed ? Math.max(1, Math.round(f.respawnTimer)) : 0,
+    };
+}
+
+function netTick(now) {
+    if (!netActive()) return;
+    if (now - net.lastSendAt < NET_SEND_MS) return;
+    // A SPECTATOR BROADCASTS NOTHING. It has no fighter of its own, and
+    // localFighter() would hand it one of the two it is only watching - so
+    // without this it would send that fighter's state back to the host as if
+    // it were driving it, and fight the host for authority over it.
+    if (netIsWatching()) return;
+    const f = localFighter();
+    // No fighter means we are on a menu, and the heartbeat interval is already
+    // keeping the link alive - there is no state worth broadcasting.
+    if (!f) return;
+    net.lastSendAt = now;
+    netSend(Object.assign({ t: 'STATE' }, netFighterState(f)));
+    netWatchTick();
+}
+
+// The host's view of the fight, forwarded to everyone watching it.
+//
+// Sent from the HOST only, and it has to be: a spectator needs both fighters,
+// and the host is the only client that has an opinion about both - its own
+// first-hand, and the guest's from the STATE packets it is already receiving.
+// Asking the guest to forward its own half as well would need the spectator to
+// reconcile two streams arriving at different times.
+function netWatchTick() {
+    if (!netIsHost() || !netHasWatchers()) return;
+    // player1/player2 are top-level in this file (see the declaration above),
+    // so they are in scope here rather than behind bootGame() - no typeof
+    // dance needed, just the ordinary "are we in a match" test.
+    if (!player1 || !player2) return;
+    netSendWatchers({
+        t: 'WATCH_STATE',
+        p1: netFighterState(player1),
+        p2: netFighterState(player2),
     });
+}
+
+// Everything a spectator needs before it can show the fight at all. The same
+// fields the guest's START carries, plus the score, because a spectator can
+// arrive at round three and there is nothing else to tell it so.
+//
+// SHARED, for the same reason netRelayEvent is: it is called from startRound,
+// which both builds have their own copy of, so defined in index.html it made
+// the local copy unable to take the online body and the sync said exactly that
+// - "startRound needs netWatchSetup".
+//
+// THE MODE IS AN ARGUMENT, and that is not a style choice. Everything else here
+// - p1Choice, currentMap, roundWins, gameState - is declared in this file, but
+// `matchMode` lives inside bootGame(), and a shared module is a separate
+// top-level script: it can be called from in there but cannot see in. Reading
+// it here throws the moment the line runs, and the sync's shared-scope guard
+// says so by name rather than letting it ship. The callers are all inside
+// bootGame, so they can simply hand it over.
+function netWatchSetup(mode) {
+    return {
+        t: 'WATCH_SETUP',
+        p1: p1Choice, p2: p2Choice,
+        map: currentMap ? currentMap.name : null,
+        mode: mode,
+        sandbox: sandboxMatch,
+        round: currentRound,
+        wins: { p1: roundWins.p1, p2: roundWins.p2 },
+        zone: { p1: zoneScore.p1, p2: zoneScore.p2 },
+        ko: { p1: koTally.p1, p2: koTally.p2 },
+        names: { p1: displayName('p1'), p2: displayName('p2') },
+        state: gameState,
+    };
+}
+
+// Pass an action on to the spectators, tagged with whose it was.
+//
+// Only the host relays, because only the host hears both sides: its own
+// fighter's actions as it performs them, and the guest's as EVENT packets
+// arrive. A spectator's view of who swung is therefore exactly the host's.
+//
+// SHARED, not in index.html, although spectating is an online-only feature.
+// It is called from the input path, which both builds have their own copy of -
+// so defined over there it made the local build's copy unable to take the
+// online body at all, and the sync said exactly that: "readSoloInput needs
+// netRelayEvent". Here it exists in both and costs the local build nothing,
+// because a build with no peer never has a watcher and returns on the first
+// test.
+function netRelayEvent(side, e) {
+    if (!netIsHost() || !netHasWatchers()) return;
+    netSendWatchers({ t: 'EVENT', e: e, side: side });
+}
+
+// Watchers are sent to individually rather than through netSend, which only
+// knows about `conn`. A dead one is dropped here instead of throwing on every
+// future tick - a spectator closing their tab must not disturb the match.
+function netSendWatchers(msg) {
+    if (!netHasWatchers()) return 0;
+    let sent = 0;
+    net.watchers = net.watchers.filter(w => {
+        if (!w || !w.open) return false;
+        try { w.send(msg); sent++; return true; }
+        catch (e) { return false; }
+    });
+    return sent;
 }
 
 // `stage` is 'pick' (browsing, nothing chosen), 'preview' (hovering a fighter)

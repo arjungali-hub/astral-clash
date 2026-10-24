@@ -168,6 +168,13 @@ jobs:
             tests: controlscheck localcombatcheck localmatchcheck crushcheck swingcheck artcheck
           - shard: rest
             tests: onlineuxcheck coopnetcheck peercheck charcheck teleportcheck mapscheck maptimecheck placementcheck coopdowncheck awaypausecheck
+          # spectatecheck launches THREE browsers, one per client, for the same
+          # reason netcheck launches two: Chrome will not run rAF in a
+          # background tab and only one window is foreground, so as tabs two of
+          # the three would never tick. It gets a shard of its own rather than
+          # joining `heavy`, which is already the longest of the three.
+          - shard: watch
+            tests: spectatecheck
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

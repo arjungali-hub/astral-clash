@@ -2436,10 +2436,13 @@ function readSoloInput(f, b, dt, target) {
 
     if (netActive()) {
         if (netPrevAtk === 'idle' && f.atkState !== 'idle') {
-            netSend({ t: 'EVENT', e: f.atkKind === 'special' ? 'special' : 'attack' });
+            const e = f.atkKind === 'special' ? 'special' : 'attack';
+            netSend({ t: 'EVENT', e: e });
+            netRelayEvent(sideOf(f), e);          // ...and on to anyone watching
         }
         if (netPrevDodge <= 0 && f.dodgeCooldown > 0) {
             netSend({ t: 'EVENT', e: 'dodge' });
+            netRelayEvent(sideOf(f), 'dodge');
         }
     }
     return out;
@@ -4471,6 +4474,36 @@ function disposeObject3D(obj) {
     if (!obj) return;
     obj.traverse(node => {
         if (node.geometry && !node.geometry.userData.shared) node.geometry.dispose();
+        // A SKINNED MESH OWNS A SKELETON, AND A SKELETON OWNS A TEXTURE.
+        //
+        // This is the four-textures-per-round leak, and it took four rounds of
+        // instrumentation to see because nothing here is the game's: three.js
+        // builds a `boneTexture` for a skeleton the first time it draws one,
+        // sized to the next power of two that fits four pixels per bone - 19
+        // bones gives sqrt(76) = 8.7, rounded up to 16x16, which is exactly the
+        // size that kept appearing. It is constructed inside three.js with
+        // three.js's own class reference, so a wrapper on window.THREE.Texture
+        // never fires (the tracker reported "none grew"); it is uploaded
+        // through a material uniform, so the upload trap blamed
+        // safeSetTexture2D and could name no object; and once the round is over
+        // nothing references it, so the reachability census could not find it
+        // either.
+        //
+        // Four per round because SkeletonUtils.clone rebuilds the bone
+        // hierarchy per fighter - they cannot share one, each has to pose
+        // independently - and each fighter has two skinned rigs: the body and
+        // the first-person viewmodel arm. Two fighters, two rigs each.
+        //
+        // Safe to free precisely BECAUSE the clone is per instance. The cached
+        // source model's own skeleton is never inside a group that reaches
+        // here, and the geometry it shares with that source is already excluded
+        // by the `shared` flag above.
+        if (node.isSkinnedMesh && node.skeleton) {
+            const sk = node.skeleton;
+            // r128 has Skeleton.dispose(); older builds only have the texture.
+            if (typeof sk.dispose === 'function') sk.dispose();
+            else if (sk.boneTexture) { sk.boneTexture.dispose(); sk.boneTexture = null; }
+        }
         if (node.material) {
             const mats = Array.isArray(node.material) ? node.material : [node.material];
             mats.forEach(m => {
@@ -5895,6 +5928,13 @@ class Fighter {
         // every physics-suppression guard downstream already honours the
         // answer. See shared/replay.js.
         if (replayActive()) return true;
+        // A SPECTATOR OWNS NEITHER FIGHTER, so both are puppets for the same
+        // reason a replay's are. Without this the clause below would puppet
+        // only the "opponent" - isLocalSide is true for exactly one side on
+        // every client, including one that is not playing - and the spectator
+        // would simulate one of the two fighters itself, against state
+        // arriving for it from the host.
+        if (netIsWatching()) return true;
         return netActive() && !this.isBot && !isLocalSide(sideOf(this));
     }
 
@@ -8794,6 +8834,17 @@ function startRound(intro) {
         gameState = "FIGHT";
         sfxRoundStart();
     }
+    // TELL THE SPECTATORS, every round, because this is the one moment
+    // guaranteed to happen whether they arrived before the match, during it, or
+    // between two rounds of it. A watcher still on a menu builds its arena from
+    // this; one already watching takes only the refreshed score, because
+    // netApplyWatchSetup will not rebuild over a fight in progress.
+    //
+    // AFTER gameState is set, not before. netWatchSetup() reports that state
+    // and a watcher refuses to build a match the host says it is not in - sent
+    // from the top of this function it still read MENU on the first round, so
+    // the spectator would have waited out the entire match it was sent to see.
+    if (netIsHost() && netHasWatchers()) netSendWatchers(netWatchSetup(matchMode));
 }
 
 // Batch 16: the boss bar. Drawn ONCE in raw virtual space (not inside
@@ -10104,6 +10155,7 @@ if (DEBUG) {
         get botDifficulty() { return botDifficulty; },
         setBotDifficulty(d) { botDifficulty = d; },
         setBotFighter(name) { p2Choice = name; },
+        startRound,
         get matchMode() { return matchMode; },
         get zoneScore() { return zoneScore; },
         get zoneHolder() { return zoneHolder; },

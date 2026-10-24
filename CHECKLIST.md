@@ -3433,6 +3433,184 @@ through `art/pipeline.py`, which the arms-down note in `index.html` records
 going badly the last time it was attempted. Left alone and asked about, with
 renders to point at, rather than guessed at a third time.
 
+## Batch 109 - geometry, a third client, and measuring the right object
+
+### Kaelen's hips were the model, and the fix is in the mesh
+
+Batch 108 answered half of "weird things on both sides of his hips sticking
+out" - a sword held by its pommel - and left the other half open because it
+could not be explained from code. It could not, because it is not in the code.
+
+Measured off the mesh rather than guessed at. Right-side half-widths:
+
+    belt          y 1.02-1.12    0.228
+    upper thigh   y 0.86-0.96    0.286
+    mid thigh     y 0.74-0.84    0.298      <- widest point of the whole leg
+    above knee    y 0.60-0.70    0.244
+
+The leg swells about 25% wider than both the belt above it and the leg below
+it, at exactly the height a viewer reads as the hip line, and the suit's trim
+runs along the bulge. From a distance that silhouette is a pair of flares.
+
+**It is NOT a bolted-on plate**, which was the first guess and was checkable:
+in the upper-thigh band only 8 of 324 vertices sit outboard of 0.27, and the
+histogram of |x| through that band is one smooth distribution rather than two
+clusters with a gap between them. There is nothing to delete; there is a shape
+to change.
+
+`art/fix_kaelen_hips.py` takes the flare off, and the constraints are the
+interesting part:
+
+  * **Only the OUTBOARD side moves.** Vertices inboard of the leg's own centre
+    line stay, so the gap between the legs and the inner surfaces are untouched
+    and the legs do not get thin.
+  * **One centre line per side, and a smoothstep window in y**, because both are
+    continuous. A per-slice centre would crease the surface along a ring.
+  * **The arms are excluded by DOMINANT JOINT, not by position.** They hang
+    through this exact height band and reach |x| 0.572, far outboard of
+    anything on the leg - selecting on x would have planed the forearms down.
+  * **Normals are recomputed.** On a metallic character the shading, not the
+    silhouette, is what sells a shape: the old normals would have gone on
+    describing a bulge that was no longer there.
+
+Two wrong answers on the way, both caught by the script printing its own
+result. Taking the median of the selection put the "centre" at 0.061 - that set
+includes the hips and inner thigh, which crowd around x=0 - and scaling about
+it planed 32% off the leg. Then picking `UpperLeg.R` for x>0 put the right
+leg's centre at -0.146: the suffixes are the CHARACTER's left and right, so
+they are mirrored against +x. The side is now read off the geometry.
+
+Strength was chosen by measuring three, not by eye:
+
+    0.25   mid 0.260   bulge reduced, still there
+    0.35   mid 0.245   level with the leg below it
+    0.45   mid 0.231   thigh now NARROWER than the knee - taper inverted
+
+0.45 "fixes" the flare by introducing the opposite deformity, which is why the
+strongest setting is not the best one.
+
+### The tableau's clash check could not fail
+
+`node art/render_tableau.js` ran for the first time since its pose changed and
+printed `reach: 6.79 + 14.16 = 20.95 against a 48-unit gap -> SHORT by 27.05`.
+
+**That verdict could never have been anything else.** `reach` is how far a hand
+has TRAVELLED during the swing - a displacement of a few units - and it was
+being held against the centre-to-centre DISTANCE between two bodies. No arm
+displaces itself by the whole distance to the other fighter, so the line
+reports SHORT at every spacing that exists, including ones where the blades are
+through each other. It now measures between the two weapon TIPS, and solves the
+spacing from them in one step rather than being hand-tuned a fourth time.
+
+**And the pose was wrong for a reason worth keeping.** The script stepped each
+fighter to `startup + 1` - "the first active frame" - and called that contact.
+`swingT` says otherwise: a swing ENTERS its active window already at
+`SWING_PRESTRIKE_T`, which is -0.35 on a scale where -1 is full extension, then
+travels the rest over `SWING_TRAVEL_FRAMES` and HOLDS there. So the frame the
+window opens on is a third of the way in with the arm still coming round. Both
+fighters were posed exactly as asked and the ask was wrong.
+
+### Spectating: the host now has two kinds of channel
+
+Roadmap 12's second half. Replays did the hard part - spectating was never
+blocked on determinism, because a spectator does not re-simulate a fight, it
+watches one. What was left was letting a host talk to more than one person, and
+nearly every decision follows from keeping the two kinds of channel apart.
+
+A watcher is **not** in `net.conn`. Everything that asks whether there is an
+opponent asks about `conn`, so a host with a spectator and no opponent would
+have believed it was in a match. And it announces itself in the PeerJS
+**metadata** rather than a first message, because the one-opponent rule fires
+on the connection itself - by the time a message could arrive the channel has
+been hung up on.
+
+Four existing answers did the rest: `isNetPuppet()` says yes to both fighters,
+the same answer a replay gives; `watchView()` gives the spectator camera;
+`netTick()` returns early, because `localFighter()` would otherwise hand a
+spectator one of the two fighters it is only watching and it would send that
+fighter's state back as if it were driving it; and `nameForSide()` gained a
+branch, because neither "mine" nor "the one in their HELLO" resolves for a
+client that is neither side - a watcher would have printed its OWN name over
+one of the two people it is watching.
+
+`netFighterState()` and `netSnapFighter()` are shared by both senders and all
+three receivers rather than copied, because these fields have been added to
+once already and the spectator's copy would have been the one nobody noticed
+was short.
+
+Tested with three clients over netcheck's faked transport - real WebRTC between
+three headless browsers would fail for reasons that have nothing to do with
+spectating. **Note the two outboxes**: a host sends down the match channel and
+down each spectator channel from one page, so a single outbox would mix them,
+and because each side ignores the other's packet types everything would have
+been delivered to the wrong client while the test still passed.
+
+### The texture leak: a skeleton's bone texture, never freed
+
+`leakcheck` has reported `textures: 50 -> 74` across six rematches for several
+rounds - perfectly linear, four per match. **`disposeObject3D` frees geometry
+and materials. A skinned mesh also owns a SKELETON, and a skeleton owns a
+texture.**
+
+three.js builds a `boneTexture` the first time it draws a skeleton, sized to
+the next power of two holding four pixels per bone. These rigs have 19 bones:
+`sqrt(19 * 4)` is 8.7, rounded up to **16x16** - exactly the size that kept
+appearing once there was an instrument that could report a size at all. The
+flags confirmed it outright: `isDataTexture 16x16, fmt 1023 (RGBA), type 1015
+(Float), data Float32Array`.
+
+Four per round, and the arithmetic is the confirmation: `SkeletonUtils.clone`
+rebuilds the bone hierarchy per fighter - they cannot share one, each has to
+pose independently - and each fighter has two skinned rigs, the body and the
+first-person viewmodel arm. Two fighters, two rigs each. After the fix the
+count is **flat at 33 across four rounds**.
+
+**Why four rounds of instrumentation could not see it.** Each tool was blind in
+its own way, and the combination of their blind spots is where it was hiding:
+
+  * the **constructor wrappers** see the game's own `new THREE.X`. three.js
+    builds this with its own class reference, so a wrapper on `window.THREE`
+    never fires - which is why "none grew" was accurate and useless.
+  * the **Proxy on `renderer.info.memory`** sees every upload, and sees a
+    NUMBER being incremented. It could name `safeSetTexture2D` and could not
+    name an object, because it never has one.
+  * the **reachability census** can only find what something still points at,
+    and once the round is over nothing points at this.
+
+What worked: three.js registers its `dispose` listener on a texture at exactly
+the moment it creates a GL texture for it, once per texture, inside the same
+function that does the increment - and there `this` IS the texture. Wrapping
+`addEventListener` turns "the count went up" into "**this object's** count went
+up". That is `art/roundprobe.js`, which also stopped playing matches to provoke
+the leak: the stack said `startRound < stepRoundEnd < gameLoop`, so calling
+`startRound()` directly does the same teardown in a second, where winning
+fights for it took half an hour a run.
+
+**And one false positive that nearly shipped.** An earlier probe named the
+name-sprite CanvasTextures - two per round, `makeNameSprite < initMesh <
+startRound`, gone from the scene by the next round, reporting
+`disposed=false`, four per match across two fighters, which is exactly the
+number being looked for. Asking the page directly instead of reading
+`disposeObject3D` a fourth time gave `disposedAfter: true`. The sprites ARE
+freed; `disposed=false` came from the FIRST match's snapshot, which is simply
+what was true at the moment it was taken. The field was right - I read a
+timestamp as a verdict.
+
+### Three guard failures, all of them mine, all caught before shipping
+
+  * **The sync's shared-scope guard** refused `netWatchSetup` in `shared/`: it
+    read `matchMode`, which lives inside `bootGame()`. I had reasoned that a
+    top-level `let` lands in the shared global lexical scope - true in general,
+    false here, and the guard said so by name. The mode is an argument now.
+  * **A guard that matched a comment.** `'startRound,' not in dst` matched the
+    line "Called from startRound, so the cost lands...", so the insertion
+    skipped, the probe died with "startRound is not a function", and grepping
+    for the name said it was there.
+  * **An anchor from the wrong build.** The replacement then anchored on the
+    ONLINE build's ACDebug line, which does not exist in the local build at all
+    because those lists are per-build by design. The replace matched nothing,
+    changed nothing, and reported success.
+
 ### Still open
 
 Rewritten, because this section had gone stale in three ways at once: it said

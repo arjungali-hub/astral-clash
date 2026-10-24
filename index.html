@@ -629,6 +629,11 @@
         }
         .lobby-panel { width: min(460px, 94vw, calc(100vw - 32px)); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
         .lobby-panel h3 { color: #4ade80; margin: 0 0 4px; font-size: 1.3rem; }
+        /* Secondary to Join, because joining is what most people came to do -
+           quieter fill, same size and hit area. */
+        .lobby-watch { background: transparent; border: 1px solid #3f5068; color: #9fb2c9; }
+        .lobby-watch:hover { border-color: #4ade80; color: #d6e4f0; }
+        .lobby-watch-note { margin-top: 6px; font-size: 0.78rem; }
         .lobby-sub { color: #8aa0b8; font-size: 0.78rem; line-height: 1.5; margin: 0 0 12px; }
         .lobby-status {
             font-size: 0.8rem; font-weight: bold; color: #94a3b8; margin: 0 0 14px;
@@ -2167,7 +2172,11 @@
                 <div class="lobby-block">
                     <input id="lobby-join-input" class="lobby-code" placeholder="Enter a room code" autocomplete="off" spellcheck="false" maxlength="48" autocapitalize="characters">
                     <button id="btn-net-join">Join Game</button>
+                    <button id="btn-net-watch" class="lobby-watch">Watch Instead</button>
                 </div>
+                <p class="lobby-sub lobby-watch-note">Watching uses the same room code and does not take a
+                    player slot &mdash; you can join a match already in progress, and more than one person
+                    can watch at once.</p>
 
                 <button id="btn-net-disconnect" class="btn-back" style="display:none;">Disconnect</button>
                 <button id="btn-lobby-close" class="btn-back">&larr; Back</button>
@@ -4313,6 +4322,36 @@ function disposeObject3D(obj) {
     if (!obj) return;
     obj.traverse(node => {
         if (node.geometry && !node.geometry.userData.shared) node.geometry.dispose();
+        // A SKINNED MESH OWNS A SKELETON, AND A SKELETON OWNS A TEXTURE.
+        //
+        // This is the four-textures-per-round leak, and it took four rounds of
+        // instrumentation to see because nothing here is the game's: three.js
+        // builds a `boneTexture` for a skeleton the first time it draws one,
+        // sized to the next power of two that fits four pixels per bone - 19
+        // bones gives sqrt(76) = 8.7, rounded up to 16x16, which is exactly the
+        // size that kept appearing. It is constructed inside three.js with
+        // three.js's own class reference, so a wrapper on window.THREE.Texture
+        // never fires (the tracker reported "none grew"); it is uploaded
+        // through a material uniform, so the upload trap blamed
+        // safeSetTexture2D and could name no object; and once the round is over
+        // nothing references it, so the reachability census could not find it
+        // either.
+        //
+        // Four per round because SkeletonUtils.clone rebuilds the bone
+        // hierarchy per fighter - they cannot share one, each has to pose
+        // independently - and each fighter has two skinned rigs: the body and
+        // the first-person viewmodel arm. Two fighters, two rigs each.
+        //
+        // Safe to free precisely BECAUSE the clone is per instance. The cached
+        // source model's own skeleton is never inside a group that reaches
+        // here, and the geometry it shares with that source is already excluded
+        // by the `shared` flag above.
+        if (node.isSkinnedMesh && node.skeleton) {
+            const sk = node.skeleton;
+            // r128 has Skeleton.dispose(); older builds only have the texture.
+            if (typeof sk.dispose === 'function') sk.dispose();
+            else if (sk.boneTexture) { sk.boneTexture.dispose(); sk.boneTexture = null; }
+        }
         if (node.material) {
             const mats = Array.isArray(node.material) ? node.material : [node.material];
             mats.forEach(m => {
@@ -5441,10 +5480,13 @@ function readSoloInput(f, b, dt, target) {
 
     if (netActive()) {
         if (netPrevAtk === 'idle' && f.atkState !== 'idle') {
-            netSend({ t: 'EVENT', e: f.atkKind === 'special' ? 'special' : 'attack' });
+            const e = f.atkKind === 'special' ? 'special' : 'attack';
+            netSend({ t: 'EVENT', e: e });
+            netRelayEvent(sideOf(f), e);          // ...and on to anyone watching
         }
         if (netPrevDodge <= 0 && f.dodgeCooldown > 0) {
             netSend({ t: 'EVENT', e: 'dodge' });
+            netRelayEvent(sideOf(f), 'dodge');
         }
     }
     return out;
@@ -6257,6 +6299,13 @@ class Fighter {
         // every physics-suppression guard downstream already honours the
         // answer. See shared/replay.js.
         if (replayActive()) return true;
+        // A SPECTATOR OWNS NEITHER FIGHTER, so both are puppets for the same
+        // reason a replay's are. Without this the clause below would puppet
+        // only the "opponent" - isLocalSide is true for exactly one side on
+        // every client, including one that is not playing - and the spectator
+        // would simulate one of the two fighters itself, against state
+        // arriving for it from the host.
+        if (netIsWatching()) return true;
         return netActive() && !this.isBot && !isLocalSide(sideOf(this));
     }
 
@@ -8543,10 +8592,18 @@ function netTeardown(reason) {
     // surfaced it.
     net.closing = true;
     if (net.conn) { try { net.conn.close(); } catch (e) {} }
+    // THE SPECTATORS GO TOO. Their channels hang off the same peer, so
+    // destroying it below strands them - and a watcher list that outlived the
+    // room would have netSendWatchers posting a finished match's state into
+    // dead channels on every tick of the next one.
+    for (const w of (net.watchers || [])) { try { w.close(); } catch (e) {} }
+    net.watchers = [];
     if (net.peer) { try { net.peer.destroy(); } catch (e) {} }
     net.closing = false;
     net.peer = null; net.conn = null; net.role = null;
     net.remoteReady = false; net.pendingSetup = null;
+    net.watchState = { p1: null, p2: null };
+    net.watchNames = { p1: '', p2: '' };
     LOCAL_SIDE = 'p1';
     // Batch 37: their absence must not outlive their connection. Left set,
     // `remoteAway` would leave the next match paused with the resume gate
@@ -8626,6 +8683,35 @@ function netGraceTick() {
     }
 }
 
+// A SPECTATOR'S CHANNEL, on the host. Deliberately thin: a watcher cannot
+// affect the match, so nothing it sends is read. The host talks, it listens.
+//
+// It is also kept OUT of net.conn. Everything that asks whether there is an
+// opponent asks about net.conn - netActive(), the lobby, the drop detection -
+// so putting a watcher there would make a host with a spectator and no
+// opponent believe it was in a match.
+function netBindWatcher(conn) {
+    conn.on('open', () => {
+        net.watchers.push(conn);
+        // CATCH THEM UP IMMEDIATELY. A spectator that arrives mid-match knows
+        // nothing: not the arena, not who is fighting, not the score. Without
+        // this it would sit on a menu until the match ended, because every
+        // other packet it receives assumes the fight is already built.
+        netSendWatchers(netWatchSetup(matchMode));
+        refreshRoomUI();
+    });
+    const drop = () => {
+        net.watchers = net.watchers.filter(w => w !== conn);
+        refreshRoomUI();
+    };
+    conn.on('close', drop);
+    conn.on('error', drop);
+    // A watcher's messages are ignored rather than unhandled: netOnMessage
+    // would happily apply a STATE packet from one, and a spectator that could
+    // move a fighter is not a spectator.
+    conn.on('data', () => {});
+}
+
 function netBindConnection(conn) {
     netLostReason = '';   // a live connection is not a lost one
     net.conn = conn;
@@ -8637,6 +8723,19 @@ function netBindConnection(conn) {
         // copy is the authoritative one.
         const resuming = netInGrace();
         netEndGrace();
+        // A SPECTATOR STOPS HERE. The rest of this handler is a player's
+        // arrival: it says which player you are, announces a name, and falls
+        // through to enterRoom(), which puts this client on the roster to pick
+        // a fighter. A watcher is not picking anybody - it waits for
+        // WATCH_SETUP and the arena is built from that. The heartbeat is kept
+        // because the channel still has to be seen to be alive.
+        if (netIsWatching()) {
+            netSetStatus('connected', 'Watching - waiting for the match');
+            if (net.pingTimer) clearInterval(net.pingTimer);
+            net.pingTimer = setInterval(netHeartbeat, NET_PING_MS);
+            refreshMenuUI();
+            return;
+        }
         netSetStatus('connected', netIsHost() ? 'You are Player 1' : 'You are Player 2');
         // Both sides announce themselves so a mismatched build is obvious
         // rather than manifesting as strange behaviour later.
@@ -8758,6 +8857,16 @@ function netHost() {
             // back. netActive() stays true through a grace window on purpose,
             // so without the second clause the host would hang up on the
             // reconnect it is waiting for.
+            // A SPECTATOR IS NOT AN OPPONENT, and is accepted alongside one
+            // rather than instead of one. It announces itself in the PeerJS
+            // metadata, which arrives with the connection and before any of
+            // our own messages could - the host has to decide what this
+            // channel is the moment it appears, because the one-opponent rule
+            // below would otherwise hang up on it.
+            if (conn.metadata && conn.metadata.watch) { netBindWatcher(conn); return; }
+            // One opponent only - EXCEPT during a grace window, where the
+            // incoming connection is very probably the same opponent coming
+            // back.
             if (netActive() && !netInGrace()) { try { conn.close(); } catch (e) {} return; }
             netBindConnection(conn);
         });
@@ -8814,6 +8923,37 @@ function netJoin(hostId) {
     // mirror of this: it cannot dial, it can only accept.
     net.hostId = id;
     net.peer.on('open', () => netBindConnection(net.peer.connect(id, { reliable: true })));
+    net.peer.on('error', err => netSetStatus('error', (err && err.type) || 'peer error'));
+}
+
+// WATCH a room instead of playing in it.
+//
+// Nearly netJoin, and deliberately so - same code normalising, same peer, same
+// error handling. Two differences, and they are the whole feature:
+//
+//   * `metadata: { watch: true }` on the connection, so the host can tell this
+//     channel apart from an opponent's the moment it arrives. It has to be in
+//     the metadata rather than a first message, because the host's
+//     one-opponent rule fires on the connection itself.
+//   * role 'watch', from which isNetPuppet(), watchView() and netTick's
+//     early return all follow. LOCAL_SIDE is still set, because plenty of code
+//     reads it unconditionally, but nothing a spectator does depends on which
+//     value it holds.
+function netWatch(hostId) {
+    if (typeof Peer !== 'function') { netSetStatus('error', 'PeerJS failed to load'); return; }
+    const typed = (hostId || '').trim();
+    if (!typed) { netSetStatus('error', 'Enter a room code first'); return; }
+    const id = roomIdFor(typed);
+    netTeardown();
+    net.role = 'watch';
+    LOCAL_SIDE = 'p1';
+    net.watchNames = { p1: '', p2: '' };
+    net.watchState = { p1: null, p2: null };
+    netSetStatus('connecting', 'Watching ' + roomCodeOf(id) + '...');
+    net.peer = new Peer();
+    net.hostId = id;
+    net.peer.on('open', () => netBindConnection(
+        net.peer.connect(id, { reliable: true, metadata: { watch: true } })));
     net.peer.on('error', err => netSetStatus('error', (err && err.type) || 'peer error'));
 }
 
@@ -8882,6 +9022,13 @@ function enterRoom() {
 // the match.
 function netSendResync() {
     if (!netIsHost() || !player1 || !player2) return;
+    // THE SPECTATORS GET THE SAME NEWS, in their own format. A resync is sent
+    // at exactly the moments the match changes shape - a reconnect, a new
+    // round, a rematch - which is also when a watcher's score and round
+    // number go stale. netApplyWatchSetup only rebuilds the arena when there
+    // is not already a fight on screen, so re-sending this mid-match updates
+    // the numbers without restarting the view.
+    netSendWatchers(netWatchSetup(matchMode));
     netSend({
         t: 'RESYNC',
         round: currentRound,
@@ -8986,7 +9133,22 @@ function netOnMessage(msg) {
             startMatch(MAPS.find(m => m.name === msg.map) || undefined);
             break;
         case 'STATE':
-            netApplyState(msg);
+            // A spectator must not read these. The host and the guest each
+            // send STATE for their OWN fighter, and netApplyState writes it
+            // into remoteFighter() - which on a watcher resolves to one of the
+            // two it is merely watching. A stray STATE would therefore stamp
+            // one fighter's health onto the other. WATCH_STATE carries both,
+            // correctly labelled, and is the only state a watcher trusts.
+            if (!netIsWatching()) netApplyState(msg);
+            break;
+        case 'WATCH_SETUP':
+            // Only a spectator acts on this. A playing client that somehow
+            // received one must ignore it: applying it would rebuild its own
+            // match from somebody else's description of it.
+            if (netIsWatching()) netApplyWatchSetup(msg);
+            break;
+        case 'WATCH_STATE':
+            if (netIsWatching()) netApplyWatchState(msg);
             break;
         case 'HIT': {
             // The opponent's attack connected on their machine. Apply it to
@@ -8997,6 +9159,10 @@ function netOnMessage(msg) {
         }
         case 'EVENT':
             netApplyEvent(msg);
+            // The guest's action, passed on to the spectators. The side is the
+            // one this client does NOT drive, which is who the packet came
+            // from; a watcher ignores this branch because it never relays.
+            if (netIsHost()) netRelayEvent(otherSide(LOCAL_SIDE), msg.e);
             break;
         case 'ROUNDEND':
         case 'MATCHEND':
@@ -9064,37 +9230,75 @@ function netApplySetup(msg) {
 // the buffer every frame instead.
 function netApplyState(msg) {
     net.remoteState = msg;
-    const f = remoteFighter();
-    if (!f) return;
-    // hp and meter are owner-authoritative and snap: a health bar that eases is
-    // actively misleading about how close someone is to dying.
-    if (typeof msg.hp === 'number') {
-        f.hp = msg.hp;
-        if (f.hpGhost < f.hp) f.hpGhost = f.hp;
+    netSnapFighter(remoteFighter(), msg);
+}
+
+// A SPECTATOR'S FIRST PACKET: build the match it has walked into.
+//
+// This leans on the guest's path rather than inventing one - netApplySetup
+// already turns "who is fighting, in what mode" into the globals the match
+// builder reads, and startMatch already builds an arena. The spectator's extra
+// is the SCORE, which a guest never needs because it was there from round one.
+function netApplyWatchSetup(msg) {
+    netApplySetup(msg);
+    if (msg.names) {
+        if (msg.names.p1) net.watchNames.p1 = msg.names.p1;
+        if (msg.names.p2) net.watchNames.p2 = msg.names.p2;
     }
-    if (typeof msg.meter === 'number') f.specialMeter = msg.meter;
-    f.grounded = !!msg.g;
-    // Their respawn clock, display-only: they own it (see coopOwnsRespawn).
-    if (msg.dn !== undefined) {
-        f.downed = msg.dn > 0;
-        f.respawnTimer = msg.dn > 0 ? msg.dn : 0;
+    if (msg.wins) { roundWins.p1 = msg.wins.p1 | 0; roundWins.p2 = msg.wins.p2 | 0; }
+    if (msg.zone) { zoneScore.p1 = msg.zone.p1 | 0; zoneScore.p2 = msg.zone.p2 | 0; }
+    if (msg.ko) { koTally.p1 = msg.ko.p1 | 0; koTally.p2 = msg.ko.p2 | 0; }
+    if (typeof msg.round === 'number') currentRound = msg.round;
+    // ONLY IF THERE IS A MATCH TO WATCH. A spectator is admitted the moment it
+    // connects, which may be while the host is still sitting in its lobby - and
+    // then `msg.map` is null and startMatch() would build an arbitrary arena
+    // and start a fight that is happening nowhere. The host says what state it
+    // is in; believe it.
+    const live = msg.state === 'FIGHT' || msg.state === 'INTRO';
+    if (!live) {
+        netSetStatus('connected', 'Watching - waiting for the match');
+        return;
     }
+    // Only build once. WATCH_SETUP is re-sent whenever the host's match
+    // changes shape (a new round, a rematch), and rebuilding the arena on each
+    // one would restart the spectator's view mid-fight.
+    const wantMap = MAPS.find(m => m.name === msg.map) || undefined;
+    const already = gameState === 'FIGHT' || gameState === 'INTRO';
+    if (!already) startMatch(wantMap);
+}
+
+function netApplyWatchState(msg) {
+    if (msg.p1) { net.watchState.p1 = msg.p1; netSnapFighter(player1, msg.p1); }
+    if (msg.p2) { net.watchState.p2 = msg.p2; netSnapFighter(player2, msg.p2); }
 }
 
 // Discrete cues, so the puppet visibly acts rather than sliding around in an
 // idle pose: an attack swing, a dash, a jump.
 function netApplyEvent(msg) {
-    const f = remoteFighter();
+    // WHICH FIGHTER DID IT. A playing client never has to ask: an EVENT can
+    // only have come from the one person on the other end, so remoteFighter()
+    // is the answer. A spectator receives events for BOTH, forwarded by the
+    // host, so the packet has to say - and without that the swings of one
+    // fighter would all be played on the other.
+    let f, other;
+    if (netIsWatching()) {
+        f = msg.side === 'p2' ? player2 : player1;
+        other = msg.side === 'p2' ? player1 : player2;
+    } else {
+        f = remoteFighter();
+        other = localFighter();
+    }
     if (!f) return;
     if (msg.e === 'attack' || msg.e === 'special') {
         // Runs the real action pipeline so the swing, sound and effects all
         // play. Damage is suppressed for remote-sourced attacks (see
         // takeDamage), so this is purely presentational on our side.
-        f.tryStartAction(msg.e === 'special' ? 'special' : 'basic', localFighter());
+        f.tryStartAction(msg.e === 'special' ? 'special' : 'basic', other);
     } else if (msg.e === 'dodge') {
         f.invulnFrames = Math.max(f.invulnFrames, DODGE_IFRAMES);
     }
 }
+
 
 function netApplyLifecycle(msg) {
     if (msg.t === 'ROUNDEND') {
@@ -9109,9 +9313,33 @@ function netApplyLifecycle(msg) {
 // WHEN THE HEARTBEAT LAST RAN. Read by the grace backstop in the game loop:
 // the interval that drives netGraceTick is cancellable, and the loop is not.
 let netLastBeatAt = 0;
+// When the spectators were last pinged. Separate from net.lastSendAt, which is
+// the match channel's - see the note in netHeartbeat.
+let netWatchPingAt = 0;
 
 function netHeartbeat() {
     netLastBeatAt = performance.now();
+    // SPECTATORS ARE PINGED FIRST, and on their own clock, because every
+    // return below is about the OPPONENT's channel and a watcher's is a
+    // different channel with a different lifetime.
+    //
+    // Two cases need it. On a menu, netTick returns early - there is no
+    // fighter whose state is worth broadcasting - so nothing at all would
+    // reach a watcher and its own silence timeout would fire. And a host
+    // sitting in a lobby with no opponent yet fails netActive() entirely,
+    // which is exactly when somebody who has been given the code is most
+    // likely to be waiting on it.
+    //
+    // Its own timestamp rather than net.lastSendAt, which belongs to the match
+    // channel: sharing it would let a packet sent to a spectator suppress the
+    // PING that keeps the opponent's link alive.
+    if (netIsHost() && netHasWatchers()) {
+        const t = performance.now();
+        if (t - netWatchPingAt > NET_PING_MS) {
+            netWatchPingAt = t;
+            netSendWatchers({ t: 'PING' });
+        }
+    }
     // The grace window first: netActive() is deliberately TRUE throughout one
     // (see its comment), so without this the code below would send PINGs into a
     // closed channel and the window would never close.
@@ -9308,6 +9536,9 @@ document.getElementById('btn-lobby-close').addEventListener('click', () => close
 document.getElementById('btn-net-host').addEventListener('click', () => netHost());
 document.getElementById('btn-net-join').addEventListener('click', () => {
     netJoin(document.getElementById('lobby-join-input').value);
+});
+document.getElementById('btn-net-watch').addEventListener('click', () => {
+    netWatch(document.getElementById('lobby-join-input').value);
 });
 document.getElementById('btn-net-disconnect').addEventListener('click', () => {
     netSend({ t: 'BYE' });
@@ -10250,6 +10481,17 @@ function startRound(intro) {
         gameState = "FIGHT";
         sfxRoundStart();
     }
+    // TELL THE SPECTATORS, every round, because this is the one moment
+    // guaranteed to happen whether they arrived before the match, during it, or
+    // between two rounds of it. A watcher still on a menu builds its arena from
+    // this; one already watching takes only the refreshed score, because
+    // netApplyWatchSetup will not rebuild over a fight in progress.
+    //
+    // AFTER gameState is set, not before. netWatchSetup() reports that state
+    // and a watcher refuses to build a match the host says it is not in - sent
+    // from the top of this function it still read MENU on the first round, so
+    // the spectator would have waited out the entire match it was sent to see.
+    if (netIsHost() && netHasWatchers()) netSendWatchers(netWatchSetup(matchMode));
 }
 
 // Batch 16: the boss bar. Drawn ONCE in raw virtual space (not inside
@@ -11741,8 +11983,76 @@ if (DEBUG) {
         },
         netDrainOutbox() { const o = window.__netOutbox || []; window.__netOutbox = []; return o; },
         netFeed(msg) { net.lastRecvAt = performance.now(); netOnMessage(msg); },
+        // --- Spectating, over the same fake transport -----------------------
+        // A SPECTATOR'S END of the channel. netFakeConnect with a role of
+        // 'watch' would nearly do, but it also sets LOCAL_SIDE from the role
+        // and binds as though this client were playing - and the point of the
+        // role is that it is neither side.
+        netFakeWatch() {
+            netTeardown();
+            net.role = 'watch';
+            LOCAL_SIDE = 'p1';
+            net.watchNames = { p1: '', p2: '' };
+            net.watchState = { p1: null, p2: null };
+            window.__netOutbox = [];
+            net.peer = {
+                destroyed: false, destroy() { this.destroyed = true; },
+                on() {}, reconnect() {},
+                connect() { return window.ACDebug.__fakeConn(); },
+            };
+            const conn = this.__fakeConn();
+            netBindConnection(conn);
+            conn.open = true;
+            conn._fire('open');
+            window.__netOutbox = [];
+        },
+        // ...and the HOST'S end of one. netBindWatcher is driven for real
+        // rather than copied, for the same reason __fakeConn dispatches its
+        // handlers: the open handler is where a watcher is admitted to the
+        // list and sent its catch-up packet, and a test that inlined that
+        // could not have caught either going wrong.
+        //
+        // Its sends go to a SEPARATE outbox. The match channel and the
+        // spectator channels both run through one page, so a single outbox
+        // would hand the guest the watcher's packets and vice versa - and
+        // since each side now ignores the other's, the test would have passed
+        // while delivering everything to the wrong place.
+        netFakeAddWatcher() {
+            const conn = this.__fakeConn();
+            conn.send = function (msg) {
+                (window.__netWatchOutbox = window.__netWatchOutbox || []).push(msg);
+            };
+            netBindWatcher(conn);
+            conn.open = true;
+            conn._fire('open');
+            return net.watchers.length;
+        },
+        // A WATCHER LEAVING, from the host's side. The spectator's own
+        // netTeardown closes ITS end of the channel, and over a faked
+        // transport the two ends are separate objects in separate pages - so
+        // without this the host would never hear about it and a test would be
+        // asserting against a channel that is still open as far as it knows.
+        netFakeDropWatcher() {
+            const w = (net.watchers || [])[0];
+            if (!w) return false;
+            w.close();          // the real close handler, which is what unlists it
+            return true;
+        },
+        netDrainWatchOutbox() {
+            const o = window.__netWatchOutbox || [];
+            window.__netWatchOutbox = [];
+            return o;
+        },
+        netWatcherCount() { return (net.watchers || []).length; },
+        netWatchState() { return net.watchState; },
+        netWatchNames() { return net.watchNames; },
+        netIsWatching, netWatch, netSendWatchers, netFighterState,
         NET_SEND_HZ, NET_LERP, NET_SNAP_DIST,
-        chooseMap, previewPick, confirmPick, beginMatch,
+        // startRound: the round teardown and rebuild, on its own. The texture
+        // leak is per ROUND, so a probe that has to win fights to provoke it
+        // spends half an hour per run on a machine rendering at about a frame a
+        // second - and none of those fights are part of the question.
+        chooseMap, previewPick, confirmPick, beginMatch, startRound,
         // Batch 34 room UI, for tests and for poking at states by hand.
         startOnline, hostRematch, enterRoom, goHome, refreshRoomUI, showLocalPickerOnly,
         // Batch 36 names

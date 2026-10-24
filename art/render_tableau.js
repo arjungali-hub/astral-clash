@@ -149,8 +149,28 @@ const W = 1920, HGT = 1080;
         // Neither can hit the other while this happens - invulnFrames is 9999
         // just above - which matters more now that both have a live hitbox on
         // the frame they are being held at.
-        step(a, b, fdA.startup + 1);
-        step(b, a, fdB.startup + 1);
+        // THE FIRST ACTIVE FRAME IS NOT THE CONTACT POSE, which is what the
+        // previous `startup + 1` assumed and what left both fighters looking
+        // like they were standing there. swingT spends the active window this
+        // way: it ENTERS it already at SWING_PRESTRIKE_T, which is -0.35 on a
+        // scale where -1 is full extension, then travels the rest over
+        // SWING_TRAVEL_FRAMES and HOLDS there for the remainder.
+        //
+        // So the frame the window opens on is a third of the way into the
+        // strike with the arm still coming round - a wind-up, not a blow. The
+        // held full-extension pose starts SWING_TRAVEL_FRAMES later, and that
+        // is the one the design canvas is describing.
+        //
+        // Read from shared/animation.js rather than written as 5 here: those
+        // constants are top-level in the page, and a copy of the number would
+        // be wrong the first time the swing is retuned.
+        const TRAVEL = (typeof SWING_TRAVEL_FRAMES !== 'undefined')
+            ? SWING_TRAVEL_FRAMES : (D.SWING_TRAVEL_FRAMES || 5);
+        // Capped at the window: a six-frame active window spends all of itself
+        // travelling, so its most extended frame is its last.
+        const contact = (fd) => fd.startup + Math.min(fd.active, TRAVEL);
+        step(a, b, contact(fdA));
+        step(b, a, contact(fdB));
         // Standing still, facing each other, whatever the AI wanted.
         a.x = stageX - qx * NEAR_A; a.y = stageY - qy * NEAR_A;
         b.x = stageX + qx * NEAR_B; b.y = stageY + qy * NEAR_B;
