@@ -100,16 +100,30 @@ process.on('unhandledRejection', (e) => {
     // declined to start anything and both clients sat in MENU for the full ten
     // minutes. CI reported "the host reaches a fight -- host state MENU",
     // which was true, and was about this rather than about spectating.
-    await host.evaluate(() => {
+    // PREVIEW, THEN CONFIRM. confirmPick(side) takes ONE argument and returns
+    // immediately unless that side already has a preview and is in the
+    // 'preview' stage - so `confirmPick('p1', 'Kaelen')` ignored the name,
+    // found no preview and did nothing at all. Three CI rounds reported "host
+    // state MENU", accurately, because no fighter was ever chosen.
+    //
+    // It is also checkable, so this no longer takes the call's word for it.
+    const pick = async (pg, side, name) => pg.evaluate((args) => {
         const D = window.ACDebug;
         D.setDebugUnlockAll(true);
-        D.confirmPick('p1', 'Kaelen');
-    });
-    await join.evaluate(() => {
-        const D = window.ACDebug;
-        D.setDebugUnlockAll(true);
-        D.confirmPick('p2', 'Lyra');
-    });
+        D.previewPick(args[0], args[1]);
+        D.confirmPick(args[0]);
+        // READ ONLY WHAT IS EXPORTED. p1Stage/p2Stage are not on ACDebug, so
+        // asserting on them would have read undefined and failed for a third
+        // reason that is not the one being tested. p1Choice IS exported, and
+        // confirmPick is the only thing that assigns it - so seeing the name
+        // there is proof the confirm went through.
+        return { choice: args[0] === 'p1' ? D.p1Choice : D.p2Choice };
+    }, [side, name]);
+    const pickedA = await pick(host, 'p1', 'Kaelen');
+    const pickedB = await pick(join, 'p2', 'Lyra');
+    check('each client can choose its own fighter',
+        pickedA.choice === 'Kaelen' && pickedB.choice === 'Lyra',
+        'host ' + JSON.stringify(pickedA) + '  guest ' + JSON.stringify(pickedB));
     // The picks have to CROSS before either side is ready, and that needs the
     // relay to have run - a fixed sleep here is the bet on timing this suite
     // keeps losing, so wait for the host to actually see the guest's choice.
