@@ -145,7 +145,12 @@ function usernameProblem(username) {
     if (!u) return 'Pick a username';
     if (u.length < 3) return 'Usernames are at least 3 characters';
     if (u.length > 20) return 'Usernames are at most 20 characters';
-    if (!USERNAME_RE.test(u)) return 'Letters, numbers and underscores only';
+    // NAME THE FIELD, like the three above it. All eight of these messages
+    // land in ONE status line, so the field name is the only thing saying
+    // which input is wrong - and this was the single message that left it
+    // out. Reported as "it said letters, numbers and underscores only, but
+    // it didn't say for what".
+    if (!USERNAME_RE.test(u)) return 'Usernames use letters, numbers and underscores only';
     return null;
 }
 

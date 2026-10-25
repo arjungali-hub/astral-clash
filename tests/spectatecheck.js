@@ -131,7 +131,20 @@ process.on('unhandledRejection', (e) => {
         'the watcher dropped: ' + await watch.evaluate(() => window.ACDebug.gameState));
     await watch.evaluate(() => window.ACDebug.netSetTimeout(15000));
 
-    await host.evaluate(() => window.ACDebug.beginMatch());
+    // chooseMap + startOnline, NOT beginMatch. Online, beginMatch() only
+    // refreshes the room UI and returns - the host chooses an arena and presses
+    // Start, and that is startOnline(). Calling beginMatch left both clients
+    // sitting in MENU, which is exactly what CI reported: "the host reaches a
+    // fight -- host state MENU". netcheck has the same two lines.
+    //
+    // chooseMap(null) leaves it on Random deliberately: startOnline() has to
+    // resolve Random to a CONCRETE arena before broadcasting it, or each side
+    // rolls its own and they load different maps.
+    await host.evaluate(() => {
+        const D = window.ACDebug;
+        D.chooseMap(null);
+        D.startOnline();
+    });
     const hostFighting = await waitRelaying(host, () => window.ACDebug.gameState === 'FIGHT', budget);
     check('the host reaches a fight', hostFighting,
         'host state ' + await host.evaluate(() => window.ACDebug.gameState));

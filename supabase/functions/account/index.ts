@@ -130,13 +130,42 @@ Deno.serve(async (req) => {
             }, 400);
         }
 
+        // A DUPLICATE EMAIL DOES NOT COME BACK AS AN ERROR, which is why the
+        // branch above could never fire and the report was "it said could not
+        // finish creating the account".
+        //
+        // With confirmations on, GoTrue deliberately answers a signup for an
+        // address that already exists with a SUCCESS carrying a decoy user -
+        // so that nobody can use this endpoint to find out who has an account.
+        // The documented way to tell that apart from a real new user is the
+        // identities array: a genuinely new user has exactly one (the email
+        // identity), and the decoy has none.
+        //
+        // Without this the request fell through to the profile insert, failed
+        // there, and reported the generic message from the rollback path.
+        const identities = made.user.identities;
+        const isDecoy = Array.isArray(identities) && identities.length === 0;
+        if (isDecoy) {
+            return json({ error: 'There is already an account with that email' }, 409);
+        }
+
         const { error: pErr } = await admin.from('profiles')
             .insert({ user_id: made.user.id, username, display_name: display });
         if (pErr) {
             // ROLL BACK. An auth user with no profile cannot sign in and cannot
             // be signed up again with the same address - a dead end only an
             // administrator can clear. Better to undo it here.
-            try { await admin.auth.admin.deleteUser(made.user.id); } catch (_e) { /* best effort */ }
+            //
+            // ONLY A USER THIS REQUEST ACTUALLY CREATED. The decoy above is
+            // returned for an address that belongs to SOMEBODY ELSE, and
+            // GoTrue has not always obfuscated its id - so deleting on that
+            // path could have destroyed the real account of whoever owns the
+            // address, triggered by nothing more than a stranger typing it in.
+            // The guard above returns before reaching here; this is the second
+            // lock on the same door.
+            if (Array.isArray(identities) && identities.length > 0) {
+                try { await admin.auth.admin.deleteUser(made.user.id); } catch (_e) { /* best effort */ }
+            }
             return json({
                 error: /duplicate|unique/i.test(String(pErr.message))
                     ? 'That username is taken'
