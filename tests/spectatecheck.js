@@ -34,6 +34,31 @@ process.on('unhandledRejection', (e) => {
     const watch = await H.newPage(watchBrowser);
     const { check, section, finish } = H.makeChecker();
 
+    // EVERY WINDOW MUST BELIEVE IT IS VISIBLE, and this is the cost of a third
+    // browser that netcheck never pays.
+    //
+    // At most one window is foreground; the rest report document.hidden true.
+    // The game treats that as the player leaving the tab - correctly, that is
+    // the whole point of the away-pause - so a backgrounded client pauses
+    // ITSELF and then tells the others over PRESENCE, and the whole match
+    // stops. CI reported "host state PAUSED, guest state INTRO", which is
+    // exactly that: everything frozen partway through the drop-in.
+    //
+    // Overridden in the PAGE rather than worked around in the game, because
+    // the away-pause is right and the lie is the test's: three real players on
+    // three machines all have a visible window. There is no Chrome flag for
+    // this - the throttling flags keepAnimating passes do not touch
+    // visibilityState.
+    const alwaysVisible = (pg) => pg.evaluateOnNewDocument(() => {
+        Object.defineProperty(document, 'hidden',
+            { configurable: true, get: () => false });
+        Object.defineProperty(document, 'visibilityState',
+            { configurable: true, get: () => 'visible' });
+    });
+    await alwaysVisible(host);
+    await alwaysVisible(join);
+    await alwaysVisible(watch);
+
     await H.boot(host, { clearStorage: true, models: true });
     await H.boot(join, { clearStorage: true, models: true });
     await H.boot(watch, { clearStorage: true, models: true });
