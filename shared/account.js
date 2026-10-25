@@ -298,12 +298,17 @@ function consumeRecoveryToken() {
     accountSetStatus('busy', 'Checking your link' + ELLIPSIS);
     sb.auth.verifyOtp({ token_hash: hash, type: type }).then(({ error }) => {
         if (error) {
-            accountLinkDetail = /expired|invalid/i.test(String(error.message || ''))
-                ? 'That password reset link has expired or was already used. Ask for a new one.'
-                : (error.message || 'That link did not work.');
+            // LITERALS, in a position the audit reads. Assigned to a
+            // variable they are invisible to it, which is how this one came
+            // to be rewritten and left untranslated under a clean "0 MISSING".
+            if (/expired|invalid/i.test(String(error.message || ''))) {
+                accountSetStatus('error', 'That link was already used — some email apps and antivirus open links to check them, which spends one before you ever click. Ask for a new one, then COPY it into your browser rather than clicking.');
+            } else {
+                accountSetStatus('error', error.message || 'That link did not work.');
+            }
+            accountLinkDetail = accountDetail;
             accountMode = 'forgot';
             accountOpenRequest = true;
-            accountSetStatus('error', accountLinkDetail);
             return;
         }
         // verifyOtp with type 'recovery' does NOT raise PASSWORD_RECOVERY, so
@@ -338,11 +343,13 @@ function startAccountClient(lib) {
         // that does it rather than on a dead end.
         const stale = /expired|invalid/i.test(linkError.code + ' ' + linkError.desc);
         accountMode = stale ? 'forgot' : 'in';
-        accountLinkDetail = stale
-            ? 'That password reset link has expired or was already used. Ask for a new one.'
-            : (linkError.desc || 'That link did not work.');
+        if (stale) {
+            accountSetStatus('error', 'That link was already used — some email apps and antivirus open links to check them, which spends one before you ever click. Ask for a new one, then COPY it into your browser rather than clicking.');
+        } else {
+            accountSetStatus('error', linkError.desc || 'That link did not work.');
+        }
+        accountLinkDetail = accountDetail;
         accountOpenRequest = true;
-        accountSetStatus('error', accountLinkDetail);
     }
     sb.auth.onAuthStateChange((event, session) => {
         // ARRIVING FROM A RESET LINK. Supabase signs the player in with a

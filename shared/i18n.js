@@ -86,8 +86,8 @@ const I18N = {
             "No se pudo cargar el servicio de cuentas",
         "Could not start the account service":
             "No se pudo iniciar el servicio de cuentas",
-        "That password reset link has expired or was already used. Ask for a new one.":
-            "Ese enlace para restablecer la contrase\u00f1a ha caducado o ya se us\u00f3. Pide uno nuevo.",
+        "That link was already used \u2014 some email apps and antivirus open links to check them, which spends one before you ever click. Ask for a new one, then COPY it into your browser rather than clicking.":
+            "Ese enlace ya se us\u00f3: algunas aplicaciones de correo y antivirus abren los enlaces para comprobarlos, y lo gastan antes de que lo pulses. Pide uno nuevo y luego COPIA el enlace en tu navegador en vez de pulsarlo.",
         "That link did not work.":
             "Ese enlace no funcion\u00f3.",
         "Choose a new password":
@@ -703,8 +703,8 @@ const I18N = {
             "Impossible de charger le service de comptes",
         "Could not start the account service":
             "Impossible de d\u00e9marrer le service de comptes",
-        "That password reset link has expired or was already used. Ask for a new one.":
-            "Ce lien de r\u00e9initialisation a expir\u00e9 ou a d\u00e9j\u00e0 servi. Demandez-en un nouveau.",
+        "That link was already used \u2014 some email apps and antivirus open links to check them, which spends one before you ever click. Ask for a new one, then COPY it into your browser rather than clicking.":
+            "Ce lien a d\u00e9j\u00e0 servi : certaines messageries et antivirus ouvrent les liens pour les v\u00e9rifier, ce qui en consomme un avant m\u00eame votre clic. Demandez-en un nouveau, puis COPIEZ-le dans votre navigateur au lieu de cliquer.",
         "That link did not work.":
             "Ce lien n\u2019a pas fonctionn\u00e9.",
         "Choose a new password":
