@@ -261,6 +261,63 @@ function accountTakeLinkNotice() {
     return want;
 }
 
+// A RESET LINK THAT NOTHING CAN SPEND BY LOOKING AT IT.
+//
+// The auth log settled what was actually wrong, and it was neither expiry nor
+// clicking twice:
+//
+//     18:36:53  /recover + mail.send
+//     18:36:59  /verify  request completed              <- succeeded
+//     18:36:59  /verify  403 One-time token not found   <- SAME SECOND
+//
+// Two verifies in one second from the same address. Nobody clicks twice in the
+// same second; something on that machine - a link scanner, antivirus, a
+// browser prefetch - followed the URL first and spent the token, and the real
+// click arrived to find it gone. A link that is consumed by a GET will always
+// be vulnerable to whatever fetches URLs before a person does.
+//
+// So the token is no longer spent by VISITING. With `token_hash` in the query
+// string the page load does nothing at all, and the code below exchanges it
+// deliberately - a prefetch now warms a page instead of burning a password
+// reset. Supabase's email template has to send that form of link; see
+// docs/RESET_LINKS.md.
+//
+// The old hash form still works, so an email already in somebody's inbox is
+// not broken by this.
+function consumeRecoveryToken() {
+    let q;
+    try { q = new URLSearchParams(location.search); } catch (e) { return false; }
+    const hash = q.get('token_hash');
+    const type = q.get('type');
+    if (!hash || !type) return false;
+    // Cleared before the exchange, so a reload cannot replay it and so the
+    // token is never left sitting in the address bar or in history.
+    try {
+        history.replaceState(null, '', location.pathname);
+    } catch (e) { /* a browser that will not rewrite its bar is no reason to stop */ }
+    accountSetStatus('busy', 'Checking your link' + ELLIPSIS);
+    sb.auth.verifyOtp({ token_hash: hash, type: type }).then(({ error }) => {
+        if (error) {
+            accountLinkDetail = /expired|invalid/i.test(String(error.message || ''))
+                ? 'That password reset link has expired or was already used. Ask for a new one.'
+                : (error.message || 'That link did not work.');
+            accountMode = 'forgot';
+            accountOpenRequest = true;
+            accountSetStatus('error', accountLinkDetail);
+            return;
+        }
+        // verifyOtp with type 'recovery' does NOT raise PASSWORD_RECOVERY, so
+        // the mode is set here rather than waited for.
+        accountMode = type === 'recovery' ? 'recover' : 'in';
+        accountOpenRequest = true;
+        accountSetStatus('signed-out', 'Choose a new password');
+        accountNotify();
+    }).catch(() => {
+        accountSetStatus('error', 'That link did not work.');
+    });
+    return true;
+}
+
 function startAccountClient(lib) {
     const linkError = readLinkError();
     try {
@@ -322,9 +379,12 @@ function startAccountClient(lib) {
         if (accountLinkDetail) accountSetStatus('error', accountLinkDetail);
         else accountSetStatus('signed-out', '');
     });
-    sb.auth.getSession().then(({ data }) => {
-        if (data && data.session && data.session.user) accountAfterSignIn(data.session.user.id);
-    }).catch(() => { /* no session is the normal case */ });
+    // Before the session probe: this IS how a session arrives from a link now.
+    if (!consumeRecoveryToken()) {
+        sb.auth.getSession().then(({ data }) => {
+            if (data && data.session && data.session.user) accountAfterSignIn(data.session.user.id);
+        }).catch(() => { /* no session is the normal case */ });
+    }
 }
 
 // Where a reset link should come back to. The page itself, with no query or
