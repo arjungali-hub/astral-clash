@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
         // constraints. The client's copy is for speed, the constraint is what
         // makes it true, and this is what stops a caller that is not the game.
         if (!USERNAME_RE.test(username)) {
-            return json({ error: 'Letters, numbers and underscores only, 3-20 characters' }, 400);
+            return json({ error: 'Usernames use letters, numbers and underscores only, 3-20 characters' }, 400);
         }
         if (!display || display.length > 14) {
             return json({ error: 'Pick a display name of 14 characters or fewer' }, 400);
