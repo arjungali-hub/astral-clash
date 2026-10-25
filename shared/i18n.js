@@ -48,6 +48,82 @@ const I18N = {
         'Play': 'Jugar',
         'Host Game': 'Crear partida',
         'Join Game': 'Unirse',
+        "Left Click":
+            "Clic izquierdo",
+        "Middle Click":
+            "Clic central",
+        "Right Click":
+            "Clic derecho",
+        "Lost the connection to the lobby server":
+            "Se perdi\u00f3 la conexi\u00f3n con el servidor de salas",
+        "This browser cannot host a game":
+            "Este navegador no puede crear una partida",
+        "That username and password do not match":
+            "Ese usuario y esa contrase\u00f1a no coinciden",
+        "Pick a username":
+            "Elige un nombre de usuario",
+        "Usernames are at least 3 characters":
+            "Los nombres de usuario tienen al menos 3 caracteres",
+        "Usernames are at most 20 characters":
+            "Los nombres de usuario tienen como m\u00e1ximo 20 caracteres",
+        "Usernames use letters, numbers and underscores only":
+            "Los nombres de usuario solo admiten letras, n\u00fameros y guiones bajos",
+        "Passwords are at least 8 characters":
+            "Las contrase\u00f1as tienen al menos 8 caracteres",
+        "Passwords are at most 72 characters":
+            "Las contrase\u00f1as tienen como m\u00e1ximo 72 caracteres",
+        "Pick a display name":
+            "Elige un nombre visible",
+        "Enter your email address":
+            "Introduce tu correo electr\u00f3nico",
+        "That does not look like an email address":
+            "Eso no parece un correo electr\u00f3nico",
+        "Split-screen build - progress stays on this machine":
+            "Versi\u00f3n a pantalla dividida: el progreso se queda en esta m\u00e1quina",
+        "No account service configured for this build":
+            "Esta versi\u00f3n no tiene servicio de cuentas configurado",
+        "Could not load the account service":
+            "No se pudo cargar el servicio de cuentas",
+        "Could not start the account service":
+            "No se pudo iniciar el servicio de cuentas",
+        "That password reset link has expired or was already used. Ask for a new one.":
+            "Ese enlace para restablecer la contrase\u00f1a ha caducado o ya se us\u00f3. Pide uno nuevo.",
+        "That link did not work.":
+            "Ese enlace no funcion\u00f3.",
+        "Choose a new password":
+            "Elige una contrase\u00f1a nueva",
+        "Accounts are unavailable":
+            "Las cuentas no est\u00e1n disponibles",
+        "Creating your account…":
+            "Creando tu cuenta",
+        "Could not create the account":
+            "No se pudo crear la cuenta",
+        "Enter your username":
+            "Introduce tu nombre de usuario",
+        "Enter your password":
+            "Introduce tu contrase\u00f1a",
+        "Signing in…":
+            "Iniciando sesi\u00f3n",
+        "Sending…":
+            "Enviando",
+        "Saving\u2026":
+            "Guardando…",
+        "Password changed \u2014 sign in with it.":
+            "Contrase\u00f1a cambiada: inicia sesi\u00f3n con ella.",
+        "Could not change the password":
+            "No se pudo cambiar la contrase\u00f1a",
+        "This account is half-created \u2014 sign up again":
+            "Esta cuenta qued\u00f3 a medio crear: reg\u00edstrate de nuevo",
+        "Signed in, but could not read your account":
+            "Sesi\u00f3n iniciada, pero no se pudo leer tu cuenta",
+        "Could not save to your account":
+            "No se pudo guardar en tu cuenta",
+        "Your email is used for password resets and nothing else.":
+            "Tu correo solo se usa para restablecer la contrase\u00f1a.",
+        "Your progress lives on your account, not on this machine.":
+            "Tu progreso vive en tu cuenta, no en esta m\u00e1quina.",
+        "Signed out":
+            "Sesi\u00f3n cerrada",
         'Watch Instead': 'Ver la partida',
         'Watching uses the same room code and does not take a player slot — you can join a match already in progress, and more than one person can watch at once.': 'Ver usa el mismo código de sala y no ocupa una plaza de jugador: puedes entrar en una partida ya empezada, y varias personas pueden verla a la vez.',
         'Leave Room': 'Salir de la sala',
@@ -589,6 +665,82 @@ const I18N = {
         'Play': 'Jouer',
         'Host Game': 'Héberger',
         'Join Game': 'Rejoindre',
+        "Left Click":
+            "Clic gauche",
+        "Middle Click":
+            "Clic du milieu",
+        "Right Click":
+            "Clic droit",
+        "Lost the connection to the lobby server":
+            "Connexion au serveur de salons perdue",
+        "This browser cannot host a game":
+            "Ce navigateur ne peut pas h\u00e9berger de partie",
+        "That username and password do not match":
+            "Ce nom d\u2019utilisateur et ce mot de passe ne correspondent pas",
+        "Pick a username":
+            "Choisissez un nom d\u2019utilisateur",
+        "Usernames are at least 3 characters":
+            "Les noms d\u2019utilisateur font au moins 3 caract\u00e8res",
+        "Usernames are at most 20 characters":
+            "Les noms d\u2019utilisateur font au plus 20 caract\u00e8res",
+        "Usernames use letters, numbers and underscores only":
+            "Les noms d\u2019utilisateur n\u2019acceptent que lettres, chiffres et tirets bas",
+        "Passwords are at least 8 characters":
+            "Les mots de passe font au moins 8 caract\u00e8res",
+        "Passwords are at most 72 characters":
+            "Les mots de passe font au plus 72 caract\u00e8res",
+        "Pick a display name":
+            "Choisissez un nom affich\u00e9",
+        "Enter your email address":
+            "Saisissez votre adresse e-mail",
+        "That does not look like an email address":
+            "Cela ne ressemble pas \u00e0 une adresse e-mail",
+        "Split-screen build - progress stays on this machine":
+            "\u00c9cran partag\u00e9 : la progression reste sur cette machine",
+        "No account service configured for this build":
+            "Aucun service de comptes configur\u00e9 pour cette version",
+        "Could not load the account service":
+            "Impossible de charger le service de comptes",
+        "Could not start the account service":
+            "Impossible de d\u00e9marrer le service de comptes",
+        "That password reset link has expired or was already used. Ask for a new one.":
+            "Ce lien de r\u00e9initialisation a expir\u00e9 ou a d\u00e9j\u00e0 servi. Demandez-en un nouveau.",
+        "That link did not work.":
+            "Ce lien n\u2019a pas fonctionn\u00e9.",
+        "Choose a new password":
+            "Choisissez un nouveau mot de passe",
+        "Accounts are unavailable":
+            "Les comptes sont indisponibles",
+        "Creating your account…":
+            "Cr\u00e9ation de votre compte",
+        "Could not create the account":
+            "Impossible de cr\u00e9er le compte",
+        "Enter your username":
+            "Saisissez votre nom d\u2019utilisateur",
+        "Enter your password":
+            "Saisissez votre mot de passe",
+        "Signing in…":
+            "Connexion",
+        "Sending…":
+            "Envoi",
+        "Saving\u2026":
+            "Enregistrement…",
+        "Password changed \u2014 sign in with it.":
+            "Mot de passe modifi\u00e9 : connectez-vous avec.",
+        "Could not change the password":
+            "Impossible de changer le mot de passe",
+        "This account is half-created \u2014 sign up again":
+            "Ce compte est \u00e0 moiti\u00e9 cr\u00e9\u00e9 : inscrivez-vous \u00e0 nouveau",
+        "Signed in, but could not read your account":
+            "Connect\u00e9, mais impossible de lire votre compte",
+        "Could not save to your account":
+            "Impossible d\u2019enregistrer sur votre compte",
+        "Your email is used for password resets and nothing else.":
+            "Votre e-mail ne sert qu\u2019\u00e0 r\u00e9initialiser le mot de passe.",
+        "Your progress lives on your account, not on this machine.":
+            "Votre progression vit sur votre compte, pas sur cette machine.",
+        "Signed out":
+            "D\u00e9connect\u00e9",
         'Watch Instead': 'Regarder',
         'Watching uses the same room code and does not take a player slot — you can join a match already in progress, and more than one person can watch at once.': 'Regarder utilise le même code de salon et ne prend pas de place de joueur : vous pouvez rejoindre un match déjà en cours, et plusieurs personnes peuvent regarder en même temps.',
         'Leave Room': 'Quitter le salon',

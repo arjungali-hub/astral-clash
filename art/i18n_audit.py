@@ -170,6 +170,7 @@ def visible_strings():
     # Not "every string literal" - that is impossible from source, because
     # 'p1', 'shop-title' and 'Unlocked' are the same shape and only one is
     # prose. These are POSITIONS that are user-visible by construction.
+    QT = chr(39)    # a quote, so the patterns below stay readable
     js_positions = (
         # setOptState(id, TEXT, on) - the second argument is the chip a player
         # reads beside a settings label.
@@ -186,6 +187,24 @@ def visible_strings():
         # fragment would have silently produced an untranslated fragment.
         r"(?:^|[^A-Za-z0-9_$.])t" + chr(92) + r"(" + chr(92) + r"s*'((?:[^'"
         + chr(92) + chr(92) + r"]|" + chr(92) + chr(92) + r".)+)'" + chr(92) + r"s*" + chr(92) + r")",
+        # accountSetStatus(status, TEXT) - the account panel's entire
+        # status line, and THE BLIND SPOT THIS EXISTS FOR: 33 strings sat
+        # untranslated in both languages while this audit reported
+        # '0 MISSING', because they are RETURNED FROM FUNCTIONS and reach
+        # the panel through st.detail, passing none of the positions above.
+        # Correct about its own scope and silent about the screen, which is
+        # the third time that exact shape has cost this project a feature.
+        r"accountSetStatus" + chr(92) + r"(" + chr(92) + r"s*" + QT
+        + r"(?:[^" + QT + chr(92) + chr(92) + r"]|" + chr(92) + chr(92) + r".)*"
+        + QT + chr(92) + r"s*," + chr(92) + r"s*" + QT
+        + r"((?:[^" + QT + chr(92) + chr(92) + r"]|" + chr(92) + chr(92) + r".)+)" + QT,
+        # return 'A sentence like this' - the field validators, which hand
+        # their message back instead of displaying it, so nothing above can
+        # see them. Deliberately narrow: a leading capital AND an internal
+        # space, so `return 'p1'`, `return 'MENU'` and every other bare
+        # token stays out of it.
+        r"return " + QT + r"([A-Z][^" + QT + chr(92) + chr(92) + r"]* [^" + QT
+        + chr(92) + chr(92) + r"]+)" + QT,
         # showToast(TEXT)
         r"showToast" + chr(92) + r"(" + chr(92) + r"s*'((?:[^'" + chr(92)
         + chr(92) + r"]|" + chr(92) + chr(92) + r".)+)'",
@@ -210,7 +229,19 @@ def visible_strings():
         text = io.open(path, encoding='utf-8').read()
         for pat in js_positions:
             for m in re.finditer(pat, text):
-                add(label, m.group(1).replace("\\'", "'"))
+                piece = m.group(1).replace("\\'", "'")
+                # A LITERAL GLUED TO SOMETHING ELSE IS A FRAGMENT, not a
+                # string anybody can translate. `'Creating your account' +
+                # ELLIPSIS` and `'If there is an account called ' + name`
+                # never reach the screen in the form written here, so
+                # demanding a table entry for them asks for one that could
+                # never match - the audit's own "assembled at runtime" bucket
+                # is where they belong, and it already exists for exactly this.
+                tail = text[m.end():m.end() + 3]
+                if tail.lstrip().startswith('+'):
+                    add_assembled(label, piece)
+                else:
+                    add(label, piece)
 
     # ---- prose assembled inside TEMPLATE LITERALS ----------------------
     #
@@ -337,9 +368,24 @@ def table_keys():
                     # UNESCAPED. A key containing a quote is stored with it escaped,
                     # and the raw match carries the backslashes - so the key never
                     # equalled the source string it was written for.
-                    keys.add(m.group(1).replace('\\"', '"')
-                             .replace("\\'", "'")
-                             .replace('\\\\', '\\'))
+                    key = (m.group(1).replace('\\"', '"')
+                           .replace("\\'", "'")
+                           .replace('\\\\', '\\'))
+                    # AND THE UNICODE ESCAPES, exactly as add() does to the
+                    # source side. The tables write non-ASCII as escapes, so a
+                    # key reading "Password changed — sign in with it."
+                    # never equalled the em dash the code actually produces,
+                    # and this reported it untranslated while the Spanish sat
+                    # two lines below it in the same file. The same bug add()
+                    # had already fixed, one layer over, on the half of the
+                    # comparison nobody had checked.
+                    if '\\u' in key:
+                        try:
+                            key = (key.encode('ascii', 'backslashreplace')
+                                   .decode('unicode_escape'))
+                        except Exception:
+                            pass
+                    keys.add(key)
         langs[lang] = keys
     return langs
 

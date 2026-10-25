@@ -3772,6 +3772,55 @@ by CI — which is why so much of this batch is about making a failure name its
 own cause: when the only feedback loop is twenty-five minutes long, a message
 that says "50 -> 74" and nothing else costs a round.
 
+**WHAT IS ACTUALLY OPEN.** This section has been rewritten four times for going
+stale, most recently while still announcing a texture leak that had been fixed
+and a `leakcheck` that had gone green. It is now a short list on purpose.
+
+  * **Matchmaking (roadmap 07)** — deferred, and not for want of effort. A
+    queue pairs two waiting players and leaves one waiting player staring at a
+    spinner, which is worse than a room code that always works. It also becomes
+    the first piece of infrastructure that MUST be up. The signal to build it is
+    players asking for it.
+  * **The bot plays a competent match** — a judgement, and no assertion settles
+    it. `botcheck` proves the tiers differ and that the hard ones land hits; it
+    cannot prove the fight is any good.
+  * **A knockback sweep** — the teleport sweep covers knockback only where the
+    two overlap.
+
+**ALL FOUR HEAVY CHECKERS PASS**, including `leakcheck`. The texture leak it
+found was real and is fixed: `disposeObject3D` freed geometry and materials, and
+a skinned mesh also owns a SKELETON, which owns a texture. three.js sizes a
+`boneTexture` to the next power of two holding four pixels per bone — 19 bones
+gives 16x16, which is exactly the size that kept appearing — and four leaked per
+round because `SkeletonUtils.clone` gives every fighter its own skeleton and
+every fighter has two skinned rigs, the body and the viewmodel arm. Count across
+four rounds after the fix: 33, 33, 33, 33.
+
+**AND THE LESSON FROM HOW LONG IT HID**, which is the one worth keeping. Four
+instruments looked at it and three reported honestly about the wrong thing: the
+constructor wrappers see only `new THREE.X` from game code and three.js builds
+this one with its own class reference; the Proxy on `renderer.info.memory` sees
+every upload and sees a NUMBER, never an object; the reachability census can
+only find what something still points at, and after the round nothing does.
+What worked was the one hook that sees the event AND the object at the same
+moment — three.js registers its `dispose` listener at the instant it creates a
+GL texture, inside the same function that does the increment, and there `this`
+IS the texture.
+
+**THE SAME SHAPE CAUGHT i18n_audit AGAIN**, for the third time. It reported
+"321 translated, 0 MISSING" while thirty-eight strings were English in both
+languages — every account message, because they are RETURNED FROM FUNCTIONS and
+reach the panel through `st.detail`, passing none of the positions it scanned.
+It now reads `accountSetStatus`'s message argument and bare `return` of a prose
+sentence, and it has been proved able to fail on both. Two of its own bugs fell
+out: `table_keys()` never decoded `\uXXXX`, so a key written
+`Password changed \u2014 ...` could not match the em dash the code produces —
+the same bug `add()` had already fixed on the source side and left alone on the
+other half of the comparison — and literals glued to something else with `+` are
+fragments that no table entry could ever match, so they go to the "assembled"
+bucket rather than being demanded as translations. 359 translated, 0 missing,
+and the zero now means something.
+
 **Needs a person, not a machine.**
 
   * **The bot plays a competent match.** "Competent" is a judgement, and no
