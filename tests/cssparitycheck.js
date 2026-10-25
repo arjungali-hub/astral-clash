@@ -48,7 +48,24 @@ const H = require('./harness');
 // runner, so a committed snapshot would diff everywhere except where it was
 // made. The epoch is the part that belongs in version control; the measurements
 // belong to whichever machine took them.
-const BASELINE_EPOCH = '2026-10-18: contrast fixes, modal top-align, phone gutter';
+const BASELINE_EPOCH = '2026-10-24: .opt is border-box, so the Language row fits';
+// Previous epoch: '2026-10-18: contrast fixes, modal top-align, phone gutter'.
+//
+// ONE DELIBERATE CHANGE, and the numbers say exactly what it did:
+//
+//     opt#6.box     [296,47] -> [270,47]
+//     opt#6.height  "27px"   -> "47px"
+//
+// 26px narrower is the fix: 12+12 of padding and 1+1 of border, which a
+// content-box element adds OUTSIDE a width of 100%. Every other .opt is a
+// <button>, and the UA stylesheet gives buttons border-box already, so only
+// the Language row - a <label> - was overflowing its panel.
+//
+// The height moving 27 -> 47 is NOT a visual change, and it is worth saying
+// so rather than leaving a reader to wonder: the rendered box is 47 tall in
+// both readings, as the unchanged second number of the box shows. Only what
+// `height` REPORTS moved - content-box reports the 27px content, border-box
+// reports the full 47px. Same pixels, different accounting.
 // Previous epochs: '2026-10-12: Watch a Replay row added to Settings', and
 // before that the account modal and daily panel.
 //

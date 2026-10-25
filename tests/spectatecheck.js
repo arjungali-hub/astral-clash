@@ -92,13 +92,29 @@ process.on('unhandledRejection', (e) => {
     await host.evaluate(() => window.ACDebug.netFakeConnect('host'));
     await join.evaluate(() => window.ACDebug.netFakeConnect('joiner'));
     startRelay();
+    // EACH CLIENT PICKS ITS OWN FIGHTER, which is not a style choice - the
+    // game refuses a client picking for the other side, and netcheck asserts
+    // that it does ("the joiner cannot preview a pick for p1").
+    //
+    // Confirming both here left p2 never ready, so startOnline() correctly
+    // declined to start anything and both clients sat in MENU for the full ten
+    // minutes. CI reported "the host reaches a fight -- host state MENU",
+    // which was true, and was about this rather than about spectating.
     await host.evaluate(() => {
         const D = window.ACDebug;
         D.setDebugUnlockAll(true);
         D.confirmPick('p1', 'Kaelen');
+    });
+    await join.evaluate(() => {
+        const D = window.ACDebug;
+        D.setDebugUnlockAll(true);
         D.confirmPick('p2', 'Lyra');
     });
-    await H.sleep(300);
+    // The picks have to CROSS before either side is ready, and that needs the
+    // relay to have run - a fixed sleep here is the bet on timing this suite
+    // keeps losing, so wait for the host to actually see the guest's choice.
+    await waitRelaying(host, () => window.ACDebug.p2Choice === 'Lyra', 20000);
+    await waitRelaying(join, () => window.ACDebug.p1Choice === 'Kaelen', 20000);
     // --- a spectator who arrives EARLY ------------------------------------
     //
     // Deliberately before the match, because that is where the bugs were. A
