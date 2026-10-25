@@ -3134,7 +3134,21 @@ document.getElementById('replay-file').addEventListener('change', (e) => {
     reader.readAsText(file);
 });
 document.getElementById('btn-exit-replay').addEventListener('click', exitReplay);
-document.getElementById('btn-account-back').addEventListener('click', () => openModal('settings'));
+// CLOSES, like every other back button here. It used to OPEN settings, which
+// works by accident from settings - that panel is already on the stack, so the
+// push is a no-op and the account panel is simply covered - and traps you
+// anywhere else.
+//
+// From a reset link the stack is just ['account']: Back PUSHED settings on top,
+// the settings X popped settings off, and the account panel underneath was
+// revealed again. Reported as "you are stuck there forever", and reported
+// precisely: it only happens via the link, never in the normal game.
+//
+// Closing is both correct and simpler. Arrived from settings, closing the
+// account panel reveals settings beneath it. Arrived from a link, closing it
+// leaves the menu, which is where somebody who has just set a password wants
+// to be.
+document.getElementById('btn-account-back').addEventListener('click', () => closeModal());
 document.getElementById('btn-bloom').addEventListener('click', toggleBloom);
 // BOTH buttons, at load. The Glow one was never refreshed here, so its
 // markup label - a hardcoded 'On' - survived a reload with bloom turned

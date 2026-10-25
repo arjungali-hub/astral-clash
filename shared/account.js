@@ -580,6 +580,22 @@ function accountField(id, label, type, placeholder, auto, max, dis) {
         + ' maxlength="' + max + '" placeholder="' + placeholder + '"' + dis + '></div>';
 }
 
+// BACK FROM A RESET LINK. No tabs here: the player is mid-task and every other
+// control on this panel is a way to lose their place - which is also why this
+// is reached BEFORE the signed-in branch, since a recovery link signs you in
+// as a side effect of proving who you are.
+function recoverPanelHTML(st) {
+    const busy = st.status === 'busy';
+    const dis = busy ? ' disabled' : '';
+    return '<p class="account-status">Choose a new password for your account.</p>'
+        + accountField('input-account-pass', 'New password', 'password',
+            'at least 8 characters', 'new-password', 72, dis)
+        + '<button id="btn-account-go"' + dis + '>'
+        + (busy ? ELLIPSIS : 'Save new password') + '</button>'
+        + '<p class="account-status' + (st.status === 'error' ? ' err' : '') + '">'
+        + (st.detail || '') + '</p>';
+}
+
 function accountPanelHTML() {
     const st = accountState();
     if (!st.supported) {
@@ -594,6 +610,18 @@ function accountPanelHTML() {
         return '<p class="account-status err">' + st.detail + ', so nothing can be saved '
             + 'right now.</p>';
     }
+    // RECOVERY OUTRANKS BEING SIGNED IN, and it has to be tested first.
+    //
+    // A reset link creates a REAL session - that is how it proves who you are
+    // - so by the time this renders, st.signedIn is true and the branch below
+    // was winning. The link logged people straight in and offered them a Sign
+    // out button, which is the opposite of what they clicked it for. Reported
+    // as "it doesn't reset your password, it just automatically logs you in".
+    //
+    // The session is not the point; the task is. Whoever arrived here came to
+    // set a password, and that is the only thing this panel should offer until
+    // they have.
+    if (st.mode === 'recover') return recoverPanelHTML(st);
     if (st.signedIn) {
         return '<p class="account-status ok">Signed in as <b>' + st.displayName + '</b> '
             + '(<span class="account-username">' + st.username + '</span>). '
@@ -606,16 +634,6 @@ function accountPanelHTML() {
     const note = (text) => '<p class="account-status' + (st.status === 'error' ? ' err' : '')
         + (st.status === 'sent' ? ' ok' : '') + '">' + (st.detail || text) + '</p>';
 
-    // BACK FROM A RESET LINK. No tabs here: the player is mid-task and every
-    // other control on this panel is a way to lose their place.
-    if (st.mode === 'recover') {
-        return '<p class="account-status">Choose a new password for your account.</p>'
-            + accountField('input-account-pass', 'New password', 'password',
-                'at least 8 characters', 'new-password', 72, dis)
-            + '<button id="btn-account-go"' + dis + '>'
-            + (busy ? '…' : 'Save new password') + '</button>'
-            + note('');
-    }
 
     if (st.mode === 'forgot') {
         return '<p class="account-status">Enter your username and we will email a '
