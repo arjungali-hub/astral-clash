@@ -4681,6 +4681,15 @@ STATEMENT_INTERFACE = (
     'shop-close',       # two store panels, each with its own close
     'shadowMap.enabled',  # one build turns shadows off on a touch device
     'buildGrid',        # P1_KEYS on both grids there, P1 and P2 here
+    # The online build hides its single name field while signed in and plays
+    # under the account's display name. The local build has no account and TWO
+    # typed-in names, one per player at the same keyboard, so there is no
+    # single 'your name' to hide and nothing for an account to overrule.
+    # Matched on the HOOK, not on what the online build calls through it:
+    # the differing statement is the LOCAL one, `onAccountChange =
+    # refreshAccountUI;`, so an entry naming syncNameToAccount matched
+    # neither side.
+    'onAccountChange',
     # THE DEBUG SURFACE, explicitly rather than by accident: it was being
     # exempted because the block happens to contain netHost and coopEnemies,
     # which is a filter working for the wrong reason. Each build exports what

@@ -1684,40 +1684,14 @@ function sfxRoundStart() { synthTone(440, 0.15, { type: 'square', freqEnd: 880, 
 
 function sfxRoundEnd() { synthTone(392, 0.4, { type: 'triangle', freqEnd: 196, peak: 0.22 }); }
 
-let ambientNodes = null;
-
-function stopAmbientPad() {
-    if (!ambientNodes) return;
-    const { oscA, oscB, lfo, gain } = ambientNodes;
-    if (actx) {
-        const now = actx.currentTime;
-        gain.gain.cancelScheduledValues(now);
-        gain.gain.setValueAtTime(gain.gain.value, now);
-        gain.gain.linearRampToValueAtTime(0, now + 0.6);
-    }
-    setTimeout(() => { try { oscA.stop(); oscB.stop(); lfo.stop(); } catch (e) { /* already stopped */ } }, 700);
-    ambientNodes = null;
-}
-
-function startAmbientPad(map) {
-    stopAmbientPad();
-    if (!actx) return;
-    const accentHex = hexNum(map.accent);
-    const root = 55 + (accentHex % 40); // low root note, nudged per-map by its accent color so each arena has a slightly different drone
-    const now = actx.currentTime;
-    const oscA = actx.createOscillator(); oscA.type = 'sine'; oscA.frequency.value = root;
-    const oscB = actx.createOscillator(); oscB.type = 'sine'; oscB.frequency.value = root * 1.5 + 0.6; // slightly detuned fifth, beats slowly for a "living" pad
-    const filter = actx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 400;
-    const lfo = actx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.07;
-    const lfoGain = actx.createGain(); lfoGain.gain.value = 150;
-    lfo.connect(lfoGain); lfoGain.connect(filter.frequency);
-    const gain = actx.createGain();
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(1, now + 1.2);
-    oscA.connect(filter); oscB.connect(filter); filter.connect(gain); gain.connect(musicGain);
-    oscA.start(now); oscB.start(now); lfo.start(now);
-    ambientNodes = { oscA, oscB, lfo, gain };
-}
+// THE ARENA DRONE IS GONE. It was a low detuned pad, one root note per map,
+// running for the whole of every match. Reported simply as "the background
+// hum is super annoying", which is the right verdict on a sound nobody can
+// turn off that never changes and never stops. Removed rather than hidden
+// behind another toggle: the Settings panel is not the place to apologise
+// for a sound. Every per-event cue - windups, hits, specials, round start
+// and end, the low-health heartbeat - is untouched, because those carry
+// information and the pad carried none.
 
 let playLeft = ARENA_LEFT, playRight = ARENA_RIGHT, playTop = ARENA_TOP, playBottom = ARENA_BOTTOM;
 

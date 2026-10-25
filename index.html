@@ -966,6 +966,15 @@
            row is slate - so solid cyan goes back to meaning "this does
            something now". */
         .opt {
+            /* BORDER-BOX, because this rule is worn by two different elements.
+               Every other .opt is a <button>, and the UA stylesheet already
+               gives buttons border-box - so `width: 100%` plus 12px of side
+               padding and a 1px border fits. The Language row is a <label>,
+               which inherits the page's content-box default, and the same
+               declarations made it exactly 26px wider than the panel holding
+               it. Reported as "the language bar goes too far off to the side",
+               and it was the only row that could. */
+            box-sizing: border-box;
             display: flex; align-items: center; justify-content: space-between;
             gap: 12px; width: 100%; margin: 6px 0; padding: 9px 12px;
             background: #1a2235; color: #cbd5e1; border: 1px solid #2e3a59;
@@ -1420,7 +1429,7 @@
         /* The login name, shown beside the display name so somebody can see
            which account they are in without it competing with the name they
            chose to be known by. */
-        /* "Forgotten your password?" and "Back to signing in" - links in
+        /* "Forgot password" and "Back to signing in" - links in
            everything but markup. A button, because they DO something; styled
            flat so they read as the aside they are rather than competing with
            the action above them. */
@@ -3137,7 +3146,19 @@ refreshLangUI();
 refreshDailyUI();
 // Accounts. onAccountChange is how shared/account.js repaints without
 // reaching into bootGame(): it owns the state, this owns the screen.
-onAccountChange = refreshAccountUI;
+onAccountChange = () => {
+    refreshAccountUI();
+    syncNameToAccount();
+    // A DEAD RESET LINK HAS TO OPEN SOMETHING. Setting the status alone puts
+    // the explanation behind Settings -> Account, which is exactly where
+    // somebody who just clicked a link in their email is not looking - the
+    // report was "it brought me to a url which looks exactly like the normal
+    // home page". The notice is one-shot, so this cannot reopen on an
+    // unrelated repaint.
+    if (typeof accountTakeLinkNotice === 'function' && accountTakeLinkNotice()) {
+        openAccountPanel();
+    }
+};
 // The project these saves live in. BOTH VALUES ARE PUBLIC by design - this page
 // is static and anyone can view-source it - which is why the row level security
 // in supabase/migrations/0001_saves.sql is the actual access control and not a
@@ -4874,7 +4895,6 @@ function buildOuterWall(side, theme) {
 function loadMap(map) {
     currentMap = map;
     clearMapGroup();
-    startAmbientPad(map); // Batch 10: swaps to this map's drone; internally stops whatever was already playing
     mapEdgeObjects = [];
     outerWalls = [];
     sceneryFlames.length = 0; // drop references to the previous map's (now-disposed) brazier flames
@@ -9482,6 +9502,36 @@ document.getElementById('btn-local-build').addEventListener('click', () => {
 document.getElementById('btn-home-play').addEventListener('click', () => { refreshLobbyUI(); openModal('lobby'); });
 document.getElementById('btn-home-armory').addEventListener('click', () => openShop(ACCOUNT));
 
+// SIGNED IN, THE ACCOUNT ALREADY KNOWS WHAT YOU ARE CALLED.
+//
+// The name field and the account's display name were two separate answers to
+// one question, and asking twice is the bug: you pick a display name when you
+// sign up, and then the home screen asks you to type a name anyway. Worse, the
+// two could disagree - the field is what the opponent sees, so the name on
+// their screen was whatever was last typed on this machine, not the name on
+// the account.
+//
+// So while signed in the row is hidden and the account's display name IS the
+// name you play under. Signing out leaves that name in place rather than
+// clearing it, which is the kinder of the two options: it is still a name you
+// chose, and the field reappears if you want to change it.
+//
+// Only the online build has this row at all - the local build has two people at
+// one keyboard and a name each - so there is nothing to hide there, and
+// accountSignedIn() is false in it regardless.
+function syncNameToAccount() {
+    const row = document.querySelector('.home-name-row');
+    const st = (typeof accountState === 'function') ? accountState() : null;
+    const signed = !!(st && st.signedIn);
+    if (row) row.style.display = signed ? 'none' : '';
+    if (!signed || !st.displayName) return;
+    setMyName(st.displayName);
+    const box = document.getElementById('input-name');
+    // Kept in step even though it is hidden: signing out shows this row again,
+    // and a field still holding the pre-sign-in name would quietly rename you.
+    if (box && box.value !== myPlayerName) box.value = myPlayerName;
+}
+
 // The name field. Committed on every keystroke rather than on blur: there is no
 // Save button, and a name typed and then abandoned by clicking Play Online
 // should still be the name you play under.
@@ -9529,7 +9579,6 @@ function goHome() {
     closeAllModals();
     showScreen('home');
     gameState = 'MENU';
-    stopAmbientPad();
     refreshCoinDisplays();
 }
 document.getElementById('btn-lobby-close').addEventListener('click', () => closeModal());
@@ -9749,7 +9798,6 @@ document.getElementById('btn-play-again').addEventListener('click', () => {
                   // slabs in the scene and both cameras in third person.
     closeAllModals();
     gameState = "MENU";
-    stopAmbientPad();
     // Batch 34: back to the room if the link is still up - re-picking a fighter
     // with your opponent still there is the common case. If they are gone, the
     // room cannot start anything, so go home instead.
@@ -9971,7 +10019,6 @@ document.getElementById('btn-quit-to-menu').addEventListener('click', (e) => {
     disposeBoss(); disposeZoneMesh(); // Batch 16/19: don't leave mode props in the scene
     resetCrush();                     // Batch 27: and don't leave the crush running
     gameState = 'MENU';
-    stopAmbientPad();
     exitPointerLock();
     // Batch 34: back to the ROOM if the opponent is still connected (re-picking
     // together is the common case), otherwise the front page - a room with no

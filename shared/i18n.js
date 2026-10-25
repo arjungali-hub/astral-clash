@@ -348,7 +348,7 @@ const I18N = {
             "Nombre visible",
         "Email":
             "Correo electrónico",
-        "Forgotten your password?":
+        "Forgot password":
             "¿Olvidaste tu contraseña?",
         "Glow":
             "Brillo",
@@ -889,7 +889,7 @@ const I18N = {
             "Nom affiché",
         "Email":
             "E-mail",
-        "Forgotten your password?":
+        "Forgot password":
             "Mot de passe oublié ?",
         "Glow":
             "Lueur",

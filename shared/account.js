@@ -217,7 +217,45 @@ function accountLoadLib() {
     });
 }
 
+// WHAT SUPABASE SENDS BACK WHEN THE LINK DID NOT WORK.
+//
+// Reported from a real reset attempt: the link landed on
+// `#error=access_denied&error_code=otp_expired&...` and the game showed the
+// ordinary home page with nothing on it. That is because only the SUCCESS path
+// was handled - the PASSWORD_RECOVERY event below. A link that has expired or
+// already been used produces no event and no session, so every branch did
+// nothing and the explanation sat in the address bar where nobody looks.
+//
+// Read before the client starts, because createClient with detectSessionInUrl
+// consumes the fragment.
+let accountLinkNotice = '';
+
+function readLinkError() {
+    const raw = String(location.hash || '').replace(/^#/, '');
+    if (!raw || raw.indexOf('error') < 0) return null;
+    let p;
+    try { p = new URLSearchParams(raw); } catch (e) { return null; }
+    if (!p.get('error') && !p.get('error_code')) return null;
+    const code = p.get('error_code') || '';
+    const desc = p.get('error_description') || '';
+    // The fragment is cleared so a refresh does not re-announce it, and so the
+    // next reset link arrives at a clean URL.
+    try {
+        history.replaceState(null, '', location.pathname + location.search);
+    } catch (e) { /* a browser that will not rewrite its own bar is no reason to stop */ }
+    return { code, desc };
+}
+
+// One-shot: the build asks once and the message is cleared, so a repaint for
+// any other reason does not reopen the panel.
+function accountTakeLinkNotice() {
+    const m = accountLinkNotice;
+    accountLinkNotice = '';
+    return m;
+}
+
 function startAccountClient(lib) {
+    const linkError = readLinkError();
     try {
         sb = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
             // detectSessionInUrl ON, because a reset link is exactly that: the
@@ -230,6 +268,17 @@ function startAccountClient(lib) {
         return;
     }
     accountSetStatus('signed-out', '');
+    if (linkError) {
+        // Expired and already-used look the same from here, and the remedy is
+        // the same too - ask for another one - so the panel opens on the form
+        // that does it rather than on a dead end.
+        const stale = /expired|invalid/i.test(linkError.code + ' ' + linkError.desc);
+        accountMode = stale ? 'forgot' : 'in';
+        accountLinkNotice = stale
+            ? 'That password reset link has expired or was already used. Ask for a new one.'
+            : (linkError.desc || 'That link did not work.');
+        accountSetStatus('error', accountLinkNotice);
+    }
     sb.auth.onAuthStateChange((event, session) => {
         // ARRIVING FROM A RESET LINK. Supabase signs the player in with a
         // short-lived recovery session - which means without this branch they
@@ -573,7 +622,7 @@ function accountPanelHTML() {
             ? 'Your email is used for password resets and nothing else.'
             : 'Your progress lives on your account, not on this machine.')
         + (up ? '' : '<button id="btn-account-mode-forgot" class="account-link">'
-            + 'Forgotten your password?</button>');
+            + 'Forgot password</button>');
 }
 
 function refreshAccountUI() {

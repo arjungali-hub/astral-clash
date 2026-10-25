@@ -747,11 +747,31 @@
         }
         #settings-screen .menu-section { max-width: 320px; }
         .opt {
-            display: flex; align-items: center; justify-content: space-between;
-            gap: 12px; width: 100%; margin: 6px 0; padding: 9px 12px;
-            background: #1a2235; color: #cbd5e1; border: 1px solid #2e3a59;
-            border-radius: 6px; font-size: 0.82rem; font-weight: 600;
-            box-shadow: none; text-align: left; cursor: pointer;
+            /* BORDER-BOX, because this rule is worn by two different elements.
+               Every other .opt is a <button>, and the UA stylesheet already
+               gives buttons border-box - so `width: 100%` plus 12px of side
+               padding and a 1px border fits. The Language row is a <label>,
+               which inherits the page's content-box default, and the same
+               declarations made it exactly 26px wider than the panel holding
+               it. Reported as "the language bar goes too far off to the side",
+               and it was the only row that could. */
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            width: 100%;
+            margin: 6px 0;
+            padding: 9px 12px;
+            background: #1a2235;
+            color: #cbd5e1;
+            border: 1px solid #2e3a59;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            box-shadow: none;
+            text-align: left;
+            cursor: pointer;
         }
         .opt:hover { background: #232d47; color: #e2e8f0; box-shadow: none; }
         .opt .opt-state {
@@ -5005,7 +5025,6 @@ function buildOuterWall(side, theme) {
 function loadMap(map) {
     currentMap = map;
     clearMapGroup();
-    startAmbientPad(map); // Batch 10: swaps to this map's drone; internally stops whatever was already playing
     mapEdgeObjects = [];
     outerWalls = [];
     sceneryFlames.length = 0; // drop references to the previous map's (now-disposed) brazier flames
