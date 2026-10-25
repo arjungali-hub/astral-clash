@@ -9375,6 +9375,19 @@ function netHeartbeat() {
         netDropped('Connection timed out');
         return;
     }
+    // A SPECTATOR SENDS NOTHING, and this is the last thing that made that
+    // untrue. The drop detection above still runs - a watcher very much needs
+    // to notice a dead channel - but the keepalive below does not: the host
+    // binds a watcher's data handler to a no-op, so these PINGs arrive
+    // nowhere, and the watcher's own liveness comes from the host pinging IT
+    // (see the top of this function), not from anything it says.
+    //
+    // Caught by spectatecheck asserting that a spectator sends nothing at all
+    // and finding nine PINGs. The assertion was right and the code was wrong:
+    // weakening it to "sends nothing that can affect the match" would have
+    // kept a stream of packets nobody reads and retired the stronger
+    // invariant that a spectator is receive-only.
+    if (netIsWatching()) return;
     // A PING costs almost nothing and is only skipped when a STATE packet went
     // out recently enough to serve the same purpose.
     if (now - net.lastSendAt < NET_PING_MS) return;
