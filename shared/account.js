@@ -229,6 +229,12 @@ function accountLoadLib() {
 // Read before the client starts, because createClient with detectSessionInUrl
 // consumes the fragment.
 let accountLinkNotice = '';
+// Set when something about a link needs the panel on screen - a dead one to
+// explain, or a live one to act on. One-shot: the build takes it and it clears.
+let accountOpenRequest = false;
+// The message itself, which PERSISTS, because the status line is repainted by
+// events that know nothing about why it is there.
+let accountLinkDetail = '';
 
 function readLinkError() {
     const raw = String(location.hash || '').replace(/^#/, '');
@@ -249,9 +255,10 @@ function readLinkError() {
 // One-shot: the build asks once and the message is cleared, so a repaint for
 // any other reason does not reopen the panel.
 function accountTakeLinkNotice() {
-    const m = accountLinkNotice;
+    const want = accountOpenRequest;
+    accountOpenRequest = false;
     accountLinkNotice = '';
-    return m;
+    return want;
 }
 
 function startAccountClient(lib) {
@@ -274,10 +281,11 @@ function startAccountClient(lib) {
         // that does it rather than on a dead end.
         const stale = /expired|invalid/i.test(linkError.code + ' ' + linkError.desc);
         accountMode = stale ? 'forgot' : 'in';
-        accountLinkNotice = stale
+        accountLinkDetail = stale
             ? 'That password reset link has expired or was already used. Ask for a new one.'
             : (linkError.desc || 'That link did not work.');
-        accountSetStatus('error', accountLinkNotice);
+        accountOpenRequest = true;
+        accountSetStatus('error', accountLinkDetail);
     }
     sb.auth.onAuthStateChange((event, session) => {
         // ARRIVING FROM A RESET LINK. Supabase signs the player in with a
@@ -286,11 +294,33 @@ function startAccountClient(lib) {
         // and the link they clicked would have done nothing they could see.
         if (event === 'PASSWORD_RECOVERY') {
             accountMode = 'recover';
+            // AND ASK THE BUILD TO SHOW IT. Setting the mode is not showing
+            // anybody anything: the panel lives behind Settings -> Account, so
+            // a working reset link produced a recovery session, switched this
+            // to 'recover', and left the player looking at the ordinary home
+            // screen with no sign it had done anything.
+            //
+            // The auth log shows exactly what that costs. A verify succeeds
+            // ("login", method "implicit"), and twenty-two seconds later the
+            // same token is presented again and answered "One-time token not
+            // found" - somebody clicking the link a second time because the
+            // first time appeared to do nothing. The link was never the
+            // problem; it had already been spent on a screen that said so to
+            // no one.
+            accountOpenRequest = true;
             accountSetStatus('signed-out', 'Choose a new password');
+            accountNotify();
             return;
         }
-        if (session && session.user) accountAfterSignIn(session.user.id);
-        else { accountUser = null; accountForgetProgress(); accountSetStatus('signed-out', ''); }
+        if (session && session.user) { accountAfterSignIn(session.user.id); return; }
+        accountUser = null;
+        accountForgetProgress();
+        // NOT OVER A LINK MESSAGE. Registering this handler makes it fire once
+        // immediately with no session, which landed here and replaced the
+        // explanation for a dead link with an empty signed-out status - so the
+        // panel opened saying nothing at all, which is what was reported.
+        if (accountLinkDetail) accountSetStatus('error', accountLinkDetail);
+        else accountSetStatus('signed-out', '');
     });
     sb.auth.getSession().then(({ data }) => {
         if (data && data.session && data.session.user) accountAfterSignIn(data.session.user.id);
@@ -659,7 +689,10 @@ function wireAccountPanel() {
     const mode = (m) => () => {
         accountMode = m;
         // Clear the last message with the mode: "that username is taken" makes
-        // no sense once you have switched to signing in.
+        // no sense once you have switched to signing in. The dead-link message
+        // goes with it - it survives repaints on purpose, so it has to be
+        // retired deliberately or it outlives the thing it was about.
+        accountLinkDetail = '';
         accountSetStatus('signed-out', '');
         refreshAccountUI();
     };
