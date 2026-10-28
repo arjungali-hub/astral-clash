@@ -151,6 +151,13 @@ const I18N = {
         'Rematch (New Arena)': 'Revancha (arena nueva)',
         'Return to Menu': 'Volver al menú',
         'Resume (Esc)': 'Continuar (Esc)',
+        'Paused': 'En pausa',
+        'Menu': 'Menú',
+        'Back to the Fight (Esc)': 'Volver al combate (Esc)',
+        'The match is still running. Your fighter is standing still and can still be hit.':
+            'El combate sigue en marcha. Tu luchador está quieto y puede recibir golpes.',
+        'Language and the build switch reload the page, which would end the match you are in. They are available from the menu.':
+            'El idioma y el cambio de versión recargan la página, lo que terminaría el combate en el que estás. Están disponibles desde el menú.',
         'Back to Settings': 'Volver a ajustes',
         'Back to the Room': 'Volver a la sala',
         '← Back': '← Atrás',
@@ -768,6 +775,13 @@ const I18N = {
         'Rematch (New Arena)': 'Revanche (nouvelle arène)',
         'Return to Menu': 'Retour au menu',
         'Resume (Esc)': 'Reprendre (Échap)',
+        'Paused': 'En pause',
+        'Menu': 'Menu',
+        'Back to the Fight (Esc)': 'Retour au combat (Échap)',
+        'The match is still running. Your fighter is standing still and can still be hit.':
+            'Le combat continue. Votre combattant reste immobile et peut encore être touché.',
+        'Language and the build switch reload the page, which would end the match you are in. They are available from the menu.':
+            'La langue et le changement de version rechargent la page, ce qui mettrait fin au combat en cours. Ils sont accessibles depuis le menu.',
         'Back to Settings': 'Retour aux réglages',
         'Back to the Room': 'Retour au salon',
         '← Back': '← Retour',

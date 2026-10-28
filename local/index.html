@@ -1634,6 +1634,10 @@
                         </label>
 
                         <button id="btn-open-audio" class="btn-secondary">Audio Settings</button>
+                        <p id="settings-match-note" class="settings-match-note" style="display:none;">
+                        Language and the build switch reload the page, which would end
+                        the match you are in. They are available from the menu.
+                    </p>
                         <!-- Added after archiving: the only edit to this file's
                              behaviour, so switching builds is not a one-way
                              trip. Gameplay is untouched. -->
@@ -1932,6 +1936,10 @@ function openModal(name) {
     const el = document.getElementById(MODAL_EL[name]);
     ensureModalClose(el);
     el.style.zIndex = 40 + modalStack.length; // newest modal always renders on top of any it stacked over
+    // Two buttons open Settings, and some of its controls reload the page -
+    // which would end a running match. Checked here rather than at each
+    // button, because per-button wiring is the one thing the sync cannot port.
+    if (name === 'settings' && typeof syncSettingsForMatch === 'function') syncSettingsForMatch();
     el.style.display = 'flex';
 }
 function closeModal() {
@@ -4481,6 +4489,32 @@ function saveReplay() {
 // theme and nothing else - same theme, same 256x128 gradient, same convolution,
 // same answer.
 let envBuiltFor = null;
+
+// NOT WHILE THERE IS A MATCH TO LOSE.
+//
+// Settings opened from the pause menu is the SAME modal as Settings opened
+// from the home screen, Language and the build switch included - and both of
+// those leave the page. setLang() ends in location.reload(); the build switch
+// is a navigation. Either one mid-match throws the match away with no warning,
+// and online it drops the opponent too.
+//
+// Disabled rather than hidden, with the reason beside them: a control that
+// vanishes reads as broken, and somebody who came to Settings specifically to
+// change the language needs to know where it went.
+function syncSettingsForMatch() {
+    const live = typeof matchInProgress === 'function' && matchInProgress();
+    const note = document.getElementById('settings-match-note');
+    if (note) note.style.display = live ? '' : 'none';
+    for (const id of ['sel-lang', 'btn-local-build', 'btn-online-build', 'chk-unlock-all']) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        el.disabled = live;
+        if (el.dataset.titleWas === undefined) el.dataset.titleWas = el.title || '';
+        el.title = live
+            ? 'Not while a match is running - this reloads the page and would end it'
+            : el.dataset.titleWas;
+    }
+}
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every

@@ -1974,7 +1974,10 @@
 
             <div id="pause-screen">
                 <div class="menu-section">
-                    <h3>Paused</h3>
+                    <!-- Reads "Menu" online, where Escape pauses nothing but
+                         this screen - see refreshPauseUI. -->
+                    <h3 id="pause-title">Paused</h3>
+                    <p id="pause-online-note" class="pause-away-note" style="display:none;"></p>
                     <!-- Batch 37: why it is paused and what is blocking the
                          resume. A disabled button with no explanation is what
                          makes someone reload the page and lose the match. -->
@@ -2069,6 +2072,13 @@
                      measurably stronger fighter into a real match against
                      someone who had not. It remains available under ?debug=1
                      for development. -->
+                    <!-- Shown only while a match exists; see syncSettingsForMatch.
+                         A disabled control with no reason beside it is the thing
+                         that makes somebody click it twice and then reload. -->
+                    <p id="settings-match-note" class="settings-match-note" style="display:none;">
+                        Language and the build switch reload the page, which would end
+                        the match you are in. They are available from the menu.
+                    </p>
                     <div class="settings-list" style="margin-top:14px;">
                         <button id="btn-local-build" class="btn-local">Switch to Local Version</button>
                     </div>
@@ -2434,6 +2444,10 @@ function openModal(name) {
     const el = document.getElementById(MODAL_EL[name]);
     ensureModalClose(el);
     el.style.zIndex = 40 + modalStack.length; // newest modal always renders on top of any it stacked over
+    // Two buttons open Settings, and some of its controls reload the page -
+    // which would end a running match. Checked here rather than at each
+    // button, because per-button wiring is the one thing the sync cannot port.
+    if (name === 'settings' && typeof syncSettingsForMatch === 'function') syncSettingsForMatch();
     el.style.display = 'flex';
 }
 function closeModal() {
@@ -3080,6 +3094,32 @@ function setDebugUnlockAll(on) {
     showToast(debugUnlockAll ? 'Sandbox on — everything unlocked, bot matches available' : 'Your progression is back — two players only');
 }
 function toggleDebugUnlockAll() { setDebugUnlockAll(!debugUnlockAll); }
+// NOT WHILE THERE IS A MATCH TO LOSE.
+//
+// Settings opened from the pause menu is the SAME modal as Settings opened
+// from the home screen, Language and the build switch included - and both of
+// those leave the page. setLang() ends in location.reload(); the build switch
+// is a navigation. Either one mid-match throws the match away with no warning,
+// and online it drops the opponent too.
+//
+// Disabled rather than hidden, with the reason beside them: a control that
+// vanishes reads as broken, and somebody who came to Settings specifically to
+// change the language needs to know where it went.
+function syncSettingsForMatch() {
+    const live = typeof matchInProgress === 'function' && matchInProgress();
+    const note = document.getElementById('settings-match-note');
+    if (note) note.style.display = live ? '' : 'none';
+    for (const id of ['sel-lang', 'btn-local-build', 'btn-online-build', 'chk-unlock-all']) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        el.disabled = live;
+        if (el.dataset.titleWas === undefined) el.dataset.titleWas = el.title || '';
+        el.title = live
+            ? 'Not while a match is running - this reloads the page and would end it'
+            : el.dataset.titleWas;
+    }
+}
+
 function syncDebugUnlockUI() {
     const chk = document.getElementById('chk-unlock-all');   // absent since Batch 34
     if (chk) chk.checked = debugUnlockAll;
@@ -9940,6 +9980,22 @@ function refreshPauseUI() {
     const btn = document.getElementById('btn-resume');
     const note = document.getElementById('pause-away-note');
     if (!btn) return;
+    // ONLINE, ESCAPE PAUSES NOTHING BUT THIS SCREEN. The peer's client stays
+    // in FIGHT and keeps landing hits, so a heading that says "Paused" is a
+    // label for the opposite of what is happening - reported after an opponent
+    // took someone from 400 HP to 150 while they read it. An away-pause and a
+    // grace window DO hold both clients, so those keep the honest title.
+    const title = document.getElementById('pause-title');
+    const liveNote = document.getElementById('pause-online-note');
+    const matchRunsOn = AC_ONE_SIDE_PER_CLIENT && netActive()
+        && !netInGrace() && !awayPaused;
+    if (title) title.textContent = matchRunsOn ? 'Menu' : 'Paused';
+    if (liveNote) {
+        liveNote.textContent = matchRunsOn
+            ? 'The match is still running. Your fighter is standing still and can still be hit.'
+            : '';
+        liveNote.style.display = matchRunsOn ? '' : 'none';
+    }
     // THE OPPONENT IS GONE, which is not the same as "away" and used to look
     // identical: this function only wrote its note for awayPaused, so a host
     // whose opponent left mid-match got an ordinary pause screen with a working
@@ -9974,7 +10030,9 @@ function refreshPauseUI() {
     }
     if (!awayPaused) {
         btn.disabled = false;
-        btn.textContent = 'Resume (Esc)';
+        // Nothing was suspended online, so nothing is resumed - the button
+        // puts you back in a fight that never stopped.
+        btn.textContent = matchRunsOn ? 'Back to the Fight (Esc)' : 'Resume (Esc)';
         if (note) note.style.display = 'none';
         return;
     }

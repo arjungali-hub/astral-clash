@@ -34,16 +34,50 @@ function busyMarkHTML() {
          + '</span>';
 }
 
+// HIDES AND RESTORES THE REAL NODES. It used to stash innerHTML and write it
+// back, and writing innerHTML back does not restore anything - it PARSES the
+// string into brand new elements. The originals, and every click listener
+// attached to them, are gone.
+//
+// That made the fighter picker unusable on a cold load, which is the one load
+// everybody has first: previewing a fighter whose model is not cached shows
+// "Loading fighter" on the Confirm row, and when the model arrived the row
+// came back looking perfectly normal with dead buttons. Confirm did nothing,
+// Back did nothing, and the slot kept saying "-- confirm / -- back". Clicking
+// the same fighter again worked, because the model was cached by then and the
+// busy state never appeared - which is exactly the shape that makes a bug look
+// intermittent.
+//
+// So nothing is destroyed now: the children are hidden, a mark is appended
+// beside them, and afterwards the mark is removed and the children shown
+// again. Same elements throughout, same listeners.
 function busy(el, on, label) {
     if (!el) return;
     if (on) {
-        if (el.dataset.busyHeld == null) el.dataset.busyHeld = el.innerHTML;
-        el.innerHTML = busyMarkHTML() + (label ? ' <span class="ld-busy-label">' + label + '</span>' : '');
+        if (el.dataset.busyOn) return;          // already marked; do not stack
+        el.dataset.busyOn = '1';
+        for (const child of Array.from(el.children)) {
+            // The inline value is remembered rather than assumed to be empty,
+            // so a child that was deliberately hidden stays hidden afterwards.
+            child.dataset.busyWas = child.style.display;
+            child.style.display = 'none';
+        }
+        const mark = document.createElement('span');
+        mark.className = 'busy-mark-wrap';
+        mark.innerHTML = busyMarkHTML()
+            + (label ? ' <span class="ld-busy-label">' + label + '</span>' : '');
+        el.appendChild(mark);
         el.setAttribute('aria-busy', 'true');
     } else {
-        if (el.dataset.busyHeld != null) {
-            el.innerHTML = el.dataset.busyHeld;
-            delete el.dataset.busyHeld;
+        if (!el.dataset.busyOn) return;
+        delete el.dataset.busyOn;
+        const mark = el.querySelector('.busy-mark-wrap');
+        if (mark) mark.remove();
+        for (const child of Array.from(el.children)) {
+            if (child.dataset.busyWas !== undefined) {
+                child.style.display = child.dataset.busyWas;
+                delete child.dataset.busyWas;
+            }
         }
         el.removeAttribute('aria-busy');
     }
@@ -2551,6 +2585,18 @@ function refreshGameOverUI() {
 function inLiveMatch() {
     return gameState === 'FIGHT' || gameState === 'INTRO'
         || gameState === 'DEATH' || gameState === 'ROUND_END';
+}
+
+// IS THERE A MATCH TO LOSE. Wider than inLiveMatch on purpose: that one
+// answers "is the fight running right now", and PAUSED is deliberately not in
+// it because the fight is not running - but the match still EXISTS, and
+// anything that reloads or navigates will still destroy it.
+//
+// Pause is also the only way most people reach Settings mid-match, so a guard
+// written against inLiveMatch would have been off in exactly the case it is
+// for.
+function matchInProgress() {
+    return inLiveMatch() || gameState === 'PAUSED';
 }
 
 let quitArmed = 0;
