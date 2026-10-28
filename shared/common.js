@@ -4717,11 +4717,19 @@ function resolvePlayerCollision(a, b) {
     const ax = a.x + a.width / 2, ay = a.y + a.height / 2;
     const bx = b.x + b.width / 2, by = b.y + b.height / 2;
     const dx = bx - ax, dy = by - ay;
-    const dist = Math.hypot(dx, dy) || 1;
+    const dist = Math.hypot(dx, dy);
     const minDist = a.width / 2 + b.width / 2 - 8; // small overlap allowance so melee doesn't feel like a wall
     if (dist < minDist) {
         const push = (minDist - dist) / 2;
-        const nx = dx / dist, ny = dy / dist;
+        // EXACTLY COINCIDENT was the one case this missed, and it is the case
+        // the comment above promises to prevent. `Math.hypot(...) || 1` kept
+        // the division safe and left the direction at (0, 0), so the push was
+        // multiplied by nothing: two fighters sharing a point stayed welded
+        // there for the rest of the match, with no way back out. Same guard
+        // resolveObstacles already uses. Any direction will do; +x reads as
+        // the two of them shouldering apart.
+        const nx = dist > 0.001 ? dx / dist : 1;
+        const ny = dist > 0.001 ? dy / dist : 0;
         a.x -= nx * push; a.y -= ny * push;
         b.x += nx * push; b.y += ny * push;
         a.clampToArena(); b.clampToArena();

@@ -885,10 +885,16 @@
            re-adding the class (see announceResult), because a CSS animation
            only replays if the class actually changes. */
         #winner-title {
-            font-size: clamp(1.6rem, 4.2vw, 2.8rem);
-            line-height: 1.15;
+            /* 1.6rem caps it at about 26px. It was clamp(1.6rem, 4.2vw,
+               2.8rem), i.e. 44.8px on a desktop, which wrapped the title to
+               four lines and pushed the panel past the frame it sits in.
+               overflow-wrap is for the display name: 14 characters is the
+               field's maximum and the longest of them ran off the panel. */
+            font-size: clamp(1.15rem, 2.2vw, 1.6rem);
+            line-height: 1.2;
             letter-spacing: 0.02em;
             margin: 0 0 12px;
+            overflow-wrap: anywhere;
             text-shadow: 0 0 22px rgba(0,243,255,0.45);
         }
         #winner-title.emphasise { animation: resultGrow 620ms cubic-bezier(0.16, 1, 0.3, 1) both; }
