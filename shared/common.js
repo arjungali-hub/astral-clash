@@ -1636,11 +1636,16 @@ let HUD_TEXT_SCALE = parseFloat(safeLSGet('astralClashHudScale')) || 1;
 // SILENTLY and per-call, and Courier New is at least also monospaced with
 // tabular advances, so metrics shift once rather than jittering every frame.
 
-let audioSettings = Object.assign({ master: 0.8, sfx: 1, music: 0.55, muted: false }, (() => {
+let audioSettings = Object.assign({ master: 0.8, sfx: 1, muted: false }, (() => {
     try { return JSON.parse(safeLSGet(AUDIO_SETTINGS_KEY)) || {}; } catch (e) { return {}; }
 })());
 
-let actx = null, masterGain = null, sfxGain = null, musicGain = null;
+// NO MUSIC BUS. There was one, and the arena pad was the only thing that
+// ever fed it; with the pad gone the Music slider moved a gain node carrying
+// no signal, which is finding #60. Removed rather than left in place against
+// music that does not exist - if any arrives it gets its own bus and its own
+// slider back, both wired on the day.
+let actx = null, masterGain = null, sfxGain = null;
 
 function initAudio() {
     if (actx) return;
@@ -1653,21 +1658,21 @@ function initAudio() {
     sfxGain = actx.createGain();
     sfxGain.gain.value = audioSettings.sfx;
     sfxGain.connect(masterGain);
-    musicGain = actx.createGain();
-    musicGain.gain.value = audioSettings.music;
-    musicGain.connect(masterGain);
 }
 
 function applyAudioSettings() {
     if (!masterGain) return;
     masterGain.gain.value = audioSettings.muted ? 0 : audioSettings.master;
     sfxGain.gain.value = audioSettings.sfx;
-    musicGain.gain.value = audioSettings.music;
 }
 
 function synthTone(freq, duration, opts = {}) {
     if (!actx) return;
-    const now = actx.currentTime;
+    // opts.delay schedules the whole envelope later on the audio clock rather
+    // than on a timer, which is the only way two thumps land a fixed interval
+    // apart regardless of what the frame loop is doing. Every ramp below is
+    // relative to `now`, so offsetting it moves the cue intact.
+    const now = actx.currentTime + (opts.delay || 0);
     const osc = actx.createOscillator();
     osc.type = opts.type || 'sine';
     osc.frequency.setValueAtTime(freq, now);
@@ -1711,7 +1716,18 @@ let lastHeartbeatAt = -999;
 function sfxHeartbeatTick(now) {
     if (now - lastHeartbeatAt < 45) return; // throttled — not a sound-per-frame
     lastHeartbeatAt = now;
-    synthTone(55, 0.18, { type: 'sine', peak: 0.22 });
+    // A LUB-DUB, NOT A HUM. This was a single 55 Hz sine held for 0.18s, and
+    // 55 Hz is below what a laptop speaker reproduces as a pitch: what came
+    // out was a formless low rumble, arriving often enough to read as one
+    // continuous tone. Reported as "the heartbeat sounds like a drone" - by
+    // the same ear that asked for the arena pad to go, and fairly, because
+    // what it heard was the same thing.
+    //
+    // Two short thumps instead. Each sweeps downward so it has an attack and
+    // an audible end, the second is quieter and a beat behind, and 90 Hz is
+    // low enough to read as a pulse and high enough to leave the speaker.
+    synthTone(92, 0.10, { type: 'sine', freqEnd: 58, peak: 0.26, attack: 0.004 });
+    synthTone(78, 0.08, { type: 'sine', freqEnd: 50, peak: 0.16, attack: 0.004, delay: 0.17 });
 }
 
 function sfxRoundStart() { synthTone(440, 0.15, { type: 'square', freqEnd: 880, peak: 0.2 }); }
@@ -2967,7 +2983,7 @@ let cheatBuffer = '';
 
 // === Batch 10: Audio — everything synthesized with WebAudio, no sample
 // files (per the brief's own ground rules). Three gain stages (master ->
-// sfx/music) so the volume UI below can control sfx and music
+// sfx) so the volume UI below can control sfx
 // independently, both still gated by the master fader/mute. AudioContext
 // is only constructed on the first user gesture (autoplay policies block
 // it otherwise, and constructing it eagerly would also just throw in some
@@ -2985,10 +3001,9 @@ window.addEventListener('pointerdown', unlockAudio, { once: true });
 function refreshAudioUI() {
     document.getElementById('vol-master').value = audioSettings.master;
     document.getElementById('vol-sfx').value = audioSettings.sfx;
-    document.getElementById('vol-music').value = audioSettings.music;
     setOptState('btn-audio-mute', audioSettings.muted ? 'On' : 'Off', audioSettings.muted);
     // ...and the numbers the sliders never showed.
-    for (const slot of ['master', 'sfx', 'music']) {
+    for (const slot of ['master', 'sfx']) {
         const out = document.getElementById('vol-' + slot + '-value');
         if (out) out.textContent = Math.round((audioSettings[slot] != null ? audioSettings[slot] : 1) * 100) + '%';
     }
@@ -2996,7 +3011,7 @@ function refreshAudioUI() {
 // The readout has to follow the drag, or the number is only right until you
 // touch it. refreshAudioUI writes the slider positions too, which is harmless
 // here - they are already where the drag put them.
-for (const slot of ['master', 'sfx', 'music']) {
+for (const slot of ['master', 'sfx']) {
     document.getElementById('vol-' + slot).addEventListener('input', e => {
         audioSettings[slot] = parseFloat(e.target.value);
         applyAudioSettings();
