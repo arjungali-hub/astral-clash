@@ -1362,6 +1362,21 @@ def at_rule_inserts(src, dst):
             out.append((close, rule))
     return out
 
+# A rule is a selector followed by a brace INSIDE the stylesheet. Markup that
+# merely mentions an id must not count as a rule defining one, which is why
+# the check below reads the <style> body rather than the whole file.
+ID_RULE_RE = r'(?m)^\s*(#[A-Za-z0-9_.\-]+)\s*\{'
+ID_ATTR_RE = r'''id=["']([A-Za-z0-9_-]+)["']'''
+
+
+def _sheet_of(text):
+    a = text.find('<style')
+    b = text.find('</style>')
+    if a < 0 or b < 0:
+        return ''
+    return text[text.find('>', a) + 1:b]
+
+
 def _css_prop(decl, extract_css):
     """The property a declaration sets, or None for something unparseable."""
     n = extract_css.norm(decl)
@@ -4428,6 +4443,42 @@ function buildMapThumbnail(map) {""", 'function buildMapPlan(map) {', 'thumb ren
     print('  %-34s %s' % ('stylesheet braces balance',
                           'ok' if not css_bad
                           else 'FAILED: ' + ', '.join('%s %+d' % (l, d) for l, d in css_bad)))
+
+    # AN ELEMENT WITH NO RULE ANYWHERE, which the porter cannot see.
+    #
+    # _css_rule_wanted() carries a rule only if it houses an ORPHAN, and
+    # _css_orphans() builds that set from classList toggles and class=""
+    # attributes - classes only. An id selector is never in it, so an id-only
+    # rule can never travel and was never reported. `#replay-bar
+    # { display: none }` lived in the online stylesheet alone for the whole
+    # life of the replay feature: both builds carry the same markup and the
+    # same refreshReplayUI(), which reveals the bar by toggling `.on`, but with
+    # no rule at all a div is simply a visible block. The local build showed an
+    # Exit Replay button on its menu, top-left, from the day replays shipped,
+    # and clicking it called exitReplay() with no replay running. Found by eye
+    # in a collision sweep, by which point it had survived every guard here.
+    #
+    # THE TEST IS "STYLED NOWHERE", not "styled differently". An id that one
+    # build dresses in a comma-separated group and the other in a rule of its
+    # own is not this bug - #settings-screen is in a seven-selector group
+    # online and standalone locally, and both work. Declaration-level
+    # disagreement is what CSS_INTERFACE's own lists are for. What cannot be
+    # anything but a defect is markup rendered with no rule governing it.
+    id_rule_drift = []
+    for a_label, a_text, b_label, b_text in (('online', src, 'local', dst),
+                                             ('local', dst, 'online', src)):
+        a_sheet, b_sheet = _sheet_of(a_text), _sheet_of(b_text)
+        for ident in sorted(set(re.findall(ID_ATTR_RE, b_text))):
+            if '#' + ident in CSS_INTERFACE:
+                continue
+            tok = re.compile(r'#' + re.escape(ident) + r'(?![A-Za-z0-9_-])')
+            if tok.search(a_sheet) and not tok.search(b_sheet):
+                id_rule_drift.append('#%s styled in %s, nowhere in %s'
+                                     % (ident, a_label, b_label))
+    print('  %-34s %s' % ('elements with no rule',
+                          'ok (every id styled in both)' if not id_rule_drift
+                          else '%d FOUND: %s' % (len(id_rule_drift),
+                                                 '; '.join(id_rule_drift))))
 
     dup_ids = []
     for label, text in (('online', src), ('local', dst)):

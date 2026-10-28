@@ -1123,6 +1123,28 @@
            is DRAWN, so the first of everything used to land mid-fight - one
            measured frame took 9,858ms - and this is what that now happens
            behind. */
+        /* THE REPLAY BAR. Top-centre, clear of the HUD's health bars at the
+           top corners and of the round counter between them; the pause and
+           loading layers both sit above it, so neither is obscured. */
+        #replay-bar {
+            display: none;
+            position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+            z-index: 14;
+            align-items: center; gap: 12px;
+            padding: 7px 10px 7px 14px;
+            border-radius: 999px;
+            background: rgba(10, 13, 20, 0.86);
+            border: 1px solid #00f3ff;
+            box-shadow: 0 0 18px rgba(0, 243, 255, 0.22);
+            color: #e2e8f0; font-size: 0.82rem; letter-spacing: 0.02em;
+            max-width: calc(100vw - 32px);
+        }
+        #replay-bar.on { display: flex; }
+        #replay-caption { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        /* Overrides the base `button` rule's 14px/22px and 1.08rem, which is
+           sized for a menu and would make this pill taller than the bar. */
+        #btn-exit-replay { margin: 0; padding: 5px 12px; font-size: 0.78rem; }
+        @media (max-width: 560px) { #replay-caption { max-width: 46vw; } }
         #loading-screen {
             position: absolute; inset: 0; z-index: 60;
             display: none; overflow: hidden;
