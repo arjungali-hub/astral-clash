@@ -205,6 +205,23 @@ def visible_strings():
         # token stays out of it.
         r"return " + QT + r"([A-Z][^" + QT + chr(92) + chr(92) + r"]* [^" + QT
         + chr(92) + chr(92) + r"]+)" + QT,
+        # cond ? 'Label' : 'Other' - the TOGGLES, and the fourth shape of
+        # this same blind spot. Every setOptState() second argument is one
+        # of these, so Standard, Colorblind, Open, On, Off, Normal, Large,
+        # Watching and the rebind list's Strafe/Turn names all sat English
+        # in both languages under a clean '0 MISSING'. Reported by eye in a
+        # UI review, which is the expensive way to find twenty-four strings.
+        #
+        # Narrow on purpose: a leading capital, then letters and spaces
+        # only, 25 characters at most. Measured over the whole codebase
+        # before being added - 26 distinct matches, all of them real UI
+        # text, no map names and no state-machine tokens. Both branches
+        # need their own pattern because this list allows one group each.
+        r"" + chr(92) + r"?" + chr(92) + r"s*" + QT
+        + r"([A-Z][A-Za-z ]{1,24})" + QT + chr(92) + r"s*:" + chr(92) + r"s*" + QT,
+        r"" + chr(92) + r"?" + chr(92) + r"s*" + QT + r"[A-Z][A-Za-z ]{1,24}" + QT
+        + chr(92) + r"s*:" + chr(92) + r"s*" + QT
+        + r"([A-Z][A-Za-z ]{1,24})" + QT,
         # showToast(TEXT)
         r"showToast" + chr(92) + r"(" + chr(92) + r"s*'((?:[^'" + chr(92)
         + chr(92) + r"]|" + chr(92) + chr(92) + r".)+)'",
