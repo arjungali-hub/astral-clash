@@ -105,6 +105,13 @@
             width: 100%;
             height: 100%;
         }
+        /* MENUS GET THE WINDOW (#1): 1174x654 in a 1400x1000 window left 346px
+           unused while the panels inside it scrolled. The frame grows for menu
+           screens; the canvases below pin themselves to the match-size cap so
+           the render target and the HUD layout derived from it never move. */
+        #game-container.menu-roomy { height: min(96vh, 1000px); }
+        #game-container.menu-roomy #gameCanvas,
+        #game-container.menu-roomy #hudCanvas { height: min(96vh, 650px); }
         #gameCanvas { background: #0a0d14; }
         #hudCanvas { pointer-events: none; }
         #ui-overlay {
@@ -1823,7 +1830,11 @@
 </head>
 <body>
 
-    <div id="game-container">
+    <!-- menu-roomy matches `let currentScreen = 'home'` below: the frame
+         starts on a menu screen, and showScreen() keeps the class in step
+         from then on. Without it the first paint is the only one that
+         ignores #1. -->
+    <div id="game-container" class="menu-roomy">
         <canvas id="gameCanvas" width="1170" height="650" role="img" aria-label="The arena, drawn from your fighter's eyes. This game needs sight to play."></canvas>
         <canvas id="hudCanvas" width="1170" height="650" role="img" aria-label="Health, special meter and round score for both fighters."></canvas>
 
@@ -2459,10 +2470,18 @@ const hudCtx = hudCanvas.getContext('2d');
 const SCREEN_EL = { home: 'home-screen', select: 'select-screen', gameover: 'gameover-screen', pause: 'pause-screen' };
 const MODAL_EL = { tutorial: 'tutorial-screen', settings: 'settings-screen', rebind: 'rebind-screen', audio: 'audio-screen', mapselect: 'mapselect-screen', shop: 'shop-screen', modeselect: 'modeselect-screen', lobby: 'lobby-screen', account: 'account-screen' };
 let currentScreen = 'home'; // matches the initial CSS (home shown)
+// Screens that are a MENU rather than something drawn over a match. `pause`
+// and `gameover` both come through showScreen while a match owns the canvas,
+// and the frame must not resize underneath either of them.
+const ROOMY_SCREENS = { home: 1, select: 1 };
 function showScreen(name) {
     currentScreen = name;
     for (const k in SCREEN_EL) document.getElementById(SCREEN_EL[k]).style.display = (k === name) ? 'block' : 'none';
     document.getElementById('ui-overlay').style.display = name ? 'flex' : 'none';
+    // #1: the frame takes the window on a menu screen and returns to the 16:9
+    // box for anything that sits over a match.
+    const gc = document.getElementById('game-container');
+    if (gc) gc.classList.toggle('menu-roomy', !!ROOMY_SCREENS[name]);
 }
 function hideOverlay() { showScreen(null); } // no screen — used when a match takes over the viewport
 // EVERY MODAL GETS AN X, injected here rather than written into ten panels of

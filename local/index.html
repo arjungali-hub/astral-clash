@@ -1508,6 +1508,9 @@
             .shop-panel { padding-left: 8px; padding-right: 8px; }
             .shop-card { padding-left: 12px; padding-right: 12px; }
         }
+                #game-container.menu-roomy {
+            height: min(96vh, 1000px);
+        }
         </style>
 </head>
 <body>
@@ -1992,6 +1995,10 @@ function showScreen(name) {
     currentScreen = name;
     for (const k in SCREEN_EL) document.getElementById(SCREEN_EL[k]).style.display = (k === name) ? 'block' : 'none';
     document.getElementById('ui-overlay').style.display = name ? 'flex' : 'none';
+    // #1: the frame takes the window on a menu screen and returns to the 16:9
+    // box for anything that sits over a match.
+    const gc = document.getElementById('game-container');
+    if (gc) gc.classList.toggle('menu-roomy', !!ROOMY_SCREENS[name]);
 }
 function hideOverlay() { showScreen(null); } // no screen — used when a match takes over the viewport
 function openModal(name) {
@@ -4612,6 +4619,10 @@ function syncSettingsForMatch() {
     }
 }
 
+// Screens that are a MENU rather than something drawn over a match. `pause`
+// and `gameover` both come through showScreen while a match owns the canvas,
+// and the frame must not resize underneath either of them.
+const ROOMY_SCREENS = { home: 1, select: 1 };
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every
 // rematch) just got scene.remove()'d, leaking its geometry/material/texture
