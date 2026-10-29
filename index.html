@@ -283,7 +283,14 @@
             justify-content: safe center;
             min-height: 100%;
         }
-        .home-card { width: min(430px, 92vw); text-align: center; }
+        /* BORDER-BOX, because .menu-section adds 24px of padding and a 1px
+           border on each side: 368px of content was a 418px box, which on a
+           400px screen put the card's own left border 9px off-screen where
+           nothing could scroll to it. */
+        .home-card {
+            box-sizing: border-box; width: min(430px, 92vw); max-width: 100%;
+            text-align: center;
+        }
         .home-card .btn-online { width: 100%; font-size: 1rem; padding: 13px 18px; }
         .home-note { color: #94a3b8; font-size: 0.8rem; line-height: 1.55; margin: 12px 0 14px; }
         .home-purse {
@@ -772,7 +779,9 @@
            a paragraph then dismissing it to reach the button underneath is worse
            than growing the card in place. */
         .shop-detail {
-            margin-top: 8px; padding: 9px 11px; border-radius: 5px;
+            /* A bottom margin as well as a top one. With only margin-top the
+               panel ended exactly where the upgrade rows began - a 0px gap. */
+            margin: 8px 0 10px; padding: 9px 11px; border-radius: 5px;
             background: #0b0f18; border: 1px solid #2e3a59;
         }
         .shop-detail .detail-desc { font-size: 0.72rem; }
@@ -1006,16 +1015,33 @@
            here - it is keyboard-accessible for free - so it is dressed rather
            than replaced. The thumb needs both vendor pseudo-elements: it
            inherits nothing. */
+        /* THE HIT AREA AND THE TRACK ARE DIFFERENT BOXES. They used to be one,
+           so a slider you could comfortably hit meant a bar 32px thick: the
+           input was 6px tall, which is a 170x7 target, under a 16px thumb that
+           was taller than the row holding it. The input is now 32px of
+           invisible hit area and the thin pill lives on the track. */
         .audio-row input[type="range"] {
             -webkit-appearance: none; appearance: none;
-            height: 6px; border-radius: 999px; background: #1e293b;
-            border: 1px solid #2e3a59; outline: none; padding: 0;
+            height: 32px; background: transparent;
+            border: 0; outline: none; padding: 0;
+        }
+        .audio-row input[type="range"]::-webkit-slider-runnable-track {
+            height: 6px; border-radius: 999px;
+            background: #1e293b; border: 1px solid #2e3a59;
+        }
+        .audio-row input[type="range"]::-moz-range-track {
+            height: 6px; border-radius: 999px;
+            background: #1e293b; border: 1px solid #2e3a59;
         }
         .audio-row input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none; appearance: none;
             width: 16px; height: 16px; border-radius: 50%;
             background: #00f3ff; border: 2px solid #0d1420; cursor: pointer;
             box-shadow: 0 0 8px rgba(0, 243, 255, 0.5);
+            /* Centres a 20px thumb (16 + 2px border each side) on an 8px track
+               (6 + 1px each side): (8 - 20) / 2. Webkit needs this said; Moz
+               centres its own thumb. */
+            margin-top: -6px;
         }
         .audio-row input[type="range"]::-moz-range-thumb {
             width: 14px; height: 14px; border-radius: 50%;
@@ -1072,7 +1098,10 @@
             box-shadow: none;
         }
         .btn-danger:hover { background: rgba(248, 113, 113, 0.14); box-shadow: none; }
-        .audio-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+        .audio-row {
+            display: flex; align-items: center; gap: 10px; margin: 8px 0;
+            min-height: 32px;   /* room for a thumb that is taller than the track */
+        }
         .audio-row label { width: 55px; font-size: 0.78rem; color: #94a3b8; text-align: left; }
         .audio-row input[type="range"] { flex: 1; }
         /* Single "Settings" entry point gathering Rebind/HUD-scale/Audio —
@@ -1136,6 +1165,22 @@
             box-sizing: border-box;
         }
         .shop-panel { box-sizing: border-box; }
+        /* PHONE WIDTH. .shop-panel's 22px of side padding and .shop-card's 18px
+           stack into a 41px inset, which on a 400px screen left the card's own
+           content 253px wide. Both are right on a desktop, where they keep the
+           cards off the edge of a 1040px panel, so they narrow here instead of
+           being dropped. */
+        @media (max-width: 640px) {
+            .shop-panel { padding-left: 8px; padding-right: 8px; }
+            .shop-card { padding-left: 12px; padding-right: 12px; }
+        }
+        /* TOUCH, which is the question - a narrow desktop window has a mouse and
+           does not need 36px rows. Details was 58x20 and Max/Owned 44x22. */
+        @media (hover: none) {
+            .shop-card button,
+            .shop-card-head button,
+            .menu-section .shop-info { min-height: 36px; }
+        }
         #mapselect-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -1344,7 +1389,9 @@
            Quiet by default and green only when something is done: three lines
            of text on the home card should read as information, not as a
            notification demanding to be cleared. */
-        .daily-panel { margin: 10px 0 2px; text-align: left; }
+        /* 12px, not 2px: the last challenge line sat almost against the
+           Armory row below it while every other gap on the card is 10-14. */
+        .daily-panel { margin: 10px 0 12px; text-align: left; }
         .daily-panel h4 {
             margin: 0 0 6px; font-size: 0.68rem; letter-spacing: 0.1em;
             /* #64748b read 4.02:1 against this panel - under AA's 4.5 for text

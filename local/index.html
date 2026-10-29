@@ -603,8 +603,13 @@
            a paragraph then dismissing it to reach the button underneath is worse
            than growing the card in place. */
         .shop-detail {
-            margin-top: 8px; padding: 9px 11px; border-radius: 5px;
-            background: #0b0f18; border: 1px solid #2e3a59;
+            /* A bottom margin as well as a top one. With only margin-top the
+               panel ended exactly where the upgrade rows began - a 0px gap. */
+            margin: 8px 0 10px;
+            padding: 9px 11px;
+            border-radius: 5px;
+            background: #0b0f18;
+            border: 1px solid #2e3a59;
         }
         .shop-detail .detail-desc { font-size: 0.72rem; }
         .shop-detail .detail-ability { margin-top: 7px; }
@@ -734,7 +739,14 @@
             align-items: center; justify-content: center; z-index: 20;
         }
         #audio-screen .menu-section { max-width: 340px; }
-        .audio-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+        .audio-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0;
+            min-height: 32px;
+            /* room for a thumb that is taller than the track */;
+        }
         .audio-row label { width: 55px; font-size: 0.78rem; color: #94a3b8; text-align: left; }
         .audio-row input[type="range"] { flex: 1; }
         /* Single "Settings" entry point gathering Rebind/HUD-scale/Audio —
@@ -1469,6 +1481,10 @@
         .opt-select select:focus-visible {
             outline: 2px solid #00f3ff;
             outline-offset: 2px;
+        }
+        @media (max-width: 640px) {
+            .shop-panel { padding-left: 8px; padding-right: 8px; }
+            .shop-card { padding-left: 12px; padding-right: 12px; }
         }
         </style>
 </head>

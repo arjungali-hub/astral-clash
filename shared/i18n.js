@@ -788,7 +788,7 @@ const I18N = {
         '← Back to the room': '← Retour au salon',
         'Got it!': 'Compris !',
         'How to Play': 'Comment jouer',
-        'Rebind Keys': 'Reconfigurer les touches',
+        'Rebind Keys': 'Touches',
         'Audio Settings': 'Réglages audio',
         'Reset to Defaults': 'Réinitialiser',
         'Master volume': 'Volume général',
