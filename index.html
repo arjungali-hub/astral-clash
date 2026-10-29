@@ -1207,8 +1207,17 @@
         .map-card {
             position: relative; border-radius: 10px; overflow: hidden; cursor: pointer;
             border: 2px solid #ffffff14; background: #0d1420; transition: transform .12s, border-color .12s, box-shadow .12s;
+            /* These cards are BUTTONS (see buildMapSelect), so the base `button`
+               rule reaches them: cyan background, 14px/22px padding, 1.08rem,
+               8px margins. Undone the same way .mode-card does it. */
+            display: block; width: 100%; padding: 0; margin: 0;
+            text-align: left; color: inherit; font-weight: normal;
+            -webkit-appearance: none; appearance: none;
         }
-        .map-card:hover { transform: translateY(-3px) scale(1.02); border-color: var(--mapaccent, #00f3ff); box-shadow: 0 10px 30px #00000090; }
+        /* background RESTATED: `button:hover` is (0,1,1) and outranks a bare
+           .map-card, so without this the card flashes cyan under the pointer. */
+        .map-card:hover { transform: translateY(-3px) scale(1.02); border-color: var(--mapaccent, #00f3ff); box-shadow: 0 10px 30px #00000090;
+            background: #0d1420; }
         /* Until the render has decoded, the card is the mark on a dark plate
            rather than an empty hole. */
         .map-card .map-shot {
@@ -8145,7 +8154,15 @@ function showDetail(side, name, confirmed) {
 // real key rather than a stale literal. Batch 34: one player, so this no longer
 // takes a side.
 function pickKeyHint() {
-    const b = BINDINGS;
+    // PER-SIDE, like every other read of this object. BINDINGS is
+    // { p1: {...}, p2: {...} }, so `BINDINGS.attack` was undefined and
+    // keyLabel(undefined) returns '--': the slot read "-- confirm / -- back"
+    // while the buttons directly below it correctly said "Confirm (Left
+    // Click)". Reported as #42, and it is the SECOND time this exact mistake
+    // has been made on this exact object - CLAUDE.md lists the first, where
+    // the local press-to-continue prompt read BINDINGS.attack and the key the
+    // player had bound did nothing.
+    const b = BINDINGS[LOCAL_SIDE] || BINDINGS.p1 || {};
     return `${keyLabel(b.attack)} confirm / ${keyLabel(b.special)} back`;
 }
 
@@ -8380,7 +8397,12 @@ function buildMapSelect() {
     const grid = document.getElementById('mapselect-grid');
     grid.innerHTML = '';
     MAPS.forEach(map => {
-        const card = document.createElement('div'); card.className = 'map-card';
+        // A BUTTON, not a div: focusable, and Enter/Space activate it. As a div
+        // this grid was unreachable by keyboard entirely, leaving Random as the
+        // only arena a keyboard user could choose.
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'map-card';
         card.style.setProperty('--mapaccent', map.accent);
         card.appendChild(buildMapThumbnail(map));
         const bar = document.createElement('div'); bar.className = 'map-accent-bar'; card.appendChild(bar);
