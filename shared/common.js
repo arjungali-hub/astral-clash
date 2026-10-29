@@ -105,9 +105,16 @@ const SIDES = ['p1', 'p2'];
 // The alternative is Okabe-Ito blue and orange, a pair picked to stay separable
 // under all three common forms. The overhead rings already used exactly that,
 // for exactly this reason; this makes the choice available everywhere.
+// `warn` is the low-health flash, and it lives HERE for the reason
+// sideColorHex states below: everything a palette decides goes through one
+// table so it can never be half-applied. It used to be a hard-coded #ef4444
+// in drawHUD, which in the colour-blind palette flashed red against p2's
+// orange - a pair those players cannot separate, so the warning vanished for
+// exactly the people the palette exists to serve. White is safe against every
+// entry here and against any entry added later.
 const SIDE_PALETTES = {
-    standard:    { p1: '#00f3ff', p2: '#f472b6' },
-    colorblind: { p1: '#0072b2', p2: '#e69f00' },
+    standard:    { p1: '#00f3ff', p2: '#f472b6', warn: '#ef4444' },
+    colorblind: { p1: '#0072b2', p2: '#e69f00', warn: '#ffffff' },
 };
 const SIDE_PALETTE_KEY = 'astralClashSidePalette';
 // BOTH SPELLINGS ARE ACCEPTED ON READ. The stored value used to be
@@ -125,6 +132,12 @@ function sideColor(side) {
 
 // THREE.js wants a number, the HUD and the DOM want a string. Both go through
 // the same table so a palette can never be half-applied.
+// The low-health flash for the palette in force. Not a side colour - both
+// fighters warn the same way - so it takes no side.
+function warnColor() {
+    return (SIDE_PALETTES[sidePalette] || SIDE_PALETTES.standard).warn;
+}
+
 function sideColorHex(side) {
     return parseInt(sideColor(side).slice(1), 16);
 }

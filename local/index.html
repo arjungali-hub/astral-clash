@@ -9214,7 +9214,7 @@ function drawPlayerHUD(f, x, label, isMine) {
     // nothing is lost by colouring the bar for the side.
     const hudSide = f.isPlayerOne ? 'p1' : 'p2';
     hudCtx.fillStyle = lowHp && Math.sin(arenaTime * 0.3) > 0
-        ? "#ef4444" : sideColor(hudSide);
+        ? warnColor() : sideColor(hudSide);
     hudCtx.fillRect(x, 56, (f.hp / f.maxHp) * BW, 24);
     hudCtx.strokeStyle = "rgba(255,255,255,0.2)"; hudCtx.lineWidth = 1.5;
     hudCtx.strokeRect(x, 56, BW, 24);
