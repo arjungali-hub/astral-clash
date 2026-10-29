@@ -2782,8 +2782,19 @@ function hudFont(px, bold) {
     const want = px * HUD_TEXT_SCALE;
     const s = hudUnitScale();
     // How large this would have to be, in virtual units, to land at HUD_MIN_PX
-    // on the actual canvas.
-    const needed = s > 0 ? HUD_MIN_PX / s : want;
+    // of SCREEN. Not of canvas: the canvas is allocated at w * PIXEL_RATIO, so
+    // on a high-DPI display one canvas pixel is less than one CSS pixel and a
+    // floor measured in canvas pixels is defeated by exactly that ratio.
+    //
+    // #78, reported as "'Special 4%' at 11px is about 7px on screen". At DPR 1
+    // the two agree and hudUnitScale alone carried the floor correctly, which
+    // is why this held up for so long; at DPR 1.5 hudUnitScale becomes 1.0, the
+    // floor asks for 11 canvas pixels, and 11 canvas pixels are 7.3 CSS ones.
+    // Dividing by (s / PIXEL_RATIO) - the virtual-to-SCREEN scale - lands it at
+    // HUD_MIN_PX on every display, and reduces to the old expression at DPR 1,
+    // so nothing moves on an ordinary screen.
+    const screenScale = s / PIXEL_RATIO;
+    const needed = screenScale > 0 ? HUD_MIN_PX / screenScale : want;
     const size = Math.min(Math.max(want, needed), want * HUD_MAX_BOOST);
     return `${bold ? 700 : 500} ${Math.max(9, Math.round(size))}px ${HUD_FAMILY}`;
 }
@@ -9167,13 +9178,24 @@ function drawRoundStatus() {
         hudCtx.fillText(`First to ${TIME_ATTACK_KOS} KOs`, hudW() / 2, MODE_Y - 12);
     } else {
         // Round-win pips, one row per player, filled dots for rounds already won.
-        const pipY = { p1: 58, p2: 58 };
+        //
+        // AT MODE_Y, like every other readout in this block, and BY SIDE
+        // COLOUR, like the KO tally twenty lines up. Both halves of #89:
+        //
+        //   * They were at y 58, and the HP bar is drawn at y 56 with a height
+        //     of 24 - so a pair of pips sat on the bar's top edge. The comment
+        //     above MODE_Y already worked this out ("a wide centered readout at
+        //     the pips' y would sit straight on top of a panel") and moved the
+        //     mode readouts below the panels for exactly that reason; the pips
+        //     themselves were left behind at the y the comment warns about.
+        //   * Filled pips were hard-coded #00f3ff, which is p1's colour in the
+        //     standard palette - so player 2's won rounds were shown in player
+        //     1's colour, and the colour-blind palette was ignored entirely.
         for (let i = 0; i < ROUNDS_TO_WIN; i++) {
-            const filled1 = i < roundWins.p1, filled2 = i < roundWins.p2;
-            hudCtx.fillStyle = filled1 ? '#00f3ff' : '#1e293b';
-            hudCtx.beginPath(); hudCtx.arc(hudW() / 2 - 20 - i * 12, pipY.p1, 4, 0, Math.PI * 2); hudCtx.fill();
-            hudCtx.fillStyle = filled2 ? '#00f3ff' : '#1e293b';
-            hudCtx.beginPath(); hudCtx.arc(hudW() / 2 + 20 + i * 12, pipY.p2, 4, 0, Math.PI * 2); hudCtx.fill();
+            hudCtx.fillStyle = i < roundWins.p1 ? sideColor('p1') : '#1e293b';
+            hudCtx.beginPath(); hudCtx.arc(hudW() / 2 - 20 - i * 12, MODE_Y, 4, 0, Math.PI * 2); hudCtx.fill();
+            hudCtx.fillStyle = i < roundWins.p2 ? sideColor('p2') : '#1e293b';
+            hudCtx.beginPath(); hudCtx.arc(hudW() / 2 + 20 + i * 12, MODE_Y, 4, 0, Math.PI * 2); hudCtx.fill();
         }
     }
     hudCtx.textAlign = "left";
@@ -9233,7 +9255,13 @@ function drawPlayerHUD(f, x, label, isMine) {
     hudCtx.fillRect(x, 84, (f.specialMeter / 100) * BW, 10);
     hudCtx.fillStyle = "#94a3b8";
     hudCtx.font = hudFont(11);
-    hudCtx.fillText(meterReady ? 'SPECIAL READY' : `Special ${Math.floor(f.specialMeter)}%`, x, 108);
+    // ON A PLATE (#90). Left-aligned, so the plate's centre is derived from
+    // the measured width instead of being handed hudW() / 2 like the centred
+    // strings - hudPlate itself always centres on cx.
+    const meterText = meterReady ? 'SPECIAL READY' : `Special ${Math.floor(f.specialMeter)}%`;
+    hudPlate(meterText, x + hudCtx.measureText(meterText).width / 2, 108, 7, 4);
+    hudCtx.fillStyle = '#cbd5e1';
+    hudCtx.fillText(meterText, x, 108);
 
     // THE DASH COOLDOWN. Reported: "pressing Shift again soon after a dash did
     // nothing, with no feedback" - the dash is on a 90-frame cooldown and the
@@ -9440,8 +9468,14 @@ function drawHUDInner() {
             hudCtx.fillText(`Round ${currentRound} starting...`, hudW() / 2, 336);
             hudCtx.textAlign = "left";
         }
-        hudCtx.fillStyle = "#64748b"; hudCtx.font = hudFont(13); hudCtx.textAlign = "center";
-        hudCtx.fillText(`Esc for controls / pause${botNote ? '  |  ' + botNote : ''}`, hudW() / 2, hudH() - 20);
+        // ON A PLATE (#90): this sits over the arena floor, which on the pale
+        // maps is bright enough to swallow #64748b entirely. Lightened as well
+        // - it is one of the two strings read mid-fight.
+        hudCtx.font = hudFont(13); hudCtx.textAlign = "center";
+        const escLine = `Esc for controls / pause${botNote ? '  |  ' + botNote : ''}`;
+        hudPlate(escLine, hudW() / 2, hudH() - 20);
+        hudCtx.fillStyle = "#cbd5e1";
+        hudCtx.fillText(escLine, hudW() / 2, hudH() - 20);
         hudCtx.textAlign = "left";
     };
     // Once per viewport. splitScreen() is what the local `twoHumans` meant and
