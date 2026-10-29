@@ -222,15 +222,32 @@ jobs:
 
       # THE CSS BASELINE, carried between runs. It is git-ignored, so without
       # this every run starts with nothing to compare and cssparitycheck can
-      # only report that it established one. A rolling key: each run saves its
-      # own and restores the newest earlier one.
+      # only report that it established one.
+      #
+      # KEYED ON THE SOURCES THAT DECIDE THE CSS, not on the run alone. The key
+      # was css-baseline-<run_id> restoring from a bare `css-baseline-` prefix,
+      # so every run compared against the newest earlier baseline whatever the
+      # stylesheet now said - and an INTENDED visual change therefore failed
+      # the job on that run and on every run after it, with no way to re-save
+      # from inside CI. `cssparitycheck --save` fixes it on a laptop and cannot
+      # reach the cache. One intended change left this red forever, which is
+      # the always-red tick this file already learned about twice.
+      #
+      # With the sources hashed, an intended change misses the cache and seeds
+      # a fresh baseline - a FIRST RUN, which the checker passes and says so -
+      # while a run that changed none of them restores and genuinely diffs. The
+      # question becomes "did the computed CSS move WITHOUT a source change",
+      # which is the one worth failing a build over: a Chrome upgrade, a
+      # dependency, or a shared-code edit with visual reach nobody expected.
       - name: Restore the CSS baseline
         uses: actions/cache@v4
         with:
           path: tests/.css-baseline.json
-          key: css-baseline-${{ github.run_id }}
+          key: >-
+            css-baseline-${{ hashFiles('index.html', 'local/index.html',
+            'shared/*.js') }}-${{ github.run_id }}
           restore-keys: |
-            css-baseline-
+            css-baseline-${{ hashFiles('index.html', 'local/index.html', 'shared/*.js') }}-
 
       - name: Run
         env:

@@ -287,7 +287,18 @@ process.on('unhandledRejection', (e) => {
     // Health SNAPS rather than easing, which is the same rule the opponent path
     // follows and matters more here: a spectator is reading the bars to know
     // how close the fight is.
-    await host.evaluate(() => { window.ACDebug.player2.hp = 37; });
+    //
+    // SET ON THE GUEST, which is the client that OWNS player2. This was set on
+    // the host, and netSnapFighter says in its own comment that hp is
+    // owner-authoritative: every STATE packet from the guest overwrote the
+    // host's copy, so the write survived only if a WATCH_STATE happened to go
+    // out in the gap between the two. It passed whenever it won that race and
+    // reported "watcher p2 hp 260" - the guest's real health - whenever it lost.
+    // A flake that looks like a relay bug.
+    //
+    // Driving it from the owner also tests the whole chain the feature
+    // actually uses, guest -> host -> watcher, rather than half of it.
+    await join.evaluate(() => { window.ACDebug.player2.hp = 37; });
     const hpArrived = await waitRelaying(watch,
         () => !!window.ACDebug.player2 && Math.abs(window.ACDebug.player2.hp - 37) < 2, budget);
     check('health arrives and snaps', hpArrived,
