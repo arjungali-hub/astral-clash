@@ -2801,14 +2801,29 @@ function nameForSide(side) {
 }
 
 // The long form, for menus, panel headings and the store title.
+// Text that is about to be CONCATENATED INTO HTML. There was no such helper
+// anywhere in this project, and accountPanelHTML was interpolating a display
+// name straight into innerHTML - so a name containing markup rendered as
+// markup. Every other place a name reaches the DOM uses textContent, which is
+// the better answer where it is available; this is for the places building a
+// string.
+function escapeHTML(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function playerLabel(side) {
     const own = nameForSide(side);
     if (own) return own;
-    // ONLINE ONLY. If the other side has a name, this client's player is the
-    // only numbered one left, whichever slot it happens to hold. Two people at
-    // one keyboard are always Player 1 and Player 2, so this must not apply
-    // there - it would rename P2 to "Player 1" the moment P1 typed a name.
-    if (AC_ONE_SIDE_PER_CLIENT && nameForSide(otherSide(side))) return 'Player 1';
+    // THE SIDE'S OWN NUMBER, always. There used to be an online-only branch
+    // here returning 'Player 1' for any unnamed side whenever the OTHER side
+    // had a name, on the reasoning that this client's player was "the only
+    // numbered one left, whichever slot it happens to hold". It is not: slots
+    // are stable and the game says which is which everywhere else - bar
+    // colour, spawn, the room list - so a named host plus an unnamed guest
+    // printed "Kaelen (Player 1)" for the guest sitting in the p2 slot on the
+    // pink bar, next to the host who actually was player 1.
     return side === 'p1' ? 'Player 1' : 'Player 2';
 }
 

@@ -8297,7 +8297,16 @@ function refreshRoomUI() {
 // every coin award - which is exactly when a challenge can have been
 // completed. A panel refreshed from its own call sites is a panel that goes
 // stale the first time somebody adds a new one.
-function openAccountPanel() { refreshAccountUI(); openModal('account'); }
+function openAccountPanel() {
+    // BACK TO SIGN IN on a fresh open. accountMode persists across closes,
+    // which is right while a recovery is in flight and wrong for someone who
+    // wandered into Forgot password, left, and came back to find it waiting.
+    // 'recover' is the exception: that mode is set by following an emailed
+    // link rather than chosen, and losing it would strand the reset.
+    if (accountMode !== 'recover') accountMode = 'in';
+    refreshAccountUI();
+    openModal('account');
+}
 
 function refreshMenuUI() { refreshRoomUI(); refreshDailyUI(); }
 refreshCoinDisplays(); // initial paint at load, before any menu interaction
@@ -9571,7 +9580,17 @@ function refreshLobbyUI() {
         if (shown !== undefined) b.style.display = shown ? '' : 'none';
     };
     set('btn-net-host', connected || busy);
-    set('btn-net-join', connected || busy);
+    // JOIN NEEDS A CODE. Pressing it empty used to call netSetStatus('error',
+    // 'Enter a room code first'), and the error status is titled "Connection
+    // problem" - so a validation message was announced as a network fault, in
+    // a status box above Host Game, while the field it was about got no error
+    // state at all. Disabling the button says the same thing where the
+    // decision is being made. (The guard in netJoin stays: the keyboard and
+    // the debug surface can both still reach it.)
+    const typedCode = (document.getElementById('lobby-join-input') || {}).value;
+    const noCode = !String(typedCode || '').trim();
+    set('btn-net-join', connected || busy || noCode);
+    set('btn-net-watch', connected || busy || noCode);
     set('btn-net-disconnect', false, connected || busy || net.status === 'error');
     const input = document.getElementById('lobby-join-input');
     if (input) input.disabled = connected || busy;
@@ -9704,6 +9723,10 @@ document.getElementById('btn-net-join').addEventListener('click', () => {
 document.getElementById('btn-net-watch').addEventListener('click', () => {
     netWatch(document.getElementById('lobby-join-input').value);
 });
+// Join and Watch are disabled while the code field is empty, so their state
+// has to follow the typing rather than only the screen changes that otherwise
+// drive refreshLobbyUI.
+document.getElementById('lobby-join-input').addEventListener('input', () => refreshLobbyUI());
 document.getElementById('btn-net-disconnect').addEventListener('click', () => {
     netSend({ t: 'BYE' });
     netTeardown();

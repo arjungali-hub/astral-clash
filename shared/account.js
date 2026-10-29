@@ -690,8 +690,8 @@ function accountPanelHTML() {
     // they have.
     if (st.mode === 'recover') return recoverPanelHTML(st);
     if (st.signedIn) {
-        return '<p class="account-status ok">Signed in as <b>' + st.displayName + '</b> '
-            + '(<span class="account-username">' + st.username + '</span>). '
+        return '<p class="account-status ok">Signed in as <b>' + escapeHTML(st.displayName) + '</b> '
+            + '(<span class="account-username">' + escapeHTML(st.username) + '</span>). '
             + 'Your coins, unlocks and upgrades are saved to this account.</p>'
             + '<button id="btn-account-signout" class="btn-secondary">Sign out</button>';
     }

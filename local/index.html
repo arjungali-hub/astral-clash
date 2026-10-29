@@ -4376,7 +4376,16 @@ let padMenuConfirmHeld = false, padMenuBackHeld = false;
 // every coin award - which is exactly when a challenge can have been
 // completed. A panel refreshed from its own call sites is a panel that goes
 // stale the first time somebody adds a new one.
-function openAccountPanel() { refreshAccountUI(); openModal('account'); }
+function openAccountPanel() {
+    // BACK TO SIGN IN on a fresh open. accountMode persists across closes,
+    // which is right while a recovery is in flight and wrong for someone who
+    // wandered into Forgot password, left, and came back to find it waiting.
+    // 'recover' is the exception: that mode is set by following an emailed
+    // link rather than chosen, and losing it would strand the reset.
+    if (accountMode !== 'recover') accountMode = 'in';
+    refreshAccountUI();
+    openModal('account');
+}
 
 // FETCH THE TABLEAU BEFORE IT IS WANTED.
 //
