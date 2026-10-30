@@ -1584,6 +1584,14 @@ function showLoading(arenaName) {
     el.classList.add('on');
 }
 
+// IS THE LOADING SCREEN STILL COVERING THE GAME. Read from the DOM rather than
+// from loadingDepth, because what matters to #85 is whether a player can SEE
+// the arena, and the class is what decides that.
+function loadingVisible() {
+    const el = document.getElementById('loading-screen');
+    return !!(el && el.classList.contains('on'));
+}
+
 function hideLoading() {
     loadingDepth = Math.max(0, loadingDepth - 1);
     if (loadingDepth > 0) return;   // something else is still loading

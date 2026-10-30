@@ -1322,6 +1322,21 @@
                        is what ties it into the frame instead of looking pasted
                        onto it. */
                     opacity: .92;
+            /* FEATHERED ON ALL FOUR EDGES (#91). The .ld-fade* layers
+                       below cover the whole screen, but this element is INSET
+                       (14% each side, 9% from the top), so its own top and right
+                       edges sat inside them and stayed hard - the tableau read as
+                       a picture pasted onto the frame rather than lit inside it.
+                       Two gradients intersected, so the mask is the softest of
+                       the two at every point rather than their sum. */
+                    -webkit-mask-image:
+                        linear-gradient(to right, transparent 0, #000 12%, #000 88%, transparent 100%),
+                        linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%);
+            -webkit-mask-composite: source-in;
+            mask-image:
+                        linear-gradient(to right, transparent 0, #000 12%, #000 88%, transparent 100%),
+                        linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%);
+            mask-composite: intersect;
         }
         /* The two fighters' light, implied. */
         .ld-glowA { left: 18%; top: 26%; width: 36%; height: 54%; filter: blur(26px);
@@ -10311,6 +10326,13 @@ function stepIntro(dt) {
     updateScenery(dt);
     updateMuzzleFlashes(dt);
     drawHUD();
+    // #85: THE INTRO CLOCK STARTS WHEN THE INTRO IS VISIBLE. The loading screen
+    // stayed up 4.9 seconds on a first match, and the intro's phases were
+    // already running behind it - so the drop and the "set" beat were spent on
+    // a covered canvas and the player met a fight that had started without
+    // them. Holding the phase start while the cover is up costs nothing when
+    // there is no cover, and cannot run the clock backwards.
+    if (loadingVisible()) introPhaseAt = performance.now();
     if (allLanded) {
         if (introPhase === 'drop') { introPhase = 'set'; introTimer = 0; introPhaseAt = performance.now(); }
         else if (introPhase === 'set' && introPhaseElapsed() >= INTRO_SET_MS) { introPhase = 'fight'; introTimer = 0; introPhaseAt = performance.now(); sfxRoundStart(); }
