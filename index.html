@@ -739,6 +739,13 @@
            source order. onlineuxcheck measures WIDTH now as well as height -
            height alone is what let this through. */
         .lobby-copy,
+        /* #39: Join Game and Watch Instead came out 49px and 50px with 8px
+           above one and 15px above the other. They are the same kind of
+           control doing the same kind of thing. */
+        #lobby-screen #btn-net-host, #lobby-screen #btn-net-join,
+        #lobby-screen #btn-net-watch {
+            box-sizing: border-box; min-height: 50px; margin: 8px 0 0;
+        }
         .menu-section .lobby-copy {
             width: auto; margin: 0; padding: 0 10px; font-size: 0.62rem; font-weight: bold;
             letter-spacing: 0.04em; line-height: 1;
@@ -1000,6 +1007,11 @@
             overflow-wrap: anywhere;
             text-shadow: 0 0 22px rgba(0,243,255,0.45);
         }
+        /* #92: the two fighters' lines ran together with no gap and wrapped so
+           that "used" sat alone underneath. Space between them, and the
+           figures stop sliding about as the numbers change width. */
+        #match-summary > div { margin-bottom: 6px; line-height: 1.5; }
+        #match-summary b { font-variant-numeric: tabular-nums; }
         #winner-title.emphasise { animation: resultGrow 620ms cubic-bezier(0.16, 1, 0.3, 1) both; }
         #winner-title.draw { color: #fbbf24; text-shadow: 0 0 22px rgba(251,191,36,0.45); }
         /* TRANSFORM AND OPACITY ONLY (#81). letter-spacing is a layout
@@ -2318,7 +2330,7 @@
                             <p>There's no way to get HP back — no health pickups, no regen. Every hit you take counts. Play patient, punish mistakes, and use your dash i-frames and shields to avoid damage rather than trying to out-heal it.</p>
                         </div>
                         <div class="tutorial-card">
-                            <h4>Looking for co-op?</h4>
+                            <h4>Co-op</h4>
                             <p>The two co-op modes &mdash; <b>Boss Fight</b> against Karrigos the Granite Colossus, and <b>Survival Waves</b> against squads of lesser creatures &mdash; are <b>playable online</b>. The host simulates every enemy and sends the result, so both of you are always fighting the same boss in the same place rather than two copies that drift apart. If you go down you are out for <b>25 seconds</b> and then respawn at full health; the run only ends if your teammate falls while you are still down.</p>
                         </div>
                         <div class="tutorial-card">
@@ -2353,9 +2365,11 @@
         <div id="lobby-screen">
             <div class="menu-section lobby-panel">
                 <h3>Play Online</h3>
-                <p class="lobby-sub">One of you hosts and shares the room code; the other joins with it.
-                    The host plays as Player 1 and chooses the mode and arena. You will both land in
-                    the room as soon as the link is up.</p>
+                <!-- #41: the first sentence used to repeat the Home note almost
+                     exactly ("a room code" against "the room code"). What is left
+                     is the part Home does not say. -->
+                <p class="lobby-sub">The host plays as Player 1 and chooses the mode and arena.
+                    You will both land in the room as soon as the link is up.</p>
                 <div id="lobby-status" class="lobby-status">Not connected</div>
 
                 <div class="lobby-block">

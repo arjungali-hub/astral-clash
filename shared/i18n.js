@@ -239,7 +239,7 @@ const I18N = {
         'Attack vs. Special': 'Ataque y especial',
         'Arena Collapse': 'Derrumbe de la arena',
         'No Healing': 'Sin curación',
-        'Looking for co-op?': '¿Buscas cooperativo?',
+        'Co-op': 'Cooperativo',
         'Controls': 'Controles',
         'Objective': 'Objetivo',
         'Dash': 'Desplazamiento',
@@ -254,8 +254,8 @@ const I18N = {
             'Haz clic en una tecla y pulsa su reemplazo. Esc cancela. Dos acciones no pueden compartir una tecla: se intercambian.',
         'One of you hosts and shares a room code; the other joins with it. Two players, one fighter each, on separate machines.':
             'Uno de los dos crea la partida y comparte un código de sala; el otro se une con él. Dos jugadores, un luchador cada uno, en máquinas distintas.',
-        'One of you hosts and shares the room code; the other joins with it. The host plays as Player 1 and chooses the mode and arena. You will both land in the room as soon as the link is up.':
-            'Uno de los dos crea la partida y comparte el código de sala; el otro se une con él. El anfitrión juega como Jugador 1 y elige el modo y la arena. Los dos entraréis en la sala en cuanto se establezca la conexión.',
+        'The host plays as Player 1 and chooses the mode and arena. You will both land in the room as soon as the link is up.':
+            'El anfitrión juega como Jugador 1 y elige el modo y la arena. Los dos entraréis en la sala en cuanto se establezca la conexión.',
         'The game engine failed to load from the CDN (cdn.jsdelivr.net). Check your internet connection, or an ad/script blocker may be blocking jsDelivr, then retry.':
             'El motor del juego no se pudo cargar desde la CDN (cdn.jsdelivr.net). Comprueba tu conexión a internet, o puede que un bloqueador de anuncios o de scripts esté bloqueando jsDelivr, y vuelve a intentarlo.',
         // ---- in-match text, drawn on the HUD ---------------------------
@@ -890,7 +890,7 @@ const I18N = {
         'Attack vs. Special': 'Attaque et spécial',
         'Arena Collapse': 'Effondrement de l’arène',
         'No Healing': 'Aucun soin',
-        'Looking for co-op?': 'Envie de coopératif ?',
+        'Co-op': 'Coopératif',
         'Controls': 'Commandes',
         'Objective': 'Objectif',
         'Dash': 'Ruée',
@@ -905,8 +905,8 @@ const I18N = {
             'Cliquez sur une touche, puis appuyez sur celle qui la remplace. Échap annule. Deux actions ne peuvent pas partager une touche : elles s’échangent.',
         'One of you hosts and shares a room code; the other joins with it. Two players, one fighter each, on separate machines.':
             'L’un de vous héberge et partage un code de salon ; l’autre le rejoint avec. Deux joueurs, un combattant chacun, sur deux machines.',
-        'One of you hosts and shares the room code; the other joins with it. The host plays as Player 1 and chooses the mode and arena. You will both land in the room as soon as the link is up.':
-            'L’un de vous héberge et partage le code du salon ; l’autre le rejoint avec. L’hôte joue le Joueur 1 et choisit le mode et l’arène. Vous arriverez tous les deux dans le salon dès que la liaison est établie.',
+        'The host plays as Player 1 and chooses the mode and arena. You will both land in the room as soon as the link is up.':
+            'L’hôte joue le Joueur 1 et choisit le mode et l’arène. Vous arriverez tous les deux dans le salon dès que la liaison est établie.',
         'The game engine failed to load from the CDN (cdn.jsdelivr.net). Check your internet connection, or an ad/script blocker may be blocking jsDelivr, then retry.':
             'Le moteur du jeu n’a pas pu être chargé depuis le CDN (cdn.jsdelivr.net). Vérifiez votre connexion internet, ou un bloqueur de publicités ou de scripts bloque peut-être jsDelivr, puis réessayez.',
         // ---- in-match text, drawn on the HUD ---------------------------
