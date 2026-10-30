@@ -67,6 +67,17 @@ before a browser dies.
 Nothing in them is known to be broken. Nothing in them is known to work either,
 and online multiplayer is the part with no other coverage.
 
+**The memory requirement is not theoretical.** A UI pass hit it twice on this
+machine: `bootcheck` failed both builds with zero page errors and a browser
+that died inside `page.goto`, at 21GB committed against a 27.6GB limit — and
+`spectatecheck` tripped the runner's own low-memory warning (950MB free against
+the ~1200MB it wants) and fell over at "host state PAUSED", which is a
+backgrounded tab triggering the away-pause rather than a netcode fault. The
+runner printing that warning and saying "confirm on a quieter machine before
+believing this" is the only reason those were classified correctly. Any work
+here should keep that habit: a checker that cannot say when its own result is
+untrustworthy produces confident nonsense.
+
 ### 3. Decide what "the bot plays a competent match" means
 **Size: medium. Risk: low.**
 
@@ -309,32 +320,73 @@ it depends on determinism the netcode does not currently guarantee.
 These are small, and their absence is the kind of thing that quietly excludes
 people.
 
-### 13. Colorblind support
+### 13. Colorblind support — MOSTLY DONE, and the palette had a hole in it
 **Size: small. Risk: none.**
 
-The game distinguishes sides by **cyan and pink**, and the two co-op rings by
-blue and orange. For the most common forms of colorblindness some of those pairs
-are much closer than intended. Adding a shape or icon alongside the color — and
-a palette option — is a contained change with a real audience.
+The palette option exists (`SIDE_PALETTES`, Settings → Player Colors) and swaps
+cyan/pink for blue/orange. Two things the UI review found in it:
 
-### 14. A screen-reader pass
+- **The low-health flash was hard-coded `#ef4444`** while the side colour was
+  palette-aware — so on the colourblind palette the bar alternated red against
+  P2's orange, a pair those players cannot separate. The palette silently
+  removed the warning that matters most, for exactly the people it exists to
+  serve. The warning colour now lives *in* the palette table, which is what
+  `sideColorHex`'s own comment says that table is for.
+- **P1's `#0072b2` was about 3.7:1** against the dark UI, and it carries the
+  overhead name sprites and a health bar rather than just chrome. Now `#56b4e9`,
+  the lighter blue from the same Okabe-Ito pair.
+
+**Still open:** a shape or icon alongside the colour. Colour is still the only
+channel carrying which side is which.
+
+### 14. A screen-reader pass — STARTED
 **Size: small–medium. Risk: none.**
 
-Four ARIA attributes in the whole build. `keyboardcheck` proves every control is
-reachable and escapable by keyboard, which is the hard half. Labelling what those
-controls *are* is the easy half and is not done.
+`keyboardcheck` proves every control is reachable and escapable, which is the
+hard half. The UI review moved several pieces of the easy half:
 
-### 15. Contrast audit
+- **The arena grid was unreachable entirely.** The map cards were `div`s with a
+  click listener, so Tab skipped the whole grid and a keyboard user could only
+  ever pick Random. They are `button`s now.
+- **Sign in / Create account** announced as two ordinary buttons with nothing
+  about which mode was showing — `role="tablist"`/`role="tab"`/`aria-selected`.
+- **Details/Hide** carried its entire state in its label — `aria-expanded`.
+- **One focus ring** instead of four different treatments, on everything
+  focusable rather than on whichever controls happened to have one.
+- **`<html lang>`** stayed `"en"` whatever the page was showing, so a screen
+  reader pronounced the Spanish and French with English phonetics.
+
+**Still open:** the HUD is a canvas and announces nothing at all; live regions
+for round results and connection state; a labelling pass over the Armory.
+
+### 15. Contrast audit — MEASURED, and the measuring is the lesson
 **Size: small. Risk: none.**
 
-Muted greys on dark blue are used heavily for secondary text. Some of it is
-likely below WCAG AA. Worth measuring rather than guessing.
+"Worth measuring rather than guessing" was right twice over. Fixed where it was
+real: the roster count (4.1:1), both name placeholders (~2.5:1), disabled
+Max/Owned text (3.2:1), the round-end subline, and the two HUD strings drawn
+over bright arenas, which now sit on the plate helper that already existed for
+the arena name.
 
-### 16. Gamepad in the menus
+**And one reported failure was not one.** The review measured Draven's name at
+3.8:1 from `getComputedStyle().color`. That rule carries
+`filter: brightness(1.45)`, added for this exact reason — a filter is a PAINT
+effect and never appears in computed style. Measured in pixels
+(`art/contrastprobe.js`): Draven 7.44:1, Ignis 5.03:1, Nyx 5.02:1, all clear.
+
+**Still open:** nothing systematic — there is no check that fails on a contrast
+regression, so this will drift back.
+
+### 16. Gamepad in the menus — NOT STARTED
 **Size: small. Risk: low.**
 
 A gamepad plays the game but does not appear to navigate the menus, so a
 controller player still reaches for the mouse to pick a fighter.
+
+Worth noting the ground shifted under this one: every modal now has a close
+control, the settings list is one kind of row, and the arena cards are real
+buttons — so there is more that a focus-driven gamepad scheme could walk than
+there was when this was written.
 
 ### 17. ~~Localisation~~ — DONE (Spanish and French)
 **Size: judged "large" on a guess. It was one day.**
