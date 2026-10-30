@@ -57,7 +57,10 @@ const UPGRADE_TRAITS = ['hp', 'dmg', 'special', 'speed'];
 // started listing "Main Attack" and "Special" as separate damage numbers,
 // labels reading "Damage" and "Special" here implied they scaled those two
 // rows. They don't, so they now say what they actually buy.
-const UPGRADE_TRAIT_LABELS = { hp: 'Health', dmg: 'Attack', special: 'Charge', speed: 'Speed' };
+// 'Special', not 'Charge' (#11): the stats panel calls this meter Special
+// and so does the tutorial, so the upgrade row was the only place with a
+// third name for it.
+const UPGRADE_TRAIT_LABELS = { hp: 'Health', dmg: 'Attack', special: 'Special', speed: 'Speed' };
 const UPGRADE_COST = [150, 300, 500]; // cost of buying level 1 / 2 / 3
 const MAX_UPGRADE_LEVEL = 3;
 // +5% per level (+15% maxed). Deliberately modest: a fully-upgraded starter

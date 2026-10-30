@@ -2221,7 +2221,7 @@
                             <p><b>W/S</b> (or Up/Down) walk forward and back in whatever direction you're looking; <b>A/D</b> (or Left/Right) <b>strafe</b> sideways without turning. Aiming is the mouse's job, so the keys never rotate you. Jumping reaches platforms and cover but has a cooldown &mdash; you can't spam it. Small rises are walkable; tall ledges and walls aren't. Use columns and interior walls for cover. Buy <b>Double Jump</b> in the Armory to press jump again in mid-air, once per airborne stretch, for the tallest perches.</p>
                         </div>
                         <div class="tutorial-card">
-                            <h4>Basic vs. Special</h4>
+                            <h4>Attack vs. Special</h4>
                             <p>Basics are fast and always available; your Special needs a full meter, built by both dealing and taking damage. Each fighter's Special is unique — read it (and your opponent's) in the fighter panel.</p>
                         </div>
                         <div class="tutorial-card">
@@ -3375,7 +3375,9 @@ function controlsSummary(side) {
     parts.push(AC_ONE_SIDE_PER_CLIENT
         ? 'Mouse Look'
         : `${keyLabel(b.lookUp)}/${keyLabel(b.lookDown)} Look Up/Down`);
-    parts.push(`${keyLabel(b.attack)}/${keyLabel(b.special)} Atk/Spc`);
+    // Spelled out (#11): "Atk/Spc" was a fifth and sixth name for two
+    // buttons the rest of the game calls Attack and Special.
+    parts.push(`${keyLabel(b.attack)}/${keyLabel(b.special)} Attack/Special`);
     parts.push(`${keyLabel(b.jump)} Jump`);
     parts.push(`${keyLabel(b.dodge)} Dash`);
     return parts.join(' | ');
@@ -3385,8 +3387,11 @@ function controlsSummary(side) {
 // keys strafe beside a mouse and turn without one.
 const REBIND_ACTION_LABELS = {
     forward: 'Forward', back: 'Back',
-    left: AC_ONE_SIDE_PER_CLIENT ? 'Strafe L' : 'Turn L',
-    right: AC_ONE_SIDE_PER_CLIENT ? 'Strafe R' : 'Turn R',
+    // SPELLED OUT (#69). "Strafe L" was an abbreviation for a row that has the
+    // width for the word, and L/R next to Look Up / Look Down read as a
+    // different kind of label entirely.
+    left: AC_ONE_SIDE_PER_CLIENT ? 'Strafe left' : 'Turn left',
+    right: AC_ONE_SIDE_PER_CLIENT ? 'Strafe right' : 'Turn right',
     jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash',
     lookUp: 'Look Up', lookDown: 'Look Down',
 };
@@ -8146,11 +8151,11 @@ function characterInfoHTML(side, c) {
         <p class="detail-desc">${c.desc}</p>
         <div class="detail-stats">
             ${statRow('Health', hp, STAT_MAX.hp, upgradeLevel(side, c.name, 'hp'))}
-            ${statRow('Main Attack', dmg, STAT_MAX.dmg, upgradeLevel(side, c.name, 'dmg'))}
+            ${statRow('Attack', dmg, STAT_MAX.dmg, upgradeLevel(side, c.name, 'dmg'))}
             ${statRow('Special', specialDamageValue(c), STAT_MAX.special, 0, specialDamageText(c))}
             ${statRow('Speed', speed, STAT_MAX.speed, upgradeLevel(side, c.name, 'speed'))}
         </div>
-        <div class="detail-ability"><span class="ability-label">${t('Main Attack')} &mdash; ${c.atkName}</span><p>${c.atkDesc}</p></div>
+        <div class="detail-ability"><span class="ability-label">${t('Attack')} &mdash; ${c.atkName}</span><p>${c.atkDesc}</p></div>
         <div class="detail-ability"><span class="ability-label">${t('Special')} &mdash; ${c.specialName}</span><p>${c.specialDesc}</p></div>`;
 }
 

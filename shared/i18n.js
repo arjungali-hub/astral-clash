@@ -153,6 +153,11 @@ const I18N = {
         'Resume (Esc)': 'Continuar (Esc)',
         'Paused': 'En pausa',
         'Menu': 'Menú',
+        'Turn left': 'Girar izquierda',
+        'Turn right': 'Girar derecha',
+        'Strafe left': 'Lateral izquierda',
+        'Strafe right': 'Lateral derecha',
+        'Attack/Special': 'Ataque/Especial',
         'Choose your team': 'Elige tu equipo',
         'Connected': 'Conectado',
         'Connection lost': 'Conexión perdida',
@@ -163,11 +168,7 @@ const I18N = {
         'Resume': 'Continuar',
         'Sign in': 'Iniciar sesión',
         'Strafe': 'Desplazarse',
-        'Strafe L': 'Izq. lateral',
-        'Strafe R': 'Der. lateral',
         'Turn': 'Girar',
-        'Turn L': 'Girar izq.',
-        'Turn R': 'Girar der.',
         'On': 'Activado',
         'Off': 'Desactivado',
         'Normal': 'Normal',
@@ -232,7 +233,7 @@ const I18N = {
         'Online Play': 'Juego en línea',
         'First-Person View': 'Vista en primera persona',
         'Movement & Jumping': 'Movimiento y salto',
-        'Basic vs. Special': 'Básico y especial',
+        'Attack vs. Special': 'Ataque y especial',
         'Arena Collapse': 'Derrumbe de la arena',
         'No Healing': 'Sin curación',
         'Looking for co-op?': '¿Buscas cooperativo?',
@@ -470,8 +471,8 @@ const I18N = {
             "Acierta un solo golpe de 60 de daño o más",
         "Language":
             "Idioma",
-        "Main Attack":
-            "Ataque principal",
+        "Attack":
+            "Ataque",
         "Mute":
             "Silenciar",
         "New password":
@@ -802,6 +803,11 @@ const I18N = {
         'Resume (Esc)': 'Reprendre (Échap)',
         'Paused': 'En pause',
         'Menu': 'Menu',
+        'Turn left': 'Tourner à gauche',
+        'Turn right': 'Tourner à droite',
+        'Strafe left': 'Latéral gauche',
+        'Strafe right': 'Latéral droite',
+        'Attack/Special': 'Attaque/Spécial',
         'Choose your team': 'Choisissez votre équipe',
         'Connected': 'Connecté',
         'Connection lost': 'Connexion perdue',
@@ -812,11 +818,7 @@ const I18N = {
         'Resume': 'Reprendre',
         'Sign in': 'Se connecter',
         'Strafe': 'Pas chassé',
-        'Strafe L': 'Latéral G',
-        'Strafe R': 'Latéral D',
         'Turn': 'Tourner',
-        'Turn L': 'Tourner G',
-        'Turn R': 'Tourner D',
         'On': 'Activé',
         'Off': 'Désactivé',
         'Normal': 'Normal',
@@ -881,7 +883,7 @@ const I18N = {
         'Online Play': 'Jeu en ligne',
         'First-Person View': 'Vue à la première personne',
         'Movement & Jumping': 'Déplacement et saut',
-        'Basic vs. Special': 'Basique et spécial',
+        'Attack vs. Special': 'Attaque et spécial',
         'Arena Collapse': 'Effondrement de l’arène',
         'No Healing': 'Aucun soin',
         'Looking for co-op?': 'Envie de coopératif ?',
@@ -1119,7 +1121,7 @@ const I18N = {
             "Placez un seul coup à 60 dégâts ou plus",
         "Language":
             "Langue",
-        "Main Attack":
+        "Attack":
             "Attaque principale",
         "Mute":
             "Muet",
