@@ -254,10 +254,26 @@
         }
         .btn-tertiary:hover { background: #232d47; color: #e2e8f0; box-shadow: none; }
         /* Cycler (Difficulty): reads as a stepper via the ‹ › guillemets. */
-        button:focus-visible, .fighter-btn:focus-visible {
+        /* ONE RING (#7). There were four: 3px yellow on buttons, 2px cyan on
+           the language select, a border-colour change on the text inputs and
+           nothing at all on the map cards. A focus ring is how a keyboard user
+           knows where they are, so it cannot be a per-control decision. */
+        button:focus-visible, .fighter-btn:focus-visible, .map-card:focus-visible,
+        a:focus-visible, select:focus-visible, input:focus-visible,
+        [tabindex]:focus-visible {
             outline: 3px solid #facc15;
             outline-offset: 2px;
         }
+        /* #5: h3 brought its own top margin on top of the panel's 24px padding,
+           leaving 43px above a heading and 32px below the last button. */
+        .menu-section > h3:first-child, .shop-panel > h3:first-child,
+        .tutorial-panel > h3:first-child, .mapselect-panel > h3:first-child,
+        .modeselect-panel > h3:first-child, .lobby-panel > h3:first-child {
+            margin-top: 0;
+        }
+        /* #19: stops a paragraph ending on a single word, which it did in all
+           three languages. Ignored by browsers that do not know it. */
+        p, .setup-note, .lobby-note, .account-note { text-wrap: pretty; }
         button:disabled {
             background: #334155;
             color: #64748b;
@@ -298,7 +314,11 @@
             box-sizing: border-box; width: min(430px, 92vw); max-width: 100%;
             text-align: center;
         }
-        .home-card .btn-online { width: 100%; font-size: 1rem; padding: 13px 18px; }
+        /* margin reset (#23): the inherited `button { margin: 8px 0 }` plus this
+           row's own alignment put Play 4px right of every other row and 4px
+           past the card's content edge. */
+        .home-card .btn-online { width: 100%; font-size: 1rem; padding: 13px 18px;
+            margin: 6px 0 0; }
         .home-note { color: #94a3b8; font-size: 0.8rem; line-height: 1.55; margin: 12px 0 14px; }
         .home-purse {
             display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -889,7 +909,12 @@
         .detail-actions button { width: auto; flex: 1; padding: 6px 4px; font-size: 0.7rem; margin: 0; }
         /* Back is a tertiary/ghost action. No !important needed now that the
            base button is width:auto and non-colored by default here. */
-        .btn-back { width: auto; background: #1a2235; color: #cbd5e1; border: 1px solid #2e3a59; font-weight: normal; }
+        /* #6: these were 50px without the arrow glyph and 51-53px with it,
+           because the glyph set the line box. Same class, three heights, in
+           rows where they sit next to each other. */
+        .btn-back { width: auto; background: #1a2235; color: #cbd5e1;
+            border: 1px solid #2e3a59; font-weight: normal;
+            min-height: 50px; line-height: 1.2; }
         .btn-back:hover { background: #232d47; color: #fff; box-shadow: none; }
         /* Batch 36: the match result is the single most important line of text
            the game ever shows, and it was the same 1.3rem as a panel heading.
@@ -1004,7 +1029,10 @@
             box-shadow: none; text-align: left; cursor: pointer;
         }
         .opt:hover { background: #232d47; color: #e2e8f0; box-shadow: none; }
+        /* #67: with a 26-character display name the value pill ran past the
+           row's right padding. Truncated rather than allowed to push. */
         .opt .opt-state {
+            max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
             flex: none; padding: 3px 10px; border-radius: 999px;
             background: #0f1626; border: 1px solid #334155;
             color: #94a3b8; font-size: 0.74rem; font-weight: 700;
@@ -1090,7 +1118,9 @@
            by measuring, which is exactly the failure the Copy button had. */
         .menu-section .modal-x, .shop-panel .modal-x, .tutorial-panel .modal-x {
             position: absolute; top: 8px; right: 8px;
-            width: 30px; height: 30px; min-width: 0; padding: 0; margin: 0;
+            /* 40x40 (#68): 30 is under every touch-target guideline, and this
+               is the control that exists to be findable. */
+            width: 40px; height: 40px; min-width: 0; padding: 0; margin: 0;
             display: flex; align-items: center; justify-content: center;
             background: transparent; color: #94a3b8;
             border: 1px solid #2e3a59; border-radius: 6px;
@@ -1276,7 +1306,9 @@
             cursor: pointer;
         }
         .tutorial-hide-row input { width: auto; margin: 0 5px 0 0; vertical-align: middle; }
-        #tutorial-screen .menu-section button#btn-tutorial-close { max-width: 220px; margin: 6px auto 0; }
+        /* #75: was a 220px left-aligned button where every other panel's main
+           action spans the panel. */
+        #tutorial-screen .menu-section button#btn-tutorial-close { width: 100%; margin: 6px 0 0; }
         #match-summary { font-size: 0.72rem; color: #94a3b8; text-align: left; margin: 8px 0; line-height: 1.5; }
         #match-summary b { color: #e2e8f0; }
         #pause-controls-reminder { font-size: 0.72rem; line-height: 1.6; text-align: left; }
@@ -7966,7 +7998,8 @@ function refreshBotUI(side) {
     // throwing on a null.
     const toggle = document.getElementById(side === 'p1' ? 'btn-toggle-bot-p1' : 'btn-toggle-bot');
     if (toggle) {
-        toggle.textContent = isBot ? 'Bot: ON' : 'Bot: OFF';
+        // Sentence case (#9), like Sandbox: Off, Mute Off and Glow On.
+        toggle.textContent = isBot ? 'Bot: On' : 'Bot: Off';
         toggle.classList.toggle('active', isBot);
         // A permanently disabled button answering a question nobody asked is
         // the complaint; hidden is the answer. MOBILE_SOLO makes botAllowed
@@ -8253,7 +8286,7 @@ function refreshRoomUI() {
     // Their PREVIEW, not just their confirmed pick - so you watch them browse.
     if (foeName) {
         const shown = foePick || (foeSide === 'p1' ? p1Preview : p2Preview);
-        foeName.textContent = !connected ? '\u2014' : (shown || 'Choosing...');
+        foeName.textContent = !connected ? '\u2014' : (shown || 'Choosing…');
     }
     if (foeState) {
         // Batch 36: show what they are actually doing, including which fighter
@@ -11242,7 +11275,7 @@ function drawHUDInner() {
             hudCtx.fillText(isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`, 0, 0);
             hudCtx.restore();
             hudCtx.font = hudFont(18); hudCtx.fillStyle = "#94a3b8";
-            hudCtx.fillText(`Round ${currentRound} starting...`, hudW() / 2, 336);
+            hudCtx.fillText(`Round ${currentRound} starting…`, hudW() / 2, 336);
             hudCtx.textAlign = "left";
         }
         // ON A PLATE (#90): this sits over the arena floor, which on the pale

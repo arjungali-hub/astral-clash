@@ -703,7 +703,15 @@
         .detail-actions button { width: auto; flex: 1; padding: 6px 4px; font-size: 0.7rem; margin: 0; }
         /* Back is a tertiary/ghost action. No !important needed now that the
            base button is width:auto and non-colored by default here. */
-        .btn-back { width: auto; background: #1a2235; color: #cbd5e1; border: 1px solid #2e3a59; font-weight: normal; }
+        .btn-back {
+            width: auto;
+            background: #1a2235;
+            color: #cbd5e1;
+            border: 1px solid #2e3a59;
+            font-weight: normal;
+            min-height: 50px;
+            line-height: 1.2;
+        }
         .btn-back:hover { background: #232d47; color: #fff; box-shadow: none; }
         /* Short screens centre themselves in the scroll container (B2). */
         #gameover-screen { display: none; margin: auto 0; }
@@ -787,9 +795,18 @@
         }
         .opt:hover { background: #232d47; color: #e2e8f0; box-shadow: none; }
         .opt .opt-state {
-            flex: none; padding: 3px 10px; border-radius: 999px;
-            background: #0f1626; border: 1px solid #334155;
-            color: #94a3b8; font-size: 0.74rem; font-weight: 700;
+            max-width: 46%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: none;
+            padding: 3px 10px;
+            border-radius: 999px;
+            background: #0f1626;
+            border: 1px solid #334155;
+            color: #94a3b8;
+            font-size: 0.74rem;
+            font-weight: 700;
             letter-spacing: 0.04em;
         }
         /* ON is the only state that gets color, so a glance finds it. */
@@ -801,8 +818,10 @@
             position: absolute;
             top: 8px;
             right: 8px;
-            width: 30px;
-            height: 30px;
+            /* 40x40 (#68): 30 is under every touch-target guideline, and this
+               is the control that exists to be findable. */
+            width: 40px;
+            height: 40px;
             min-width: 0;
             padding: 0;
             margin: 0;
@@ -985,7 +1004,10 @@
             cursor: pointer;
         }
         .tutorial-hide-row input { width: auto; margin: 0 5px 0 0; vertical-align: middle; }
-        #tutorial-screen .menu-section button#btn-tutorial-close { max-width: 220px; margin: 6px auto 0; }
+        #tutorial-screen .menu-section button#btn-tutorial-close {
+            width: 100%;
+            margin: 6px 0 0;
+        }
         #match-summary { font-size: 0.72rem; color: #94a3b8; text-align: left; margin: 8px 0; line-height: 1.5; }
         #match-summary b { color: #e2e8f0; }
         #pause-controls-reminder { font-size: 0.72rem; line-height: 1.6; text-align: left; }
@@ -7906,7 +7928,8 @@ function refreshBotUI(side) {
     // throwing on a null.
     const toggle = document.getElementById(side === 'p1' ? 'btn-toggle-bot-p1' : 'btn-toggle-bot');
     if (toggle) {
-        toggle.textContent = isBot ? 'Bot: ON' : 'Bot: OFF';
+        // Sentence case (#9), like Sandbox: Off, Mute Off and Glow On.
+        toggle.textContent = isBot ? 'Bot: On' : 'Bot: Off';
         toggle.classList.toggle('active', isBot);
         // A permanently disabled button answering a question nobody asked is
         // the complaint; hidden is the answer. MOBILE_SOLO makes botAllowed
@@ -9476,7 +9499,7 @@ function drawHUDInner() {
             hudCtx.fillText(isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`, 0, 0);
             hudCtx.restore();
             hudCtx.font = hudFont(18); hudCtx.fillStyle = "#94a3b8";
-            hudCtx.fillText(`Round ${currentRound} starting...`, hudW() / 2, 336);
+            hudCtx.fillText(`Round ${currentRound} starting…`, hudW() / 2, 336);
             hudCtx.textAlign = "left";
         }
         // ON A PLATE (#90): this sits over the arena floor, which on the pale

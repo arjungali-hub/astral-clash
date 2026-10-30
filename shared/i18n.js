@@ -1471,6 +1471,15 @@ function curLang() {
         const saved = safeLSGet(AC_LANG_KEY);
         acLang = AC_LANGS.some(l => l.id === saved) ? saved : 'en';
     }
+    // #12: <html lang> stayed "en" whatever the page was showing, so a screen
+    // reader pronounced the Spanish and French with English phonetics - the one
+    // thing a translation cannot fix for itself. Set HERE, where the language is
+    // resolved, because that covers the fresh load after setLang's reload as
+    // well as the switch itself, and localiseDOM calls this on every pass so the
+    // attribute cannot drift out of step with the text on the page.
+    try {
+        if (document.documentElement.lang !== acLang) document.documentElement.lang = acLang;
+    } catch (e) { /* no document yet; the next pass sets it */ }
     return acLang;
 }
 

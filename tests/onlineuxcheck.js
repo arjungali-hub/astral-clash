@@ -232,9 +232,23 @@ const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
         named.neither.join() === 'Player 1,Player 2', JSON.stringify(named.neither));
     check('both named: no slot numbers at all',
         named.bothNamed.join() === 'Arjun,Sam', JSON.stringify(named.bothNamed));
-    check('only mine named: the anonymous one is Player 1',
-        named.mineOnly.join() === 'Arjun,Player 1', JSON.stringify(named.mineOnly));
-    check('only theirs named: the anonymous one is Player 1',
+    // AN UNNAMED SIDE SHOWS ITS OWN NUMBER, which is a deliberate change from
+    // what this used to assert ('Arjun,Player 1'). playerLabel had a branch
+    // returning 'Player 1' for any unnamed side once the OTHER side had a name,
+    // on the reasoning that this client's player was then "the only numbered one
+    // left, whichever slot it happens to hold".
+    //
+    // UI review #44..#95 caught what that looks like on screen: a named host and
+    // an unnamed guest, and the guest - sitting in the p2 slot, on the pink bar,
+    // printed "PLAYER 2" in the room - labelled "Player 1" beside the host who
+    // actually is player 1. Two things on one screen both called Player 1.
+    //
+    // Slots are stable and every other surface says which is which, so the label
+    // follows the slot. The theirsOnly case is unchanged either way: an unnamed
+    // p1 was and is 'Player 1'.
+    check('only mine named: the anonymous one keeps its own slot number',
+        named.mineOnly.join() === 'Arjun,Player 2', JSON.stringify(named.mineOnly));
+    check('only theirs named: the anonymous one keeps its own slot number',
         named.theirsOnly.join() === 'Player 1,Sam', JSON.stringify(named.theirsOnly));
     check('markup is stripped from a name', named.sanitised === 'bArb jun'
         || !/[<>]/.test(named.sanitised), named.sanitised);
