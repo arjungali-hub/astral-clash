@@ -459,7 +459,13 @@
         .picker-side { display: grid; grid-template-columns: minmax(0, 1fr) 286px;
             align-items: start; gap: 10px; }
         .picker-side .fighter-grid { flex: 1 1 auto; min-width: 0; }
-        .picker-side .fighter-detail { width: 286px; flex: none; margin-top: 0; }
+        /* #50: the action row followed the description, so P1's Change Fighter
+           sat 12px below P2's whenever the two fighters' text differed in
+           length. A column with the actions pushed to its end lines them up
+           whatever is written above. */
+        .picker-side .fighter-detail { width: 286px; flex: none; margin-top: 0;
+            display: flex; flex-direction: column; }
+        .picker-side .fighter-detail .detail-actions { margin-top: auto; }
         /* `.detail-scroll`'s 200px cap was sized for the old 340px-wide side
            panel, where the detail replaced nothing and had the full column
            width. Beside the grid the column is narrower, so the same text wraps
@@ -861,7 +867,10 @@
             margin: 8px 0 10px; padding: 9px 11px; border-radius: 5px;
             background: #0b0f18; border: 1px solid #2e3a59;
         }
-        .shop-detail .detail-desc { font-size: 0.72rem; }
+        /* #34: this is the same component as the one on character select and
+           was reading 11.5px here against 10.9px there. It inherits the shared
+           .detail-desc size now rather than restating a different one. */
+        .shop-detail .detail-desc { font-size: inherit; }
         .shop-detail .detail-ability { margin-top: 7px; }
         .menu-section .shop-info {
             width: auto; margin: 0 0 0 6px; padding: 3px 9px; font-size: 0.64rem; font-weight: bold;
@@ -952,7 +961,9 @@
            A small hover-local scroll region, unlike the row-wide one the
            .select-row comment above rules out for fighting the mouse wheel. */
         .detail-scroll { max-height: min(200px, 30vh); overflow-y: auto; padding-right: 4px; }
-        .detail-desc { font-size: 0.68rem; color: #94a3b8; margin: 4px 0 8px; }
+        /* 0.68rem was 10.9px. The description is the sentence somebody reads
+           to choose a fighter; it is not a caption. */
+        .detail-desc { font-size: 0.74rem; color: #94a3b8; margin: 4px 0 8px; }
         .detail-stats { margin-bottom: 8px; }
         /* 0.6rem was 9.6px (#33). These are the numbers somebody compares two
            fighters with; they can afford to be read. */
