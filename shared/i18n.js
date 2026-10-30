@@ -153,6 +153,8 @@ const I18N = {
         'Resume (Esc)': 'Continuar (Esc)',
         'Paused': 'En pausa',
         'Menu': 'Menú',
+        'special used': 'especial usado',
+        'specials used': 'especiales usados',
         'Turn left': 'Girar izquierda',
         'Turn right': 'Girar derecha',
         'Strafe left': 'Lateral izquierda',
@@ -320,8 +322,6 @@ const I18N = {
             "para todos",
         "dmg dealt, largest hit":
             "de daño, golpe más fuerte",
-        "special(s) used":
-            "especial(es) usados",
         // ---- the controls card and the rest of the assembled UI --------
         "Alone against a bot:":
             "Solo contra un bot:",
@@ -803,6 +803,8 @@ const I18N = {
         'Resume (Esc)': 'Reprendre (Échap)',
         'Paused': 'En pause',
         'Menu': 'Menu',
+        'special used': 'spécial utilisé',
+        'specials used': 'spéciaux utilisés',
         'Turn left': 'Tourner à gauche',
         'Turn right': 'Tourner à droite',
         'Strafe left': 'Latéral gauche',
@@ -970,8 +972,6 @@ const I18N = {
             "pour tous",
         "dmg dealt, largest hit":
             "de dégâts, plus gros coup",
-        "special(s) used":
-            "spéciale(s) utilisée(s)",
         // ---- the controls card and the rest of the assembled UI --------
         "Alone against a bot:":
             "Seul contre un bot :",

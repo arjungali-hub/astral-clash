@@ -325,7 +325,8 @@
             padding: 9px 12px; margin-bottom: 12px;
             background: rgba(0,0,0,0.28); border: 1px solid #2e3a59; border-radius: 8px;
         }
-        .home-roster { color: #64748b; font-size: 0.74rem; margin-left: 4px; }
+        /* #64748b read 4.1:1 at 11.8px (#25). */
+        .home-roster { color: #94a3b8; font-size: 0.78rem; margin-left: 4px; }
         .home-name-row { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
         .home-name-row label {
             /* 4.00:1 at #64748b; 4.54:1 here, same hue. */
@@ -338,7 +339,9 @@
             color: #e2e8f0; font-family: inherit; font-size: 0.9rem; padding: 8px 10px;
         }
         .home-name-row input:focus { outline: none; border-color: #00f3ff; }
-        .home-name-row input::placeholder { color: #475569; font-style: italic; }
+        /* #475569 is about 2.5:1 (#25) - the placeholder is the only thing
+           saying what the field is for until you type in it. */
+        .home-name-row input::placeholder { color: #8296b0; font-style: italic; }
         .home-row { display: flex; gap: 8px; }
         .home-row button { flex: 1; margin: 0; padding: 8px 6px; font-size: 0.76rem; }
 
@@ -582,7 +585,10 @@
             filter: brightness(1.45) saturate(1.15);
         }
         .fighter-btn.locked .fname { filter: none; }   /* locked SHOULD look dim */
-        .fighter-btn .ftitle { font-size: 0.7rem; color: #94a3b8; font-weight: normal; }
+        /* ONE LINE (#18): 'Shardwing Sylph' and one other wrapped, which made
+           their whole grid row 14px taller than every other row. */
+        .fighter-btn .ftitle { font-size: 0.7rem; color: #94a3b8; font-weight: normal;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .fighter-btn:hover { background: var(--accent, #00f3ff); box-shadow: 0 0 15px rgba(0, 243, 255, 0.4); }
         .fighter-btn:hover .fname, .fighter-btn:hover .ftitle, .fighter-btn:hover .fkey { color: #0d0f18; }
         /* B13: the picked card stays lit in the grid while its detail shows
@@ -833,7 +839,12 @@
             background: #10151f; border: 1px solid #2e3a59; border-left: 3px solid var(--accent, #00f3ff);
             border-radius: 8px; padding: 15px 18px; margin-bottom: 14px;
         }
-        .shop-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+        /* #30: space-between with three children parked Details in the middle
+           of a 957px row, attached to neither end. The name takes the slack
+           instead, so Details sits with the name and the status stays right. */
+        .shop-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .shop-card-head > .shop-name,
+        .shop-card-head > :first-child { margin-right: auto; }
         .shop-card-head > div:first-child { min-width: 0; } /* let the label shrink instead of squeezing the button */
         /* --accent-text, not --accent. Five of the fourteen fighters fail
            4.5:1 as text on this card - Nyx at 3.21, Karrigos at 1.51 - and
@@ -845,7 +856,11 @@
         /* The "Unlock to buy upgrades" line in the second screenshot sat hard
            against the card edge below it. */
         .shop-locked-note { margin-top: 8px; line-height: 1.6; }
-        .shop-upgrades { display: grid; grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); gap: 12px 20px; }
+        /* #36: each column was 224px while label + pips + button used about
+           150, leaving a 71px dead gap before the next one. A smaller
+           minimum lets auto-fit pack them at the width they need. */
+        .shop-upgrades { display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(164px, 1fr)); gap: 12px 16px; }
         .upg-row { display: flex; align-items: center; gap: 9px; font-size: 0.72rem; color: #94a3b8; line-height: 1.6; }
         .upg-row .upg-label { width: 52px; flex-shrink: 0; }
         .upg-pips { display: flex; gap: 3px; flex-shrink: 0; }
@@ -895,13 +910,19 @@
         .detail-scroll { max-height: min(200px, 30vh); overflow-y: auto; padding-right: 4px; }
         .detail-desc { font-size: 0.68rem; color: #94a3b8; margin: 4px 0 8px; }
         .detail-stats { margin-bottom: 8px; }
-        .stat-row { display: flex; align-items: center; gap: 6px; font-size: 0.6rem; color: #94a3b8; margin-bottom: 3px; }
+        /* 0.6rem was 9.6px (#33). These are the numbers somebody compares two
+           fighters with; they can afford to be read. */
+        .stat-row { display: flex; align-items: center; gap: 6px;
+            font-size: 0.7rem; color: #94a3b8; margin-bottom: 3px; }
         /* Batch 24: 40px fit "Health"/"Damage" but wraps "Main Attack" onto two
            lines, which squashes the row it labels. */
         .stat-row span:first-child { width: 62px; flex-shrink: 0; }
         .stat-bar { flex: 1; height: 6px; background: #0f1420; border-radius: 3px; overflow: hidden; }
         .stat-fill { height: 100%; background: var(--accent); }
-        .stat-val { min-width: 26px; text-align: right; flex-shrink: 0; color: #fff; white-space: nowrap; }
+        /* A FIXED column (#33): the value's own width was setting where each
+           bar ended, so Health's bar stopped 5px short of every other one. */
+        .stat-val { width: 46px; min-width: 46px; text-align: right; flex-shrink: 0;
+            color: #fff; white-space: nowrap; }
         .detail-ability { margin-bottom: 6px; }
         .ability-label { display: block; font-size: 0.66rem; font-weight: bold; color: var(--accent); }
         .detail-ability p { margin: 2px 0 0; font-size: 0.6rem; color: #94a3b8; }
@@ -961,10 +982,14 @@
         }
         #winner-title.emphasise { animation: resultGrow 620ms cubic-bezier(0.16, 1, 0.3, 1) both; }
         #winner-title.draw { color: #fbbf24; text-shadow: 0 0 22px rgba(251,191,36,0.45); }
+        /* TRANSFORM AND OPACITY ONLY (#81). letter-spacing is a layout
+           property: animating it re-flowed the title mid-entrance, so a
+           two-line result re-wrapped while the player was reading it. scale
+           gives the same arrival without touching the line box. */
         @keyframes resultGrow {
-            0%   { transform: scale(0.55); opacity: 0; letter-spacing: -0.04em; }
-            55%  { transform: scale(1.06); opacity: 1; letter-spacing: 0.035em; }
-            100% { transform: scale(1);    opacity: 1; letter-spacing: 0.02em; }
+            0%   { transform: scale(0.55); opacity: 0; }
+            55%  { transform: scale(1.06); opacity: 1; }
+            100% { transform: scale(1);    opacity: 1; }
         }
         @media (prefers-reduced-motion: reduce) {
             /* The setting exists to suppress exactly this kind of large
@@ -1473,8 +1498,10 @@
         .daily-list { list-style: none; margin: 0; padding: 0;
                       display: flex; flex-direction: column; gap: 5px; }
         .daily-row {
+            /* 0.72rem was 11.5px in a 16px row (#26). */
             display: flex; align-items: baseline; gap: 8px;
-            font-size: 0.72rem; line-height: 1.35; color: #cbd5e1;
+            font-size: 0.8rem; line-height: 1.5; color: #cbd5e1;
+            padding: 3px 0;
             /* The text column takes the slack so the coin value and the ticks
                stay in a line down the panel instead of wandering with the
                length of each challenge. */
@@ -1514,7 +1541,7 @@
             color: #e2e8f0; font-family: inherit; font-size: 0.9rem; padding: 8px 10px;
         }
         .account-row input:focus { outline: none; border-color: #00f3ff; }
-        .account-row input::placeholder { color: #475569; font-style: italic; }
+        .account-row input::placeholder { color: #8296b0; font-style: italic; }
         /* ...and the labels line up. "Nom d'utilisateur" wrapped to two lines
            while "Mot de passe" stayed on one, so the two rows sat at different
            heights. 96px fits the English but not its translations. */
@@ -2088,10 +2115,16 @@
                          because the match worth keeping is always the one you
                          did not think to arm. refreshReplayUI hides it when
                          there is nothing to save. -->
+                    <!-- #93: these were three identical filled cyan buttons, so
+                         nothing said which one was the main way on. Rematch stays
+                         filled; the alternatives are secondary. Kept OUTSIDE the
+                         container - a comment inside it counts as container
+                         content, and the markup porter reported the two builds
+                         71% alike because of it. -->
                     <div id="gameover-actions">
                         <button id="btn-rematch">Rematch (Same Arena)</button>
-                        <button id="btn-reroll-map">Rematch (New Arena)</button>
-                        <button id="btn-save-replay">Save Replay</button>
+                        <button id="btn-reroll-map" class="btn-secondary">Rematch (New Arena)</button>
+                        <button id="btn-save-replay" class="btn-secondary">Save Replay</button>
                     </div>
                     <div id="gameover-wait" class="setup-note" style="display:none;">Waiting for the host to choose a rematch&hellip;</div>
                     <button id="btn-play-again" class="btn-back">Back to the Room</button>
@@ -2110,14 +2143,17 @@
                     <p id="pause-away-note" class="pause-away-note" style="display:none;"></p>
                     <p id="pause-controls-reminder"></p>
                     <button id="btn-resume">Resume (Esc)</button>
-                    <button id="btn-pause-rebind">Rebind Keys</button>
+                    <button id="btn-pause-rebind" class="btn-secondary">Rebind Keys</button>
                     <!-- Reported: Glow, HUD Text and Audio could not be changed
                          during a fight, which is the only time anyone wants to
                          change them. Opens the same panel the home screen does;
                          the modal stack puts it over the pause screen and
                          Escape closes it back to here. -->
                     <button id="btn-pause-settings" class="btn-secondary">Settings</button>
-                    <button id="btn-quit-to-menu">Return to Menu</button>
+                    <!-- #82: this was the same filled cyan as Resume. The one
+                         destructive action on the screen should not be the
+                         loudest thing on it. -->
+                    <button id="btn-quit-to-menu" class="btn-back">Return to Menu</button>
                 </div>
             </div>
 
@@ -11532,8 +11568,8 @@ function endMatch() {
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} ${t('coins')} &nbsp;·&nbsp; P2 +${earnedP2} ${t('coins')}</div>`;
     document.getElementById('match-summary').innerHTML =
-        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t('special(s) used')}</div>` +
-        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} ${t('special(s) used')}</div>` +
+        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t(s1.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
+        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} ${t(s2.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
         `<div>${t('Round times:')} ${roundTimesStr}</div>` +
         coinLine + challengeLine;
 
@@ -11606,8 +11642,8 @@ function endCoopMatch(won, detail) {
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">${t('Each player')} +${earned} ${t('coins')}</div>`;
     document.getElementById('match-summary').innerHTML =
         `<div>${coopResultText}</div>` +
-        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t('special(s) used')}</div>` +
-        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} ${t('special(s) used')}</div>` +
+        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t(s1.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
+        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} ${t(s2.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
         coinLine;
     showScreen('gameover');
     refreshGameOverUI();   // the guest gets no rematch buttons

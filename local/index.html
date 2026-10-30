@@ -462,7 +462,14 @@
             filter: brightness(1.45) saturate(1.15);
         }
         .fighter-btn.locked .fname { filter: none; }   /* locked SHOULD look dim */
-        .fighter-btn .ftitle { font-size: 0.7rem; color: #94a3b8; font-weight: normal; }
+        .fighter-btn .ftitle {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            font-weight: normal;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .fighter-btn:hover { background: var(--accent, #00f3ff); box-shadow: 0 0 15px rgba(0, 243, 255, 0.4); }
         .fighter-btn:hover .fname, .fighter-btn:hover .ftitle, .fighter-btn:hover .fkey { color: #0d0f18; }
         /* B13: the picked card stays lit in the grid while its detail shows
@@ -627,7 +634,12 @@
             background: #10151f; border: 1px solid #2e3a59; border-left: 3px solid var(--accent, #00f3ff);
             border-radius: 6px; padding: 9px 12px; margin-bottom: 8px;
         }
-        .shop-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+        .shop-card-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
         .shop-card-head > div:first-child { min-width: 0; } /* let the label shrink instead of squeezing the button */
         .shop-name {
             font-weight: bold;
@@ -689,13 +701,27 @@
         .detail-scroll { max-height: none; overflow: visible; padding-right: 0; }
         .detail-desc { font-size: 0.68rem; color: #94a3b8; margin: 4px 0 8px; }
         .detail-stats { margin-bottom: 8px; }
-        .stat-row { display: flex; align-items: center; gap: 6px; font-size: 0.6rem; color: #94a3b8; margin-bottom: 3px; }
+        .stat-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.7rem;
+            color: #94a3b8;
+            margin-bottom: 3px;
+        }
         /* Batch 24: 40px fit "Health"/"Damage" but wraps "Main Attack" onto two
            lines, which squashes the row it labels. */
         .stat-row span:first-child { width: 62px; flex-shrink: 0; }
         .stat-bar { flex: 1; height: 6px; background: #0f1420; border-radius: 3px; overflow: hidden; }
         .stat-fill { height: 100%; background: var(--accent); }
-        .stat-val { min-width: 26px; text-align: right; flex-shrink: 0; color: #fff; white-space: nowrap; }
+        .stat-val {
+            width: 46px;
+            min-width: 46px;
+            text-align: right;
+            flex-shrink: 0;
+            color: #fff;
+            white-space: nowrap;
+        }
         .detail-ability { margin-bottom: 6px; }
         .ability-label { display: block; font-size: 0.66rem; font-weight: bold; color: var(--accent); }
         .detail-ability p { margin: 2px 0 0; font-size: 0.6rem; color: #94a3b8; }
@@ -1024,11 +1050,17 @@
         .daily-list { list-style: none; margin: 0; padding: 0;
                       display: flex; flex-direction: column; gap: 5px; }
         .daily-row {
-            display: flex; align-items: baseline; gap: 8px;
-            font-size: 0.72rem; line-height: 1.35; color: #cbd5e1;
+            /* 0.72rem was 11.5px in a 16px row (#26). */
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: #cbd5e1;
+            padding: 3px 0;
             /* The text column takes the slack so the coin value and the ticks
                stay in a line down the panel instead of wandering with the
-               length of each challenge. */
+               length of each challenge. */;
         }
         .daily-text { flex: 1 1 auto; }
         .daily-coins { flex: none; color: #f59e0b; font-weight: 700;
@@ -1662,8 +1694,8 @@
                     <div id="match-summary"></div>
                     <div id="gameover-actions">
                         <button id="btn-rematch">Rematch (Same Arena)</button>
-                        <button id="btn-reroll-map">Rematch (New Arena)</button>
-                        <button id="btn-save-replay">Save Replay</button>
+                        <button id="btn-reroll-map" class="btn-secondary">Rematch (New Arena)</button>
+                        <button id="btn-save-replay" class="btn-secondary">Save Replay</button>
                     </div>
                     <button id="btn-play-again">Play Again</button>
                     <div id="gameover-wait" class="setup-note" style="display:none;">Waiting for the host to choose a rematch&hellip;</div>
@@ -1675,12 +1707,12 @@
                     <h3>Paused</h3>
                     <p id="pause-controls-reminder"></p>
                     <button id="btn-resume">Resume (Esc)</button>
-                    <button id="btn-pause-rebind">Rebind Keys</button>
+                    <button id="btn-pause-rebind" class="btn-secondary">Rebind Keys</button>
                     <!-- Glow, HUD Text and Audio are only worth changing while
                          you can see what they do. The modal stack puts this over
                          the pause screen and Escape closes it back to here. -->
                     <button id="btn-pause-settings" class="btn-secondary">Settings</button>
-                    <button id="btn-quit-to-menu">Return to Menu</button>
+                    <button id="btn-quit-to-menu" class="btn-back">Return to Menu</button>
                 </div>
             </div>
 
@@ -9734,8 +9766,8 @@ function endMatch() {
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} ${t('coins')} &nbsp;·&nbsp; P2 +${earnedP2} ${t('coins')}</div>`;
     document.getElementById('match-summary').innerHTML =
-        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t('special(s) used')}</div>` +
-        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} ${t('special(s) used')}</div>` +
+        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t(s1.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
+        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} ${t(s2.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
         `<div>${t('Round times:')} ${roundTimesStr}</div>` +
         coinLine + challengeLine;
 
@@ -9808,8 +9840,8 @@ function endCoopMatch(won, detail) {
         : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">${t('Each player')} +${earned} ${t('coins')}</div>`;
     document.getElementById('match-summary').innerHTML =
         `<div>${coopResultText}</div>` +
-        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t('special(s) used')}</div>` +
-        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} ${t('special(s) used')}</div>` +
+        `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t(s1.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
+        `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} ${t(s2.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
         coinLine;
     showScreen('gameover');
     refreshGameOverUI();   // the guest gets no rematch buttons
