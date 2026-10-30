@@ -522,7 +522,10 @@
         }
         .side-name:focus { outline: none; border-color: #00f3ff; }
         .side-purse {
-            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            /* #57: centred like Home's purse row. space-between pushed the label
+               to one edge and the amount to the other, so one row read as two
+               unrelated pieces of information. */
+            display: flex; align-items: center; justify-content: center; gap: 8px;
             margin: 0 0 8px; padding: 5px 9px; border-radius: 5px;
             background: #0f1420; border: 1px solid #2e3a59;
         }
@@ -1645,7 +1648,7 @@
                         </div>
                         <div class="side-actions">
                             <button id="btn-shop-p1" class="btn-side-shop" data-shop-side="p1">Armory</button>
-                            <button id="btn-toggle-bot-p1" class="bot-toggle">Bot: OFF</button>
+                            <button id="btn-toggle-bot-p1" class="bot-toggle">Bot: Off</button>
                             <button id="btn-random-p1" class="btn-secondary">Random (R)</button>
                         </div>
                         <div class="fighter-grid" id="p1-grid"></div>
@@ -1675,7 +1678,7 @@
                         </div>
                         <div class="side-actions">
                             <button id="btn-shop-p2" class="btn-side-shop" data-shop-side="p2">Armory</button>
-                            <button id="btn-toggle-bot" class="bot-toggle">Bot: OFF</button>
+                            <button id="btn-toggle-bot" class="bot-toggle">Bot: Off</button>
                             <button id="btn-random-p2" class="btn-secondary">Random (/)</button>
                         </div>
                         <div class="fighter-grid" id="p2-grid"></div>
@@ -8100,7 +8103,13 @@ function refreshGridLocks() {
             const unlocked = isCharUnlocked(side, name);
             btn.classList.toggle('roster-locked', !unlocked);
             const cost = UNLOCK_COST[name];
-            btn.title = unlocked ? CHAR_MAP[name].desc : `Locked — ${cost} coins in the Armory`;
+            // #53 asks for the key AND the price on a locked card. The pill holds
+            // one token and the swap's own reasoning is sound - the hotkey does
+            // nothing while locked, because previewPick refuses - so the price
+            // keeps the pill and the key goes where there is room for it. Partial,
+            // deliberately: a '4 · 250' pill is two facts in a badge sized for one.
+            btn.title = unlocked ? CHAR_MAP[name].desc
+                : `Locked — ${cost} coins in the Armory. Key ${btn.dataset.key} once unlocked.`;
             // Swap the hotkey pill for a price pill while locked: the hotkey
             // does nothing on a locked character anyway (previewPick refuses),
             // so showing the price is strictly more useful there.

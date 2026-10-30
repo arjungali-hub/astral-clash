@@ -272,8 +272,8 @@ const I18N = {
         'Nobody has joined yet': 'Todavía no se ha unido nadie',
         'No fighter yet': 'Aún sin luchador',
         'Unlock to buy upgrades': 'Desbloquéalo para comprar mejoras',
-        'Bot: ON': 'Bot: sí',
-        'Bot: OFF': 'Bot: no',
+        'Bot: On': 'Bot: sí',
+        'Bot: Off': 'Bot: no',
         'Sandbox on — everything unlocked, bot matches available':
             'Modo pruebas activado: todo desbloqueado, combates contra bots disponibles',
         'Your progression is back — two players only':
@@ -923,8 +923,8 @@ const I18N = {
         'Nobody has joined yet': 'Personne ne s’est encore connecté',
         'No fighter yet': 'Pas encore de combattant',
         'Unlock to buy upgrades': 'Débloquez-le pour acheter des améliorations',
-        'Bot: ON': 'Bot : oui',
-        'Bot: OFF': 'Bot : non',
+        'Bot: On': 'Bot : oui',
+        'Bot: Off': 'Bot : non',
         'Sandbox on — everything unlocked, bot matches available':
             'Bac à sable activé : tout est débloqué, combats contre des bots disponibles',
         'Your progression is back — two players only':
