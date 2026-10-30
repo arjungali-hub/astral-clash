@@ -1574,7 +1574,25 @@ function setLang(id) {
     // two translations has the same problem, so every change reloads: one
     // predictable rule rather than a special case that works three times out of
     // four. The choice is in localStorage by then, so it survives the reload.
+    //
+    // #15: and so does the fact that you were in Settings when you changed it.
+    // sessionStorage rather than local: it has to outlive the reload and must
+    // not outlive the tab, or somebody opens the game next week into a panel
+    // they closed.
+    try { sessionStorage.setItem(AC_LANG_RETURN_KEY, '1'); } catch (e) { /* private mode */ }
     location.reload();
+}
+
+// ONE-SHOT, the same shape as accountTakeLinkNotice: the build asks once and
+// the flag is cleared, so a repaint for any other reason cannot reopen
+// Settings on top of whatever the player is doing.
+const AC_LANG_RETURN_KEY = 'astralClashLangReturn';
+function langTakeReturnRequest() {
+    try {
+        if (sessionStorage.getItem(AC_LANG_RETURN_KEY) !== '1') return false;
+        sessionStorage.removeItem(AC_LANG_RETURN_KEY);
+        return true;
+    } catch (e) { return false; }
 }
 
 // Kept for the keyboard and gamepad paths, which step through a setting rather

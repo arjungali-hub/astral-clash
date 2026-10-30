@@ -3394,6 +3394,14 @@ onAccountChange = () => {
     if (typeof accountTakeLinkNotice === 'function' && accountTakeLinkNotice()) {
         openAccountPanel();
     }
+    // #15: the language switch reloads the page, which used to drop the player
+    // on Home with Settings closed. Put them back, with the select focused -
+    // which is where a keyboard user was when they changed it.
+    if (typeof langTakeReturnRequest === 'function' && langTakeReturnRequest()) {
+        openModal('settings');
+        const sel = document.getElementById('sel-lang');
+        if (sel) sel.focus();
+    }
 };
 // The project these saves live in. BOTH VALUES ARE PUBLIC by design - this page
 // is static and anyone can view-source it - which is why the row level security
@@ -11337,14 +11345,31 @@ function drawHUDInner() {
             // grow at full size and shrunk it.
             const rt = Math.min(1, roundEndTimer / 12);
             const grow = REDUCED_MOTION ? 1 : (0.6 + 0.4 * (1 - Math.pow(1 - rt, 3)));
+            // WHO WON, not which fighter (#80). With no names set and both
+            // players on Kaelen this read "Round 1: Kaelen wins!" over a HUD
+            // calling them "Kaelen (Player 1)" and "Kaelen (Player 2)" - it
+            // named the fighter they were both playing and settled nothing.
+            // playerLabel is what the HUD and the match summary already use,
+            // so a named player gets their name and an unnamed one their slot.
+            const winLabel = isDraw ? `Round ${currentRound - 1}: Draw`
+                : `Round ${currentRound - 1}: ${playerLabel(winner === player1 ? 'p1' : 'p2')} wins!`;
+            const nextLabel = `Round ${currentRound} starting…`;
+            // ON A PLATE (#94): both of these are drawn over the arena, and the
+            // subline at #94a3b8/13px was unreadable against a lit wall. The
+            // plate goes down UNSCALED, before the grow transform, or it would
+            // be animated along with the text it is meant to sit behind.
+            hudCtx.font = hudFont(34, true);
+            hudPlate(winLabel, hudW() / 2, 300, 16, 10);
             hudCtx.save();
             hudCtx.translate(hudW() / 2, 300);
             hudCtx.scale(grow, grow);
-            hudCtx.font = hudFont(34, true);
-            hudCtx.fillText(isDraw ? `Round ${currentRound - 1}: Draw` : `Round ${currentRound - 1}: ${winner.name} wins!`, 0, 0);
+            hudCtx.fillStyle = "#ffffff";
+            hudCtx.fillText(winLabel, 0, 0);
             hudCtx.restore();
-            hudCtx.font = hudFont(18); hudCtx.fillStyle = "#94a3b8";
-            hudCtx.fillText(`Round ${currentRound} starting…`, hudW() / 2, 336);
+            hudCtx.font = hudFont(18);
+            hudPlate(nextLabel, hudW() / 2, 336, 12, 6);
+            hudCtx.fillStyle = "#cbd5e1";
+            hudCtx.fillText(nextLabel, hudW() / 2, 336);
             hudCtx.textAlign = "left";
         }
         // ON A PLATE (#90): this sits over the arena floor, which on the pale
