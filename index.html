@@ -912,6 +912,27 @@
         /* #6: these were 50px without the arrow glyph and 51-53px with it,
            because the glyph set the line box. Same class, three heights, in
            rows where they sit next to each other. */
+        /* #54: the primary action in Match Setup was 147px, centred under the
+           236px Mode/Arena/Sandbox buttons above it - the smallest control in
+           the box was the one that starts the match. */
+        #btn-start-match { width: 100%; }
+        /* #55: Leave Room borrowed .btn-back and rendered 98x27 with 11.8px
+           text, against 50px for that class everywhere else. */
+        #btn-net-disconnect.btn-back { min-height: 32px; font-size: 0.82rem; }
+        /* #40: 9.9px text on a 47x26 target, for the control that exists to be
+           pressed once and quickly. */
+        .lobby-copy { min-height: 32px; font-size: 0.78rem; padding: 4px 12px; }
+        /* #31: the label swaps Details <-> Hide, which moved the button 8px and
+           changed its width by 15. A floor stops the row twitching. */
+        .menu-section .shop-info { min-width: 68px; }
+        /* #35: 3.2:1 at 10.6px. The dimmed background still reads as disabled;
+           the text does not have to be unreadable as well. */
+        button:disabled { color: #94a3b8; }
+        /* #48: Confirm 139 against Back 141 online, 166 against 168 local. */
+        /* `flex: 1` was already here, but with the default `auto` basis the
+           content still set the width - which is the 139-vs-141 the finding
+           measured. A zero basis makes them share the row exactly. */
+        .detail-actions > button { flex-basis: 0; min-width: 0; }
         .btn-back { width: auto; background: #1a2235; color: #cbd5e1;
             border: 1px solid #2e3a59; font-weight: normal;
             min-height: 50px; line-height: 1.2; }
@@ -2265,7 +2286,7 @@
                 <p class="mapselect-sub">Your opponent sees your choice in the room. Nothing starts until you press <b>Start Match</b>.</p>
                 <button id="btn-map-random" class="map-random-btn">Random Arena</button>
                 <div class="mapselect-grid" id="mapselect-grid"></div>
-                <button id="btn-mapselect-back" class="btn-back">← Back to the room</button>
+                <button id="btn-mapselect-back" class="btn-back">← Back to room</button>
             </div>
         </div>
 
@@ -3146,7 +3167,13 @@ function refreshCoinDisplays() {
     const roster = document.getElementById('home-roster');
     if (roster) {
         const owned = myProg().unlockedChars.length;
-        roster.textContent = `\u00b7 ${owned} of ${CHARACTERS.length} fighters`;
+        // #21: this counted what the player OWNS while the Armory, under the
+        // sandbox override, listed all ten as Unlocked - so Home read "3 of 10"
+        // beside an Armory showing ten. Both were true and they were answering
+        // different questions; this one now says which.
+        roster.textContent = sandboxActive()
+            ? `\u00b7 all ${CHARACTERS.length} fighters (sandbox)`
+            : `\u00b7 ${owned} of ${CHARACTERS.length} fighters`;
     }
     for (const side of SIDES) {
         const purse = document.getElementById(`${side}-coins`);
@@ -8291,7 +8318,7 @@ function refreshRoomUI() {
     // Their PREVIEW, not just their confirmed pick - so you watch them browse.
     if (foeName) {
         const shown = foePick || (foeSide === 'p1' ? p1Preview : p2Preview);
-        foeName.textContent = !connected ? '\u2014' : (shown || 'Choosing…');
+        foeName.textContent = !connected ? '\u2014' : (shown || 'No fighter yet');
     }
     if (foeState) {
         // Batch 36: show what they are actually doing, including which fighter
@@ -8302,7 +8329,8 @@ function refreshRoomUI() {
         foeState.textContent = !connected ? 'Nobody has joined yet'
             : foeReady ? 'Ready'
             : foeStage === 'preview' ? 'Looking at ' + foePreview
-            : 'Choosing their fighter';
+            // #52: the name line above already says there is no fighter yet.
+            : 'Choosing…';
         foeState.style.color = foeReady ? '#4ade80' : '#94a3b8';
     }
     paintSlotPortrait(document.getElementById('slot-foe-portrait'),

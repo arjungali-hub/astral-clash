@@ -187,7 +187,7 @@ const I18N = {
         'Back to Settings': 'Volver a ajustes',
         'Back to the Room': 'Volver a la sala',
         '← Back': '← Atrás',
-        '← Back to the room': '← Volver a la sala',
+        '← Back to room': '← Volver a la sala',
         'Got it!': '¡Entendido!',
         'How to Play': 'Cómo jugar',
         'Rebind Keys': 'Reasignar teclas',
@@ -414,7 +414,7 @@ const I18N = {
             "Ira del Titán",
         "What are you playing for? You can change this any time before the match starts.":
             "¿Por qué jugáis? Puedes cambiarlo en cualquier momento antes de que empiece el combate.",
-        "← Back to Fighters":
+        "← Back to fighters":
             "← Volver a los luchadores",
         // ---- challenges, modes, and the rest of both builds -------------
         "Account":
@@ -837,7 +837,7 @@ const I18N = {
         'Back to Settings': 'Retour aux réglages',
         'Back to the Room': 'Retour au salon',
         '← Back': '← Retour',
-        '← Back to the room': '← Retour au salon',
+        '← Back to room': '← Retour au salon',
         'Got it!': 'Compris !',
         'How to Play': 'Comment jouer',
         'Rebind Keys': 'Touches',
@@ -1064,7 +1064,7 @@ const I18N = {
             "Courroux du Titan",
         "What are you playing for? You can change this any time before the match starts.":
             "Pour quoi jouez-vous ? Vous pouvez le changer à tout moment avant le début du combat.",
-        "← Back to Fighters":
+        "← Back to fighters":
             "← Retour aux combattants",
         // ---- challenges, modes, and the rest of both builds -------------
         "Account":

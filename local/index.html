@@ -1816,7 +1816,7 @@
                 <p class="mapselect-sub">Pick a battleground, or drop into a random one.</p>
                 <button id="btn-map-random" class="map-random-btn">Random Arena</button>
                 <div class="mapselect-grid" id="mapselect-grid"></div>
-                <button id="btn-mapselect-back" class="btn-back">← Back to Fighters</button>
+                <button id="btn-mapselect-back" class="btn-back">← Back to fighters</button>
             </div>
         </div>
 
@@ -2741,7 +2741,13 @@ function refreshCoinDisplays() {
     const roster = document.getElementById('home-roster');
     if (roster) {
         const owned = myProg().unlockedChars.length;
-        roster.textContent = `\u00b7 ${owned} of ${CHARACTERS.length} fighters`;
+        // #21: this counted what the player OWNS while the Armory, under the
+        // sandbox override, listed all ten as Unlocked - so Home read "3 of 10"
+        // beside an Armory showing ten. Both were true and they were answering
+        // different questions; this one now says which.
+        roster.textContent = sandboxActive()
+            ? `\u00b7 all ${CHARACTERS.length} fighters (sandbox)`
+            : `\u00b7 ${owned} of ${CHARACTERS.length} fighters`;
     }
     for (const side of SIDES) {
         const purse = document.getElementById(`${side}-coins`);
