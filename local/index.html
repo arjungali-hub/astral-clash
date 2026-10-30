@@ -557,13 +557,16 @@
             align-items: center; justify-content: center; z-index: 30; padding: 20px; box-sizing: border-box;
         }
         .modeselect-panel {
-            width: min(560px, 94vw, calc(100vw - 32px));
+            width: min(var(--panel-wide), 94vw, calc(100vw - 32px));
             max-height: none;
             overflow-y: visible;
             box-sizing: border-box;
             text-align: center;
         }
-        .modeselect-panel h3 { color: #a855f7; margin: 0 0 4px; font-size: 1.3rem; }
+        .modeselect-panel h3 {
+            color: #a855f7;
+            margin: 0 0 4px;
+        }
         .mode-card {
             display: block; width: 100%; text-align: left; margin: 0 0 8px; padding: 11px 14px;
             background: #10151f; color: #e2e8f0; border: 1px solid #2e3a59; border-left: 3px solid #2e3a59;
@@ -752,7 +755,11 @@
             background: rgba(10,13,20,0.92);
             align-items: center; justify-content: center; z-index: 20;
         }
-        #rebind-screen .menu-section { max-width: 420px; max-height: 85%; overflow-y: auto; }
+        #rebind-screen .menu-section {
+            max-width: var(--panel-narrow);
+            max-height: 85%;
+            overflow-y: auto;
+        }
         /* Left-aligned rows: fixed-width action label + fixed-width, uniform,
            slate key buttons (not full-width cyan blocks). */
         .rebind-row { display: flex; justify-content: flex-start; align-items: center; gap: 12px; padding: 3px 0; font-size: 0.78rem; }
@@ -775,7 +782,9 @@
             background: rgba(10,13,20,0.92);
             align-items: center; justify-content: center; z-index: 20;
         }
-        #audio-screen .menu-section { max-width: 340px; }
+        #audio-screen .menu-section {
+            max-width: var(--panel-narrow);
+        }
         .audio-row {
             display: flex;
             align-items: center;
@@ -794,7 +803,9 @@
             background: rgba(10,13,20,0.92);
             align-items: center; justify-content: center; z-index: 20;
         }
-        #settings-screen .menu-section { max-width: 320px; }
+        #settings-screen .menu-section {
+            max-width: var(--panel-narrow);
+        }
         .opt {
             /* BORDER-BOX, because this rule is worn by two different elements.
                Every other .opt is a <button>, and the UA stylesheet already
@@ -943,7 +954,11 @@
             overflow-y: visible;
             text-align: center;
         }
-        .mapselect-panel h3 { color: #00f3ff; margin: 0 0 4px; font-size: 1.5rem; letter-spacing: 1px; }
+        .mapselect-panel h3 {
+            color: #00f3ff;
+            margin: 0 0 4px;
+            letter-spacing: 1px;
+        }
         .mapselect-sub { color: #8aa0b8; margin: 0 0 14px; font-size: 0.9rem; }
         /* Random Arena is a secondary (outline) action — the default choice,
            but it shouldn't out-shout the map cards it sits above. */
@@ -1007,7 +1022,11 @@
             overflow-y: visible;
             text-align: left;
         }
-        .tutorial-panel h3 { text-align: center; color: #00f3ff; margin: 0 0 14px; font-size: 1.1rem; }
+        .tutorial-panel h3 {
+            text-align: center;
+            color: #00f3ff;
+            margin: 0 0 14px;
+        }
         .tutorial-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -1572,6 +1591,12 @@
                 #game-container.menu-roomy {
             height: min(96vh, 1000px);
         }
+                .opt-chevron {
+            flex: none;
+            color: #64748b;
+            font-size: 1rem;
+            line-height: 1;
+        }
         </style>
 </head>
 <body>
@@ -1755,7 +1780,6 @@
                 <div class="menu-section">
                     <h3>Settings</h3>
                     <div class="settings-list">
-                        <button id="btn-open-rebind" class="btn-secondary">Rebind Keys</button>
                         <button id="btn-hud-scale" class="opt">HUD Text<span class="opt-state">Normal</span></button>
                         <button id="btn-side-palette" class="opt" title="Switch the two player colors to a colorblind-safe pair">Player Colors<span class="opt-state">Standard</span></button>
                         <button id="btn-share-stats" class="opt" title="Send which fighter won, with nothing about you">Share Stats<span class="opt-state">On</span></button>
@@ -1765,7 +1789,11 @@
                             <select id="sel-lang" title="Language of menus and help text"></select>
                         </label>
 
-                        <button id="btn-open-audio" class="btn-secondary">Audio Settings</button>
+                        <!-- #65, #66: option rows with a chevron rather than 50px filled
+                             buttons, and in the same order as the online build -
+                             Rebind and Audio after Language in both. -->
+                        <button id="btn-open-rebind" class="opt">Rebind Keys<span class="opt-chevron">›</span></button>
+                        <button id="btn-open-audio" class="opt">Audio Settings<span class="opt-chevron">›</span></button>
                         <p id="settings-match-note" class="settings-match-note" style="display:none;">
                         Language and the build switch reload the page, which would end
                         the match you are in. They are available from the menu.

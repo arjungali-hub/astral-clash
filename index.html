@@ -195,6 +195,23 @@
             opacity: 0.7;
         }
         p { color: #94a3b8; margin: 0 0 6px; font-size: 0.9rem; }
+        /* TWO PANEL WIDTHS (#3), as tokens rather than ten separate numbers.
+           The review measured Settings 320, Audio 340, Account 440, Rebind 420,
+           Pause 399, Lobby 460, Mode 560 - siblings that open from the same
+           places and differed by 20 and 30 pixels for no recorded reason.
+
+           There is a third kind of panel these do NOT apply to: the Armory, the
+           arena picker and the tutorial hold grids sized to their content, and
+           a 560px cap would ruin all three. Three sizes, honestly, not two. */
+                /* ONE HEADING SIZE (#4). They ran 30.4, 24, 20.8, 18.7 and 17.6px
+           across five panels. The per-panel COLOURS stay - green for the
+           lobby, purple for the mode picker - because those identify a panel
+           rather than size it, and the finding is about size. */
+        :root { --panel-narrow: 420px; --panel-wide: 560px; --panel-h3: 1.3rem; }
+        .menu-section > h3, .lobby-panel h3, .modeselect-panel h3,
+        .mapselect-panel h3, .tutorial-panel h3, .shop-panel h3 {
+            font-size: var(--panel-h3);
+        }
         .menu-section {
             position: relative;
             background: linear-gradient(180deg, #1c2439, #161d2f);
@@ -687,8 +704,8 @@
             background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
             align-items: center; justify-content: center; z-index: 30; padding: 20px; box-sizing: border-box;
         }
-        .lobby-panel { width: min(460px, 94vw, calc(100vw - 32px)); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
-        .lobby-panel h3 { color: #4ade80; margin: 0 0 4px; font-size: 1.3rem; }
+        .lobby-panel { width: min(var(--panel-wide), 94vw, calc(100vw - 32px)); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
+        .lobby-panel h3 { color: #4ade80; margin: 0 0 4px; }
         /* Secondary to Join, because joining is what most people came to do -
            quieter fill, same size and hit area. */
         .lobby-watch { background: transparent; border: 1px solid #3f5068; color: #9fb2c9; }
@@ -783,8 +800,8 @@
             background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
             align-items: center; justify-content: center; z-index: 30; padding: 20px; box-sizing: border-box;
         }
-        .modeselect-panel { width: min(560px, 94vw, calc(100vw - 32px)); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
-        .modeselect-panel h3 { color: #a855f7; margin: 0 0 4px; font-size: 1.3rem; }
+        .modeselect-panel { width: min(var(--panel-wide), 94vw, calc(100vw - 32px)); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
+        .modeselect-panel h3 { color: #a855f7; margin: 0 0 4px; }
         .mode-card {
             display: block; width: 100%; text-align: left; margin: 0 0 8px; padding: 11px 14px;
             background: #10151f; color: #e2e8f0; border: 1px solid #2e3a59; border-left: 3px solid #2e3a59;
@@ -853,7 +870,7 @@
         }
         .menu-section .shop-info:hover { background: #1a2233; color: #e2e8f0; box-shadow: none; }
         .menu-section .shop-info.open { background: #1a2233; color: #00f3ff; border-color: #00f3ff; }
-        .shop-panel h3 { text-align: center; color: #00f3ff; margin: 0 0 8px; font-size: clamp(1.4rem, 3vw, 1.9rem); }
+        .shop-panel h3 { text-align: center; color: #00f3ff; margin: 0 0 8px; }
         .shop-sub { text-align: center; color: #8aa0b8; margin: 0 0 12px; font-size: 0.8rem; }
         .shop-head { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; }
         /* Batch 38: more room between rows, and inside them.
@@ -1047,7 +1064,7 @@
             background: rgba(10,13,20,0.92);
             align-items: center; justify-content: center; z-index: 20;
         }
-        #rebind-screen .menu-section { max-width: 420px; max-height: 85%; overflow-y: auto; }
+        #rebind-screen .menu-section { max-width: var(--panel-narrow); max-height: 85%; overflow-y: auto; }
         /* Left-aligned rows: fixed-width action label + fixed-width, uniform,
            slate key buttons (not full-width cyan blocks). */
         .rebind-row { display: flex; justify-content: flex-start; align-items: center; gap: 12px; padding: 3px 0; font-size: 0.78rem; }
@@ -1079,7 +1096,7 @@
             background: rgba(10,13,20,0.92);
             align-items: center; justify-content: center; z-index: 20;
         }
-        #audio-screen .menu-section { max-width: 340px; }
+        #audio-screen .menu-section { max-width: var(--panel-narrow); }
         /* ---- OPTION ROWS -------------------------------------------------
            A setting is not an action, and it had been wearing an action's
            clothes: "HUD Text: Normal", "Glow: On" and "Mute: OFF" were solid
@@ -1107,6 +1124,8 @@
             box-shadow: none; text-align: left; cursor: pointer;
         }
         .opt:hover { background: #232d47; color: #e2e8f0; box-shadow: none; }
+        /* The chevron on a row that OPENS something rather than toggling it. */
+        .opt-chevron { flex: none; color: #64748b; font-size: 1rem; line-height: 1; }
         /* #67: with a 26-character display name the value pill ran past the
            row's right padding. Truncated rather than allowed to push. */
         .opt .opt-state {
@@ -1121,6 +1140,15 @@
             background: rgba(0, 243, 255, 0.14); border-color: #00f3ff; color: #00f3ff;
         }
         .menu-section .opt { width: 100%; }
+        /* ONE ROW HEIGHT (#64, #17). The Language row came out 45px because
+           the <select> inside it is taller than the value pills, and Player
+           Colors came out 51px because its label wrapped - in a column where
+           everything else was 41. A floor plus a single line settles both
+           without pinning a maximum that a translation would overflow. */
+        .opt { min-height: 44px; }
+        .opt > span:first-child, .opt-select > span:first-child { white-space: nowrap; }
+        /* The select sized like the pill it stands in for. */
+        .opt-select select { min-height: 26px; }
 
         /* ---- RANGE INPUTS -------------------------------------------------
            Reported as "unstyled browser defaults (bright blue with a white
@@ -1231,7 +1259,7 @@
             background: rgba(10,13,20,0.92);
             align-items: center; justify-content: center; z-index: 20;
         }
-        #settings-screen .menu-section { max-width: 320px; }
+        #settings-screen .menu-section { max-width: var(--panel-narrow); }
         .settings-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
         .settings-list button { margin: 0; text-align: left; }
         .settings-check {
@@ -1304,7 +1332,7 @@
             padding: 20px;
         }
         .mapselect-panel { width: min(1000px, 96vw, calc(100vw - 32px)); max-height: 92vh; overflow-y: auto; text-align: center; }
-        .mapselect-panel h3 { color: #00f3ff; margin: 0 0 4px; font-size: 1.5rem; letter-spacing: 1px; }
+        .mapselect-panel h3 { color: #00f3ff; margin: 0 0 4px; letter-spacing: 1px; }
         .mapselect-sub { color: #8aa0b8; margin: 0 0 14px; font-size: 0.9rem; }
         /* Random Arena is a secondary (outline) action — the default choice,
            but it shouldn't out-shout the map cards it sits above. */
@@ -1358,7 +1386,7 @@
             padding: 20px;
         }
         .tutorial-panel { width: min(760px, 94vw, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; text-align: left; }
-        .tutorial-panel h3 { text-align: center; color: #00f3ff; margin: 0 0 14px; font-size: 1.1rem; }
+        .tutorial-panel h3 { text-align: center; color: #00f3ff; margin: 0 0 14px; }
         .tutorial-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -1555,7 +1583,7 @@
            Deliberately plain. This screen is read once, acted on once, and
            then ideally never visited again - so it gets hierarchy and
            legibility rather than any visual identity of its own. */
-        #account-screen .menu-section { max-width: 440px; }
+        #account-screen .menu-section { max-width: var(--panel-narrow); }
         /* Label on the left, field taking the slack, so three rows of
            different label lengths still line their inputs up. */
         .account-row {
@@ -2254,8 +2282,12 @@
                         <button id="btn-bloom" class="opt">Glow<span class="opt-state">On</span></button>
                         <!-- These two DO something when pressed, so they keep
                              the primary style. See the .opt note in the CSS. -->
-                        <button id="btn-open-rebind" class="btn-secondary">Rebind Keys</button>
-                        <button id="btn-open-audio" class="btn-secondary">Audio Settings</button>
+                        <!-- #65: these were 50px filled buttons at 17.3px in a column
+                             of 41px option rows at 13.1px - two visual languages in
+                             one list. They open a panel, so they are rows with a
+                             chevron, the same as every other row here. -->
+                        <button id="btn-open-rebind" class="opt">Rebind Keys<span class="opt-chevron">›</span></button>
+                        <button id="btn-open-audio" class="opt">Audio Settings<span class="opt-chevron">›</span></button>
                     </div>
                 <!-- Batch 34: the "unlock everything" sandbox switch is gone.
                      It was the only way to enable a bot, and bots cannot exist
