@@ -513,7 +513,10 @@
         .coin-balance::before { content: "\25CF"; margin-right: 5px; color: #fbbf24; }
         /* Batch 21: each side panel owns its purse + a shortcut into that
            player's own Armory, so whose coins are whose is never ambiguous. */
-        .side-name-row { display: flex; justify-content: center; margin: 0 0 8px; }
+        .side-name-row { display: flex; align-items: center; justify-content: center;
+            gap: 9px; margin: 0 0 8px; }
+        .side-name-label { font-size: 0.66rem; color: #8aa0b8;
+            text-transform: uppercase; letter-spacing: 0.08em; flex: none; }
         .side-name {
             width: 100%; max-width: 220px; box-sizing: border-box;
             padding: 5px 8px; text-align: center;
@@ -1693,7 +1696,11 @@
                     <div class="brand-divider"></div>
                     <p>Dimensional Arena Fighter</p>
                     <button id="btn-open-modeselect" class="btn-mode">Mode: Classic Versus</button>
+                    <!-- #46: Settings used to sit alone in a footer at y 1063, below
+                         the fold, so finding it meant scrolling the whole select
+                         screen. It belongs with the other two global controls. -->
                     <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
+                    <button id="btn-open-settings" class="btn-secondary">Settings</button>
                     <!-- Filled by refreshDailyUI() from shared/challenges.js, so
                          both builds render the same panel from one function. -->
                     <div class="daily-panel" id="daily-panel"></div>
@@ -1702,6 +1709,10 @@
                     <div class="menu-section side-panel">
                         <h3 id="p1-heading"><span id="side-name-p1">Player 1</span> <span class="key-hint">(keys on cards)</span></h3>
                         <div class="side-name-row">
+                            <!-- #56: a visible label, like the online build's Home row.
+                                 The placeholder was doing this job and disappeared the
+                                 moment anyone typed into it. -->
+                            <label for="name-p1" class="side-name-label">Name</label>
                             <input id="name-p1" class="side-name" maxlength="14"
                                    placeholder="Player 1" aria-label="Player 1 name">
                         </div>
@@ -1732,6 +1743,10 @@
                     <div class="menu-section side-panel">
                         <h3 id="p2-heading"><span id="side-name-p2">Player 2</span> <span class="key-hint">(keys on cards)</span></h3>
                         <div class="side-name-row">
+                            <!-- #56: a visible label, like the online build's Home row.
+                                 The placeholder was doing this job and disappeared the
+                                 moment anyone typed into it. -->
+                            <label for="name-p2" class="side-name-label">Name</label>
                             <input id="name-p2" class="side-name" maxlength="14"
                                    placeholder="Player 2" aria-label="Player 2 name">
                         </div>
@@ -1753,9 +1768,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="menu-footer">
-                    <button id="btn-open-settings" class="btn-secondary">Settings</button>
-                </div>
+
             </div>
 
             <div id="gameover-screen">
