@@ -698,8 +698,15 @@ function accountPanelHTML() {
 
     const busy = st.status === 'busy';
     const dis = busy ? ' disabled' : '';
-    const note = (text) => '<p class="account-status' + (st.status === 'error' ? ' err' : '')
-        + (st.status === 'sent' ? ' ok' : '') + '">' + (st.detail || text) + '</p>';
+    // #71: an empty detail used to render an empty <p>, which is a blank
+    // status line holding a line of height and saying nothing. Nothing to
+    // say, nothing drawn.
+    const note = (text) => {
+        const body = st.detail || text;
+        if (!body) return '';
+        return '<p class="account-status' + (st.status === 'error' ? ' err' : '')
+            + (st.status === 'sent' ? ' ok' : '') + '">' + body + '</p>';
+    };
 
 
     if (st.mode === 'forgot') {
@@ -711,7 +718,7 @@ function accountPanelHTML() {
             + (busy ? '…' : 'Send reset link') + '</button>'
             + note('')
             + '<button id="btn-account-mode-in" class="account-link">'
-            + '← Back to signing in</button>';
+            + '← Back to sign in</button>';
     }
 
     const up = st.mode === 'up';

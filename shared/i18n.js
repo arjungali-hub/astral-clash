@@ -540,7 +540,7 @@ const I18N = {
             "Gana un combate sin usar tu Especial",
         "Win a round in under 20 seconds":
             "Gana una ronda en menos de 20 segundos",
-        "← Back to signing in":
+        "← Back to sign in":
             "← Volver a iniciar sesión",
         // ---- the roster ------------------------------------------------
         "A balanced duelist with no bad matchup and no free win either. He wants to live at the edge of his own reach, trading slashes and using the dash to cross the gap or escape a corner.":
@@ -1191,7 +1191,7 @@ const I18N = {
             "Gagnez un combat sans utiliser votre Spéciale",
         "Win a round in under 20 seconds":
             "Gagnez une manche en moins de 20 secondes",
-        "← Back to signing in":
+        "← Back to sign in":
             "← Retour à la connexion",
         // ---- the roster ------------------------------------------------
         "A balanced duelist with no bad matchup and no free win either. He wants to live at the edge of his own reach, trading slashes and using the dash to cross the gap or escape a corner.":
