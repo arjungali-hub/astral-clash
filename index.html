@@ -343,7 +343,12 @@
            saying what the field is for until you type in it. */
         .home-name-row input::placeholder { color: #8296b0; font-style: italic; }
         .home-row { display: flex; gap: 8px; }
-        .home-row button { flex: 1; margin: 0; padding: 8px 6px; font-size: 0.76rem; }
+        /* #47: these sit side by side and came out 31px and 33px with their
+           tops 2px apart, because .btn-tutorial carries a 1px border that
+           .btn-secondary does not and the height was content-driven. A
+           border-box floor makes the border irrelevant to the height. */
+        .home-row button { flex: 1; margin: 0; padding: 8px 6px; font-size: 0.76rem;
+            box-sizing: border-box; min-height: 38px; }
 
         .room-bar {
             display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -428,7 +433,14 @@
            you preview a fighter, and pushing it under a two-column grid made
            the page taller than the viewport at the exact moment you need to
            read it and press Confirm. */
-        .picker-side { display: flex; align-items: flex-start; gap: 10px; }
+        /* A RESERVED COLUMN (#45). As a flex row the detail panel only took
+           space once it existed, so previewing a fighter shrank the grid's
+           columns from 264px to 116px and grew the picker 464 -> 566px - the
+           whole roster moved under the pointer that had just clicked it, and
+           row 1 jumped 101px because a title then wrapped. An explicit grid
+           column is there whether or not anything is in it. */
+        .picker-side { display: grid; grid-template-columns: minmax(0, 1fr) 286px;
+            align-items: start; gap: 10px; }
         .picker-side .fighter-grid { flex: 1 1 auto; min-width: 0; }
         .picker-side .fighter-detail { width: 286px; flex: none; margin-top: 0; }
         /* `.detail-scroll`'s 200px cap was sized for the old 340px-wide side
@@ -450,7 +462,9 @@
            container - takes over, which is the behaviour actually wanted. */
         .picker-side .detail-scroll { max-height: none; overflow-y: visible; }
         @media (max-width: 700px) {
-            .picker-side { flex-direction: column; }
+            /* One column; the reserved detail column above would otherwise keep
+               286px of the width at a size that has none to spare. */
+            .picker-side { grid-template-columns: minmax(0, 1fr); }
             .picker-side .fighter-detail { width: auto; align-self: stretch; }
             /* Stacked, the roster is the full width of the column. `flex: 1 1
                auto` does not do this here - in a column flexbox that sizes the
