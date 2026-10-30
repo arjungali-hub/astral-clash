@@ -3883,12 +3883,19 @@ function ensureModalClose(el) {
     if (!el) return;
     const panel = el.querySelector('.menu-section, .shop-panel, .tutorial-panel');
     if (!panel || panel.querySelector('.modal-x')) return;
-    // NOT where the panel already has a labelled way out. The arena picker has
-    // "Back to Fighters" and the audio panel has "Back to Settings"; adding an X
-    // beside either gives one action two controls, which is the duplication this
-    // was meant to remove rather than create. The X exists for panels that have
-    // nothing else - it stops being an improvement the moment one is there.
-    if (panel.querySelector('.btn-back')) return;
+    // EVERY MODAL GETS ONE, including the panels that already have a labelled
+    // way out (#2, #27).
+    //
+    // This used to return early wherever a .btn-back existed, on the reasoning
+    // that "adding an X beside either gives one action two controls" - and that
+    // holds only while both controls are on screen. The Armory's Back sits
+    // about 1,280px down, under all eleven cards; the mode and lobby panels are
+    // the same shape. Escape works and nothing says so. A second control is
+    // cheap; an exit you have to scroll to find is not an exit.
+    //
+    // The duplication the original comment worried about is real but minor, and
+    // one rule across every panel is easier to learn than a rule with four
+    // exceptions in it.
     const x = document.createElement('button');
     x.className = 'modal-x';
     x.type = 'button';
@@ -8443,6 +8450,11 @@ function buildShop(only) {
         const info = document.createElement('button');
         info.className = 'shop-info' + (open ? ' open' : '');
         info.textContent = open ? 'Hide' : 'Details';
+        // #31: the label is the only thing that said whether the panel was
+        // open, so a screen reader announced two different buttons rather than
+        // one control in two states.
+        info.type = 'button';
+        info.setAttribute('aria-expanded', open ? 'true' : 'false');
         info.addEventListener('click', () => {
             if (shopExpanded[side].has(c.name)) shopExpanded[side].delete(c.name); else shopExpanded[side].add(c.name);
             buildShop();

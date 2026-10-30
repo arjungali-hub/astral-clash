@@ -719,9 +719,14 @@ function accountPanelHTML() {
     // already has an account meets a form asking them to invent one; this way
     // the thing you came to do is on screen and the other is one click away.
     return ''
-        + '<div class="account-tabs">'
-        + '<button id="btn-account-mode-in" class="account-tab' + (up ? '' : ' on') + '">Sign in</button>'
-        + '<button id="btn-account-mode-up" class="account-tab' + (up ? ' on' : '') + '">Create account</button>'
+        // #72: these look like tabs and behave like tabs, so they say so. A
+        // screen reader otherwise announces two ordinary buttons and nothing
+        // about which of the two modes is currently showing.
+        + '<div class="account-tabs" role="tablist">'
+        + '<button id="btn-account-mode-in" role="tab" aria-selected="' + (up ? 'false' : 'true')
+            + '" class="account-tab' + (up ? '' : ' on') + '">Sign in</button>'
+        + '<button id="btn-account-mode-up" role="tab" aria-selected="' + (up ? 'true' : 'false')
+            + '" class="account-tab' + (up ? ' on' : '') + '">Create account</button>'
         + '</div>'
         + accountField('input-account-user', 'Username', 'text',
             up ? '3-20 characters' : '', 'username', 20, dis)
