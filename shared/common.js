@@ -114,7 +114,11 @@ const SIDES = ['p1', 'p2'];
 // entry here and against any entry added later.
 const SIDE_PALETTES = {
     standard:    { p1: '#00f3ff', p2: '#f472b6', warn: '#ef4444' },
-    colorblind: { p1: '#0072b2', p2: '#e69f00', warn: '#ffffff' },
+    // #63: #0072b2 is about 3.7:1 against this UI's dark ground, and it
+    // carries the overhead name sprites and a health bar as well as the
+    // chrome. #56b4e9 is the lighter blue from the same Okabe-Ito set, so
+    // the pairing with #e69f00 keeps the property the palette exists for.
+    colorblind: { p1: '#56b4e9', p2: '#e69f00', warn: '#ffffff' },
 };
 const SIDE_PALETTE_KEY = 'astralClashSidePalette';
 // BOTH SPELLINGS ARE ACCEPTED ON READ. The stored value used to be

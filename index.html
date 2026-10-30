@@ -360,6 +360,12 @@
         }
         .room-bar-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-bar .btn-back { margin: 0; padding: 6px 12px; font-size: 0.74rem; }
+        /* #51: 25px against the code chip's 26, tops a pixel apart, with Copy
+           overhanging by one. All three sit in one flex row; giving them one
+           height and centring the row settles all of it. */
+        .room-bar { align-items: center; }
+        .room-bar .status-pill, .room-bar .lobby-copy,
+        .room-bar #room-code-chip { min-height: 32px; }
         .status-pill {
             padding: 5px 11px; border-radius: 999px; font-size: 0.74rem; font-weight: bold;
             letter-spacing: 0.04em; text-transform: uppercase;
@@ -1331,6 +1337,10 @@
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
             gap: 10px;
+            /* #74: the cards stretched to their row's height, so a short one
+               ("Coins & Unlocks") filled with empty space to match the tallest
+               beside it. Each card is now as tall as its own content. */
+            align-items: start;
         }
         .tutorial-card {
             background: #10151f;
@@ -8626,7 +8636,13 @@ function buildShop(only) {
     const djOwned = isDoubleJumpUnlocked(side);
     djCard.innerHTML = `<div class="shop-card-head">
             <div><span class="shop-name">${t('Double Jump')}</span> <span class="shop-title">— ${t('all of')} ${shopOwnerPhrase(side)} ${t('fighters')}</span></div>
-            <button class="shop-buy${djOwned ? ' maxed' : ''}" ${djOwned ? 'disabled' : ''} data-dj="1">${djOwned ? 'Owned' : DOUBLE_JUMP_COST + ' coins'}</button>
+            <!-- #32: when it is owned this is a STATUS, not a control. A
+                 disabled button reading "Owned" invited a click that could
+                 never do anything, and said the same thing the fighters say
+                 with a green "Unlocked" chip. -->
+            ${djOwned
+                ? '<span class="shop-owned">' + t('Unlocked') + '</span>'
+                : `<button class="shop-buy" data-dj="1">${DOUBLE_JUMP_COST + ' coins'}</button>`}
         </div>
         <div class="upg-row"><span>Jump a second time in mid-air — reaches the highest platforms.</span></div>`;
     if (!djOwned) {
