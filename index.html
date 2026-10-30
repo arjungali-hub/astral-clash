@@ -330,7 +330,14 @@
         .home-card {
             box-sizing: border-box; width: min(430px, 92vw); max-width: 100%;
             text-align: center;
+            /* ONE GAP (#24). The spacing down this card was 12, 14, 10, 12 and 2
+               - five numbers from five rules, each a margin on whichever child
+               happened to own it, which is why the last one could be 2px and
+               nobody noticed. The column owns the rhythm now, and the children's
+               own vertical margins are cleared so they cannot add to it. */
+            display: flex; flex-direction: column; gap: 12px;
         }
+        .home-card > * { margin-top: 0; margin-bottom: 0; }
         /* margin reset (#23): the inherited `button { margin: 8px 0 }` plus this
            row's own alignment put Play 4px right of every other row and 4px
            past the card's content edge. */
