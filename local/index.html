@@ -513,6 +513,13 @@
         .coin-balance::before { content: "\25CF"; margin-right: 5px; color: #fbbf24; }
         /* Batch 21: each side panel owns its purse + a shortcut into that
            player's own Armory, so whose coins are whose is never ambiguous. */
+        /* THE TOP BAR'S THREE BUTTONS, which are three different classes -
+           .btn-mode, .btn-tutorial and (since #46 put Settings here) a
+           .btn-secondary. They sit in one row and should read as one row. */
+        .brand > button {
+            box-sizing: border-box; min-height: 38px; margin: 4px 4px 0;
+            padding: 8px 18px; font-size: 0.82rem; vertical-align: middle;
+        }
         .side-name-row { display: flex; align-items: center; justify-content: center;
             gap: 9px; margin: 0 0 8px; }
         .side-name-label { font-size: 0.66rem; color: #8aa0b8;
