@@ -210,9 +210,16 @@ const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
         JSON.stringify(watching.previewing));
     check('their confirm does', watching.confirmed.ready === true && watching.confirmed.choice === 'Draven',
         JSON.stringify(watching.confirmed));
+    // 'No fighter yet', not 'Choosing...' - stale twice over. #10 moved the
+    // game onto the ellipsis character, and #52 changed what this line says at
+    // all: the opponent's two lines read "Choosing…" and "Choosing their
+    // fighter", which is the same thing twice, so the NAME line now says there
+    // is no fighter and the STATE line says why - mirroring your own slot,
+    // which has always read "No fighter yet / Pick a fighter below".
     check('and backing out clears their pick on OUR screen',
         watching.backedOut.ready === false && !watching.backedOut.choice
-        && watching.backedOut.name === 'Choosing...', JSON.stringify(watching.backedOut));
+        && watching.backedOut.name === 'No fighter yet',
+        JSON.stringify(watching.backedOut));
 
     section('Named players show their name instead of a slot number:');
     const named = await D(() => {
@@ -435,8 +442,14 @@ const DIR = H.path.resolve(__dirname, 'screenshots') + '/';
         ['room bar', copy.roomCopy, copy.roomField],
         ['lobby', copy.lobbyCopy, copy.lobbyField],
     ]) {
-        check(`the ${label} copy button is no taller than 28px`,
-            !!btn && btn.h > 0 && btn.h <= 28, JSON.stringify(btn));
+        // A FLOOR, NOT A CEILING. This asserted `<= 28px` and UI review #40 is
+        // the finding that overturns it: 9.9px of text on a 47x26 target, for a
+        // control whose whole job is to be hit once and quickly, is under every
+        // touch-target guideline. The relative check below is the one that
+        // matters and it stays - it caught the half-fix where the button went to
+        // 32 and the field stayed at 26.
+        check(`the ${label} copy button is a comfortable target`,
+            !!btn && btn.h >= 30, JSON.stringify(btn));
         check(`and no taller than the ${label} code field beside it`,
             !!btn && !!field && btn.h <= field.h + 1, JSON.stringify({ btn, field }));
         // WIDTH TOO. Height alone passed while the lobby's Copy button was

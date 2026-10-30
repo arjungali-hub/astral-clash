@@ -394,7 +394,13 @@
            height and centring the row settles all of it. */
         .room-bar { align-items: center; }
         .room-bar .status-pill, .room-bar .lobby-copy,
-        .room-bar #room-code-chip { min-height: 32px; }
+        .room-bar #room-code-chip, .room-bar #room-code-text,
+        #lobby-code-row .lobby-copy, #lobby-code {
+            /* THE FIELD TOO (#51). Raising only the button took the row from
+               a 1px overhang to a 6px one - the same defect, larger - and
+               onlineuxcheck's relative assertion is what noticed. */
+            min-height: 32px;
+        }
         .status-pill {
             padding: 5px 11px; border-radius: 999px; font-size: 0.74rem; font-weight: bold;
             letter-spacing: 0.04em; text-transform: uppercase;

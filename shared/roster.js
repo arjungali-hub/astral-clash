@@ -57,10 +57,19 @@ const UPGRADE_TRAITS = ['hp', 'dmg', 'special', 'speed'];
 // started listing "Main Attack" and "Special" as separate damage numbers,
 // labels reading "Damage" and "Special" here implied they scaled those two
 // rows. They don't, so they now say what they actually buy.
-// 'Special', not 'Charge' (#11): the stats panel calls this meter Special
-// and so does the tutorial, so the upgrade row was the only place with a
-// third name for it.
-const UPGRADE_TRAIT_LABELS = { hp: 'Health', dmg: 'Attack', special: 'Special', speed: 'Speed' };
+// 'Charge', NOT 'Special', and I changed this to 'Special' and was wrong.
+//
+// UI review #11 reads "upgrade row says Charge where stats say Special" as an
+// inconsistency, and they are not the same quantity: the stats panel's Special
+// row is the special's DAMAGE, while this upgrade buys METER RATE. batch24check
+// says so in its own comment - "`special` buys meter rate, so labels reading
+// Damage/Special beside a split damage readout implied a scaling that doesn't
+// exist" - and it is the check that caught the revert being needed.
+//
+// Two different things are allowed two different names. The rename that WAS
+// right is dmg: 'Attack', which is one quantity the game had been calling
+// Attack, Main Attack, Atk and Basic in four places.
+const UPGRADE_TRAIT_LABELS = { hp: 'Health', dmg: 'Attack', special: 'Charge', speed: 'Speed' };
 const UPGRADE_COST = [150, 300, 500]; // cost of buying level 1 / 2 / 3
 const MAX_UPGRADE_LEVEL = 3;
 // +5% per level (+15% maxed). Deliberately modest: a fully-upgraded starter

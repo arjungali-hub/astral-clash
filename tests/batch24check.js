@@ -110,13 +110,18 @@ const H = require('./harness');
         const html = D.characterInfoHTML('p1', D.CHAR_MAP['Ignis']);
         const rows = [...html.matchAll(/<div class="stat-row"><span>([^<]+)<\/span>/g)].map(m => m[1]);
         const vals = [...html.matchAll(/class="stat-val">([^<]*)</g)].map(m => m[1]);
-        return { rows, vals, hasAtkBlock: html.includes('Main Attack &mdash; Ember Jab'),
+        return { rows, vals, hasAtkBlock: html.includes('Attack &mdash; Ember Jab'),
                  hasSpecialBlock: html.includes('Special &mdash; Inferno Burst'),
                  hasAtkDesc: html.includes('rapid flurry jab'),
                  seraphine: D.characterInfoHTML('p1', D.CHAR_MAP['Seraphine']) };
     });
+    // 'Attack', not 'Main Attack' (UI review #11): the game had four names for
+    // this button - Attack in the rebind list and the upgrade row, Main Attack
+    // here, Atk in the pause reminder, Basic in the tutorial. The CONTRACT this
+    // line carries is that attack and special are separate rows rather than one
+    // combined Damage row, and that is untouched; only the label moved.
     check('one bar per stat, attack and special split apart',
-        JSON.stringify(panel.rows) === JSON.stringify(['Health', 'Main Attack', 'Special', 'Speed']),
+        JSON.stringify(panel.rows) === JSON.stringify(['Health', 'Attack', 'Special', 'Speed']),
         JSON.stringify(panel.rows));
     check('no single combined "Damage" row survives', !panel.rows.includes('Damage'), JSON.stringify(panel.rows));
     check('the main attack gets its own named write-up', panel.hasAtkBlock && panel.hasAtkDesc);
@@ -261,7 +266,7 @@ const H = require('./harness');
             hasAtkName: shown.includes(c.atkName),
             hasAtkDesc: shown.includes(c.atkDesc.slice(0, 40)),
             hasSpecial: shown.includes(c.specialName),
-            hasStats: shown.includes('Main Attack') && shown.includes('Special'),
+            hasStats: shown.includes('Attack') && shown.includes('Special'),
             stillLocked: !D.isCharUnlocked('p1', name),
             survives,
             label: find().querySelector('.shop-info').textContent,
