@@ -1062,7 +1062,11 @@
         }
         #match-summary { font-size: 0.72rem; color: #94a3b8; text-align: left; margin: 8px 0; line-height: 1.5; }
         #match-summary b { color: #e2e8f0; }
-        #pause-controls-reminder { font-size: 0.72rem; line-height: 1.6; text-align: left; }
+        #pause-controls-reminder {
+            font-size: 0.78rem;
+            line-height: 1.5;
+            text-align: left;
+        }
         .daily-panel { margin: 10px 0 2px; text-align: left; }
         .daily-panel h4 {
             margin: 0 0 6px; font-size: 0.68rem; letter-spacing: 0.1em;
@@ -1596,6 +1600,25 @@
             color: #64748b;
             font-size: 1rem;
             line-height: 1;
+        }
+                .ctl-grid {
+            display: grid;
+            grid-template-columns: max-content 1fr;
+            gap: 2px 12px;
+            margin: 0 0 8px;
+        }
+        .ctl-key {
+            color: #e2e8f0;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .ctl-act {
+            color: #94a3b8;
+        }
+        .ctl-who {
+            color: #cbd5e1;
+            font-weight: 700;
+            margin: 6px 0 3px;
         }
         </style>
 </head>
@@ -2959,12 +2982,9 @@ function keyLabel(k) {
     if (k.startsWith('arrow')) return k.slice(5, 6).toUpperCase() + k.slice(6);
     return k.length === 1 ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1);
 }
-// Used by both the flat HUD strip and the pause-screen reminder, so a
-// rebind (see the pause-screen key-capture UI further down) shows up in
-// both places without them drifting out of sync with each other.
 function controlsSummary(side) {
     const b = BINDINGS[side];
-    const parts = [`${keyLabel(b.forward)}/${keyLabel(b.back)} Fwd/Back`,
+    const parts = [`${keyLabel(b.forward)}/${keyLabel(b.back)} Forward/Back`,
                    `${keyLabel(b.left)}/${keyLabel(b.right)} `
                    + (AC_ONE_SIDE_PER_CLIENT ? 'Strafe' : 'Turn')];
     // Vertical aim: a mouse where there is one, and two keys where the keyboard
@@ -4730,6 +4750,29 @@ function syncSettingsForMatch() {
 // and `gameover` both come through showScreen while a match owns the canvas,
 // and the frame must not resize underneath either of them.
 const ROOMY_SCREENS = { home: 1, select: 1 };
+// Used by both the flat HUD strip and the pause-screen reminder, so a
+// rebind (see the pause-screen key-capture UI further down) shows up in
+// both places without them drifting out of sync with each other.
+// THE PAIRS, before anything flattens them. controlsSummary() joins these
+// into one line for the HUD strip and the tutorial card, which genuinely want
+// a sentence; the pause screen lays them out as a table instead (#83), where a
+// key and the thing it does can never end up on separate lines.
+function controlsPairs(side) {
+    const b = BINDINGS[side];
+    const pairs = [
+        [`${keyLabel(b.forward)}/${keyLabel(b.back)}`, 'Forward/Back'],
+        [`${keyLabel(b.left)}/${keyLabel(b.right)}`,
+         AC_ONE_SIDE_PER_CLIENT ? 'Strafe' : 'Turn'],
+        AC_ONE_SIDE_PER_CLIENT
+            ? ['Mouse', 'Look']
+            : [`${keyLabel(b.lookUp)}/${keyLabel(b.lookDown)}`, 'Look up/down'],
+        [`${keyLabel(b.attack)}/${keyLabel(b.special)}`, 'Attack/Special'],
+        [`${keyLabel(b.jump)}`, 'Jump'],
+        [`${keyLabel(b.dodge)}`, 'Dash'],
+    ];
+    return pairs;
+}
+
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every
 // rematch) just got scene.remove()'d, leaking its geometry/material/texture
@@ -8801,9 +8844,17 @@ document.getElementById('btn-reroll-map').addEventListener('click', () => {
 // there are two to tell apart.
 function pauseControlsHTML() {
     const sides = rebindSides();
-    return sides.map(side => sides.length > 1
-        ? `${displayName(side)}: ${controlsSummary(side)}`
-        : controlsSummary(side)).join('<br>');
+    // A TABLE, not a sentence (#83). As one ' | '-joined string this wrapped to
+    // four lines wherever the box ran out, so "Look" and "Up/Down" could end up
+    // on different lines and "/ Jump" read as punctuation.
+    return sides.map(side => {
+        const rows = controlsPairs(side).map(([key, action]) =>
+            '<div class="ctl-key">' + escapeHTML(key) + '</div>'
+            + '<div class="ctl-act">' + escapeHTML(t(action)) + '</div>').join('');
+        const head = sides.length > 1
+            ? '<div class="ctl-who">' + escapeHTML(displayName(side)) + '</div>' : '';
+        return head + '<div class="ctl-grid">' + rows + '</div>';
+    }).join('');
 }
 
 // Only the host is offered a rematch; the guest is told what it is waiting for.
