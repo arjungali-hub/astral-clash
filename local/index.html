@@ -3260,7 +3260,13 @@ function buildTutorialControls() {
     }
     // The one key that is not in controlsSummary(), because it is not a combat
     // binding - and the only way out of a match. Reported as missing.
-    rows.push(`<div class="tutorial-controls-row" style="margin-top:4px;"><b>Esc</b> pauses, and opens Rebind Keys and Settings.`
+    // #32: online, Esc does NOT pause - it opens a menu while the match keeps
+    // running, which is what #79 made that panel say. The tutorial was
+    // describing the other build's behaviour on both.
+    rows.push(`<div class="tutorial-controls-row" style="margin-top:4px;">`
+        + (AC_ONE_SIDE_PER_CLIENT
+            ? `<b>Esc</b> opens the menu — the match keeps running — and from there Rebind Keys and Settings.`
+            : `<b>Esc</b> pauses, and opens Rebind Keys and Settings.`)
         + (AC_ONE_SIDE_PER_CLIENT ? ` Click the arena once to capture the mouse.` : ``)
         + `</div>`);
     document.getElementById('tutorial-controls').innerHTML = rows.join('');
@@ -9685,7 +9691,10 @@ function drawPlayerHUD(f, x, label, isMine) {
     // ON A PLATE (#90). Left-aligned, so the plate's centre is derived from
     // the measured width instead of being handed hudW() / 2 like the centred
     // strings - hudPlate itself always centres on cx.
-    const meterText = meterReady ? 'SPECIAL READY' : `Special ${Math.floor(f.specialMeter)}%`;
+    // #48: one case. This read "Special 3%" and then shouted "SPECIAL READY",
+    // which is the same readout changing typeface mid-fill.
+    const meterText = meterReady ? t('Special ready')
+        : `${t('Special')} ${Math.floor(f.specialMeter)}%`;
     hudPlate(meterText, x + hudCtx.measureText(meterText).width / 2, 108, 7, 4);
     hudCtx.fillStyle = '#cbd5e1';
     hudCtx.fillText(meterText, x, 108);

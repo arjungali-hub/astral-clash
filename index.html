@@ -2466,7 +2466,7 @@
                         </div>
                         <div class="tutorial-card">
                             <h4>Coins &amp; Unlocks</h4>
-                            <p><b>Your coins, unlocks and upgrades are yours</b>, saved on your own machine and the same whether you host or join. You start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate and Speed, plus Double Jump. Open the <b>Armory</b> from the home screen or from the room while you're picking.</p>
+                            <p><b>Your coins, unlocks and upgrades live on your account</b>, so they follow you to any machine you sign in on. You start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Attack, Special charge rate and Speed, plus Double Jump. Open the <b>Armory</b> from the home screen or from the room while you're picking.</p>
                         </div>
                     </div>
                     <label class="tutorial-hide-row" id="tutorial-hide-row">
@@ -3862,7 +3862,13 @@ function buildTutorialControls() {
     }
     // The one key that is not in controlsSummary(), because it is not a combat
     // binding - and the only way out of a match. Reported as missing.
-    rows.push(`<div class="tutorial-controls-row" style="margin-top:4px;"><b>Esc</b> pauses, and opens Rebind Keys and Settings.`
+    // #32: online, Esc does NOT pause - it opens a menu while the match keeps
+    // running, which is what #79 made that panel say. The tutorial was
+    // describing the other build's behaviour on both.
+    rows.push(`<div class="tutorial-controls-row" style="margin-top:4px;">`
+        + (AC_ONE_SIDE_PER_CLIENT
+            ? `<b>Esc</b> opens the menu — the match keeps running — and from there Rebind Keys and Settings.`
+            : `<b>Esc</b> pauses, and opens Rebind Keys and Settings.`)
         + (AC_ONE_SIDE_PER_CLIENT ? ` Click the arena once to capture the mouse.` : ``)
         + `</div>`);
     document.getElementById('tutorial-controls').innerHTML = rows.join('');
@@ -10071,7 +10077,7 @@ function netApplyCoopState(msg) {
 const LOBBY_STATUS_TEXT = {
     offline: 'Not connected',
     starting: 'Creating room...',
-    waiting: 'Waiting for an opponent...',
+    waiting: 'Waiting for an opponent…',
     connecting: 'Connecting...',
     connected: 'Connected',
     error: 'Connection problem',
@@ -10637,7 +10643,7 @@ function refreshPauseUI() {
         // has to be coherent for the moment they come back.
         text = 'Paused - you left the game.';
     } else if (remoteAway) {
-        text = `Paused - ${playerLabel(otherSide(LOCAL_SIDE))} left the game tab. `
+        text = `Paused — ${playerLabel(otherSide(LOCAL_SIDE))} left the game tab. `
              + 'Waiting for them to come back\u2026';
     } else if (netActive() && !netIsHost()) {
         text = `Both back. Waiting for ${playerLabel(hostSide())} to resume\u2026`;
@@ -11518,7 +11524,10 @@ function drawPlayerHUD(f, x, label, isMine) {
     // ON A PLATE (#90). Left-aligned, so the plate's centre is derived from
     // the measured width instead of being handed hudW() / 2 like the centred
     // strings - hudPlate itself always centres on cx.
-    const meterText = meterReady ? 'SPECIAL READY' : `Special ${Math.floor(f.specialMeter)}%`;
+    // #48: one case. This read "Special 3%" and then shouted "SPECIAL READY",
+    // which is the same readout changing typeface mid-fill.
+    const meterText = meterReady ? t('Special ready')
+        : `${t('Special')} ${Math.floor(f.specialMeter)}%`;
     hudPlate(meterText, x + hudCtx.measureText(meterText).width / 2, 108, 7, 4);
     hudCtx.fillStyle = '#cbd5e1';
     hudCtx.fillText(meterText, x, 108);

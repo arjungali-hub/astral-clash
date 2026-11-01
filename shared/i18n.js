@@ -160,6 +160,7 @@ const I18N = {
         'Resume (Esc)': 'Continuar (Esc)',
         'Paused': 'En pausa',
         'Menu': 'Menú',
+        'Special ready': 'Especial listo',
         'Unlock': 'Desbloquear',
         'Forward': 'Adelante',
         'Back': 'Atrás',
@@ -836,6 +837,7 @@ const I18N = {
         'Resume (Esc)': 'Reprendre (Échap)',
         'Paused': 'En pause',
         'Menu': 'Menu',
+        'Special ready': 'Spécial prêt',
         'Unlock': 'Débloquer',
         'Forward': 'Avant',
         'Back': 'Arrière',
@@ -1459,8 +1461,8 @@ const I18N_HTML = {
         "The host picks the mode in the room, and you'll see their choice. Classic Versus is best of 3 rounds. Zone Control puts a glowing ring at the arena's centre — stand in it alone to bank control time, and knock your opponent out of it; first to 45 seconds wins. Takedown Race is one continuous fight with instant respawns, first to 3 takedowns — and the arena does not collapse in it, because a race cannot stall. In those last two a knockout costs you tempo, not the match.":
             "El <b>anfitrión</b> elige el modo en la sala, y verás su elección. <b>Versus clásico</b> es al mejor de 3 rondas. <b>Control de zona</b> coloca un anillo luminoso en el centro de la arena: quédate dentro <em>a solas</em> para acumular tiempo de control, y echa de él a tu rival; gana el primero que llegue a 45 segundos. <b>Carrera de derribos</b> es un combate continuo con reapariciones instantáneas, y gana el primero en lograr 3 derribos; la arena no se derrumba en este modo, porque una carrera no se puede alargar. En estos dos últimos, caer te cuesta ritmo, no el combate.",
 
-        "Your coins, unlocks and upgrades are yours, saved on your own machine and the same whether you host or join. You start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate and Speed, plus Double Jump. Open the Armory from the home screen or from the room while you're picking.":
-            "<b>Tus monedas, desbloqueos y mejoras son tuyos</b>, guardados en tu propia máquina y los mismos tanto si creas la partida como si te unes. Empiezas con tres luchadores; el resto se compran con las monedas ganadas en los combates: el ganador se lleva más, pero una derrota también paga algo. Las monedas compran además mejoras permanentes por luchador de Salud, Daño, velocidad de carga del Especial y Velocidad, más el Salto doble. Abre la <b>Armería</b> desde la pantalla de inicio, o desde la sala mientras eliges.",
+        "Your coins, unlocks and upgrades live on your account, so they follow you to any machine you sign in on. You start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Attack, Special charge rate and Speed, plus Double Jump. Open the Armory from the home screen or from the room while you're picking.":
+            "<b>Tus monedas, desbloqueos y mejoras viven en tu cuenta</b>, así que te acompañan a cualquier máquina en la que inicies sesión. Empiezas con tres luchadores; el resto se compran con las monedas ganadas en los combates: el ganador se lleva más, pero una derrota también paga algo. Las monedas compran además mejoras permanentes por luchador de Salud, Daño, velocidad de carga del Especial y Velocidad, más el Salto doble. Abre la <b>Armería</b> desde la pantalla de inicio, o desde la sala mientras eliges.",
     },
     fr: {
         // ---- the split-screen build -------------------------------------
@@ -1515,8 +1517,8 @@ const I18N_HTML = {
         "The host picks the mode in the room, and you'll see their choice. Classic Versus is best of 3 rounds. Zone Control puts a glowing ring at the arena's centre — stand in it alone to bank control time, and knock your opponent out of it; first to 45 seconds wins. Takedown Race is one continuous fight with instant respawns, first to 3 takedowns — and the arena does not collapse in it, because a race cannot stall. In those last two a knockout costs you tempo, not the match.":
             "L'<b>hôte</b> choisit le mode dans le salon, et vous verrez son choix. <b>Versus classique</b> se joue au meilleur des 3 manches. <b>Contrôle de zone</b> place un anneau lumineux au centre de l'arène : tenez-vous-y <em>seul</em> pour accumuler du temps de contrôle, et délogez-en votre adversaire ; le premier à 45 secondes gagne. <b>Course aux éliminations</b> est un combat continu avec réapparition immédiate, le premier à 3 éliminations gagne — et l'arène ne s'y effondre pas, parce qu'une course ne peut pas s'enliser. Dans ces deux derniers modes, se faire sortir coûte du tempo, pas le combat.",
 
-        "Your coins, unlocks and upgrades are yours, saved on your own machine and the same whether you host or join. You start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Damage, Special charge rate and Speed, plus Double Jump. Open the Armory from the home screen or from the room while you're picking.":
-            "<b>Vos pièces, déblocages et améliorations sont à vous</b>, enregistrés sur votre propre machine et identiques que vous hébergiez ou rejoigniez. Vous commencez avec trois combattants ; les autres s'achètent avec les pièces gagnées en combat : le vainqueur en prend plus, mais une défaite rapporte quand même quelque chose. Les pièces achètent aussi des améliorations permanentes par combattant pour la Santé, les Dégâts, la vitesse de charge de la Spéciale et la Vitesse, ainsi que le Double saut. Ouvrez l'<b>Armurerie</b> depuis l'écran d'accueil ou depuis le salon pendant que vous choisissez.",
+        "Your coins, unlocks and upgrades live on your account, so they follow you to any machine you sign in on. You start with three fighters; the rest are bought with coins earned from matches — the winner takes more, but a loss still pays something. Coins also buy permanent per-fighter upgrades to Health, Attack, Special charge rate and Speed, plus Double Jump. Open the Armory from the home screen or from the room while you're picking.":
+            "<b>Vos pièces, déblocages et améliorations vivent sur votre compte</b>, elles vous suivent donc sur toute machine où vous vous connectez. Vous commencez avec trois combattants ; les autres s'achètent avec les pièces gagnées en combat : le vainqueur en prend plus, mais une défaite rapporte quand même quelque chose. Les pièces achètent aussi des améliorations permanentes par combattant pour la Santé, les Dégâts, la vitesse de charge de la Spéciale et la Vitesse, ainsi que le Double saut. Ouvrez l'<b>Armurerie</b> depuis l'écran d'accueil ou depuis le salon pendant que vous choisissez.",
     },
 };
 
