@@ -3436,7 +3436,12 @@ function buildPairedFromData(list, build) {
             mesh = build(item);
         }
         built.push({ x: item.x, y: item.y, mesh });
-        mapEdgeObjects.push({ mesh, x: item.x, y: item.y });
+        // `data` is the COLLISION RECORD, not a copy of it: this function is
+        // called with OBSTACLES, TERRAIN and PLATFORMS themselves, so `item` is
+        // the same object the physics reads. #6 needs to remove it when the
+        // piece falls, and holding the reference makes that exact - no
+        // coordinate matching, so a mirrored twin cannot be removed by mistake.
+        mapEdgeObjects.push({ mesh, x: item.x, y: item.y, data: item });
     }
 }
 
@@ -4739,6 +4744,30 @@ function freshStats() {
 // arena visibly disappears from the edges inward. Replaces the old red wall
 // slabs (which obscured the fight); nothing is drawn "at" the boundary now —
 // the boundary is simply where the floor and props stop existing.
+// IS THIS PIECE OUT OF THE ROOM, by its FOOTPRINT rather than its centre
+// (#6). A platform with hw 110 whose centre is barely inside still has 110
+// units outside, and one whose centre has barely left still covers most of the
+// floor it covered before - which is where the audit's "190x71 units of live
+// floor under a hidden mesh" came from. A piece is outside when nothing of it
+// overlaps the live bounds any more.
+function edgeObjectIsOutside(o) {
+    const d = o.data;
+    const hw = d ? (d.hw != null ? d.hw : (d.r || 0)) : 0;
+    const hd = d ? (d.hd != null ? d.hd : (d.r || 0)) : 0;
+    return o.x + hw < playLeft || o.x - hw > playRight
+        || o.y + hd < playTop  || o.y - hd > playBottom;
+}
+
+// Take a fallen piece out of the arrays the physics reads. Identity, not
+// coordinates: `data` is the very object OBSTACLES/TERRAIN/PLATFORMS hold.
+function dropEdgeCollision(o) {
+    if (!o.data) return;
+    for (const arr of [OBSTACLES, TERRAIN, PLATFORMS]) {
+        const i = arr.indexOf(o.data);
+        if (i >= 0) arr.splice(i, 1);
+    }
+}
+
 function syncArenaCollapse(dt) {
     dt = dt || 1;
     if (!floorMesh) return;
@@ -4754,8 +4783,13 @@ function syncArenaCollapse(dt) {
     // where the floor used to be) and is hidden once well below — a clean
     // per-instance transform, no shared-material opacity to worry about.
     for (const o of mapEdgeObjects) {
-        if (!o.falling && (o.x < playLeft || o.x > playRight || o.y < playTop || o.y > playBottom)) {
+        if (!o.falling && edgeObjectIsOutside(o)) {
             o.falling = true;
+            // AND IT STOPS BEING SOLID (#6). Without this a platform kept its
+            // 190x71 of live floor after the mesh had dropped out of sight, and
+            // a fighter stood at z 60 on nothing. The mesh falling and the
+            // collision going have to be the same event.
+            dropEdgeCollision(o);
         }
         if (o.falling && o.mesh.visible) {
             o.mesh.position.y -= 3.5 * dt;

@@ -3224,9 +3224,6 @@ document.getElementById('btn-tutorial-close').addEventListener('click', closeTut
 // see closeTutorial()).
 if (!safeLSGet('astralClashTutorialSeen')) openTutorial(true);   // auto: the checkbox applies
 
-// --- Ambient per-map pad: two detuned oscillators through a slow LFO'd
-// filter, started on loadMap() and stopped/replaced on the next map load
-// (or match teardown) rather than left running underneath a new map. ---
 const WALL_HEIGHT = 260; // height of the enclosing perimeter walls (open to the sky above)
 
 // The CURRENT (shrinking) playable bounds — clampToArena() and the arena
@@ -6058,6 +6055,18 @@ class Fighter {
             if (this.z >= p.height) continue;
             if (Math.abs(cx - p.x) < p.hw + r && Math.abs(cy - p.y) < p.hd + r) return true;
         }
+        // TERRAIN TOO HIGH TO STEP ONTO (#5). This checked pillars and platform
+        // sides and never TERRAIN, so a dash crossed onto a block that walking
+        // refuses and the next frame snapped z up to stand on it - z 0 to z 30
+        // off a single Shift press, on 8 of the 10 arenas.
+        //
+        // resolveTallTerrain already owns this rule; the dash path simply never
+        // asked. Same predicate, same constant.
+        //
+        // GROUNDED ONLY, which is resolveTallTerrain's own condition: once you
+        // have jumped, landing on something tall from above is the point, and
+        // being knocked up onto a ledge is legitimate for the same reason.
+        if (this.grounded && groundLevelAt(cx, cy) - this.z > MAX_WALK_STEP_UP) return true;
         return false;
     }
 
@@ -6515,7 +6524,7 @@ class Fighter {
         const nextZ = puppet ? this.z : this.z + this.vz * dt;
 
         // Steps/ramps give walkable ground, but only a rise up to
-        // MAX_WALK_STEP_UP (30) can be climbed on foot in one go — see
+        // MAX_WALK_STEP_UP (12) can be climbed on foot in one go — see
         // resolveTallTerrain (every step in MAPS is <= 30, so all are
         // walkable; a single step taller than that is a wall). Platforms are
         // one-way high ground: you can only land on top by dropping onto the
