@@ -6702,7 +6702,16 @@ class Fighter {
             if (!iAmLocal && !attackerIsLocal) return;
             // Our attack on them: resolve locally for immediate feedback AND
             // tell them, so they can apply it to themselves authoritatively.
-            if (!iAmLocal && attackerIsLocal) netSend({ t: 'HIT', dmg: amount });
+            // dx/dy travel WITH the hit (#1). The victim needs a direction to be
+            // knocked back along, and cannot infer it from the puppet's facing:
+            // by the time the packet lands, that facing has moved on.
+            if (!iAmLocal && attackerIsLocal) {
+                const kd = dir || (attacker ? { dx: attacker.fx, dy: attacker.fy } : null);
+                netSend({ t: 'HIT', dmg: amount,
+                    dx: kd ? Math.round(kd.dx * 1000) / 1000 : 0,
+                    dy: kd ? Math.round(kd.dy * 1000) / 1000 : 0,
+                    sp: attacker ? attacker.atkKind === 'special' : false });
+            }
         }
         this.applyDamage(amount, { attacker: attacker || null, dir: dir || null });
     }

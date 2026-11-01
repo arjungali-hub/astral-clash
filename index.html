@@ -6772,7 +6772,16 @@ class Fighter {
             if (!iAmLocal && !attackerIsLocal) return;
             // Our attack on them: resolve locally for immediate feedback AND
             // tell them, so they can apply it to themselves authoritatively.
-            if (!iAmLocal && attackerIsLocal) netSend({ t: 'HIT', dmg: amount });
+            // dx/dy travel WITH the hit (#1). The victim needs a direction to be
+            // knocked back along, and cannot infer it from the puppet's facing:
+            // by the time the packet lands, that facing has moved on.
+            if (!iAmLocal && attackerIsLocal) {
+                const kd = dir || (attacker ? { dx: attacker.fx, dy: attacker.fy } : null);
+                netSend({ t: 'HIT', dmg: amount,
+                    dx: kd ? Math.round(kd.dx * 1000) / 1000 : 0,
+                    dy: kd ? Math.round(kd.dy * 1000) / 1000 : 0,
+                    sp: attacker ? attacker.atkKind === 'special' : false });
+            }
         }
         this.applyDamage(amount, { attacker: attacker || null, dir: dir || null });
     }
@@ -9607,8 +9616,26 @@ function netOnMessage(msg) {
         case 'HIT': {
             // The opponent's attack connected on their machine. Apply it to
             // OUR fighter, flagged so the local suppression does not drop it.
+            //
+            // WITH THE ATTACKER (#1). This passed null, and applyDamage returns
+            // immediately after the HP change when there is no attacker - so
+            // online a hit took health and did nothing else: no knockback, no
+            // hitstun, no flash, no sound, no meter for eating it. The puppet
+            // is the attacker and it is already here, already named and
+            // coloured, so there is nothing to invent.
             const me = localFighter();
-            if (me && msg.dmg > 0) me.takeDamage(msg.dmg, null, null, /* fromNet */ true);
+            const them = remoteFighter();
+            if (me && msg.dmg > 0) {
+                const dir = (typeof msg.dx === 'number' && typeof msg.dy === 'number'
+                             && (msg.dx || msg.dy))
+                    ? { dx: msg.dx, dy: msg.dy } : null;
+                // atkKind decides whether the ATTACKER's meter builds, and the
+                // puppet's own atkKind may already have returned to idle.
+                const was = them ? them.atkKind : null;
+                if (them && msg.sp) them.atkKind = 'special';
+                me.takeDamage(msg.dmg, them || null, dir, /* fromNet */ true);
+                if (them) them.atkKind = was;
+            }
             break;
         }
         case 'EVENT':
@@ -9797,7 +9824,16 @@ function netHeartbeat() {
     // The grace window first: netActive() is deliberately TRUE throughout one
     // (see its comment), so without this the code below would send PINGs into a
     // closed channel and the window would never close.
-    if (netInGrace()) { netGraceTick(); return; }
+    // `net.graceUntil`, NOT netInGrace() (#2). netGraceTick's first branch is
+    // the EXPIRY - it ends the window, tears down and calls onNetLost - and
+    // gating the call on the window still being live meant that branch could
+    // never run. The countdown reached zero and started again, forever, with
+    // Resume disabled and only Return to Menu getting out.
+    //
+    // graceUntil is truthy for a live window AND a lapsed one, and
+    // netEndGrace() zeroes it, so this runs one final tick after expiry and
+    // then stops. It cannot loop.
+    if (net.graceUntil) { netGraceTick(); return; }
     if (!netActive()) return;
     const now = performance.now();
     // Drop detection: PeerJS 'close' is not guaranteed on an abrupt network
@@ -12335,7 +12371,11 @@ function gameLoop() {
     // `!net.pingTimer`: a cancelled interval and a starved one are
     // indistinguishable from here and need the same answer. 1s of silence is
     // four missed beats at NET_PING_HZ.
-    if (netInGrace() && performance.now() - netLastBeatAt > 1000) netGraceTick();
+    // Same gate as the heartbeat above, for the same reason (#2): this
+    // backstop exists for a STARVED ping timer, and it inherited the very
+    // condition that made the expiry unreachable - so it could only ever
+    // re-run the live half of the tick it was backing up.
+    if (net.graceUntil && performance.now() - netLastBeatAt > 1000) netGraceTick();
 
     if (netActive()) {
         netApplyRemote(dt);            // ease the opponent toward their last report
