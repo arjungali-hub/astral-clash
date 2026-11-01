@@ -354,7 +354,9 @@
         .home-name-row { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
         .home-name-row label {
             /* 4.00:1 at #64748b; 4.54:1 here, same hue. */
-            color: #6c7d95; font-size: 0.7rem; text-transform: uppercase;
+            /* #6c7d95 read 3.81:1 at 11.2px in the pixels (#24) - the earlier
+               4.54:1 was computed against a lighter ground than it sits on. */
+            color: #8a99ad; font-size: 0.7rem; text-transform: uppercase;
             letter-spacing: 0.07em; white-space: nowrap;
         }
         .home-name-row input {
@@ -432,7 +434,8 @@
         #slot-foe.empty { opacity: 0.6; border-style: dashed; }
         #slot-foe.locked { border-color: #4ade80; }
         #slot-you.locked { box-shadow: 0 0 18px rgba(74,222,128,0.2); border-color: #4ade80; }
-        .pslot-role { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-bottom: 8px; }
+        /* #64748b read 3.80:1 at 11.2px (#18). */
+        .pslot-role { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #8a99ad; margin-bottom: 8px; }
         /* Batch 37: the roster card's face chip. */
         .fighter-btn { display: flex; align-items: center; gap: 9px; text-align: left; }
         .fighter-btn .fface {
@@ -636,6 +639,10 @@
             background: #0d0f18;
             border: 1px solid var(--accent, #00f3ff);
             color: var(--accent, #00f3ff);
+            /* SAME LIFT AS THE NAME (#20). .fname carries brightness(1.45) so a
+               grey identity colour clears AA; this badge wore the same accent
+               raw and Draven's read 3.95:1. The pair should not disagree. */
+            filter: brightness(1.45) saturate(1.15);
             font-weight: bold;
             font-size: 0.76rem;
             padding: 1px 6px;
@@ -653,7 +660,8 @@
             font-size: 0.95rem;
             filter: brightness(1.45) saturate(1.15);
         }
-        .fighter-btn.locked .fname { filter: none; }   /* locked SHOULD look dim */
+        .fighter-btn.locked .fname,
+        .fighter-btn.locked .fkey { filter: none; }   /* locked SHOULD look dim */
         /* ONE LINE (#18): 'Shardwing Sylph' and one other wrapped, which made
            their whole grid row 14px taller than every other row. */
         .fighter-btn .ftitle { font-size: 0.7rem; color: #94a3b8; font-weight: normal;
@@ -717,7 +725,10 @@
            footer — which mode you're playing changes the whole match, so it
            belongs where you see it before picking fighters. */
         .btn-mode {
-            width: auto; background: transparent; color: #a855f7; border: 1px solid #a855f7;
+            /* #c084fc as TEXT (#19): #a855f7 reads 4.00-4.10:1 at 12.2px on
+               these buttons. The BORDER stays #a855f7 - a 1px edge is not
+               text and the lighter tint would wash the outline out. */
+            width: auto; background: transparent; color: #c084fc; border: 1px solid #a855f7;
             padding: 7px 18px; font-size: 0.8rem; font-weight: bold; margin: 6px 4px 0;
             box-shadow: none;
         }
@@ -726,7 +737,7 @@
            Deliberately not styled like the other settings rows - it navigates
            away from the current build rather than changing a value here. */
         .settings-list .btn-local {
-            background: transparent; color: #a855f7; border: 1px solid #a855f7;
+            background: transparent; color: #c084fc; border: 1px solid #a855f7;
             box-shadow: none; font-size: 0.78rem;
         }
         .settings-list .btn-local:hover { background: rgba(168, 85, 247, 0.14); box-shadow: none; }
@@ -753,7 +764,8 @@
         .lobby-status.bad     { color: #f87171; border-color: #ef4444; }
         .lobby-block { margin-bottom: 10px; }
         /* 3.66:1 at #64748b against this panel; 4.51:1 here, same hue. */
-        .lobby-or { color: #73839a; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.14em; margin: 4px 0 10px; }
+        /* 4.15:1 at 11.2px (#42). */
+        .lobby-or { color: #8a99ad; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.14em; margin: 4px 0 10px; }
         .lobby-code-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
         .lobby-code-label { font-size: 0.66rem; color: #8aa0b8; white-space: nowrap; }
         .menu-section .lobby-code {
@@ -844,7 +856,8 @@
         .mode-card .mode-name { display: block; font-weight: bold; font-size: 0.94rem; color: #e2e8f0; margin-bottom: 3px; }
         .mode-card.active .mode-name { color: #c084fc; }
         .mode-card .mode-blurb { display: block; font-size: 0.7rem; color: #94a3b8; line-height: 1.45; }
-        .mode-card .mode-current { float: right; font-size: 0.64rem; color: #a855f7; font-weight: bold; }
+        /* #21: 4.47:1 at 10.2px, and 10.2px is small for a status tag. */
+        .mode-card .mode-current { float: right; font-size: 0.7rem; color: #c084fc; font-weight: bold; }
         /* Batch 38: the armory is a PAGE, not a panel floating over one.
            Requested as "make the shop fill up the whole screen (a separate page
            instead of something that pops up on the same page)". It was a
@@ -941,7 +954,10 @@
         .shop-upgrades { display: grid;
             grid-template-columns: repeat(auto-fit, minmax(164px, 1fr)); gap: 12px 16px; }
         .upg-row { display: flex; align-items: center; gap: 9px; font-size: 0.72rem; color: #94a3b8; line-height: 1.6; }
-        .upg-row .upg-label { width: 52px; flex-shrink: 0; }
+        /* 52px was measured against English (#30). "Velocidad" and
+           "Attaque principale" are clipped by it, and a label nobody can
+           read is worse than a column that is not perfectly square. */
+        .upg-row .upg-label { min-width: 52px; flex: 0 0 auto; }
         .upg-pips { display: flex; gap: 3px; flex-shrink: 0; }
         .upg-pip { width: 9px; height: 9px; border-radius: 2px; background: #1e2637; border: 1px solid #2e3a59; }
         .upg-pip.filled { background: #00f3ff; border-color: #00f3ff; box-shadow: 0 0 6px rgba(0,243,255,0.5); }
@@ -951,14 +967,30 @@
            stretch every shop button to full width and crush the labels beside
            them. Same specificity trap that once broke the bot-toggle. */
         .menu-section .shop-buy {
-            width: auto; margin: 0; padding: 4px 10px; font-size: 0.66rem; font-weight: bold;
+            /* 21px TALL was every button in this panel (#27), at every size and
+               on touch. These are the controls somebody taps repeatedly while
+               spending coins, and 21px is under every guideline there is. */
+            width: auto; margin: 0; padding: 8px 12px; font-size: 0.72rem; font-weight: bold;
             background: #f59e0b; color: #0d0f18; border: none; border-radius: 4px;
             flex: 0 0 auto; white-space: nowrap;
+            box-sizing: border-box; min-height: 32px;
+        }
+        /* A thumb, not a pointer. */
+        @media (hover: none) {
+            .menu-section .shop-buy, .menu-section .shop-info { min-height: 44px; }
         }
         /* Only the card-header button gets pushed to the far right; inside an
            upgrade row the price button should sit next to its own pips, or it
            reads as belonging to the next column's label. */
         .shop-card-head .shop-buy { margin-left: auto; }
+        /* #26: a LOCKED card has one fewer child in this flex row, so the
+           leftover space fell in a different place on each one and Details
+           floated to x 679, 681, 704, 693, 695 down the list. Pushed to the
+           right explicitly, where the unlocked cards already put it. */
+        .shop-card-head .shop-info { margin-left: auto; }
+        .shop-card-head .shop-buy + .shop-info,
+        .shop-card-head .shop-info + .shop-buy,
+        .shop-card-head .shop-info + .shop-owned { margin-left: 8px; }
         .upg-row .shop-buy { min-width: 44px; text-align: center; }
         .menu-section .shop-buy:hover { background: #fbbf24; box-shadow: 0 0 10px rgba(245,158,11,0.5); }
         /* 2.18:1 BEFORE, and with no coins EVERY price chip in the Armory is
@@ -3398,6 +3430,15 @@ function coinAwardLine(earnedP1, earnedP2) {
     }
     const mine = LOCAL_SIDE === 'p1' ? earnedP1 : earnedP2;
     return `<div style="${gold}">+${mine} ${t('coins')}</div>`;
+}
+
+// HOW A COIN FIGURE IS WRITTEN, in one place (#29). "1000 coins" sat beside
+// "Unlock - 300 coins" with no separator, and a four-digit price is exactly the
+// one somebody reads twice. toLocaleString follows the chosen language, so the
+// Spanish and French get the separator they expect rather than a comma.
+function coinAmount(n) {
+    try { return Number(n).toLocaleString(curLang ? curLang() : 'en'); }
+    catch (e) { return String(n); }
 }
 
 function addCoins(side, n) {
@@ -8900,7 +8941,7 @@ function buildShop(only) {
                  with a green "Unlocked" chip. -->
             ${djOwned
                 ? '<span class="shop-owned">' + t('Unlocked') + '</span>'
-                : `<button class="shop-buy" data-dj="1">${DOUBLE_JUMP_COST + ' coins'}</button>`}
+                : `<button class="shop-buy" data-dj="1">${t('Unlock')} — ${coinAmount(DOUBLE_JUMP_COST)} ${t('coins')}</button>`}
         </div>
         <div class="upg-row"><span>Jump a second time in mid-air — reaches the highest platforms.</span></div>`;
     if (!djOwned) {
@@ -8947,7 +8988,7 @@ function buildShop(only) {
             const cost = UNLOCK_COST[c.name];
             const buy = document.createElement('button');
             buy.className = 'shop-buy';
-            buy.textContent = `Unlock — ${cost} coins`;
+            buy.textContent = `${t('Unlock')} — ${coinAmount(cost)} ${t('coins')}`;
             buy.disabled = prog(side).coins < cost;
             buy.addEventListener('click', () => buyUnlock(side, c.name));
             head.appendChild(buy);
