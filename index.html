@@ -11413,8 +11413,19 @@ function drawPlayerHUD(f, x, label, isMine) {
     const BW = 420; // bar width, scaled up for the bigger virtual space
     hudCtx.fillStyle = "#ffffff";
     hudCtx.font = hudFont(18, true);
+    // THE RIGHT-HAND NAME IS RIGHT-ALIGNED (#45). Both names were drawn from
+    // their bar's LEFT edge, and the right-hand bar starts near the middle of
+    // the canvas - where the arena-name plate and the wider "Arena closing"
+    // plate sit. A 14-character name slid under the first and was covered
+    // outright by the second; on Skyreach Spire even "Kaelen (Player 2)" went.
+    //
+    // Anchored to the bar's own right edge it grows AWAY from the centre, so a
+    // longer name moves further from the plates rather than into them. The
+    // left-hand name already grows away and is unchanged.
+    const onTheRight = x > hudW() / 2;
+    hudCtx.textAlign = onTheRight ? "right" : "left";
+    hudCtx.fillText(`${f.name} (${label})`, onTheRight ? x + BW : x, 46);
     hudCtx.textAlign = "left";
-    hudCtx.fillText(`${f.name} (${label})`, x, 46);
 
     hudCtx.fillStyle = "#0f1420";
     hudCtx.fillRect(x, 56, BW, 24);
