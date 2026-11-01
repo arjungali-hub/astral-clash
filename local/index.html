@@ -2911,7 +2911,6 @@ function isDoubleJumpUnlocked(side) { return sandboxActive() || !!prog(side).dou
 // Multiplier a given character's base stat is scaled by, from that side's upgrades.
 function upgradeMult(side, name, trait) { return 1 + UPGRADE_STAT_BONUS * upgradeLevel(side, name, trait); }
 function unlockedCharNames(side) { return CHARACTERS.filter(c => isCharUnlocked(side, c.name)).map(c => c.name); }
-// Convenience for the Fighter class, which knows isPlayerOne rather than a side key.
 function addCoins(side, n) {
     if (!n) return;
     // Never bank coins while the sandbox override is on: everything is already
@@ -2924,6 +2923,15 @@ function addCoins(side, n) {
     // than running - and load-bearing in the build that offers a one-player
     // mobile mode, where the whole match is against an AI.
     if (MOBILE_SOLO) return;
+    // COINS STILL MOVE IN MEMORY while signed out, and that is deliberate.
+    // #9 asks for them not to, and accountcheck asserts the opposite with its
+    // reason attached - "coins still move in memory, so the game works",
+    // under a section that ends "it survives a reload as nothing, because that
+    // is the deal". A match that silently pays nothing is a worse experience
+    // than one that pays and says the award needs an account to keep.
+    //
+    // The half of #9 that IS right is the message: see coinAwardLine above,
+    // which used to promise "P1 +50 coins" for a purse that is never written.
     prog(side).coins = Math.max(0, prog(side).coins + n);
     saveProgression();
     refreshCoinDisplays();
@@ -4909,6 +4917,30 @@ function trapModalTab(e) {
 }
 document.addEventListener('keydown', trapModalTab, true);
 
+
+// Convenience for the Fighter class, which knows isPlayerOne rather than a side key.
+// WHAT THE MATCH END SAYS ABOUT COINS.
+//
+// #9: signed out, this promised "P1 +50 coins" for a purse that is never
+// written - the number was real for as long as the screen was up and gone on
+// reload. It says what is actually true instead.
+//
+// #49: it also read by SLOT rather than by name. Online a player only ever
+// earns their OWN award - the other side's purse is theirs, on their machine -
+// so printing both was never right. Split screen genuinely has two purses on
+// one machine, and still shows both.
+function coinAwardLine(earnedP1, earnedP2) {
+    const gold = 'margin-top:6px;color:#f59e0b;font-weight:bold;';
+    if (!AC_ONE_SIDE_PER_CLIENT) {
+        return `<div style="${gold}">P1 +${earnedP1} ${t('coins')}`
+             + ` &nbsp;·&nbsp; P2 +${earnedP2} ${t('coins')}</div>`;
+    }
+    if (typeof accountSignedIn === 'function' && !accountSignedIn()) {
+        return `<div style="margin-top:6px;color:#94a3b8;">${t('Sign in to keep coins')}</div>`;
+    }
+    const mine = LOCAL_SIDE === 'p1' ? earnedP1 : earnedP2;
+    return `<div style="${gold}">+${mine} ${t('coins')}</div>`;
+}
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every
@@ -10049,7 +10081,7 @@ function endMatch() {
         : '';
     const coinLine = matchIsSandbox()
         ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
-        : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">P1 +${earnedP1} ${t('coins')} &nbsp;·&nbsp; P2 +${earnedP2} ${t('coins')}</div>`;
+        : coinAwardLine(earnedP1, earnedP2);
     document.getElementById('match-summary').innerHTML =
         `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t(s1.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
         `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} ${t(s2.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
