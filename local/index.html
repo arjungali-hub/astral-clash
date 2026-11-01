@@ -319,7 +319,12 @@
         .fighter-btn.locked .fface { filter: grayscale(1) brightness(0.6); }
         .fighter-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            /* minmax(0, 1fr), NOT 1fr (#11, #12). A bare `1fr` floors each track
+               at its item's min-content width, so a long fighter name widened
+               the column past the grid and spilled over the detail panel beside
+               it - 40px of overlap on desktop, and a click in that strip picked
+               the card underneath rather than pressing Confirm. */
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 7px;
         }
         .vs-column {

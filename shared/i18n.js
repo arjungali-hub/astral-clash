@@ -1564,12 +1564,28 @@ function localiseDOM(root) {
     const pending = [];
     let n;
     while ((n = walker.nextNode())) {
-        const key = n.nodeValue.trim();
-        if (table[key] !== undefined) pending.push(n);
+        // proseKey, NOT trim(). Markup that wraps a sentence across source
+        // lines leaves the newline AND the indentation inside the text node,
+        // so trimming the ends still leaves a run of whitespace in the middle
+        // and the key never matches. Four strings with perfectly good
+        // translations - the Home note, the lobby intro, the "Watching uses the
+        // same room code" note and the Account intro - sat in English in both
+        // languages because of it.
+        //
+        // The prose pass above already collapses, which is why this was
+        // invisible: anything in a <p> with an I18N_HTML entry worked, and
+        // these four have plain-table entries instead.
+        const key = proseKey(n.nodeValue);
+        if (table[key] !== undefined) pending.push([n, key]);
     }
     // Collected first, then written: mutating during a TreeWalker's traversal
     // is asking for a skipped node.
-    for (const node of pending) node.nodeValue = t(node.nodeValue);
+    for (const [node, key] of pending) {
+        // Keep whatever whitespace sat at the ends - between inline elements it
+        // is a real space, and the translation is only replacing the words.
+        const raw = node.nodeValue;
+        node.nodeValue = raw.match(/^\s*/)[0] + table[key] + raw.match(/\s*$/)[0];
+    }
 
     for (const el of scope.querySelectorAll('[placeholder], [title], [aria-label]')) {
         for (const a of I18N_ATTRS) {

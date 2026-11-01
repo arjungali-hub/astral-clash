@@ -472,6 +472,10 @@
         .picker-side { display: grid; grid-template-columns: minmax(0, 1fr) 286px;
             align-items: start; gap: 10px; }
         .picker-side .fighter-grid { flex: 1 1 auto; min-width: 0; }
+        /* Same floor, one level up (#12): as a grid item the detail panel took
+           its CONTENT width - 1,074px inside a 400px screen at the stacked
+           breakpoint, which put Back wholly off the right edge. */
+        .picker-side > * { min-width: 0; }
         /* #50: the action row followed the description, so P1's Change Fighter
            sat 12px below P2's whenever the two fighters' text differed in
            length. A column with the actions pushed to its end lines them up
@@ -551,9 +555,18 @@
         .side-actions .btn-secondary { padding-left: 10px; } /* random pick: plain secondary, no toggle knob */
         .fighter-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            /* minmax(0, 1fr), NOT 1fr (#11, #12). A bare `1fr` floors each track
+               at its item's min-content width, so a long fighter name widened
+               the column past the grid and spilled over the detail panel beside
+               it - 40px of overlap on desktop, and a click in that strip picked
+               the card underneath rather than pressing Confirm. */
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 7px;
         }
+        /* The cards have to be allowed to be narrower than their text, or the
+           track floor above just moves down a level. */
+        .fighter-grid > .fighter-btn { min-width: 0; }
+        .fighter-btn .fname { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
         /* Soft radial halo behind the VS badge, so the center of the
            screen reads as the focal point of the matchup. */
         .vs-glow {
