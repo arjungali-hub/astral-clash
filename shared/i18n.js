@@ -40,6 +40,13 @@ const AC_LANG_KEY = 'astralClashLang';
 // Entities are DECODED by the time text reaches a node: markup reading
 // `Coins &amp; Unlocks` is the string `Coins & Unlocks` here. Keys are written
 // decoded for that reason - an &amp; in a key would never match anything.
+// ARENA NAMES ARE NOT TRANSLATED, and that is a decision rather than a gap.
+// "The Colosseum Ring", "Twin Ramparts" and the other eight are proper nouns
+// of invented places - the arena's name, not a description of it - so they read
+// the same in every language, the way a map name in any other game does.
+// Fighter titles ARE translated ("Tempo Duelist" describes a role), which is
+// the distinction. Raised as a question by the Oct 31 audit (#56); recorded
+// here so it is answered once rather than re-asked.
 const I18N = {
     es: {
         // ---- the shell -------------------------------------------------
@@ -153,6 +160,23 @@ const I18N = {
         'Resume (Esc)': 'Continuar (Esc)',
         'Paused': 'En pausa',
         'Menu': 'Menú',
+        'Forward': 'Adelante',
+        'Back': 'Atrás',
+        'Down': 'Abajo',
+        'Left': 'Izquierda',
+        'Right': 'Derecha',
+        'Look Up': 'Mirar arriba',
+        'Look Down': 'Mirar abajo',
+        'Space': 'Espacio',
+        'Shift': 'Mayús',
+        'Ctrl': 'Ctrl',
+        'Left Click': 'Clic izquierdo',
+        'Right Click': 'Clic derecho',
+        'Middle Click': 'Clic central',
+        'SFX': 'Efectos',
+        'SELECTED': 'SELECCIONADO',
+        'Both of you still need to pick a fighter.': 'Los dos tenéis que elegir luchador todavía.',
+        'unnamed': 'sin nombre',
         'Sign in to keep coins': 'Inicia sesión para conservar las monedas',
         'Charge': 'Carga',
         'Name': 'Nombre',
@@ -811,6 +835,23 @@ const I18N = {
         'Resume (Esc)': 'Reprendre (Échap)',
         'Paused': 'En pause',
         'Menu': 'Menu',
+        'Forward': 'Avant',
+        'Back': 'Arrière',
+        'Down': 'Bas',
+        'Left': 'Gauche',
+        'Right': 'Droite',
+        'Look Up': 'Regarder en haut',
+        'Look Down': 'Regarder en bas',
+        'Space': 'Espace',
+        'Shift': 'Maj',
+        'Ctrl': 'Ctrl',
+        'Left Click': 'Clic gauche',
+        'Right Click': 'Clic droit',
+        'Middle Click': 'Clic du milieu',
+        'SFX': 'Effets',
+        'SELECTED': 'SÉLECTIONNÉ',
+        'Both of you still need to pick a fighter.': 'Vous devez tous les deux encore choisir un combattant.',
+        'unnamed': 'sans nom',
         'Sign in to keep coins': 'Connectez-vous pour conserver vos pièces',
         'Charge': 'Charge',
         'Name': 'Nom',
