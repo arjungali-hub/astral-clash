@@ -1532,6 +1532,13 @@ function isBossWaveNumber(n) { return n > 0 && n % BOSS_WAVE_EVERY === 0; }
 function waveEnemyCount(n) { return Math.min(MAX_WAVE_ENEMIES, 2 + Math.floor((n - 1) / 3)); }
 
 let modalStack = [];
+// Who had focus when each modal opened, so closing one can hand focus back
+// rather than dropping it on BODY (#50). HERE, beside modalStack, because
+// this file loads before either build's script: declared inside a build it
+// is a const whose position the porter picks, and in the local build it
+// landed below openModal - a temporal dead zone the moment anything opens a
+// modal during load.
+const modalOpeners = [];
 
 function modalOpen() { return modalStack.length > 0; }
 

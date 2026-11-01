@@ -1684,7 +1684,14 @@
 </head>
 <body>
 
-    <div id="game-container">
+    <!-- menu-roomy matches the `currentScreen` initialiser below. #1 gave the
+         frame the window on menu screens and showScreen() keeps the class in
+         step from then on - but showScreen does not run at boot, so without
+         this the first paint is the one frame that ignores the fix. Reported
+         against the split-screen build as #14, where the select screen IS the
+         first paint: 654px of frame with 175px of dead window above and
+         below it while the fighter grids scrolled inside. -->
+    <div id="game-container" class="menu-roomy">
         <canvas id="gameCanvas" width="1170" height="650" role="img" aria-label="The arena, drawn from your fighter's eyes. This game needs sight to play."></canvas>
         <canvas id="hudCanvas" width="1170" height="650" role="img" aria-label="Health, special meter and round score for both fighters."></canvas>
         <div id="replay-bar">
@@ -2189,6 +2196,7 @@ function showScreen(name) {
 function hideOverlay() { showScreen(null); } // no screen — used when a match takes over the viewport
 function openModal(name) {
     if (!modalStack.includes(name)) modalStack.push(name);
+    modalOpeners.push(document.activeElement);
     // The overlay is a scroll container and the modal is absolutely positioned
     // inside it, so anything other than scrollTop 0 opens the panel off-screen.
     // Locked while it is up, which is also what leaves exactly one scrollbar.
@@ -2202,6 +2210,12 @@ function openModal(name) {
     // button, because per-button wiring is the one thing the sync cannot port.
     if (name === 'settings' && typeof syncSettingsForMatch === 'function') syncSettingsForMatch();
     el.style.display = 'flex';
+    // Focus lands INSIDE the panel (#50). Opening Settings with Enter used to
+    // leave focus on the button behind it, so the first Tab walked the page
+    // under the modal. After display:flex, or offsetParent is still null and
+    // focusablesIn finds nothing.
+    const firstControl = focusablesIn(el)[0];
+    if (firstControl) firstControl.focus();
 }
 function closeModal() {
     const name = modalStack.pop();
@@ -2211,6 +2225,13 @@ function closeModal() {
         if (ov) ov.style.overflowY = '';
     }
     if (name) document.getElementById(MODAL_EL[name]).style.display = 'none';
+    // ...and focus goes back where it came from (#50), rather than onto BODY,
+    // which would restart a keyboard user at the top of the page every time
+    // they closed a panel.
+    const opener = modalOpeners.pop();
+    if (opener && opener.focus && document.contains(opener)) {
+        try { opener.focus(); } catch (e) { /* removed since it was opened */ }
+    }
     return name;
 }
 function closeAllModals() { while (modalStack.length) closeModal(); }
@@ -2357,6 +2378,17 @@ window.addEventListener('keydown', e => {
     // preventDefault()ed - Space and the arrows belong to the field while it
     // has focus. Only the rebind capture below runs first, because a rebind is
     // explicitly asking for the next key whatever it is.
+    // ESCAPE FIRST, even from inside a text field (#51). In a field Escape
+    // already means "cancel" everywhere else, and it is the only way out of a
+    // modal once focus is in one - the guard below used to swallow it, so
+    // Account and Settings stayed open however many times it was pressed.
+    // Everything else the guard protects - Space, the arrows, letters that are
+    // hotkeys - still belongs to the field.
+    if (e.key === 'Escape' && typingInField(e.target) && modalOpen()) {
+        e.preventDefault();
+        closeTopModalByEscape();
+        return;
+    }
     if (typingInField(e.target)) return;
     // (2) The first keypress doubles as the user-gesture that unlocks audio
     // (autoplay policies block AudioContext until then). Idempotent, but gate
@@ -4843,6 +4875,40 @@ function controlsPairs(side) {
     ];
     return pairs;
 }
+
+// EVERY CONTROL INSIDE A PANEL THAT A KEYBOARD CAN REACH, in document order.
+// Used by the focus trap below. Hidden controls are excluded by offsetParent
+// rather than by a style check, because a parent being display:none is the
+// usual reason and reading every ancestor's style is not.
+function focusablesIn(el) {
+    if (!el) return [];
+    const sel = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    return [...el.querySelectorAll(sel)]
+        .filter((n) => !n.disabled && n.offsetParent !== null);
+}
+
+// #50: Tab inside an open modal stays inside it. Without this it walked the
+// panel's controls, reached the end, and carried on into the Home screen
+// underneath - so a keyboard user operated a screen they could not see while a
+// modal sat over it. Wrapping both ways is what makes it a trap rather than a
+// dead end.
+function trapModalTab(e) {
+    if (e.key !== 'Tab') return;
+    const name = modalStack[modalStack.length - 1];
+    if (!name) return;
+    const el = document.getElementById(MODAL_EL[name]);
+    const items = focusablesIn(el);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    const here = document.activeElement;
+    // Focus already outside the panel - Tab brought it there before this
+    // existed, or a click did - so put it back rather than letting it wander.
+    if (!el.contains(here)) { e.preventDefault(); first.focus(); return; }
+    if (e.shiftKey && here === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && here === last) { e.preventDefault(); first.focus(); }
+}
+document.addEventListener('keydown', trapModalTab, true);
+
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
 // short-lived effect/projectile/particle mesh (and the whole map on every
