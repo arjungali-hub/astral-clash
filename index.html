@@ -6957,6 +6957,10 @@ class Fighter {
     applyDamage(amount, opts = {}) {
         const { attacker = null, ignoreShield = false, dir = null } = opts;
         if (!ignoreShield && this.shieldFrames > 0) amount *= (1 - this.shieldReduction);
+        // Kept for the stats below (#4): what was actually TAKEN is capped by
+        // what was there, and a hit landing on 5 HP deals 5 however hard it
+        // swings. Captured before the subtraction, obviously.
+        const hpBefore = this.hp;
         this.hp = Math.max(0, this.hp - amount); // the per-frame hpGhost ease (render3D) shows the trail for any drop
         if (!attacker) return;
 
@@ -6999,9 +7003,14 @@ class Fighter {
         this.specialMeter = Math.min(100, this.specialMeter + amount * METER_TAKEN_RATE * this.meterRateMult);
 
         if (matchStats) {
+            // #4: the FULL amount was counted even past the target's remaining
+            // HP, so a forced KO on Lyra (299 max) reported "444 dmg dealt,
+            // largest hit 349" and a 35-point hit on a 5-HP opponent put 35
+            // toward the "Deal 400 damage" daily.
+            const dealt = Math.min(amount, hpBefore);
             const s = matchStats[attacker.isPlayerOne ? 'p1' : 'p2'];
-            s.damageDealt += amount;
-            s.largestHit = Math.max(s.largestHit, amount);
+            s.damageDealt += dealt;
+            s.largestHit = Math.max(s.largestHit, dealt);
         }
     }
 
@@ -10125,6 +10134,16 @@ function refreshLobbyUI() {
             : net.status === 'starting' ? 'Starting'
             : net.status === 'error' ? 'Connection lost'
             : 'Not connected';
+        // #61: a connected watcher was invisible. The host's room said only
+        // "Waiting for an opponent" with somebody already watching, and nothing
+        // anywhere mentioned them - so the one person who knows a spectator
+        // exists is the spectator. Appended rather than replacing the state,
+        // because who you are connected to is still the pill's main job.
+        const watchers = typeof netWatcherCount === 'function' ? netWatcherCount() : 0;
+        if (watchers > 0) {
+            pill.textContent += ' · ' + watchers + ' '
+                + t(watchers === 1 ? 'watching' : 'watching');
+        }
         pill.className = 'status-pill ' + (LOBBY_STATUS_CLASS[net.status] || '');
     }
     // The room code belongs to the HOST - it is the thing they read out loud. A
@@ -10569,6 +10588,20 @@ document.addEventListener('visibilitychange', () => setLocalAway(!!document.hidd
 // "going away for real" signal on mobile Safari, where visibilitychange is
 // sometimes skipped entirely.
 window.addEventListener('pagehide', () => setLocalAway(true));
+// AND SAY GOODBYE (#59). Closing the tab mid-match sent nothing, so the
+// opponent spent about 13 seconds being told "left the game tab. Waiting for
+// them to come back…" about somebody who had closed the game, and then fell
+// into the silence timeout. A tab close and a tab switch are different events
+// and only one of them is coming back.
+//
+// pagehide with persisted=true is the back/forward cache - the page may well
+// return - so that one stays an away-pause and sends nothing.
+window.addEventListener('pagehide', (e) => {
+    if (e.persisted) return;
+    if (typeof netActive === 'function' && netActive()) {
+        try { netSend({ t: 'BYE' }); } catch (err) { /* the socket may already be gone */ }
+    }
+});
 
 // Rewrites the pause screen for whatever is actually blocking the resume. A
 // disabled button with no explanation is the thing that makes someone reload

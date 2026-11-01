@@ -2847,7 +2847,19 @@ function escapeHTML(s) {
 
 function playerLabel(side) {
     const own = nameForSide(side);
-    if (own) return own;
+    if (own) {
+        // TWO PEOPLE CAN SHARE A NAME (#60). Two tabs share storage, and two
+        // real players can simply both be called Sam - and then the slots read
+        // "Sam" and "Sam · Host", the away-pause says "Sam left the game tab"
+        // about one of them, and a mirror match labels both HUD bars the same.
+        // The slot number is the one thing that always tells them apart, and it
+        // is added ONLY when it is needed, so a normal match reads as a name.
+        const theirs = nameForSide(otherSide(side));
+        if (theirs && theirs === own) {
+            return own + ' (' + (side === 'p1' ? 'Player 1' : 'Player 2') + ')';
+        }
+        return own;
+    }
     // THE SIDE'S OWN NUMBER, always. There used to be an online-only branch
     // here returning 'Player 1' for any unnamed side whenever the OTHER side
     // had a name, on the reasoning that this client's player was "the only

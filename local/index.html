@@ -6881,6 +6881,10 @@ class Fighter {
     applyDamage(amount, opts = {}) {
         const { attacker = null, ignoreShield = false, dir = null } = opts;
         if (!ignoreShield && this.shieldFrames > 0) amount *= (1 - this.shieldReduction);
+        // Kept for the stats below (#4): what was actually TAKEN is capped by
+        // what was there, and a hit landing on 5 HP deals 5 however hard it
+        // swings. Captured before the subtraction, obviously.
+        const hpBefore = this.hp;
         this.hp = Math.max(0, this.hp - amount); // the per-frame hpGhost ease (render3D) shows the trail for any drop
         if (!attacker) return;
 
@@ -6923,9 +6927,14 @@ class Fighter {
         this.specialMeter = Math.min(100, this.specialMeter + amount * METER_TAKEN_RATE * this.meterRateMult);
 
         if (matchStats) {
+            // #4: the FULL amount was counted even past the target's remaining
+            // HP, so a forced KO on Lyra (299 max) reported "444 dmg dealt,
+            // largest hit 349" and a 35-point hit on a 5-HP opponent put 35
+            // toward the "Deal 400 damage" daily.
+            const dealt = Math.min(amount, hpBefore);
             const s = matchStats[attacker.isPlayerOne ? 'p1' : 'p2'];
-            s.damageDealt += amount;
-            s.largestHit = Math.max(s.largestHit, amount);
+            s.damageDealt += dealt;
+            s.largestHit = Math.max(s.largestHit, dealt);
         }
     }
 
