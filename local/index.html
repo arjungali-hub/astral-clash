@@ -9820,11 +9820,16 @@ function drawHUDInner() {
     drawPlayerHUD(fighterFor(rightSide), hudW() - 30 - 420, displayName(rightSide),
                   isLocalSide(rightSide));
     if (isCoopMode()) drawCoopDownHUD();
-    if (coopEnemies.length) drawBossHUD();
-    else if (matchMode === 'survival' && waveBreakTimer > 0) drawWaveBreakHUD();
     const botNote = [player1.isBot ? 'P1 Bot' : null, player2.isBot ? 'P2 Bot' : null]
         .filter(Boolean).join(' / ');
     const drawShared = () => {
+        // THE BOSS BAR AND THE WAVE BANNER ARE PER-VIEW (#47). They were drawn
+        // out here, centred on hudW() / 2 - the whole canvas - so in split
+        // screen they straddled the divider and ran into Player 2's half. Inside
+        // drawShared they are drawn once per half, each centred in its own,
+        // which is what every other shared readout already does.
+        if (coopEnemies.length) drawBossHUD();
+        else if (matchMode === 'survival' && waveBreakTimer > 0) drawWaveBreakHUD();
         if (currentMap) {
             // A PLATE AND LIGHT TEXT, not dark text with a dark shadow. #64748b
             // on a bright sky is what "unreadable at the top center" was.
