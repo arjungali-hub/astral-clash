@@ -538,8 +538,19 @@
         .fighter-btn.roster-locked:hover .fname { color: #cbd5e1; }
         .fighter-btn.roster-locked:hover .ftitle, .fighter-btn.roster-locked:hover .fkey { color: #94a3b8; }
         .fighter-btn .fcost {
-            display: inline-block; background: #0d0f18; border: 1px solid #f59e0b; color: #f59e0b;
-            font-weight: bold; font-size: 0.66rem; padding: 1px 6px; border-radius: 3px; margin-right: 7px;
+            display: inline-block;
+            background: #0d0f18;
+            border: 1px solid #f59e0b;
+            color: #f59e0b;
+            font-weight: bold;
+            font-size: 0.62rem;
+            padding: 1px 6px;
+            border-radius: 3px;
+            margin: 3px 0 0;
+            white-space: nowrap;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         /* Coin balance, shown per player on the select screen and in the Armory header. */
         .coin-balance { color: #f59e0b; font-weight: bold; font-size: 0.9rem; letter-spacing: 0.02em; }
@@ -678,7 +689,8 @@
             border: 1px solid #2e3a59;
         }
         .shop-detail .detail-desc {
-            font-size: inherit;
+            font-size: 0.81rem;
+            line-height: 1.5;
         }
         .shop-detail .detail-ability { margin-top: 7px; }
         .menu-section .shop-info {
@@ -872,7 +884,95 @@
             /* room for a thumb that is taller than the track */;
         }
         .audio-row label { width: 55px; font-size: 0.78rem; color: #94a3b8; text-align: left; }
-        .audio-row input[type="range"] { flex: 1; }
+        /* PORTED BY HAND, ONCE (#36). The local sliders were 179x16 and the
+           sandbox checkbox 13x13 - the browser defaults - because
+           _css_rule_wanted carries a rule this build lacks only when it
+           houses an ORPHAN class, and `.audio-row` and `.settings-check`
+           are not orphans here: they have rules, just shorter ones. A
+           container that is under-dressed rather than undressed is
+           invisible to that test.
+           Now that both builds carry these selectors, close_css_drift
+           compares them declaration by declaration on every run, so the
+           next edit to the online rule travels on its own. Edit them
+           THERE, as always. */
+        .audio-row input[type="range"] {
+            -webkit-appearance: none; appearance: none;
+            height: 32px; background: transparent;
+            border: 0; outline: none; padding: 0;
+            /* `flex: 1` MOVED HERE from a second rule with this same selector
+               340 lines down (#36). Two rules sharing a selector is invisible
+               in a browser and not in the sync: extract_css keys its dict by
+               selector, so one of the two was all close_css_drift ever saw -
+               and it was the lone `flex: 1`, which the local build already
+               had. The comparison then said the rules agreed while everything
+               above this line sat in a rule the parser never returned, and the
+               local sliders stayed 179x16 for as long as that was true. */
+            flex: 1;
+        }
+        .audio-row input[type="range"]::-webkit-slider-runnable-track {
+            height: 6px; border-radius: 999px;
+            background: #1e293b; border: 1px solid #2e3a59;
+        }
+        .audio-row input[type="range"]::-moz-range-track {
+            height: 6px; border-radius: 999px;
+            background: #1e293b; border: 1px solid #2e3a59;
+        }
+        .audio-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 16px; height: 16px; border-radius: 50%;
+            background: #00f3ff; border: 2px solid #0d1420; cursor: pointer;
+            box-shadow: 0 0 8px rgba(0, 243, 255, 0.5);
+            /* Centres a 20px thumb (16 + 2px border each side) on an 8px track
+               (6 + 1px each side): (8 - 20) / 2. Webkit needs this said; Moz
+               centres its own thumb. */
+            margin-top: -6px;
+        }
+        .audio-row input[type="range"]::-moz-range-thumb {
+            width: 14px; height: 14px; border-radius: 50%;
+            background: #00f3ff; border: 2px solid #0d1420; cursor: pointer;
+        }
+        .audio-row input[type="range"]:focus-visible { outline: 3px solid #facc15; outline-offset: 3px; }
+        .settings-check input[type="checkbox"] {
+            appearance: none; -webkit-appearance: none;
+            width: 38px; height: 21px; margin: 0; flex: none;
+            border-radius: 999px; background: #0f1626; border: 1px solid #334155;
+            position: relative; cursor: pointer; transition: background 140ms ease;
+        }
+        .settings-check input[type="checkbox"]::after {
+            content: ""; position: absolute; top: 2px; left: 2px;
+            width: 15px; height: 15px; border-radius: 50%;
+            background: #64748b; transition: transform 140ms ease, background 140ms ease;
+        }
+        .settings-check input[type="checkbox"]:checked { background: rgba(0, 243, 255, 0.16); border-color: #00f3ff; }
+        .settings-check input[type="checkbox"]:checked::after { transform: translateX(17px); background: #00f3ff; }
+        .settings-check input[type="checkbox"]:focus-visible { outline: 3px solid #facc15; outline-offset: 2px; }
+        /* ---- MODAL HEADER CLOSE -------------------------------------------
+           Reported: "In Settings, Close sits below the fold even on the short
+           online panel." A sticky footer is another layer to get wrong in a
+           530px-tall window; an x in the header is where people look, and it
+           costs no vertical space at all. The Close buttons at the bottom stay
+           - there was never anything wrong with them except having to scroll to
+           reach them. */
+        .menu-section { position: relative; }
+        /* SCOPED, because `.menu-section button { width: 100% }` is (0,2,0) and a
+           bare `.modal-x` is (0,1,0) - the x came out 1040px wide, spanning the
+           whole panel and hanging 8px off its left edge. layoutcheck caught it
+           by measuring, which is exactly the failure the Copy button had. */
+        .menu-section .modal-x, .shop-panel .modal-x, .tutorial-panel .modal-x {
+            position: absolute; top: 8px; right: 8px;
+            /* 40x40 (#68): 30 is under every touch-target guideline, and this
+               is the control that exists to be findable. */
+            width: 40px; height: 40px; min-width: 0; padding: 0; margin: 0;
+            display: flex; align-items: center; justify-content: center;
+            background: transparent; color: #94a3b8;
+            border: 1px solid #2e3a59; border-radius: 6px;
+            font-size: 1.05rem; line-height: 1; box-shadow: none;
+        }
+        .menu-section .modal-x:hover, .shop-panel .modal-x:hover, .tutorial-panel .modal-x:hover {
+            background: #232d47; color: #e2e8f0; box-shadow: none;
+        }
+
+
         /* Single "Settings" entry point gathering Rebind/HUD-scale/Audio —
            these used to be three separate buttons in the footer. */
         #settings-screen {
@@ -963,7 +1063,7 @@
             display: flex; align-items: center; gap: 8px; margin: 12px 0 4px;
             font-size: 0.78rem; color: #e2e8f0; cursor: pointer; text-align: left;
         }
-        .settings-check input { width: auto; margin: 0; flex-shrink: 0; cursor: pointer; }
+
         .btn-danger {
             background: transparent; color: #f87171; border: 1px solid #f87171;
             box-shadow: none;
@@ -1264,10 +1364,14 @@
 
                z-index 60 is already above every modal (30), so a toast fired
                from inside Settings draws over it rather than under. */
+            /* #22: bottom-RIGHT put it over the Match Setup panel at 1280x800,
+               which is the panel the sandbox toast is most often about. The
+               room bar is at the top and the picker fills the middle, so the
+               bottom-centre strip is the one place nothing else claims. */
             position: fixed;
-            right: 14px;
+            left: 50%;
             bottom: 14px;
-            transform: translateY(8px);
+            transform: translate(-50%, 8px);
             z-index: 60;
             pointer-events: none;
             opacity: 0;
@@ -1282,7 +1386,10 @@
             box-shadow: 0 0 18px rgba(0, 243, 255, 0.35);
             max-width: min(340px, 70%);
         }
-        #debug-toast.show { opacity: 1; transform: translateY(0); }
+        #debug-toast.show {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
         @media (prefers-reduced-motion: reduce) { #debug-toast { transition: none; } }
         /* Batch 48: EVERY modal overlay, top-aligned and self-scrolling.
            These are `position: absolute` inside #ui-overlay, which is a scroll
@@ -1343,7 +1450,8 @@
         /* Overrides the base `button` rule's 14px/22px and 1.08rem, which is
            sized for a menu and would make this pill taller than the bar. */
         #btn-exit-replay { margin: 0; padding: 5px 12px; font-size: 0.78rem; }
-        @media (max-width: 560px) { #replay-caption { max-width: 46vw; } }
+        @media (max-width: 560px) { #replay-caption { max-width: 46vw; }     .ctl-cols { flex-direction: column; gap: 0; }
+        }
         #loading-screen {
             position: absolute; inset: 0; z-index: 60;
             display: none; overflow: hidden;
@@ -1721,6 +1829,15 @@
         }
         .modal-under > * {
             visibility: hidden;
+        }
+                .ctl-cols {
+            display: flex;
+            gap: 18px;
+            align-items: flex-start;
+        }
+        .ctl-col {
+            flex: 1 1 0;
+            min-width: 0;
         }
         </style>
 </head>
@@ -3051,7 +3168,14 @@ function setDebugUnlockAll(on) {
     buildShop();
     refreshBotUI('p1'); refreshBotUI('p2'); // Batch 14: bot mode is disallowed while unlocked-all
     syncDebugUnlockUI();
-    showToast(debugUnlockAll ? 'Sandbox on — everything unlocked, bot matches available' : 'Your progression is back — two players only');
+    // #22: "bot matches available" in a build that has no bots. The sentence
+    // is right in the split-screen build, where sandbox really does open the
+    // bot modes, and was simply carried across.
+    showToast(debugUnlockAll
+        ? (AC_ONE_SIDE_PER_CLIENT
+            ? 'Sandbox on — everything unlocked'
+            : 'Sandbox on — everything unlocked, bot matches available')
+        : 'Your progression is back — two players only');
 }
 function toggleDebugUnlockAll() { setDebugUnlockAll(!debugUnlockAll); }
 function syncDebugUnlockUI() {
@@ -3171,7 +3295,11 @@ const REBIND_ACTION_LABELS = {
     left: AC_ONE_SIDE_PER_CLIENT ? 'Strafe left' : 'Turn left',
     right: AC_ONE_SIDE_PER_CLIENT ? 'Strafe right' : 'Turn right',
     jump: 'Jump', attack: 'Attack', special: 'Special', dodge: 'Dash',
-    lookUp: 'Look Up', lookDown: 'Look Down',
+    // SENTENCE CASE, like every other label in this list (#67). "Look Up"
+    // and "Look Down" sat next to "Turn left" and "Strafe right" - the
+    // translations moved with them, because i18n.js keys on the English
+    // string and a re-cased string is a different key.
+    lookUp: 'Look up', lookDown: 'Look down',
 };
 
 // WHOSE KEYS THE REBIND SCREEN SHOWS. One set where one person is at this
@@ -3187,14 +3315,30 @@ function buildRebindList() {
         if (sides.length > 1) {
             const header = document.createElement('div');
             header.style.cssText = 'margin-top:8px;font-weight:bold;color:#e2e8f0;';
-            header.textContent = playerLabel(side);
+            // #67: the bare name was the heading, so a 14-character name
+            // became the section title and nothing said which keyboard half it
+            // belonged to. The slot leads; the name follows when there is one
+            // to follow with - and is left off when the name IS the slot,
+            // which is the local build's default and would read "Player 1 —
+            // Player 1".
+            const slot = t(side === 'p1' ? 'Player 1' : 'Player 2');
+            const who = displayName(side);
+            header.textContent = (who && who !== slot)
+                ? `${slot} \u2014 ${who}` : slot;
             list.appendChild(header);
         }
         for (const action in DEFAULT_BINDINGS[side]) {
             const row = document.createElement('div');
             row.className = 'rebind-row';
             const label = document.createElement('span');
-            label.textContent = REBIND_ACTION_LABELS[action] || action;
+            // #67: `.rebind-row span.rebind-action` is the rule that makes this
+            // a column, and this span has never carried the class - in either
+            // build. Local showed it plainly, each chip starting wherever its
+            // label happened to end, x 530 to 568 down the list. Online looked
+            // fine only because a later override right-aligns the whole row,
+            // so the chips lined up for a different reason.
+            label.className = 'rebind-action';
+            label.textContent = t(REBIND_ACTION_LABELS[action] || action);
             const btn = document.createElement('button');
             btn.className = 'rebind-key';
             btn.textContent = keyLabel(BINDINGS[side][action]);
@@ -4330,6 +4474,13 @@ function pickKeyHint() {
     // has been made on this exact object - CLAUDE.md lists the first, where
     // the local press-to-continue prompt read BINDINGS.attack and the key the
     // player had bound did nothing.
+    // #13: a phone was reading "Left Click confirm / Right Click back", in the
+    // slot status AND in the picker's own title, on a screen with no mouse at
+    // all. There is nothing to rebind on touch either, so there is no key to
+    // name - the buttons are the instruction.
+    if (typeof IS_TOUCH_DEVICE !== 'undefined' && IS_TOUCH_DEVICE) {
+        return t('Tap a fighter, then Confirm');
+    }
     const b = BINDINGS[LOCAL_SIDE] || BINDINGS.p1 || {};
     return `${keyLabel(b.attack)} confirm / ${keyLabel(b.special)} back`;
 }
@@ -5015,6 +5166,13 @@ function syncModalDepth() {
         if (el) el.classList.toggle('modal-under',
             modalStack.includes(key) && key !== top);
     }
+}
+
+// " (Left Click)" after a button whose label already says what it does - and
+// nothing at all on touch, for the same reason as above (#13).
+function keyParen(label) {
+    if (typeof IS_TOUCH_DEVICE !== 'undefined' && IS_TOUCH_DEVICE) return '';
+    return ` (${label})`;
 }
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
@@ -8421,7 +8579,11 @@ function buildGrid(gridId, keyList, side) {
         btn.innerHTML =
             `<span class="fface" style="background-color:${c.color};background-image:url('${faceUrl(c.name)}')"></span>`
             + `<span class="fmeta"><span><span class="fkey">${keyList[i].toUpperCase()}</span><span class="fname">${c.name}</span></span>`
-            + `<span class="ftitle">${c.title}</span></span>`;
+            + `<span class="ftitle">${c.title}</span>`
+            // #16: the price gets its own chip rather than evicting the key
+            // from the badge. Built empty and hidden for every card, because
+            // locked is runtime state - refreshGridLocks fills it in.
+            + `<span class="fcost" hidden></span></span>`;
         // A locked card opens the Armory instead of previewing — clicking the
         // thing you want and being told where to get it beats a dead button.
         btn.addEventListener('click', () => {
@@ -8448,20 +8610,28 @@ function refreshGridLocks() {
             const unlocked = isCharUnlocked(side, name);
             btn.classList.toggle('roster-locked', !unlocked);
             const cost = UNLOCK_COST[name];
-            // #53 asks for the key AND the price on a locked card. The pill holds
-            // one token and the swap's own reasoning is sound - the hotkey does
-            // nothing while locked, because previewPick refuses - so the price
-            // keeps the pill and the key goes where there is room for it. Partial,
-            // deliberately: a '4 · 250' pill is two facts in a badge sized for one.
+            // #53/#16 asks for the key AND the price on a locked card, and the
+            // previous answer was half of it with the reason stated: "a '4 · 250'
+            // pill is two facts in a badge sized for one". That is right, so the
+            // price stops trying to live in the badge. The key keeps the pill it
+            // has on every other card - it is how the roster is addressed, and a
+            // card that loses it looks like a card with no key - and the price is
+            // a chip of its own under the title.
             btn.title = unlocked ? CHAR_MAP[name].desc
                 : `Locked — ${cost} coins in the Armory. Key ${btn.dataset.key} once unlocked.`;
-            // Swap the hotkey pill for a price pill while locked: the hotkey
-            // does nothing on a locked character anyway (previewPick refuses),
-            // so showing the price is strictly more useful there.
-            const pill = btn.querySelector('.fkey, .fcost');
-            if (pill) {
-                pill.className = unlocked ? 'fkey' : 'fcost';
-                pill.textContent = unlocked ? btn.dataset.key : cost;
+            const pill = btn.querySelector('.fkey');
+            if (pill) pill.textContent = btn.dataset.key;
+            const price = btn.querySelector('.fcost');
+            if (price) {
+                price.hidden = unlocked;
+                // coinAmount (#29) rather than a bare number, so a four-figure
+                // price reads the same here as it does in the Armory.
+                // The price alone. The card is already visibly locked, and
+                // its title attribute spells out the whole sentence - so in a
+                // 130px column the word "Locked" would cost the number its
+                // room for nothing.
+                price.textContent = unlocked ? ''
+                    : `${coinAmount(cost)} ${t('coins')}`;
             }
         });
     }
@@ -8511,9 +8681,9 @@ function buildDetailHTML(side, c, confirmKey, backKey, confirmed) {
     // allowed.
     const actions = confirmed
         ? `<span class="detail-locked">\u2713 Locked in</span>
-           <button class="btn-back">${t('Change Fighter')} (${backKey})</button>`
-        : `<button class="btn-confirm">${t('Confirm')} (${confirmKey})</button>
-           <button class="btn-back">${t('Back')} (${backKey})</button>`;
+           <button class="btn-back">${t('Change Fighter')}${keyParen(backKey)}</button>`
+        : `<button class="btn-confirm">${t('Confirm')}${keyParen(confirmKey)}</button>
+           <button class="btn-back">${t('Back')}${keyParen(backKey)}</button>`;
     return `<div class="detail-scroll">${characterInfoHTML(side, c)}</div>` + `
         <div class="detail-actions">${actions}</div>`;
 }
@@ -9121,14 +9291,20 @@ function pauseControlsHTML() {
     // A TABLE, not a sentence (#83). As one ' | '-joined string this wrapped to
     // four lines wherever the box ran out, so "Look" and "Up/Down" could end up
     // on different lines and "/ Jump" read as punctuation.
-    return sides.map(side => {
+    // SIDE BY SIDE, NOT STACKED (#43). The local build lists both players'
+    // keys, and stacked they made the pause panel 677px tall inside a 650px
+    // overlay - Return to Menu ran from y 795 to 845 and the frame ended at
+    // 825. Two columns make the pair as tall as one list. The online build
+    // shows one side and gets one column, so nothing there changes.
+    return '<div class="ctl-cols">' + sides.map(side => {
         const rows = controlsPairs(side).map(([key, action]) =>
             '<div class="ctl-key">' + escapeHTML(key) + '</div>'
             + '<div class="ctl-act">' + escapeHTML(t(action)) + '</div>').join('');
         const head = sides.length > 1
             ? '<div class="ctl-who">' + escapeHTML(displayName(side)) + '</div>' : '';
-        return head + '<div class="ctl-grid">' + rows + '</div>';
-    }).join('');
+        return '<div class="ctl-col">' + head
+            + '<div class="ctl-grid">' + rows + '</div></div>';
+    }).join('') + '</div>';
 }
 
 // Only the host is offered a rematch; the guest is told what it is waiting for.
