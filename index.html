@@ -242,7 +242,21 @@
         button {
             background: #00f3ff;
             color: #0d0f18;
-            border: none;
+            /* TRANSPARENT, NOT NONE (#17, #37). Every tier below colours a 1px
+               border, and height here is auto, so that border was simply added:
+               Resume 48, Rebind 50.7, Return to Menu 51, in one column. And in
+               the fighter detail it made Confirm 139 against Back 141 even
+               though both are `flex-basis: 0` and both are already border-box -
+               a flex item's automatic minimum size is its own padding plus
+               border, so Back's floor sat 2px higher and the equal share of
+               free space landed on top of it.
+               A tier now changes the border's COLOUR and never the box.
+               The background paints under it, so an unbordered button looks
+               exactly as it did. */
+            border: 1px solid transparent;
+            /* ...and the last 0.74px: `normal` against the `1.2` that .btn-back
+               sets for its arrow glyph. */
+            line-height: 1.2;
             padding: 14px 22px;
             font-weight: bold;
             font-size: 1.08rem;
@@ -344,6 +358,19 @@
         .home-card .btn-online { width: 100%; font-size: 1rem; padding: 13px 18px;
             margin: 6px 0 0; }
         .home-note { color: #94a3b8; font-size: 0.8rem; line-height: 1.55; margin: 12px 0 14px; }
+        /* ONE GAP (#23). The card's five gaps measured 24, 26, 22, 34 and 24,
+           because each child brought its own margins and adjacent ones summed
+           or collapsed depending on which pair it was. A flex column with a
+           single `gap` makes the rhythm one number instead of five accidents.
+           The margins are zeroed at (0,2,0) so the per-element rules above and
+           below this line - .home-note's 12/14, .btn-online's 6, .home-purse's
+           12 - cannot win on source order. */
+        .menu-section.home-card { display: flex; flex-direction: column; gap: 24px; }
+        .menu-section.home-card > * { margin: 0; }
+        /* Play STAYS LARGER than the row under it: that is the hierarchy, not
+           an inconsistency - it is the one thing on this screen you came to
+           press. 47px was simply an odd number to be large by. */
+        .menu-section.home-card .btn-online { min-height: 48px; }
         .home-purse {
             display: flex; align-items: center; justify-content: center; gap: 8px;
             padding: 9px 12px; margin-bottom: 12px;
@@ -364,7 +391,13 @@
             background: #0d1017; border: 1px solid #2e3a59; border-radius: 7px;
             color: #e2e8f0; font-family: inherit; font-size: 0.9rem; padding: 8px 10px;
         }
-        .home-name-row input:focus { outline: none; border-color: #00f3ff; }
+        /* :not(:focus-visible) ADDED WITH #25. Tab into the name field showed
+           no ring at all while every button on the screen took the 3px one
+           - not because the ring rule misses inputs (it lists them) but
+           because these two rules turn it off, at (0,2,1) against its
+           (0,1,1). They were written to keep a MOUSE click quiet, and
+           :focus matches a keyboard focus just as well. */
+        .home-name-row input:focus:not(:focus-visible) { outline: none; border-color: #00f3ff; }
         /* #475569 is about 2.5:1 (#25) - the placeholder is the only thing
            saying what the field is for until you type in it. */
         .home-name-row input::placeholder { color: #8296b0; font-style: italic; }
@@ -407,6 +440,12 @@
             padding: 5px 11px; border-radius: 999px; font-size: 0.74rem; font-weight: bold;
             letter-spacing: 0.04em; text-transform: uppercase;
             border: 1px solid #475569; color: #94a3b8; background: rgba(0,0,0,0.35);
+            /* 77x44 WITH THE TEXT AT THE TOP (#15). A <span> is a flex item of
+               .room-bar-left, which stretches by default, so the 32px floor
+               below became 44px of oval with "HOSTING" sitting in the first
+               5px of it. Centred in the row, and centred inside itself. */
+            align-self: center; box-sizing: border-box;
+            display: inline-flex; align-items: center; justify-content: center;
         }
         .status-pill.waiting { color: #fbbf24; border-color: #f59e0b; }
         .status-pill.live    { color: #4ade80; border-color: #4ade80; }
@@ -739,6 +778,10 @@
         .settings-list .btn-local {
             background: transparent; color: #c084fc; border: 1px solid #a855f7;
             box-shadow: none; font-size: 0.78rem;
+            /* 45px in a column of 44px .opt rows (#37). Its font is smaller
+               than theirs, so it needs the same floor stated rather than
+               inherited from the padding. */
+            min-height: 44px; padding-top: 0; padding-bottom: 0;
         }
         .settings-list .btn-local:hover { background: rgba(168, 85, 247, 0.14); box-shadow: none; }
         #lobby-screen {
@@ -1051,8 +1094,15 @@
            the box was the one that starts the match. */
         #btn-start-match { width: 100%; }
         /* #55: Leave Room borrowed .btn-back and rendered 98x27 with 11.8px
-           text, against 50px for that class everywhere else. */
-        #btn-net-disconnect.btn-back { min-height: 32px; font-size: 0.82rem; }
+           text, against 50px for that class everywhere else.
+           #15: ...and this rule named the WRONG BUTTON for a whole round. The
+           Lobby's Disconnect is #btn-net-disconnect; the room bar's Leave Room
+           is #btn-room-leave, and it was still 98.83x50 with 11.84px text when
+           the audit measured it. A fix can be real, applied, and land on an
+           element nobody was looking at - which is why every row of
+           art/sizeprobe.js prints the count it matched. */
+        #btn-net-disconnect.btn-back,
+        #btn-room-leave.btn-back { min-height: 32px; font-size: 0.82rem; }
         /* #40: 9.9px text on a 47x26 target, for the control that exists to be
            pressed once and quickly. */
         .lobby-copy { min-height: 32px; font-size: 0.78rem; padding: 4px 12px; }
@@ -1069,7 +1119,11 @@
         .detail-actions > button { flex-basis: 0; min-width: 0; }
         .btn-back { width: auto; background: #1a2235; color: #cbd5e1;
             border: 1px solid #2e3a59; font-weight: normal;
-            min-height: 50px; line-height: 1.2; }
+            /* min-height: 50px removed with #37: it WAS the reason Return to
+               Menu came out a pixel over Rebind beside it, and now that the
+               base button carries the same border and line-height, this tier's
+               natural height already matches every other one. */
+            min-height: 48px; }
         .btn-back:hover { background: #232d47; color: #fff; box-shadow: none; }
         /* Batch 36: the match result is the single most important line of text
            the game ever shows, and it was the same 1.3rem as a panel heading.
@@ -1457,13 +1511,22 @@
         .tutorial-panel { width: min(760px, 94vw, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; text-align: left; }
         .tutorial-panel h3 { text-align: center; color: #00f3ff; margin: 0 0 14px; }
         .tutorial-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-            gap: 10px;
-            /* #74: the cards stretched to their row's height, so a short one
-               ("Coins & Unlocks") filled with empty space to match the tallest
-               beside it. Each card is now as tall as its own content. */
-            align-items: start;
+            /* COLUMNS, NOT A GRID (#31). align-items:start stopped the cards
+               STRETCHING (#74) but a grid row is still as tall as its tallest
+               cell, so the space reappeared as a 152px hole under Objective -
+               a 120px card in a 262px row - and the 13th card sat alone on a
+               row of its own. The panel came to 1,349.7px inside a 964px
+               frame, with Got it below the fold.
+               CSS columns have no rows to share: each card is its own height
+               and the next one starts directly under it. */
+            columns: 210px;
+            column-gap: 10px;
+        }
+        .tutorial-grid > .tutorial-card {
+            /* A card is one thought; splitting one across a column break would
+               be worse than the hole this replaces. */
+            break-inside: avoid;
+            margin: 0 0 10px;
         }
         .tutorial-card {
             background: #10151f;
@@ -1671,7 +1734,17 @@
             font-size: 0.72rem; color: #94a3b8;
         }
         .account-row input {
-            flex: 1 1 auto; min-width: 0;
+            /* FULL WIDTH, UNDER ITS LABEL (#38). This was a flex ROW - a 128px
+               label column and whatever was left - which in a 350px panel left
+               the input 142px wide, and the hints written into the
+               placeholders need 151px ("at least 8 characters"), 166px ("what
+               other players see") and 179px ("for password resets only"). All
+               three were cut off mid-word, in the one panel where the hint IS
+               the instruction.
+               Stacking also retires the label column, whose 96px fitted
+               English and not "Nom d'utilisateur" - see the note below it. */
+            width: 100%;
+            flex: 0 0 auto; min-width: 0;
             /* THEMED, like every other input in the game. These carried only
                `flex`, so they fell through to the browser default - two bright
                white boxes in a dark panel, beside the dark home-screen name
@@ -1681,12 +1754,16 @@
             background: #0d1017; border: 1px solid #2e3a59; border-radius: 7px;
             color: #e2e8f0; font-family: inherit; font-size: 0.9rem; padding: 8px 10px;
         }
-        .account-row input:focus { outline: none; border-color: #00f3ff; }
+        .account-row input:focus:not(:focus-visible) { outline: none; border-color: #00f3ff; }
         .account-row input::placeholder { color: #8296b0; font-style: italic; }
         /* ...and the labels line up. "Nom d'utilisateur" wrapped to two lines
            while "Mot de passe" stayed on one, so the two rows sat at different
-           heights. 96px fits the English but not its translations. */
-        .account-row label { flex-basis: 128px; }
+           heights. 96px fits the English but not its translations.
+           #38: a label on its own line cannot disagree with the one under it
+           about how wide the column is, in any language, so flex-basis is
+           gone rather than retuned. */
+        .account-row { flex-direction: column; align-items: stretch; gap: 4px; }
+        .account-row label { flex: 0 0 auto; }
         /* Sign in / Create account. Two states of one panel rather than two
            screens - see the note in accountPanelHTML. */
         /* A select dressed as one of the .opt rows beside it, so the settings
@@ -1727,6 +1804,9 @@
             background: none; border: none; box-shadow: none;
             color: #7c8ba3; font-size: 0.72rem; text-decoration: underline;
             padding: 4px 0; margin: 4px 0 0; width: auto;
+            /* 22px tall (#40), for "Forgot password" - the control somebody
+               reaches for at the exact moment they are already stuck. */
+            min-height: 32px;
         }
         .account-link:hover { color: #cbd5e1; background: none; box-shadow: none; }
         .account-status.ok { color: #34d399; }
@@ -1838,6 +1918,30 @@
             max-height: none !important;
             overflow-y: visible !important;
         }
+        /* CENTRED AFTER ALL (#35), and the comment above is why it took a
+           second try. Settings, Account and Rebind sat at y 54 in a 964px
+           frame with about 600px of nothing under them, because these overlays
+           are pinned to the top on purpose: `align-items: center` on a flex
+           container pushes a child TALLER than the container above its top
+           edge, where scrolling cannot reach - the tutorial lost its first
+           460px to exactly that.
+           An auto block margin does what centring was wanted for without the
+           trap. It takes the free space when there is free space, and resolves
+           to zero when there is none, so a 502px Account panel centres and a
+           1,349px tutorial still starts at the top and scrolls. The
+           flex-start !important above is untouched. */
+        #settings-screen .menu-section, #audio-screen .menu-section,
+        #rebind-screen .menu-section, #account-screen .menu-section,
+        .tutorial-panel, .mapselect-panel, .modeselect-panel {
+            margin-top: auto; margin-bottom: auto;
+        }
+        /* #35, second half: Settings stayed visible behind the shorter Account
+           or Audio panel stacked on it and peeked out below, so two panels
+           read as one broken one. The lower overlay keeps its backdrop - the
+           dark ground is what says "there is a layer here" - and gives up its
+           panel. Also takes the lower panel out of the tab order, which
+           agrees with the focus trap (#50) instead of fighting it. */
+        .modal-under > * { visibility: hidden; }
         .detail-scroll { max-height: none !important; overflow: visible !important; }
         /* Batch 48: the pointer-lock prompt. Over the canvas, not a modal -
            a match that wants the mouse should say so without interrupting
@@ -2805,6 +2909,19 @@ function trapModalTab(e) {
 document.addEventListener('keydown', trapModalTab, true);
 
 
+// WHICH MODAL IS UNDERNEATH (#35). The stack already knew the order and
+// nothing on the page said so, so a shorter panel opened over a taller one and
+// the taller one went on showing below it. Every overlay but the top one is
+// marked; the CSS hides the panel and keeps the backdrop.
+function syncModalDepth() {
+    const top = modalStack[modalStack.length - 1];
+    for (const key of Object.keys(MODAL_EL)) {
+        const el = document.getElementById(MODAL_EL[key]);
+        if (el) el.classList.toggle('modal-under',
+            modalStack.includes(key) && key !== top);
+    }
+}
+
 function openModal(name) {
     if (!modalStack.includes(name)) modalStack.push(name);
     modalOpeners.push(document.activeElement);
@@ -2825,11 +2942,16 @@ function openModal(name) {
     // leave focus on the button behind it, so the first Tab walked the page
     // under the modal. After display:flex, or offsetParent is still null and
     // focusablesIn finds nothing.
+    syncModalDepth();
     const firstControl = focusablesIn(el)[0];
     if (firstControl) firstControl.focus();
 }
 function closeModal() {
     const name = modalStack.pop();
+    // Before the display:none below, so the overlay being revealed has already
+    // lost the class by the time it is shown again.
+    if (name) document.getElementById(MODAL_EL[name]).classList.remove('modal-under');
+    syncModalDepth();
     // Give the page its scroll back once nothing is stacked on top of it.
     if (!modalStack.length) {
         const ov = document.getElementById('ui-overlay');

@@ -160,6 +160,8 @@ const I18N = {
         'Resume (Esc)': 'Continuar (Esc)',
         'Paused': 'En pausa',
         'Menu': 'Menú',
+        'Sign in to save coins and unlocks.': 'Inicia sesión para guardar monedas y desbloqueos.',
+        'Sign in instead': 'Iniciar sesión en su lugar',
         'watching': 'viendo',
         'Special ready': 'Especial listo',
         'Unlock': 'Desbloquear',
@@ -838,6 +840,8 @@ const I18N = {
         'Resume (Esc)': 'Reprendre (Échap)',
         'Paused': 'En pause',
         'Menu': 'Menu',
+        'Sign in to save coins and unlocks.': 'Connectez-vous pour enregistrer vos pièces et déblocages.',
+        'Sign in instead': 'Plutôt se connecter',
         'watching': 'spectateur(s)',
         'Special ready': 'Spécial prêt',
         'Unlock': 'Débloquer',
@@ -1211,7 +1215,10 @@ const I18N = {
         "Save new password":
             "Enregistrer le nouveau mot de passe",
         "Send reset link":
-            "Envoyer le lien de réinitialisation",
+            // #41: the full "Envoyer le lien de réinitialisation" wrapped this
+            // button to 68px against 48 in English. The sentence directly
+            // above it has already said which link and what it does.
+            "Envoyer le lien",
         "Settings":
             "Réglages",
         "Shield":

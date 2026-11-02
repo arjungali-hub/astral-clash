@@ -717,8 +717,12 @@ function accountPanelHTML() {
             + '<button id="btn-account-go"' + dis + '>'
             + (busy ? '…' : 'Send reset link') + '</button>'
             + note('')
+            // #40: two back controls, stacked - this 300x22 link and the
+            // panel's own 50.7px "← Back" directly under it, both with an
+            // arrow. Only one of them backs out of the Account panel; this one
+            // switches mode, so it says that instead and drops the arrow.
             + '<button id="btn-account-mode-in" class="account-link">'
-            + '← Back to sign in</button>';
+            + 'Sign in instead</button>';
     }
 
     const up = st.mode === 'up';
@@ -745,9 +749,13 @@ function accountPanelHTML() {
             up ? 'at least 8 characters' : '', up ? 'new-password' : 'current-password', 72, dis)
         + '<button id="btn-account-go"' + dis + '>'
         + (busy ? '…' : (up ? 'Create account' : 'Sign in')) + '</button>'
+        // #39: this said "Your progress lives on your account, not on this
+        // machine." - word for word the panel's own intro two lines above it,
+        // and false while signed out, which is the only time it showed. What
+        // is true here is what signing in would get you.
         + note(up
             ? 'Your email is used for password resets and nothing else.'
-            : 'Your progress lives on your account, not on this machine.')
+            : 'Sign in to save coins and unlocks.')
         + (up ? '' : '<button id="btn-account-mode-forgot" class="account-link">'
             + 'Forgot password</button>');
 }
