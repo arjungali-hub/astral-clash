@@ -63,6 +63,15 @@ def mentioned():
         for word in re.findall(r'[A-Za-z0-9_.-]+', block):
             if word.endswith('check') or word == 'smoke':
                 names.add(word)
+    # ...AND A CHECKER RUN DIRECTLY. The guards job takes no browser and no npm
+    # install, so a text-only checker belongs there as its own `run:` line
+    # rather than inside the harness - and a checker invoked that way was
+    # invisible to the one tool whose whole job is "every checker actually
+    # runs". shadowcheck was reported UNRUN while sitting in the workflow four
+    # lines above the step that reported it.
+    for name in re.findall(r'node\s+tests/([A-Za-z0-9_.-]+)\.js', text):
+        if name != 'run':
+            names.add(name)
     return names
 
 

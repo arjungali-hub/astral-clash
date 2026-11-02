@@ -79,6 +79,14 @@ jobs:
       - name: Coverage map
         run: python art/coverage.py
 
+      # A local that shadows a function its own block calls. Parsing cannot see
+      # this - `const t = 1; t('x')` is valid JavaScript and fails at runtime -
+      # and it took out the whole online build once, caught by bootcheck only
+      # because the shadowed call happened to sit on the path to every match. A
+      # text check, so it belongs here rather than with the browser checkers.
+      - name: Nothing shadows what it calls
+        run: node tests/shadowcheck.js
+
       - name: Both builds parse
         run: |
           node -e '

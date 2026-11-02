@@ -2387,7 +2387,18 @@ function openModal(name) {
     armBackGuard();                  // #8: Back now closes this, not the site
     syncModalDepth();
     const firstControl = focusablesIn(el)[0];
-    if (firstControl) firstControl.focus();
+    // preventScroll, THEN the overlay to its top. Focusing a control inside a
+    // panel taller than the frame scrolls that control into view, and in the
+    // tutorial - 1,080px of cards in a 964px frame - that put the "How to
+    // Play" heading 125px ABOVE the viewport, so the panel opened in its own
+    // middle. sizeprobe reported the panel's y as -125 on the run that
+    // confirmed #31; openModal resets #ui-overlay's scroll and never touched
+    // the modal overlay's own, which is the one that scrolls here.
+    if (firstControl) {
+        try { firstControl.focus({ preventScroll: true }); }
+        catch (e) { firstControl.focus(); }
+    }
+    el.scrollTop = 0;
 }
 // `viaBack` is true only for the call popstate makes: the entry it would
 // consume has already been consumed by the player pressing Back, and calling
