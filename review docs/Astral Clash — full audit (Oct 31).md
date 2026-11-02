@@ -166,6 +166,20 @@ Four captures from the live build (1× CSS pixels unless noted). Everything else
 
 &#91;image: #45 HUD plates over Player 2's name\]
 
+## The Questions, answered
+
+Each of these is also answered in the code, beside the thing it is about,
+because that is where it will be read. The last round left two decisions
+recorded only in test files and nobody reading the game found them.
+
+| # | Answer | Where |
+| --- | --- | --- |
+| 10 | **Yes, by construction**, and the audit's own two numbers show why: wave 1 is **two** attackers (`2 + floor((n-1)/3)`) and Boss Fight is one, so two weaker things out-damaging one tougher thing against a target that never blocks, moves or breaks line of sight is the shape of the mode. Whether eight seconds is too fast for a first impression is a balance question and is left alone; if that answer ever becomes yes, the levers are the `2 +` and `spawnNextWave`'s `dmgMult` base, in that order. What *would* be a bug is minions arriving close, which `farthestSpawnFromPlayers()` exists to prevent. | `shared/common.js`, above `waveEnemyCount` |
+| 44 | **Keep 650, and not for the reason this comment suggested.** Not the HUD: `hudUnitScale()` is `min(W/VIRTUAL_W, H/VIRTUAL_H)`, so every `y` in `drawHUD` is in units that scale with the canvas and none is tied to 650. It is **the camera** — the FOV is fixed and the aspect follows the viewport, so a taller frame shows *more arena*. The cap is what guarantees two players on two machines see the same amount of a fight they are shot at from off-screen in. `min(96vh, 900px)` hands that to whoever has the taller window. It is also why the menus got `menu-roomy` instead of a bigger frame: a menu has no camera, so it can have the window. | `#game-container`, both builds |
+| 56 | **Not translated, deliberately.** The ten arena names are proper nouns of invented places — the arena's name, not a description of it — so they read the same in every language, like a map name anywhere else. Fighter *titles* are translated, because "Tempo Duelist" describes a role. | `shared/i18n.js`, above `const I18N` |
+| 57 | **A bug.** Portrait is unplayable for a *fight*, and the overlay covered every screen — and being a full-screen flex panel, it intercepted every tap on all of them, so the Armory, Settings and Account were unreachable on a phone held upright. None of them wants a landscape view; a column of buttons reads better in portrait than in an 844×390 letterbox. Now gated on `inLiveMatch()`, and checked per frame so it appears when a match starts in portrait rather than only when the phone turns. | `shared/touch.js`, `syncTouchOrientation` |
+| 63 | **A bug, for a client the check was not designed for.** 15s is tuned for a player whose opponent has stopped moving behind a dead channel, where every second is a second of frozen fight. Nothing waits on a spectator, and a backgrounded tab has its timers throttled. Watchers get four times the budget — as a multiple of `net.timeoutMs`, not a constant, because `netcheck` lowers that field to force a drop and a literal would have made a watcher the one client that ignored it. | `netHeartbeat`, the silence timeout |
+
 ## Oct 27 review: re-checked
 
 These were re-measured on the live build and are fixed, so they are not in the table: #8 arena cards are buttons in the Tab order, #12 `<html lang>` follows the language, #15 a language change reopens Settings with focus on the select, #23 Play lines up with the other rows, #31 Details/Hide both 68px with `aria-expanded`, #37 Join is disabled until a code is typed, #60 the Music slider is gone, #61 online sliders are 32px, #62 the colour-blind low-HP flash is white, #69 Strafe left/right online, #70 Account reopens on Sign in, #75 Got it is full width, #79 the online Escape panel is titled Menu with a warning, #84 "0 specials used", #86 the first Confirm after loading worked (1/1), #89 round pips use each side's colour, #94 the round banner has a backing plate, #95 a named host's HUD labels the unnamed guest "Player 2".

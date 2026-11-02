@@ -1529,6 +1529,25 @@ function isBossWaveNumber(n) { return n > 0 && n % BOSS_WAVE_EVERY === 0; }
 // How many minions this wave fields. Starts at 2 and grows slowly, so the early
 // waves teach the enemy types before the crowd gets genuinely hard to track.
 
+// #10 ASKS whether Survival's first wave is meant to take an idle player from
+// 299 HP to 2 in about eight seconds, having measured Boss Fight taking the
+// same fighter to 133 over the same eight. The answer is in this line and the
+// audit's own two numbers: wave 1 is TWO attackers (2 + floor(0/3)) and a boss
+// is one, so two of something weaker out-damaging one of something tougher
+// against a target that never blocks, never moves and never breaks line of
+// sight is the shape the mode is built in. Not a bug.
+//
+// What WOULD be one, and is worth re-checking before anybody changes a number
+// here: minions arriving too close. They are spawned from
+// farthestSpawnFromPlayers() and fanned out around that corner precisely so a
+// wave has to be walked to. If a future wave ever lands on top of a player,
+// that is this comment's exception and not a damage question.
+//
+// Whether eight seconds is too fast for a first impression is a BALANCE
+// question and is deliberately left alone. If the answer ever becomes "yes",
+// the two levers are the `2 +` here and spawnNextWave's dmgMult base - in that
+// order, because head count is where this mode's threat comes from and its own
+// comment says so.
 function waveEnemyCount(n) { return Math.min(MAX_WAVE_ENEMIES, 2 + Math.floor((n - 1) / 3)); }
 
 let modalStack = [];

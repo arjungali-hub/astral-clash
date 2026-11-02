@@ -115,7 +115,18 @@
                not even hold: aspect-ratio plus max-height contradict each other
                in a short window and max-height wins, which is how a 1280x529
                window got a 2.29:1 frame full of 28%-wide text. The caps are
-               unchanged, so a desktop window still gets exactly 1170x650. */
+               unchanged, so a desktop window still gets exactly 1170x650.
+
+               #44 ASKS WHETHER 650 IS STILL NEEDED, quoting this comment back:
+               if the HUD scales uniformly, what is the cap for? Not the HUD -
+               hudUnitScale() is min(W/VIRTUAL_W, H/VIRTUAL_H), so every y
+               literal in drawHUD is in units that scale with the canvas and not
+               one of them is tied to 650. The answer is THE CAMERA. The FOV is
+               fixed and the aspect follows the viewport, so a taller frame
+               shows MORE ARENA - and in split screen that is also what keeps
+               the two halves showing each player the same amount. It is why
+               the menus got `menu-roomy` rather than a bigger frame: a menu
+               has no camera, so it can have the window. */
             width: min(96vw, 1170px);
             height: min(96vh, 650px);
             overflow: hidden;

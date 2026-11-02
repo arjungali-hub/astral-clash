@@ -88,7 +88,22 @@
                free to take the window it is given. The caps are unchanged, so
                nothing moves on a desktop-sized window: at 1440x900 this is
                still exactly 1170x650. A short window gets its ~189px of dead
-               letterbox band back as playable view. */
+               letterbox band back as playable view.
+
+               #44 ASKS WHETHER 650 IS STILL NEEDED, quoting this comment back:
+               if the HUD scales uniformly, what is the cap for? Not the HUD -
+               hudUnitScale() is min(W/VIRTUAL_W, H/VIRTUAL_H), so every y
+               literal in drawHUD is in units that scale with the canvas and not
+               one of them is tied to 650. The answer is a different thing
+               entirely: THE CAMERA. The FOV is fixed and the aspect follows the
+               viewport, so a taller frame shows MORE ARENA. On a desktop that
+               cap is what guarantees two players on two different machines see
+               the same amount of the fight - and in a game where you are shot
+               at from off-screen, seeing further is an advantage, not a
+               preference. min(96vh, 900px) would hand it to whoever has the
+               taller window.
+               It is also why the menus got `menu-roomy` (#1) rather than a
+               bigger frame: a menu has no camera, so it can have the window. */
             width: min(96vw, 1170px);
             height: min(96vh, 650px);
             overflow: hidden;
@@ -10301,7 +10316,19 @@ function netHeartbeat() {
     // netTick because a stalled render loop must not be able to disable the
     // very check that notices a stalled peer - or, worse, notice its own
     // stall and blame the peer for it.
-    if (net.lastRecvAt && now - net.lastRecvAt > net.timeoutMs) {
+    // #63: A WATCHER CAN AFFORD TO WAIT, and a player cannot. 15s is tuned for
+    // somebody whose opponent has stopped moving behind a dead channel, where
+    // every second of it is a second of frozen fight. Nothing waits on a
+    // spectator, and a backgrounded tab has its timers throttled - so a watcher
+    // who looked away for under a minute was dropped with "Connection timed
+    // out" while the host sat in the room, which is the drop detection working
+    // exactly as designed on a client it was not designed for.
+    //
+    // A MULTIPLE of net.timeoutMs rather than a constant beside it: netcheck
+    // lowers that field through ACDebug.netSetTimeout to force a drop, and a
+    // literal here would have made a watcher the one client that ignored it.
+    const silenceLimit = netIsWatching() ? net.timeoutMs * 4 : net.timeoutMs;
+    if (net.lastRecvAt && now - net.lastRecvAt > silenceLimit) {
         netDropped('Connection timed out');
         return;
     }

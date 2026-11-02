@@ -256,6 +256,8 @@ function syncTouchFPS() {
         if (performance.now() - touchHintShownAt > TOUCH_HINT_MS) hint.classList.add('gone');
     }
     if (!want) releaseTouch();
+    // #57: the rotate overlay follows the match too, not just the orientation.
+    syncTouchOrientation();
 }
 
 // Drop every finger. Called whenever the pads go away, because a thumb that
@@ -278,11 +280,23 @@ function releaseTouch() {
 // PORTRAIT IS UNPLAYABLE, and saying so is better than serving it. A 390x844
 // viewport gives a first-person view the shape of a letterbox stood on end,
 // and both thumbs land in the middle of it.
+//
+// A PORTRAIT MENU IS NOT (#57). This overlay covered every screen, and because
+// it is a full-screen flex panel it intercepted every tap on all of them - the
+// Armory, Settings and Account were simply unreachable on a phone held
+// upright, and not one of them wants a landscape view. A column of buttons
+// reads BETTER in portrait than in a 844x390 letterbox. The sentence above is
+// about the FIGHT, so the overlay is about the fight.
+//
+// Tracked per frame rather than on resize alone: it has to appear when a match
+// starts in portrait, not only when the phone turns. syncTouchFPS already runs
+// every frame and already asks inLiveMatch(), so it asks for both.
 function syncTouchOrientation() {
     const el = document.getElementById('touch-rotate');
     if (!el) return;
     const portrait = window.innerHeight > window.innerWidth;
-    el.style.display = (touchActive() && portrait) ? 'flex' : 'none';
+    const inMatch = typeof inLiveMatch === 'function' && inLiveMatch();
+    el.style.display = (touchActive() && portrait && inMatch) ? 'flex' : 'none';
 }
 
 function initTouchFPS() {
