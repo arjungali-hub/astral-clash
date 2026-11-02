@@ -170,7 +170,15 @@
            notch lighter so they read as controls rather than as titles. */
         .brand h1 { font-variation-settings: 'CASL' 0, 'MONO' 0, 'wght' 800; letter-spacing: 0.1em; }
         h1, h2, h3 { font-variation-settings: 'CASL' 0, 'wght' 700; letter-spacing: 0.02em; }
-        button { font-variation-settings: 'CASL' 0, 'wght' 600; letter-spacing: 0.03em; }
+        /* THIS USED TO BE ITS OWN `button { }` RULE, and index.html therefore
+           had two of them. extract_css.parse returns None for a selector that
+           appears twice - "order matters, skip both" - so close_css_drift could
+           not see the base button rule at all, and #17's transparent border and
+           #37's line-height reached the online build and stopped there. The
+           local probe found it: 50 and 42 against this build's 50.73 and 44.
+           Third time today, after .audio-row input[type="range"] and
+           .settings-check input. Two rules with one selector is invisible in a
+           browser and a hole in the only thing watching the two builds. */
         /* EVERY piece of text, not just what inherits.
            Reported with a screenshot of the character select still rendering in
            the browser default. Form elements - button, input, select, textarea -
@@ -255,6 +263,8 @@
            in-panel buttons get 100% back via `.menu-section button` below,
            which is why none of the tier classes need !important anymore. --- */
         button {
+            font-variation-settings: 'CASL' 0, 'wght' 600;
+            letter-spacing: 0.03em;
             background: #00f3ff;
             color: #0d0f18;
             /* TRANSPARENT, NOT NONE (#17, #37). Every tier below colours a 1px

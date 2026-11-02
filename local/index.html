@@ -226,9 +226,25 @@
            in-panel buttons get 100% back via `.menu-section button` below,
            which is why none of the tier classes need !important anymore. --- */
         button {
+            font-variation-settings: 'CASL' 0, 'wght' 600;
+            letter-spacing: 0.03em;
             background: #00f3ff;
             color: #0d0f18;
-            border: none;
+            /* TRANSPARENT, NOT NONE (#17, #37). Every tier below colours a 1px
+               border, and height here is auto, so that border was simply added:
+               Resume 48, Rebind 50.7, Return to Menu 51, in one column. And in
+               the fighter detail it made Confirm 139 against Back 141 even
+               though both are `flex-basis: 0` and both are already border-box -
+               a flex item's automatic minimum size is its own padding plus
+               border, so Back's floor sat 2px higher and the equal share of
+               free space landed on top of it.
+               A tier now changes the border's COLOUR and never the box.
+               The background paints under it, so an unbordered button looks
+               exactly as it did. */
+            border: 1px solid transparent;
+            /* ...and the last 0.74px: `normal` against the `1.2` that .btn-back
+               sets for its arrow glyph. */
+            line-height: 1.2;
             padding: 14px 22px;
             font-weight: bold;
             font-size: 1.08rem;
@@ -1837,6 +1853,23 @@
             color: #cbd5e1;
             font-weight: 700;
             margin: 6px 0 3px;
+        }
+        /* CENTRED, carried from index.html by hand once (#35). A
+           comma-separated rule is one key to close_css_drift and this build's
+           comma list is a different one, and _css_rule_wanted refuses a comma
+           rule outright - so this could neither be compared nor ported, and
+           the panels opened at y54 with the frame's lower half empty. With the
+           same key on both sides the drift closer owns it from here; edit it
+           in index.html, as always.
+           An auto block margin rather than align-items: center, because
+           centring a child taller than its container puts the child's top
+           above it, out of scroll reach - see the note by the flex-start
+           !important above. An auto margin resolves to zero when the free
+           space is negative, so a tall panel still starts at the top. */
+        #settings-screen .menu-section, #audio-screen .menu-section,
+        #rebind-screen .menu-section, #account-screen .menu-section,
+        .tutorial-panel, .mapselect-panel, .modeselect-panel {
+            margin-top: auto; margin-bottom: auto;
         }
         .modal-under > * {
             visibility: hidden;
