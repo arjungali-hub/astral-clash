@@ -2373,11 +2373,17 @@ function openModal(name) {
     // leave focus on the button behind it, so the first Tab walked the page
     // under the modal. After display:flex, or offsetParent is still null and
     // focusablesIn finds nothing.
+    armBackGuard();                  // #8: Back now closes this, not the site
     syncModalDepth();
     const firstControl = focusablesIn(el)[0];
     if (firstControl) firstControl.focus();
 }
-function closeModal() {
+// `viaBack` is true only for the call popstate makes: the entry it would
+// consume has already been consumed by the player pressing Back, and calling
+// history.back() again there would walk off the end of our own entries and
+// leave the site (#8).
+function closeModal(viaBack) {
+    if (!viaBack) releaseBackGuard();
     const name = modalStack.pop();
     // Before the display:none below, so the overlay being revealed has already
     // lost the class by the time it is shown again.
@@ -3962,7 +3968,19 @@ function renderViews(dt) {
         renderer.setScissorTest(false);
         renderer.setViewport(0, 0, W, H);
         positionWatchCamera(W / H);
+        // THE THRESHOLD IS TUNED FOR A FIRST-PERSON VIEW (#62). Its own comment
+        // explains why 0.86 became 0.95: below that, "the pale arenas - Voltaic
+        // Nexus' white walls, the Colosseum's marble - sat above the threshold
+        // and the entire frame glowed", which is bloom making a bright SURFACE
+        // look like a light SOURCE. From overhead the same surface fills most
+        // of the frame instead of a strip of it, and 0.95 is not enough - Twin
+        // Ramparts' two central platforms blew out to flat white. Raised for
+        // this camera and put straight back, so the fighters' view is untouched.
+        const bp = (bloomEnabled && typeof bloomPass !== 'undefined') ? bloomPass : null;
+        const wasThreshold = bp ? bp.threshold : 0;
+        if (bp) bp.threshold = WATCH_BLOOM_THRESHOLD;
         renderWithBloom(scene, watchCam, dt);
+        if (bp) bp.threshold = wasThreshold;
         return;
     }
     renderer.setScissorTest(splitScreen());
@@ -4679,14 +4697,6 @@ function startMatchNow() {
     startRound(true); // the first round of a match opens with the drop-in intro cinematic
 }
 
-// ------------------------------------------------------ bots only: watch
-// "When you select both characters to be bot in local mode, you should view
-// from the top."
-//
-// With no human there is no first-person view to be in, and two split-screen
-// halves of a fight nobody is playing is the least useful way to show it. One
-// camera, looking straight down at the whole arena, is a spectator view - and
-// it is the only mode in this game where you can see the whole layout at once.
 const watchCam = new THREE.PerspectiveCamera(46, 1, 1, 6000);
 watchCam.layers.enableAll();
 // Batch 52: IT FRAMES THE FIGHT, not the building.
@@ -5173,6 +5183,81 @@ function syncModalDepth() {
 function keyParen(label) {
     if (typeof IS_TOUCH_DEVICE !== 'undefined' && IS_TOUCH_DEVICE) return '';
     return ` (${label})`;
+}
+
+// ...and the second is about Back as a "close this" gesture, which is what it
+// means on a phone. ONE ENTRY PER OPEN MODAL, and every path that closes one
+// consumes its entry.
+//
+// The naive version of this is where the wart would be: push on open and do
+// nothing on close, and a modal dismissed by Escape, by the x, or by its own
+// Back button leaves a stale entry behind - so the browser's Back then does
+// nothing at all the first time it is pressed, which is worse than the thing
+// it was added to fix. backGuardDepth counts what is ours, and
+// backGuardConsuming counts the history.back() calls WE fired, so the popstate
+// they cause is not mistaken for the player pressing Back.
+let backGuardDepth = 0;
+let backGuardConsuming = 0;
+function armBackGuard() {
+    try { history.pushState({ acModal: backGuardDepth + 1 }, ''); backGuardDepth++; }
+    catch (e) { /* a file:// page refuses pushState; Back is then the browser's */ }
+}
+function releaseBackGuard() {
+    if (backGuardDepth <= 0) return;
+    backGuardDepth--;
+    backGuardConsuming++;
+    try { history.back(); } catch (e) { backGuardConsuming--; }
+}
+window.addEventListener('popstate', () => {
+    // Our own history.back(), not the player's.
+    if (backGuardConsuming > 0) { backGuardConsuming--; return; }
+    if (!modalOpen()) return;        // nothing of ours to close; let it leave
+    if (backGuardDepth > 0) backGuardDepth--;
+    closeModal(true);                // true: the entry is already gone
+});
+
+
+// ------------------------------------------------------ bots only: watch
+// "When you select both characters to be bot in local mode, you should view
+// from the top."
+//
+// With no human there is no first-person view to be in, and two split-screen
+// halves of a fight nobody is playing is the least useful way to show it. One
+// camera, looking straight down at the whole arena, is a spectator view - and
+// it is the only mode in this game where you can see the whole layout at once.
+// Only things that are genuinely a light source should glow from up here;
+// see the note where this is used (#62).
+const WATCH_BLOOM_THRESHOLD = 0.99;
+// Cinematic overlay during the drop-in intro: letterbox bars, the arena
+// name with an accent glow, the fighter matchup, and a scaling "FIGHT!" once
+// both land. Drawn in raw canvas pixels so it stays crisp and centered.
+// A dark plate behind one line of intro text (#65, #62). The intro draws in
+// RAW CANVAS PIXELS rather than HUD units, so it cannot use hudPlate - the
+// geometry here is in the same pixels as the font it is measuring.
+//
+// Why it is needed at all: every string in this overlay is coloured for
+// contrast against a dark arena, and the arenas are not all dark. "GET READY"
+// is the map's accent - green on the Colosseum's grass, purple on Twin
+// Ramparts' pale floor - and the matchup names are white over that same pale
+// floor, where a spectator could barely see them.
+function introPlate(text, cx, cy, fontPx) {
+    const w = hudCtx.measureText(text).width;
+    if (!w) return;
+    const px = fontPx * 0.5, py = fontPx * 0.34;
+    const x = cx - w / 2 - px, top = cy - fontPx * 0.80 - py;
+    const bw = w + px * 2, bh = fontPx * 1.02 + py * 2, r = Math.min(10, fontPx * 0.3);
+    hudCtx.save();
+    hudCtx.shadowColor = 'transparent';   // the plate IS the separation
+    hudCtx.fillStyle = 'rgba(6, 10, 18, 0.66)';
+    hudCtx.beginPath();
+    hudCtx.moveTo(x + r, top);
+    hudCtx.arcTo(x + bw, top, x + bw, top + bh, r);
+    hudCtx.arcTo(x + bw, top + bh, x, top + bh, r);
+    hudCtx.arcTo(x, top + bh, x, top, r);
+    hudCtx.arcTo(x, top, x + bw, top, r);
+    hudCtx.closePath();
+    hudCtx.fill();
+    hudCtx.restore();
 }
 
 // Batch 7: nothing in this file used to dispose GPU resources — every
@@ -9318,6 +9403,7 @@ function togglePause() {
     if (gameState === 'PAUSED') {
         gameState = pausedFromState;
         pausedFromState = null;
+        netSend({ t: 'MENU', open: false });   // #7, the other half
         // Don't count the pause against the round clock (the match-summary
         // "Round times" line reads from roundStartedAt): push the start
         // forward by however long we were paused.
@@ -9328,6 +9414,10 @@ function togglePause() {
         pauseStartedAt = performance.now();
         cameraShakeMag = 0; // don't leave a frozen shake running under the pause overlay
         gameState = 'PAUSED';
+        // #7: the opponent's match keeps running while this one is in the Menu,
+        // and they were given no sign of it at all. Same channel as the
+        // away-pause, because it is the same fact about the same player.
+        netSend({ t: 'MENU', open: true });
         document.getElementById('pause-controls-reminder').innerHTML = pauseControlsHTML();
         showScreen('pause');
         // What is blocking the resume, if anything - a question only a
@@ -9619,6 +9709,7 @@ function startRound(intro) {
             // game-loop branch drops them in.
             for (const f of [player1, player2]) { f.z = INTRO_DROP_HEIGHT; f.vz = 0; f.introLanded = false; }
             introTimer = 0; introPhase = 'drop'; introPhaseAt = performance.now();
+            introHeld = 0;   // #64: a fresh hold budget per intro
         }
         gameState = "INTRO";
     } else {
@@ -9773,6 +9864,22 @@ function drawRoundStatus() {
         }
     }
 
+    // #7: WHY THE OTHER FIGHTER IS STANDING STILL. Drawn at the foot of the
+    // HUD, which is the only band nothing else claims - the arena name is at
+    // 24, the collapse counter at 44, the panels run 46-108 and the mode row
+    // sits at 152. Online only, and only while they are actually in there.
+    if (AC_ONE_SIDE_PER_CLIENT && remoteInMenu && netActive()) {
+        hudCtx.save();
+        hudCtx.textAlign = 'center';
+        hudCtx.font = hudFont(12, true);
+        const menuText = `${playerLabel(otherSide(LOCAL_SIDE))} ${t('is in the menu')}`;
+        hudPlate(menuText, hudW() / 2, hudH() - 26, 10, 5);
+        hudCtx.fillStyle = '#cbd5e1';
+        hudCtx.fillText(menuText, hudW() / 2, hudH() - 26);
+        hudCtx.restore();
+        hudCtx.textAlign = 'left';
+    }
+
     // Batch 19: the progress readout is per mode — round pips only mean
     // something in Classic.
     // The per-player HP/meter panels occupy y 46-108 out to 420px wide, and in
@@ -9780,7 +9887,15 @@ function drawRoundStatus() {
     // wide centered readout at the pips' y would sit straight on top of a
     // panel. The mode readouts therefore live BELOW the panels (y >= 120),
     // which is clear in both split and full-screen layouts.
-    const MODE_Y = 124;
+    // #46: 124 was CHOSEN as "below the panels" - the comment above says the
+    // panels occupy y 46-108 - and the zone label is drawn at MODE_Y - 4 in an
+    // 11px font, which reaches back to about y 111. At 900x600 split screen
+    // each half is only ~450 units wide against a panel that runs out to 420,
+    // so the two 120px tracks either side of the centre line land directly on
+    // the "Special 13% / DASH" row in both halves. A row of its own, with
+    // clearance for the label above it rather than clearance for the bars
+    // alone.
+    const MODE_Y = 152;
     if (matchMode === 'zone') {
         // One track per player, growing from the outside toward the middle, so
         // "who is closer to winning" reads as two bars racing inward.
@@ -9799,8 +9914,13 @@ function drawRoundStatus() {
             }
         });
         hudCtx.font = hudFont(11);
+        const zoneText = zoneHolder
+            ? `${displayName(zoneHolder)} holds the zone` : 'Zone contested';
+        // #46: over the arena, like the collapse counter, which gets the same
+        // treatment eighty lines up for the same reason.
+        hudPlate(zoneText, hudW() / 2, MODE_Y - 4, 8, 3);
         hudCtx.fillStyle = zoneHolder ? '#e2e8f0' : '#64748b';
-        hudCtx.fillText(zoneHolder ? `${displayName(zoneHolder)} holds the zone` : 'Zone contested', hudW() / 2, MODE_Y - 4);
+        hudCtx.fillText(zoneText, hudW() / 2, MODE_Y - 4);
         hudCtx.fillStyle = '#94a3b8';
         hudCtx.fillText(`${Math.floor(zoneScore.p1)}s`, leftX - 16, MODE_Y + BH);
         hudCtx.fillText(`${Math.floor(zoneScore.p2)}s`, rightX + BW + 16, MODE_Y + BH);
@@ -9811,8 +9931,11 @@ function drawRoundStatus() {
             hudCtx.fillStyle = i < koTally.p2 ? sideColor('p2') : '#1e293b';
             hudCtx.beginPath(); hudCtx.arc(hudW() / 2 + 20 + i * 14, MODE_Y, 5, 0, Math.PI * 2); hudCtx.fill();
         }
-        hudCtx.font = hudFont(11); hudCtx.fillStyle = '#64748b';
-        hudCtx.fillText(`First to ${TIME_ATTACK_KOS} KOs`, hudW() / 2, MODE_Y - 12);
+        hudCtx.font = hudFont(11);
+        const koText = `First to ${TIME_ATTACK_KOS} KOs`;
+        hudPlate(koText, hudW() / 2, MODE_Y - 12, 8, 3);
+        hudCtx.fillStyle = '#64748b';
+        hudCtx.fillText(koText, hudW() / 2, MODE_Y - 12);
     } else {
         // Round-win pips, one row per player, filled dots for rounds already won.
         //
@@ -9963,9 +10086,6 @@ function drawCrosshairs(twoViewports) {
     hudCtx.restore();
 }
 
-// Cinematic overlay during the drop-in intro: letterbox bars, the arena
-// name with an accent glow, the fighter matchup, and a scaling "FIGHT!" once
-// both land. Drawn in raw canvas pixels so it stays crisp and centered.
 function drawIntroOverlay() {
     const W = hudCanvas.width, H = hudCanvas.height;
     const accent = (currentMap && currentMap.accent) || '#00f3ff';
@@ -9974,7 +10094,14 @@ function drawIntroOverlay() {
     // Letterbox bars slide in over the first ~14 frames, out as FIGHT flashes.
     const introProg = introPhase === 'drop' ? Math.min(1, introTimer / 14) : (introPhase === 'fight' ? Math.max(0.35, 1 - introTimer / 40) : 1);
     const barH = H * 0.11 * introProg;
-    hudCtx.fillStyle = 'rgba(6,10,18,0.9)';
+    // OPAQUE (#65). Reported as "the first-person weapon arm draws over the
+    // bottom letterbox bar", which reads as a z-order bug and is not one:
+    // hudCanvas follows gameCanvas in the document and is absolutely
+    // positioned over it, so these bars are already above the viewmodel. They
+    // were 90% opaque, and a brightly lit arm was showing through the other
+    // tenth. A letterbox is a mask; there is nothing for it to be translucent
+    // for.
+    hudCtx.fillStyle = 'rgb(6,10,18)';
     hudCtx.fillRect(0, 0, W, barH); hudCtx.fillRect(0, H - barH, W, barH);
     // Arena name (glowing) + matchup, fading in.
     const nameA = Math.min(1, introTimer / 12 + (introPhase !== 'drop' ? 1 : 0));
@@ -9982,10 +10109,16 @@ function drawIntroOverlay() {
     hudCtx.shadowColor = accent; hudCtx.shadowBlur = W * 0.02;
     hudCtx.fillStyle = '#ffffff';
     hudCtx.font = announceFont(W * 0.045, 800);
-    hudCtx.fillText((currentMap && currentMap.name) || '', W / 2, H * 0.235);
+    const arenaLabel = (currentMap && currentMap.name) || '';
+    introPlate(arenaLabel, W / 2, H * 0.235, W * 0.045);
+    hudCtx.fillText(arenaLabel, W / 2, H * 0.235);
     hudCtx.shadowBlur = 0;
     if (player1 && player2) {
         hudCtx.font = announceFont(W * 0.02, 500);
+        // One plate under the whole matchup line rather than three, so the
+        // names and the VS between them read as one row (#62).
+        introPlate(`${player1.name}        VS        ${player2.name}`,
+            W / 2, H * 0.235 + W * 0.045, W * 0.02);
         hudCtx.fillStyle = '#cbd5e1';
         hudCtx.fillText(`${player1.name}`, W * 0.5 - W * 0.10, H * 0.235 + W * 0.045);
         // WHO IS PLAYING, under who they PICKED. Inert where nobody can type
@@ -10007,23 +10140,35 @@ function drawIntroOverlay() {
     hudCtx.globalAlpha = 1;
     // FIGHT! (scaling punch-in) or a pulsing GET READY.
     if (introPhase === 'fight') {
-        const t = Math.min(1, introTimer / 12);
+        // NOT `t` (#65). This was `const t`, and t() is the translator that the
+        // rest of this file calls a few hundred times - so the moment the word
+        // FIGHT! was passed through it, inside this block, the call hit a
+        // number instead: "TypeError: t is not a function", and the online
+        // build never reached FIGHT at all. bootcheck caught it in ten seconds.
+        const punch = Math.min(1, introTimer / 12);
         hudCtx.save();
         hudCtx.translate(W / 2, H * 0.56);
-        const s = 1.6 - t * 0.6; hudCtx.scale(s, s);
-        hudCtx.globalAlpha = Math.min(1, t * 1.6);
+        const s = 1.6 - punch * 0.6; hudCtx.scale(s, s);
+        hudCtx.globalAlpha = Math.min(1, punch * 1.6);
         hudCtx.shadowColor = accent; hudCtx.shadowBlur = W * 0.035;
         hudCtx.fillStyle = '#ffffff';
         hudCtx.font = announceFont(W * 0.085, 800);
-        hudCtx.fillText('FIGHT!', 0, 0);
+        // TRANSLATED, like the line it replaces. 'GET READY' and 'FIGHT!' have
+        // had Spanish and French entries all along and neither was ever passed
+        // through t() - and langcheck could not say so, because it collects
+        // prose keys from the live DOM and these two are painted on a canvas.
+        const fightWord = t('FIGHT!');
+        hudCtx.fillText(fightWord, 0, 0);
         hudCtx.strokeStyle = accent; hudCtx.lineWidth = Math.max(2, W * 0.002);
-        hudCtx.strokeText('FIGHT!', 0, 0);
+        hudCtx.strokeText(fightWord, 0, 0);
         hudCtx.restore();
     } else {
         hudCtx.globalAlpha = 0.55 + 0.35 * Math.sin(arenaTime * 0.18);
-        hudCtx.fillStyle = accent;
         hudCtx.font = announceFont(W * 0.028, 800);
-        hudCtx.fillText('GET READY', W / 2, H * 0.57);
+        const ready = t('GET READY');
+        introPlate(ready, W / 2, H * 0.57, W * 0.028);
+        hudCtx.fillStyle = accent;
+        hudCtx.fillText(ready, W / 2, H * 0.57);
         hudCtx.globalAlpha = 1;
     }
     hudCtx.restore();
@@ -10753,6 +10898,21 @@ function stepFight(dt) {
 }
 
 function stepIntro(dt) {
+    // THE WHOLE BEAT WAITS FOR THE COVER (#64), not just its phase boundaries.
+    // #85 held introPhaseAt while the loading screen was up, which stopped a
+    // phase from ENDING behind the cover - and this function went on dropping
+    // the fighters and counting introTimer, which is what drives the letterbox
+    // slide and every fade in drawIntroOverlay. So the cinematic still played
+    // where nobody could see it: measured as INTRO at 6.63s against a loading
+    // screen that stayed up until 8.71s.
+    // Nothing is advanced while held, so the frame shows the previous one -
+    // under a cover, where it cannot be seen.
+    if (loadingVisible() && introHeld < INTRO_HOLD_MAX) {
+        introHeld += dt;
+        introPhaseAt = performance.now();
+        drawHUD();
+        return;
+    }
     // Drop-in cinematic: fighters fall from the sky, frozen, then FIGHT!.
     arenaTime += dt;
     introTimer += dt;
@@ -10780,13 +10940,12 @@ function stepIntro(dt) {
     updateScenery(dt);
     updateMuzzleFlashes(dt);
     drawHUD();
-    // #85: THE INTRO CLOCK STARTS WHEN THE INTRO IS VISIBLE. The loading screen
-    // stayed up 4.9 seconds on a first match, and the intro's phases were
-    // already running behind it - so the drop and the "set" beat were spent on
-    // a covered canvas and the player met a fight that had started without
-    // them. Holding the phase start while the cover is up costs nothing when
-    // there is no cover, and cannot run the clock backwards.
-    if (loadingVisible()) introPhaseAt = performance.now();
+    // #85 held the phase start here while the cover was up. That has moved to
+    // the top of this function (#64), where it holds the drop and introTimer
+    // with it - this line only ever stopped a phase from ENDING behind the
+    // cover, and the cinematic it was protecting played anyway. The guard at
+    // the top covers the case this one did, and the cap there is what keeps a
+    // cover that never lifts from freezing the match.
     if (allLanded) {
         if (introPhase === 'drop') { introPhase = 'set'; introTimer = 0; introPhaseAt = performance.now(); }
         else if (introPhase === 'set' && introPhaseElapsed() >= INTRO_SET_MS) { introPhase = 'fight'; introTimer = 0; introPhaseAt = performance.now(); sfxRoundStart(); }

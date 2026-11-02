@@ -1532,6 +1532,11 @@ function isBossWaveNumber(n) { return n > 0 && n % BOSS_WAVE_EVERY === 0; }
 function waveEnemyCount(n) { return Math.min(MAX_WAVE_ENEMIES, 2 + Math.floor((n - 1) / 3)); }
 
 let modalStack = [];
+// IS THE OPPONENT AT THE CONTROLS (#7). The away-pause already answers this for
+// a hidden tab; the in-match Menu is the same fact - "I am not playing right
+// now" - and only one of the two was ever sent. Online only: the split-screen
+// build pauses for both players at once, so there is nobody to tell.
+let remoteInMenu = false;
 // Who had focus when each modal opened, so closing one can hand focus back
 // rather than dropping it on BODY (#50). HERE, beside modalStack, because
 // this file loads before either build's script: declared inside a build it
@@ -2447,6 +2452,11 @@ function wantsPointerLock() {
     // Two people at one keyboard have nothing to point with, so there is
     // nothing to lock unless a bot has left exactly one of them playing.
     if (!AC_ONE_SIDE_PER_CLIENT && !soloHumanSide()) return false;
+    // NEITHER DOES A WATCHER (#62). A spectator was getting "Click to capture
+    // the mouse" over somebody else's fight, which is an instruction to do
+    // something that would do nothing - the overhead camera is not steered and
+    // there is no fighter on this client to aim.
+    if (typeof netIsWatching === 'function' && netIsWatching()) return false;
     return gameState === 'FIGHT' || gameState === 'INTRO' || gameState === 'DEATH';
 }
 
@@ -4848,6 +4858,14 @@ function resolvePlayerCollision(a, b) {
 // sky into the arena, frozen, then a "FIGHT!" flash unlocks control. In first
 // person each player's own view falls with them, right into the arena. ---
 let introTimer = 0, introPhase = 'drop';
+// HOW LONG THE INTRO HAS BEEN WAITING for the loading screen to get out of the
+// way (#64), in frame-units, and the cap that stops a cover which never lifts
+// from freezing the match. 240 is four seconds at 60fps - longer than any
+// first-match wait measured on this machine (4.9s of loading, of which the
+// intro saw 2.1), and short enough that a stuck cover costs one beat rather
+// than the round.
+let introHeld = 0;
+const INTRO_HOLD_MAX = 240;
 
 // Who is allowed to run a fighter's respawn clock. The same rule as every
 // other piece of fighter state: each client owns its own, so two machines can
