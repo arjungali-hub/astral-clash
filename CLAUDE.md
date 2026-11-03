@@ -169,6 +169,31 @@ The lesson generalises: **anything in `.gitignore` that a checker reads must
 either be created on demand or restored by CI.** A red tick that is always red
 reports exactly as much as no tick at all.
 
+### Reading a failure before fixing it
+
+`NO VERDICT` means the checker died before it judged anything. It is not a
+finding about the game, however many checkers show it at once, and the first
+question is always what killed them rather than what they were testing.
+
+Two diagnoses that each cost a round trip through CI, both worth recognising on
+sight:
+
+- **A timeout that does not move when you triple it is blocked, not slow.**
+  smoke, swingcheck, mapscheck and maptimecheck failed together on
+  "Navigation timeout of 30000 ms exceeded", which reads exactly like a slow
+  page load under `--jobs 3`. Scaling the budget returned the same four
+  checkers with the same message reading 90000ms. They were the only four that
+  re-navigate one page after a fight, and #8's `beforeunload` guard was
+  refusing — an unanswered browser dialog blocks the navigation that raised it.
+  Anything the game can put in front of a navigation, the harness has to answer
+  (`newPage` does, and records it on `page.dialogs`).
+- **A state that never arrives may be a browser that has stopped drawing.**
+  Under about a gigabyte free, Chrome software-rendering a 3D scene simply stops
+  calling `requestAnimationFrame`: no exception, nothing on the console,
+  `visibilityState` still `"visible"`, `evaluate()` answering throughout. Every
+  checker then says "never reached FIGHT". `waitInPage` now reports the frame
+  rate when a wait expires; under ~5/s, believe nothing above it.
+
 ## Other standing rules
 
 - Commit and push after every update, without asking. Work on `main`.
