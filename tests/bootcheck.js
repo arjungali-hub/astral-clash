@@ -73,7 +73,12 @@ async function enterAFight(page) {
         page.on('pageerror', e => errs.push(String(e.stack || e.message || e)));
         page.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
 
-        await page.goto(H.GAME_URL.replace('/index.html', path), { waitUntil: 'load' });
+        // Scaled, like the one in H.boot and for the same reason: puppeteer's
+        // 30s default was the last unscaled budget in the suite, and it is what
+        // turned four slow page loads on a 3x-slower runner into four
+        // "NO VERDICT" failures that said nothing about the game.
+        await page.goto(H.GAME_URL.replace('/index.html', path),
+            { waitUntil: 'load', timeout: H.budget(30000) });
         // ACDebug is published at the END of bootGame(), so its presence means
         // the whole closure ran rather than throwing somewhere in the middle.
         await H.sleep(2500);

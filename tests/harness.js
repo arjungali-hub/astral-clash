@@ -311,11 +311,29 @@ async function newPage(browser) {
 async function boot(page, { clearStorage = false, models = false, path = null,
                             query = null } = {}) {
     await startServer();
-    await page.goto(gameUrl(path, query), { waitUntil: 'load' });
+    // THE LAST UNSCALED BUDGET IN THE SUITE, and it was puppeteer's rather than
+    // ours - `page.goto` defaults to 30000ms, which TIME_SCALE never touched
+    // because there was no literal here to scale.
+    //
+    // It is the one that fails. Across three CI shards: smoke, swingcheck,
+    // mapscheck and maptimecheck, each "NO VERDICT" with the identical
+    // "Navigation timeout of 30000 ms exceeded", while 42 other checkers passed
+    // on the same commit - bootcheck among them, which loads BOTH builds and
+    // runs a frame of a real fight. A checker that times out before its first
+    // assertion reports nothing about the game, and four of them reported
+    // nothing while looking exactly like four failures.
+    //
+    // Three browsers software-rendering a 3D scene at once (--jobs 3) on a
+    // runner the harness already rates at 3x slower is simply more than 30
+    // seconds of page load. Scaled like every other budget here, for the reason
+    // given at TIME_SCALE: "There is no case in this suite where a sleep wants
+    // to stay the same length on slower hardware."
+    const gotoOpts = { waitUntil: 'load', timeout: budget(30000) };
+    await page.goto(gameUrl(path, query), gotoOpts);
     await sleep(900);
     if (clearStorage) {
         await page.evaluate(() => localStorage.clear());
-        await page.goto(gameUrl(path, query), { waitUntil: 'load' });
+        await page.goto(gameUrl(path, query), gotoOpts);
         await sleep(900);
     }
     await page.evaluate(() => { const c = document.querySelector('#btn-tutorial-close'); if (c) c.click(); });
