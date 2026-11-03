@@ -174,13 +174,20 @@ Two things found by writing the test, both real:
   reconnect… 15s" forever. `onNetLost()` only repaints that screen on its
   FIGHT/INTRO/DEATH branch, and a grace window has already paused the match.
 
-### 7. Something better than room codes
+### 7. Something better than room codes — DECLINED
 **Size: medium–large. Risk: medium.**
 
 Hosting and sharing a code works and requires a friend and a second channel to
 send the code through. A "find a game" queue needs a matchmaking server — the
-first piece of infrastructure this game would own. Worth doing only once items
-5 and 6 make a match with a stranger pleasant.
+first piece of infrastructure this game would own.
+
+**Declined** (Arjun, 2 Nov 2026): the game is staying small and is not being
+scaled, so there will be no population to match against. That is the same
+reasoning this entry already carried as a precondition, followed to its
+conclusion rather than left as a thing to wait for — a queue that pairs two
+people when two happen to be waiting, and shows a spinner the rest of the time,
+is worse than a room code that always works. Room codes are the answer, not a
+placeholder for one.
 
 ### 8. ~~Let phones play online~~ — DONE
 **Size: medium. Risk: low.**
@@ -220,15 +227,20 @@ tables, row level security on every one of them, and the `account` edge function
 deployed and ACTIVE - real profiles, saves, match results and error reports have
 all gone through it.
 
-Two advisory warnings stand against it, neither of them blocking:
+Two advisory warnings stand against it. **Both are answered** — written
+down here because an advisory nobody has recorded a decision about gets
+rediscovered and re-argued every time somebody runs the linter:
 
 - `public.username_available(candidate text)` is `SECURITY DEFINER` and callable
-  by `anon`, which makes it a username enumeration oracle. Worth weighing
-  against the reasoning at the top of `shared/account.js`, which moved sign-in
-  off the browser specifically so no public endpoint would hand out a mapping -
-  this one answers "is this name taken", which a registration form has to ask
-  somehow, and not "whose address is it".
-- Leaked password protection is off. One toggle, no code.
+  by `anon`, which makes it a username enumeration oracle. **Accepted, and
+  already decided.** A registration form has to ask whether a name is taken
+  somehow, and this answers exactly that and nothing else. It is a different
+  thing from what the reasoning at the top of `shared/account.js` was guarding
+  against: sign-in moved off the browser so that no public endpoint would hand
+  out a username — email MAPPING. "Is this name taken" is not that mapping.
+- Leaked password protection is off. **Not available — it is a paid-plan
+  feature**, so this one is not a toggle somebody forgot. Nothing to do unless
+  the project ever moves onto a paid plan.
 
 Three decisions worth keeping.
 
@@ -556,18 +568,19 @@ is one query.
 
 ## What is left
 
-**Item 7, matchmaking** - deferred deliberately, not forgotten. A "find a game"
-queue needs a small always-on server, and more importantly it needs a
-POPULATION: with two people waiting it pairs them, with one it leaves them
-staring at a spinner, which is worse than a room code that always works. The
-signal to build it is players asking for it.
+**Nothing is open.** Every item on this list is done or declined, and the three
+declines are decisions with reasons rather than things that ran out of time:
 
-**Item 14, the screen-reader pass** - the kept half is kept and the rest is
-declined (2 Nov 2026). See the entry.
+**Item 7, matchmaking** - declined. The game is staying small, so there is no
+population to match against; room codes are the answer rather than a
+placeholder for one.
 
-**Item 18** was looked at and declined: unifying the last forked definition
-means putting 36 lines of split-keyboard scheme into the online build where
-they could never run.
+**Item 14, the screen-reader pass** - the kept half is kept (every control
+reachable and escapable, held by `keyboardcheck`) and the rest is declined.
+
+**Item 18, the last forked definition** - declined: unifying it means putting 36
+lines of split-keyboard scheme into the online build where they could never
+run.
 
 **The Oct 31 audit** - 67 findings, a full pass over both builds - is closed.
 63 fixed, 4 answered as questions, 0 declined. Three lessons from it are worth
