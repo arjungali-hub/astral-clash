@@ -91,24 +91,64 @@ function standOnTheLedge(page) {
         const cam = D.camP2 || D.camP1;
         if (!cam || !window.THREE) return { err: 'no camera or THREE on the page' };
         const rc = new THREE.Raycaster();
-        rc.layers.enableAll();
+        // THE CAMERA'S LAYERS, NOT ALL OF THEM. enableAll() was asking "what is
+        // in front of the camera", and the question is "what does the camera
+        // DRAW" - a different thing in this scene, because the first-person
+        // viewmodel lives on its own layer that the world camera excludes and a
+        // second pass renders. The first run with enableAll() reported Kaelen's
+        // own rigged mesh on layer mask 4 at distance 3, which is the viewmodel
+        // source sitting where a viewmodel sits: in front of the face, and
+        // invisible to this camera.
+        rc.layers.mask = cam.layers.mask;
         const rows = [];
         for (const ny of [-0.3, -0.5, -0.7, -0.9]) {
             rc.setFromCamera(new THREE.Vector2(0, ny), cam);
             const hit = rc.intersectObjects(D.scene.children, true)
                 .filter((h) => h.object.isMesh && h.object.visible)[0];
+            // WHO IT IS, not just what it looks like. The first run of this
+            // answered "textured #dbdbdb MeshStandardMaterial at distance 3"
+            // for all four rays, which rules out the original report's
+            // "untextured pale-pink quad" and puts the thing within arm's
+            // reach of the camera - so the useful question became which
+            // object, and whose.
+            const o = hit && hit.object;
+            const chain = [];
+            for (let p = o; p; p = p.parent) {
+                chain.push((p.name || p.type) + (p.visible ? '' : '[hidden]'));
+            }
+            const bb = o && o.geometry
+                ? (o.geometry.computeBoundingBox(), o.geometry.boundingBox) : null;
+            const size = bb ? {
+                x: Math.round(bb.max.x - bb.min.x),
+                y: Math.round(bb.max.y - bb.min.y),
+                z: Math.round(bb.max.z - bb.min.z),
+            } : null;
             rows.push(hit ? {
                 ny,
                 dist: Math.round(hit.distance),
-                geom: hit.object.geometry && hit.object.geometry.type,
-                colour: hit.object.material && hit.object.material.color
-                    ? '#' + hit.object.material.color.getHexString() : '?',
-                textured: !!(hit.object.material && hit.object.material.map),
-                material: hit.object.material && hit.object.material.type,
+                name: o.name || '(unnamed)',
+                chain: chain.join(' < '),
+                ownedBy: o === D.player2.mesh ? 'player2.mesh'
+                    : o === D.player1.mesh ? 'player1.mesh' : '-',
+                layers: o.layers.mask,
+                size,
+                geom: o.geometry && o.geometry.type,
+                colour: o.material && o.material.color
+                    ? '#' + o.material.color.getHexString() : '?',
+                textured: !!(o.material && o.material.map),
+                mapName: o.material && o.material.map
+                    ? (o.material.map.name || o.material.map.image
+                        && (o.material.map.image.src || 'canvas') || '?') : null,
+                material: o.material && o.material.type,
             } : { ny, hit: null });
         }
         return { rows };
     });
+    console.log('camera layer mask: ' + await page.evaluate(() => {
+        const D = window.ACDebug;
+        const cam = D.camP2 || D.camP1;
+        return cam ? cam.layers.mask : '?';
+    }));
     console.log(JSON.stringify(hits, null, 2));
     await browser.close();
     process.exit(0);

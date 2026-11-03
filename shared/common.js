@@ -2581,6 +2581,32 @@ function edgeBand(w, d, h, y, overhang, mat) {
     return m;
 }
 
+// A RIM, where edgeBand is a slab. The difference only matters at the height
+// something is walked on.
+//
+// edgeBand's solid box is right for a plinth or a coping: they sit BELOW a
+// platform's top face, so all that is ever seen of them is the overhang. An
+// accent trim at y = height is LEVEL with the walkable surface, and there a
+// solid box is a lid - which is what the pale quad on Twin Ramparts turned out
+// to be, 223 x 303 units of emissive accent laid over the stone a fighter is
+// standing on. Four bars round the perimeter leave the surface showing.
+function edgeFrame(w, d, h, y, overhang, mat, thickness) {
+    const g = new THREE.Group();
+    const ow = w + overhang * 2, od = d + overhang * 2;
+    const t = Math.max(2, Math.min(thickness || 6, Math.min(ow, od) / 2));
+    const bar = (bw, bd, x, z) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(bw, h, bd), mat);
+        m.position.set(x, y, z);
+        m.castShadow = true; m.receiveShadow = true;
+        g.add(m);
+    };
+    bar(ow, t, 0, -od / 2 + t / 2);          // north
+    bar(ow, t, 0, od / 2 - t / 2);           // south
+    bar(t, od - t * 2, -ow / 2 + t / 2, 0);  // west, between the two
+    bar(t, od - t * 2, ow / 2 - t / 2, 0);   // east
+    return g;
+}
+
 // A turned profile, revolved around Y - the honest way to make an urn, a bowl
 // or a barrel, and the reason those three stop looking like cylinders.
 // `pts` is [[radius, height], ...] from the bottom up.

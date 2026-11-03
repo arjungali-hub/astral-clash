@@ -5724,12 +5724,26 @@ function buildPlatformMesh(p, theme) {
     }
     group.add(edgeBand(p.hw * 2, p.hd * 2, 6, p.height - 3, 4, capMat));
 
-    const trim = new THREE.Mesh(
-        new THREE.BoxGeometry(p.hw * 2 + 3, 3, p.hd * 2 + 3),
-        new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.7 })
-    );
-    trim.position.y = p.height;
-    group.add(trim);
+    // A RIM, NOT A LID. This was one BoxGeometry(hw*2 + 3, 3, hd*2 + 3) at
+    // y = p.height: 223 x 3 x 303 units on Twin Ramparts, emissive accent, no
+    // map, laid across the whole of the platform's walkable top and standing
+    // 1.5 proud of it. Reported as "a large untextured pale-pink quad fills the
+    // lower half of P2's view while he is standing at the west rampart's edge",
+    // and named by art/quadprobe.js --probe once it raycast on the CAMERA's
+    // layers instead of all of them.
+    //
+    // Pale rather than purple because emissive 0.7 plus bloom pushes a
+    // saturated accent toward white; Twin Ramparts rather than anywhere else
+    // because its platforms are the largest on the roster, so the lid filled
+    // the view instead of being a patch underfoot. Every arena had it.
+    //
+    // The intent is three lines up - the coping "gives the accent trim
+    // something to sit on rather than float above" - and a trim that sits on a
+    // coping is a rim.
+    group.add(edgeFrame(p.hw * 2, p.hd * 2, 3, p.height, 1.5,
+        new THREE.MeshStandardMaterial({
+            color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.7,
+        }), 6));
 
     group.position.set(worldX(p.x), 0, worldZ(p.y));
     mapGroup.add(group);
