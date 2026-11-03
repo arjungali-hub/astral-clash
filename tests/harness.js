@@ -297,12 +297,39 @@ function killStrays() {
     }
 }
 
-// Creates a page that records console errors and page exceptions.
+// Creates a page that records console errors, page exceptions, and dialogs.
 async function newPage(browser) {
     const page = await browser.newPage();
     page.errors = [];
     page.on('console', m => { if (m.type() === 'error') page.errors.push(m.text()); });
     page.on('pageerror', e => page.errors.push('PAGEERROR: ' + e.message));
+
+    // THE GAME CAN NOW REFUSE TO BE NAVIGATED AWAY FROM, and until this handler
+    // existed nothing in the suite could get past that refusal.
+    //
+    // #8 added a beforeunload guard so that Back mid-match no longer silently
+    // leaves the site. That is a browser-level modal, and an unanswered one
+    // blocks the navigation that raised it: page.goto then waits out its whole
+    // timeout and throws. The four checkers that call H.boot() inside a loop on
+    // one page - smoke per mode, swingcheck per fighter, mapscheck and
+    // maptimecheck per arena - all re-navigate straight after a fight, so all
+    // four started dying on their second lap and reported NO VERDICT. Nothing
+    // else in the suite re-navigates a live page more than three times, which
+    // is why it was exactly those four, twice, on three separate shards.
+    //
+    // Raising the goto budget did not help and could not have: the first guess
+    // was a slow load, and the second run came back with the identical failure
+    // at 90000ms that the first had at 30000ms. A budget cannot buy its way
+    // past a question nobody is answering.
+    //
+    // Answering it yes is what a test harness means - it navigates on purpose -
+    // but the dialogs are RECORDED as well, because "did the game ask?" is the
+    // whole of what #8 does and tests/backguardcheck.js asserts on it.
+    page.dialogs = [];
+    page.on('dialog', async (d) => {
+        page.dialogs.push({ type: d.type(), message: d.message() });
+        try { await d.accept(); } catch (e) { /* already gone with the page */ }
+    });
     return page;
 }
 
@@ -311,23 +338,22 @@ async function newPage(browser) {
 async function boot(page, { clearStorage = false, models = false, path = null,
                             query = null } = {}) {
     await startServer();
-    // THE LAST UNSCALED BUDGET IN THE SUITE, and it was puppeteer's rather than
+    // The last unscaled budget in the suite, and it was puppeteer's rather than
     // ours - `page.goto` defaults to 30000ms, which TIME_SCALE never touched
-    // because there was no literal here to scale.
+    // because there was no literal here to scale. Scaled now for the reason
+    // given at TIME_SCALE, which applies to a page load as much as to a sleep.
     //
-    // It is the one that fails. Across three CI shards: smoke, swingcheck,
-    // mapscheck and maptimecheck, each "NO VERDICT" with the identical
-    // "Navigation timeout of 30000 ms exceeded", while 42 other checkers passed
-    // on the same commit - bootcheck among them, which loads BOTH builds and
-    // runs a frame of a real fight. A checker that times out before its first
-    // assertion reports nothing about the game, and four of them reported
-    // nothing while looking exactly like four failures.
+    // IT IS NOT WHY THOSE FOUR CHECKERS FAILED, and this comment used to say it
+    // was. Three CI shards came back with smoke, swingcheck, mapscheck and
+    // maptimecheck each NO VERDICT on "Navigation timeout of 30000 ms exceeded"
+    // while 42 others passed, and a slow load under --jobs 3 was a plausible
+    // enough story to act on. The next run returned the SAME four checkers with
+    // the same message reading 90000ms.
     //
-    // Three browsers software-rendering a 3D scene at once (--jobs 3) on a
-    // runner the harness already rates at 3x slower is simply more than 30
-    // seconds of page load. Scaled like every other budget here, for the reason
-    // given at TIME_SCALE: "There is no case in this suite where a sleep wants
-    // to stay the same length on slower hardware."
+    // That is the tell worth keeping: a timeout that does not move when you
+    // triple it is not a thing being slow, it is a thing being blocked. The
+    // dialog handler in newPage() has what it actually was. Tripling the budget
+    // only made the failure take three times as long to arrive.
     const gotoOpts = { waitUntil: 'load', timeout: budget(30000) };
     await page.goto(gameUrl(path, query), gotoOpts);
     await sleep(900);
@@ -385,8 +411,53 @@ async function waitInPage(page, fnBody, ms = SLOW_MS) {
         await page.waitForFunction(fnBody, { timeout: ms, polling: 100 });
         return true;
     } catch (e) {
+        await reportFrameStarvation(page);
         return false;
     }
+}
+
+// IS THE BROWSER STILL DRAWING? Asked whenever a wait expires, because the
+// commonest reason a state never arrives on this machine is not the game.
+//
+// Every state the suite waits for is reached by the game loop, and the game
+// loop is requestAnimationFrame. When Chrome stops producing frames - software-
+// rendering a 3D scene with under a gigabyte free - the loop simply stops being
+// called: no exception, nothing on the console, document.visibilityState still
+// "visible", and the page answering evaluate() perfectly well the whole time.
+// Every checker then reports the same thing, "never reached FIGHT", which reads
+// as a game that cannot start a fight.
+//
+// It cost five probes to learn the second time. What settled it was a bare rAF
+// counter installed beside the game's own loop, touching none of its code,
+// which froze at five frames in the same instant - so this installs that
+// counter whenever a wait expires and says the answer in one line instead.
+//
+// A COUNT OVER A WINDOW, not a flag: a starved page and a slow one need
+// different responses, and the number is what tells them apart. Under about 5
+// frames a second nothing in this suite can make progress.
+async function reportFrameStarvation(page) {
+    try {
+        const frames = await page.evaluate(() => new Promise((done) => {
+            let n = 0;
+            const t0 = performance.now();
+            const tick = () => {
+                n++;
+                if (performance.now() - t0 < 1200) requestAnimationFrame(tick);
+                else done(n);
+            };
+            requestAnimationFrame(tick);
+        }));
+        const fps = Math.round(frames / 1.2);
+        page.framesPerSecond = fps;
+        if (fps < 5) {
+            console.log('      THE BROWSER IS NOT DRAWING: ' + frames
+                + ' frames in 1.2s (' + fps + '/s) after the wait expired.');
+            console.log('      Nothing driven by the frame loop can arrive at that rate,'
+                + ' so this says nothing about the game.');
+            console.log('      Check free memory and run it somewhere quieter'
+                + ' before believing the failure above.');
+        }
+    } catch (e) { /* the page is gone; the caller's own failure says enough */ }
 }
 
 // Minimal assertion recorder.
