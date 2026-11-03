@@ -56,16 +56,18 @@ machine has had under 1GB all week.
 Worth splitting into two jobs — the fast checkers (under 60s) on every push, the
 slow ones nightly — so a push gets an answer in three minutes rather than forty.
 
-### 2. Verify the three unverified checkers
+### 2. ~~Verify the three unverified checkers~~ — DONE, by item 1
 **Size: trivial once CI exists. Risk: none.**
 
 `netcheck` (online multiplayer), `leakcheck` (ten rematches, no growth) and
-`framerateccheck` (30fps against uncapped) are written, committed, and have never
-completed a run. They need ~2.5GB free. `netcheck` gets seven assertions in
-before a browser dies.
+`framerateccheck` (30fps against uncapped) were written, committed, and had
+never completed a run. They need ~2.5GB free; `netcheck` got seven assertions
+in before a browser died.
 
-Nothing in them is known to be broken. Nothing in them is known to work either,
-and online multiplayer is the part with no other coverage.
+**All three run in the slow job on every push, and the suite is green.** So the
+answer to "nothing in them is known to work either" is that they work. Nothing
+about the checkers changed - the hardware did, which is the whole of item 1's
+value stated in one line.
 
 **The memory requirement is not theoretical.** A UI pass hit it twice on this
 machine: `bootcheck` failed both builds with zero page errors and a browser
@@ -78,19 +80,25 @@ believing this" is the only reason those were classified correctly. Any work
 here should keep that habit: a checker that cannot say when its own result is
 untrustworthy produces confident nonsense.
 
-### 3. Decide what "the bot plays a competent match" means
+### 3. ~~Decide what "the bot plays a competent match" means~~ — DONE
 **Size: medium. Risk: low.**
 
-The last item on the original brief that no assertion can settle, because
-"competent" is a judgement. Make it measurable: the bot at each difficulty
-should win *some* defined fraction against a scripted baseline opponent, and
-never lose to one that stands still. Then it is a checker rather than a vibe.
+The last item on the original brief that no assertion could settle, because
+"competent" is a judgement. `tests/botcheck.js` is the checker it asked for, and
+it took the strict half of the proposal: the baseline opponent is a human who
+does nothing at all - stands on open ground, never moves, never blocks, never
+retaliates - because that is the one opponent whose behaviour is fully known.
+A bot that cannot beat a statue is not a difficulty setting.
 
-### 4. A knockback sweep
+### 4. ~~A knockback sweep~~ — DONE
 **Size: small. Risk: none.**
 
-`teleportcheck` covers knockback only insofar as both route through the same
-displacement path. That is an argument, not a test.
+`teleportcheck` covered knockback only insofar as both route through the same
+displacement path. That is an argument, not a test - `tests/knockbackcheck.js`
+quotes this entry back and says why it is not enough: a shared code path says
+the plumbing is shared and nothing about whether the right vector goes into it.
+The direction could be inverted, or taken from the victim's facing instead of
+the attacker's, and every teleport assertion would still pass.
 
 ---
 
@@ -196,13 +204,31 @@ play".
 
 ## Tier 3 — Depth
 
-### 9. ~~Progression that survives a browser~~ — ACCOUNTS, built
-**Size: large. One step left, and it is not a code step — see below.**
+### 9. ~~Progression that survives a browser~~ — ACCOUNTS, live
+**Size: large. Risk: none now.**
 
 Sign in with an emailed link; coins, unlocks, upgrades and today's challenges
-follow you to any other device. **Everything is written except the Supabase
-project itself**, which needs someone with the account to create it — see
-"Finishing accounts" at the bottom of this file.
+follow you to any other device.
+
+**The project exists and is serving.** This entry said for a long time that
+everything was written except the Supabase project itself, and pointed at a
+"Finishing accounts" section at the bottom of this file that was never written -
+so the one remaining step was recorded as a pointer to nothing. The step was
+taken: project `bndxnalnawxlqnpggnwb`, created 2026-10-05, ACTIVE_HEALTHY, with
+both builds calling `accountConfigure()` with its URL and publishable key. Four
+tables, row level security on every one of them, and the `account` edge function
+deployed and ACTIVE - real profiles, saves, match results and error reports have
+all gone through it.
+
+Two advisory warnings stand against it, neither of them blocking:
+
+- `public.username_available(candidate text)` is `SECURITY DEFINER` and callable
+  by `anon`, which makes it a username enumeration oracle. Worth weighing
+  against the reasoning at the top of `shared/account.js`, which moved sign-in
+  off the browser specifically so no public endpoint would hand out a mapping -
+  this one answers "is this name taken", which a registration form has to ask
+  somehow, and not "whose address is it".
+- Leaked password protection is off. One toggle, no code.
 
 Three decisions worth keeping.
 
@@ -306,12 +332,23 @@ Off switch in Settings, defaulting on. The data carries nothing about a person,
 which is a good argument that a switch is unnecessary and no argument at all for
 refusing to offer one.
 
-### 12. Replays or spectating
+### 12. ~~Replays or spectating~~ — DONE, by not doing what this says
 **Size: large. Risk: medium.**
 
-The spectator camera already exists for bot-vs-bot matches. Recording a match as
-its input stream and replaying it is a natural extension, but a real project, and
-it depends on determinism the netcode does not currently guarantee.
+This entry called itself genuinely blocked, and it was - on the design it
+proposed. Recording a match as its INPUT STREAM depends on determinism the
+netcode does not guarantee and never will: `dt` is wall-clock elapsed time and
+every position integrates against it, so the same inputs on a differently-loaded
+machine produce a different fight.
+
+So the feature records STATE instead, and the blocker disappears rather than
+being solved - a recording is a list of positions, which makes "does playback
+reproduce the match" a question about data rather than about physics. See the
+note at the top of `shared/replay.js`. `replaycheck` and `spectatecheck` cover
+it.
+
+Worth keeping as the one case on this list where the right move was to reread
+the problem rather than attack the obstacle.
 
 ---
 
@@ -339,7 +376,7 @@ cyan/pink for blue/orange. Two things the UI review found in it:
 **Still open:** a shape or icon alongside the colour. Colour is still the only
 channel carrying which side is which.
 
-### 14. A screen-reader pass — STARTED
+### 14. A screen-reader pass — PART DONE, THE REST DECLINED
 **Size: small–medium. Risk: none.**
 
 `keyboardcheck` proves every control is reachable and escapable, which is the
@@ -356,8 +393,11 @@ hard half. The UI review moved several pieces of the easy half:
 - **`<html lang>`** stayed `"en"` whatever the page was showing, so a screen
   reader pronounced the Spanish and French with English phonetics.
 
-**Still open:** the HUD is a canvas and announces nothing at all; live regions
-for round results and connection state; a labelling pass over the Armory.
+**The rest is DECLINED** (Arjun, 2 Nov 2026), not pending: the HUD is a canvas
+and announces nothing at all, there are no live regions for round results or
+connection state, and the Armory has had no labelling pass. Recorded here as a
+decision so it stops reading like unfinished work. `keyboardcheck` holds the
+line that is kept - every control reachable and escapable.
 
 ### 15. Contrast audit — MEASURED, and the measuring is the lesson
 **Size: small. Risk: none.**
@@ -383,11 +423,14 @@ wrong. One half of a matched pair had been fixed, the filter had been
 understood, and the other half was never looked at. A checker tests the
 selectors somebody thought to list; only a sweep finds the one nobody did.
 
-### 16. Gamepad in the menus — NOT STARTED
+### 16. ~~Gamepad in the menus~~ — DONE
 **Size: small. Risk: low.**
 
-A gamepad plays the game but does not appear to navigate the menus, so a
-controller player still reaches for the mouse to pick a fighter.
+A gamepad played the game but did not navigate the menus, so a controller player
+still reached for the mouse to pick a fighter. `tests/padmenucheck.js` covers it
+with a synthetic pad - `navigator.getGamepads` is replaceable, so the test
+supplies axes and buttons it drives frame by frame, which is the only way to
+test this on a machine with no controller plugged into it.
 
 Worth noting the ground shifted under this one: every modal now has a close
 control, the settings list is one kind of row, and the arena cards are real
@@ -519,9 +562,8 @@ POPULATION: with two people waiting it pairs them, with one it leaves them
 staring at a spinner, which is worse than a room code that always works. The
 signal to build it is players asking for it.
 
-**Item 12, replays** - depends on determinism the netcode does not guarantee.
-A real project, and the one item here that is genuinely blocked rather than
-merely unscheduled.
+**Item 14, the screen-reader pass** - the kept half is kept and the rest is
+declined (2 Nov 2026). See the entry.
 
 **Item 18** was looked at and declined: unifying the last forked definition
 means putting 36 lines of split-keyboard scheme into the online build where
@@ -547,4 +589,15 @@ more than the fixes and are recorded where each one happened rather than here:
   the local build rather than by trusting `sync_local.py --check`, which said it
   was up to date and was right by its own lights.
 
-Everything else on this list is done.
+**Everything else on this list is done**, and five entries said otherwise for
+longer than they should have. Items 2, 3, 4, 12 and 16 each have a checker
+written specifically to answer them - `netcheck`/`leakcheck`/`framerateccheck`,
+`botcheck`, `knockbackcheck`, `replaycheck`, `padmenucheck` - every one of them
+passing on CI, while the entry above it still read NOT STARTED or "genuinely
+blocked". Item 9 pointed at a section that was never written for a step that had
+already been taken.
+
+A roadmap that is wrong in the DONE direction is worse than one that is merely
+out of date: it is the document you would read in six months to decide what state
+you left this in, and it was describing a game with no replays, no gamepad menus
+and no accounts backend. Closing a finding and closing its entry are two jobs.
