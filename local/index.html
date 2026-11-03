@@ -5240,6 +5240,27 @@ function keyParen(label) {
     return ` (${label})`;
 }
 
+// ---- THE BROWSER'S OWN BACK BUTTON (#8) --------------------------------
+//
+// There was no beforeunload and no popstate handler anywhere, and no screen is
+// a history entry - the URL never changes from Home to Lobby - so Back mid-
+// match simply left the site. Online that also strands the opponent, who waits
+// out the grace window for somebody who is gone.
+//
+// Two separate things, and only the first is about leaving:
+window.addEventListener('beforeunload', (e) => {
+    // matchInProgress, NOT inLiveMatch. This asked inLiveMatch first, which
+    // leaves out PAUSED - and matchInProgress exists for precisely this guard:
+    // "the fight is not running, but the match still EXISTS, and anything that
+    // reloads or navigates will still destroy it". Pause is also how most
+    // people reach Settings mid-match, so the narrow version was off in the
+    // likeliest case of all: paused, reaching for something, hitting Back.
+    if (!matchInProgress()) return;  // on a menu, Back belongs to the browser
+    // The wording is the browser's; a returnValue is all it takes to ask.
+    e.preventDefault();
+    e.returnValue = '';
+});
+
 // ...and the second is about Back as a "close this" gesture, which is what it
 // means on a phone. ONE ENTRY PER OPEN MODAL, and every path that closes one
 // consumes its entry.

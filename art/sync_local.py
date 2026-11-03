@@ -4692,9 +4692,28 @@ def listeners(text):
 
 
 def listener_drift(src, dst):
-    """target.event pairs whose bodies disagree with no reason on the list."""
+    """target.event pairs that disagree with no reason on the list."""
     a, b = listeners(src), listeners(dst)
     out = []
+    # ONE-SIDED FIRST, and for a long time not at all. This walked set(a) & set(b)
+    # and nothing else, so a listener registered in one build and missing from
+    # the other was not in the intersection and therefore not compared - the
+    # only kind of drift that cannot be a disagreement about a body, and the
+    # kind the list was plainly built to cover: `window.pagehide` sits on
+    # LISTENER_INTERFACE reading "there is none here", which is a reason for an
+    # absence that nothing ever checked for.
+    #
+    # It cost #8's first half. `window.addEventListener('beforeunload')` guards
+    # a match against Back and reached the online build alone; the local build
+    # got the popstate half and the comment that introduces it, which still
+    # reads "...and the second is about Back as a close this gesture" with no
+    # first anywhere above it. Every surface reported ok. Same shape as #btn-lang
+    # at the top of CLAUDE.md: the thing missing from one side was never a
+    # candidate for comparison.
+    for key in sorted(set(a) ^ set(b)):
+        if key not in LISTENER_INTERFACE:
+            out.append('%s (only in the %s build)'
+                       % (key, 'online' if key in a else 'local'))
     for key in sorted(set(a) & set(b)):
         if key in LISTENER_INTERFACE:
             continue

@@ -2988,7 +2988,13 @@ document.addEventListener('keydown', trapModalTab, true);
 //
 // Two separate things, and only the first is about leaving:
 window.addEventListener('beforeunload', (e) => {
-    if (!inLiveMatch()) return;      // on a menu, Back belongs to the browser
+    // matchInProgress, NOT inLiveMatch. This asked inLiveMatch first, which
+    // leaves out PAUSED - and matchInProgress exists for precisely this guard:
+    // "the fight is not running, but the match still EXISTS, and anything that
+    // reloads or navigates will still destroy it". Pause is also how most
+    // people reach Settings mid-match, so the narrow version was off in the
+    // likeliest case of all: paused, reaching for something, hitting Back.
+    if (!matchInProgress()) return;  // on a menu, Back belongs to the browser
     // The wording is the browser's; a returnValue is all it takes to ask.
     e.preventDefault();
     e.returnValue = '';
