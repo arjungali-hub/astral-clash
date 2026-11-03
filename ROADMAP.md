@@ -374,8 +374,14 @@ the arena name.
 effect and never appears in computed style. Measured in pixels
 (`art/contrastprobe.js`): Draven 7.44:1, Ignis 5.03:1, Nyx 5.02:1, all clear.
 
-**Still open:** nothing systematic — there is no check that fails on a contrast
-regression, so this will drift back.
+**There IS a check now** (`contrastcheck`, in the CI fast group) **and it
+drifted back anyway.** The Oct 31 audit measured nine more failures in pixels,
+and the sharpest of them says what a checker can and cannot do: Draven's key
+badge read 3.95:1 wearing the same grey as his name, while the name passed
+*because of* the `filter: brightness(1.45)` that made the earlier 3.8:1 reading
+wrong. One half of a matched pair had been fixed, the filter had been
+understood, and the other half was never looked at. A checker tests the
+selectors somebody thought to list; only a sweep finds the one nobody did.
 
 ### 16. Gamepad in the menus — NOT STARTED
 **Size: small. Risk: low.**
@@ -520,5 +526,25 @@ merely unscheduled.
 **Item 18** was looked at and declined: unifying the last forked definition
 means putting 36 lines of split-keyboard scheme into the online build where
 they could never run.
+
+**The Oct 31 audit** - 67 findings, a full pass over both builds - is closed.
+63 fixed, 4 answered as questions, 0 declined. Three lessons from it are worth
+more than the fixes and are recorded where each one happened rather than here:
+
+- **A fix can be real, applied, and land on the wrong element.** #15's text size
+  had been fixed on `#btn-net-disconnect`, which is the Lobby's Disconnect; the
+  button the finding measured is `#btn-room-leave`. `art/sizeprobe.js` prints the
+  count every selector matched and says MISSING rather than skipping, because
+  that is the one failure a CSS change cannot report about itself.
+- **A change made to even something out can invert it.** #28's description came
+  out larger than the fighter's own name because #34 gave it `font-size: inherit`
+  to stop it disagreeing with the select screen by 0.6px, and on a panel that
+  sets no size `inherit` resolves to the 1rem root.
+- **Two rules sharing one selector are invisible in a browser and a hole in the
+  only thing watching the two builds.** `extract_css.parse` returns None for a
+  duplicated selector - "order matters, skip both" - so three findings' fixes
+  (#17, #36, #37) reached the online build and stopped there. Found by measuring
+  the local build rather than by trusting `sync_local.py --check`, which said it
+  was up to date and was right by its own lights.
 
 Everything else on this list is done.
