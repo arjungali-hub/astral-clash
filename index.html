@@ -2325,6 +2325,175 @@
             --ac-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
             --ac-ease-snap: cubic-bezier(0.3, 1.4, 0.5, 1);
         }
+        /* ---- TYPE --------------------------------------------------------
+           Three voices. AstralTitle says what a thing IS - the wordmark, a
+           panel's heading, the word on a button. Recursive says everything
+           else. JetBrains Mono is for numbers and codes and is not touched
+           here. Uppercase is CSS, never the markup: i18n keys on the English
+           text node, and a re-cased string silently stays English (four times
+           so far). */
+        html h1, html h3 {
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 800;
+            text-transform: uppercase;
+        }
+        html .brand h1 {
+            font-variation-settings: 'wght' 900;
+            font-size: 3.1rem;
+            letter-spacing: 0.2em;
+            /* Tracking adds its gap AFTER the last letter too, which pulls a
+               centred word left of centre by half of it. */
+            margin-right: -0.2em;
+            line-height: 1;
+            color: #eafcff;
+            text-shadow: 0 0 22px rgba(0, 243, 255, 0.65), 0 0 2px rgba(0, 243, 255, 0.9);
+        }
+        html .brand-divider {
+            width: 220px;
+            height: 1px;
+            margin: 12px auto 8px;
+            background: linear-gradient(90deg, transparent, var(--ac-cyan) 30%, var(--ac-cyan) 70%, transparent);
+            opacity: 0.85;
+        }
+        html .brand p {
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 500;
+            text-transform: uppercase;
+            letter-spacing: 0.42em;
+            margin-right: -0.42em;
+            font-size: 0.74rem;
+            color: var(--ac-text-2);
+        }
+        html .menu-section h3 {
+            letter-spacing: 0.14em;
+        }
+
+        /* ---- THE PANEL ---------------------------------------------------
+           One class is every panel in the game (.menu-section), so this is
+           every screen. A real background-COLOR under the sheen, not a
+           gradient alone: contrastcheck measures text against the first
+           ancestor background-color it finds and cannot see an image, so a
+           gradient-only panel is graded against whatever is behind it. */
+        html .menu-section {
+            background-color: #121827;
+            background-image:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0) 120px),
+                linear-gradient(135deg, rgba(0, 243, 255, 0.05), rgba(168, 85, 247, 0.04));
+            border: 1px solid var(--ac-line);
+            border-radius: var(--ac-r2);
+            box-shadow: var(--ac-e2);
+        }
+        /* The top edge: a short solid bar at the corner where the eye starts,
+           running out into a hairline. It was a centred glow, which reads as
+           decoration; this reads as a tab on a piece of equipment. */
+        html .menu-section::before {
+            top: -1px; left: -1px; right: -1px;
+            height: 2px;
+            background: linear-gradient(90deg,
+                var(--ac-cyan) 0, var(--ac-cyan) 72px,
+                rgba(0, 243, 255, 0.28) 72px, rgba(0, 243, 255, 0) 70%);
+        }
+
+        /* ---- BUTTONS -----------------------------------------------------
+           The word on a button is a title. :not() for the controls whose
+           content is a card or a sentence rather than a label - their text
+           inherits text-transform, and a fighter's description in capitals is
+           shouting. */
+        html button:not(.fighter-btn):not(.map-card):not(.mode-card):not(.opt):not(.account-link):not(.rebind-key):not(.modal-x) {
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 700;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+        }
+        html button {
+            border-radius: var(--ac-r1);
+            transition: background-color var(--ac-dur-2) var(--ac-ease-out),
+                        border-color var(--ac-dur-2) var(--ac-ease-out),
+                        color var(--ac-dur-2) var(--ac-ease-out),
+                        box-shadow var(--ac-dur-2) var(--ac-ease-out),
+                        transform var(--ac-dur-1) var(--ac-ease-out);
+        }
+        html button:active:not(:disabled) {
+            transform: translateY(1px);
+        }
+        /* THE PRIMARY ACTION OF A SCREEN, and there is one per screen. Named
+           here one by one because "primary" was never a class - it was
+           whatever no variant had undone. The cut corner is clip-path, which
+           also clips an outline, so it lets go on keyboard focus: the ring is
+           the more important of the two. */
+        html #btn-home-play, html #btn-start-match, html .btn-confirm,
+        html #btn-net-host, html #btn-rematch, html #btn-resume,
+        html #btn-tutorial-close, html #btn-account-go {
+            clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--ac-cut)),
+                               calc(100% - var(--ac-cut)) 100%, 0 100%);
+            box-shadow: none;
+        }
+        html #btn-home-play:focus-visible, html #btn-start-match:focus-visible,
+        html .btn-confirm:focus-visible, html #btn-net-host:focus-visible,
+        html #btn-rematch:focus-visible, html #btn-resume:focus-visible,
+        html #btn-tutorial-close:focus-visible, html #btn-account-go:focus-visible {
+            clip-path: none;
+        }
+        /* Play was a green outline - the quietest control on a screen whose
+           whole job is that button. */
+        html .home-card #btn-home-play {
+            background-color: var(--ac-cyan);
+            color: var(--ac-ink);
+            border-color: transparent;
+            min-height: 60px;
+            font-size: 1.3rem;
+            letter-spacing: 0.3em;
+        }
+        html .home-card #btn-home-play:hover {
+            background-color: #7df9ff;
+        }
+        html .btn-secondary {
+            border-color: rgba(0, 243, 255, 0.5);
+            background-color: rgba(0, 243, 255, 0.04);
+        }
+        html .btn-secondary:hover {
+            border-color: var(--ac-cyan);
+            background-color: rgba(0, 243, 255, 0.14);
+        }
+        html .btn-back {
+            background-color: rgba(255, 255, 255, 0.03);
+            border-color: var(--ac-line);
+            color: var(--ac-text);
+            font-variation-settings: 'wght' 600;
+        }
+        html .btn-back:hover {
+            background-color: rgba(255, 255, 255, 0.08);
+            border-color: var(--ac-line-strong);
+        }
+
+        /* ---- THE FRAME ---------------------------------------------------
+           Behind every menu: the same two washes, pulled in tighter, over a
+           faint engineering grid that fades out toward the edges. */
+        html #ui-overlay {
+            background-color: rgba(10, 13, 20, 0.97);
+            background-image:
+                radial-gradient(ellipse 70% 55% at 50% 0%, rgba(0, 243, 255, 0.11), transparent 70%),
+                radial-gradient(ellipse 70% 50% at 50% 100%, rgba(168, 85, 247, 0.09), transparent 70%),
+                linear-gradient(rgba(148, 163, 184, 0.045) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(148, 163, 184, 0.045) 1px, transparent 1px);
+            background-size: auto, auto, 48px 48px, 48px 48px;
+            background-position: 0 0, 0 0, center top, center top;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html button { transition: none; }
+            html button:active:not(:disabled) { transform: none; }
+        }
+        /* FOUND BY LOOKING AT THE LOCAL BUILD after the first reskin: an amber
+           line under every fighter's title. `.fighter-btn .fcost[hidden]
+           { display: none }` is a rule above, and it never reached that build
+           - the porter carries a rule this build lacks only when it houses a
+           class with no rule at all, and .fcost already had one. So every card
+           there drew an empty price chip, and had since the chip was added.
+           Stated again here because here is where a rule reaches both. */
+        html .fighter-btn .fcost[hidden] {
+            display: none;
+        }
         /* ==ac:design-end== */
     </style>
 </head>
