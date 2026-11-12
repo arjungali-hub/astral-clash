@@ -137,7 +137,21 @@ function gameUrl(path, query) {
     // waiting for the models. It was the only checker driving a match without
     // any of that, and the only one that could not get a match to start.
     const extra = query ? '&' + String(query).replace(/^[?&]+/, '') : '';
-    return baseUrl + (path || '/index.html') + '?debug=1' + extra;
+    // THE MENU STAGE STAYS A POSTER UNDER TEST, unless a checker asks for it.
+    //
+    // The menus are getting live 3D (shared/menustage.js), and every checker in
+    // this suite boots THROUGH the menu - on a software rasteriser doing three
+    // or four frames a second, which stops calling requestAnimationFrame
+    // altogether under about a gigabyte free (see reportFrameStarvation). A
+    // fighter on a turntable behind Home would be paid for fifty-four times a
+    // run by checkers that are about something else.
+    //
+    // `stage=poster` is a tier real players get too - no WebGL, a baked image -
+    // so this is a real path, not a test-only one, and it is asked for here in
+    // the URL rather than sniffed for in the game. stagecheck passes
+    // `stage=live` and is the one that exercises the rest.
+    const stage = /(^|&)stage=/.test(extra.slice(1)) ? '' : '&stage=poster';
+    return baseUrl + (path || '/index.html') + '?debug=1' + stage + extra;
 }
 
 // EVERY browser this harness launches, so it can be closed no matter how the

@@ -18,7 +18,7 @@ const H = require('./harness');
     const page = await H.boot(await H.newPage(browser), { clearStorage: true });
 
     const audit = () => page.evaluate(() => {
-        const OURS = ['AstralDisplay', 'AstralHUD'];
+        const OURS = ['AstralDisplay', 'AstralHUD', 'AstralTitle'];
         const bad = [];
         let checked = 0;
         const hasText = el => [...el.childNodes].some(n =>

@@ -818,6 +818,101 @@ _CSS_TOKEN = re.compile(r'[.#]([A-Za-z_][' + chr(92) + 'w-]*)')
 # Appended under this marker, so a second run finds them and does not stack.
 CSS_PORT_MARK = '/* --- rules ported from the online build by art/sync_local.py --- */'
 
+# THE DESIGN LAYER: one marked region at the end of the first <style> block,
+# copied online -> local VERBATIM.
+#
+# Everything above this in the stylesheet travels rule by rule, and the porter
+# that carries it has limits that are each defensible and together rule out a
+# redesign: a rule this build lacks ports only if it is comma-free and houses
+# an orphan class, an id-keyed rule never ports, a declaration changed inside a
+# media query this build already has is never compared, and a deletion never
+# travels at all. A measured 142 selectors exist only in the online build. Each
+# limit was added to stop a real mistake, so they are staying - for the legacy
+# rules they were written about.
+#
+# New CSS does not go through them. It goes in the region, and the region is
+# one string in both files. Three things make that safe where a shared
+# stylesheet was tried twice and reverted twice:
+#
+#   * POSITION. That attempt failed on cascade order - a file loaded first
+#     loses every tie it used to win. This region is at the same place in both
+#     builds, last, so its order against everything else is identical by
+#     construction.
+#   * NO SELECTOR IN IT MAY ALSO APPEAR OUTSIDE IT. extract_css.parse returns
+#     None for a selector seen twice - "order matters, skip both" - so a design
+#     rule on `button` would not just fight the legacy `button`, it would make
+#     the legacy one invisible to close_css_drift and reopen the hole that hid
+#     #17, #36 and #37. design_layer_problems() fails the sync on it.
+#   * BUILD DIFFERENCES ARE A CLASS, NOT A FORK. The profile stamps <html> with
+#     ac-online or ac-local, so a rule that must differ says so in its selector
+#     and the region stays one string.
+DESIGN_BEGIN = '/* ==ac:design-begin== */'
+DESIGN_END = '/* ==ac:design-end== */'
+
+
+def design_region(text):
+    """(start, end) of the design layer, markers included, or None."""
+    i = text.find(DESIGN_BEGIN)
+    if i < 0:
+        return None
+    return i, text.index(DESIGN_END, i) + len(DESIGN_END)
+
+
+def sync_design_layer(src, dst):
+    """Replace this build's design layer with the online one. Returns
+    (dst, bytes_changed) - 0 when already identical, None when there is none."""
+    a = design_region(src)
+    if a is None:
+        return dst, None
+    b = design_region(dst)
+    # LOUD, not placed by guesswork. Where the region sits IS its meaning, so a
+    # build without markers gets them by hand, once, at the end of its first
+    # <style> block - not wherever this function thought looked right.
+    assert b is not None, (
+        'design layer: the online build has ' + DESIGN_BEGIN
+        + ' and this build does not. Add both markers by hand as the last'
+        + ' thing in its first <style> block.')
+    region = src[a[0]:a[1]]
+    if dst[b[0]:b[1]] == region:
+        return dst, 0
+    return dst[:b[0]] + region + dst[b[1]:], len(region)
+
+
+def design_layer_problems(text):
+    """Why this build's design layer is unsafe, as a list of sentences."""
+    reg = design_region(text)
+    if reg is None:
+        return []
+    # A PROBLEM, not a skip. close_css_drift returns quietly when this import
+    # fails, because a missing porter only leaves drift where it was; a missing
+    # GUARD leaves nothing checking the one rule the region depends on.
+    try:
+        import extract_css
+    except ImportError:
+        return ['art/extract_css.py could not be imported, so it is unchecked']
+    out = []
+    lo, hi = extract_css.style_block(text)
+    if not (lo <= reg[0] and reg[1] <= hi):
+        return ['it is not inside the first <style> block']
+    if text[reg[1]:hi].strip():
+        out.append('something follows it in the <style> block - it must be last')
+    body = text[reg[0]:reg[1]]
+    inside = set(s for s, _b, _f in extract_css.scan_rules(text, reg[0], reg[1]))
+    outside = set(s for s, _b, _f in extract_css.scan_rules(text, lo, reg[0]))
+    for sel in sorted(inside & outside):
+        out.append('`%s` is also a rule outside it, which hides both from the porter' % sel)
+    # Root-relative only. The local build sits one directory down, so a relative
+    # url() that resolves in one build 404s in the other - and the region is one
+    # string, so it cannot be right in both.
+    for m in re.finditer(r'url\(\s*[\'"]?([^\'")]+)', body):
+        u = m.group(1)
+        if not (u.startswith('/') or u.startswith('data:') or u.startswith('#')):
+            out.append('url(%s) is relative - use /assets/...' % u)
+    if body.count('{') != body.count('}'):
+        out.append('unbalanced braces (%d open, %d close)'
+                   % (body.count('{'), body.count('}')))
+    return out
+
 
 
 # Elements that differ BETWEEN THE BUILDS ON PURPOSE. Same contract again: a
@@ -1563,6 +1658,13 @@ def close_css_drift(src, dst, shared_texts=()):
         # collide with itself, and the end of the block is the one position that
         # cannot take a tie away from anything already there.
         a, b = extract_css.style_block(dst)
+        # ...which is the end of the LEGACY rules, not of the block, once there
+        # is a design layer. That region has to stay last in both builds or its
+        # cascade order stops being identical - and a ported rule landing after
+        # it would be the one thing in this build able to take a tie from it.
+        _dreg = design_region(dst)
+        if _dreg is not None:
+            b = dst.rfind(chr(10), 0, _dreg[0]) + 1
         block = ''
         if CSS_PORT_MARK not in dst:
             block += chr(10) + '        ' + CSS_PORT_MARK + chr(10)
@@ -1583,7 +1685,11 @@ def close_css_drift(src, dst, shared_texts=()):
             block += ' ' * 8 + _css_rule_text(sel, on[sel][0], ' ' * 8)
         for kind, cond, text in at_rules_wanted(src, dst):
             block += ' ' * 8 + text.strip() + chr(10)
-        dst = dst[:b] + block + '        ' + dst[b:]
+        # The trailing indent re-indents the `</style>` this used to sit in
+        # front of. In front of the design layer there is a whole line there
+        # already, carrying its own - and adding eight spaces to it on every
+        # pass is a build that never reaches a fixed point.
+        dst = dst[:b] + block + ('' if _dreg is not None else '        ') + dst[b:]
     return dst, copied, undocumented, ported
 
 
@@ -1995,6 +2101,23 @@ def main():
         return 1
     dst = io.open(DST, encoding='utf-8').read()
     before = len(dst)
+
+    # ----------------------------------------------------- the design layer
+    # FIRST, ahead of every porter: they all read this build's stylesheet, and
+    # the region has to already be the online one when they do or the rule-by-
+    # rule comparison would see it as drift and start "fixing" it.
+    dst, _design = sync_design_layer(src, dst)
+    if _design is not None:
+        _problems = (['online: ' + p for p in design_layer_problems(src)]
+                     + ['local: ' + p for p in design_layer_problems(dst)])
+        if _problems:
+            undocumented_drift.append('design layer')
+            print('  %-34s %d problem(s)' % ('design layer', len(_problems)))
+            for _p in _problems[:8]:
+                print('      ' + _p)
+        else:
+            print('  %-34s ok (%s)' % ('design layer',
+                  'already identical' if not _design else '%d bytes copied' % _design))
 
     # ------------------------------------------------------------- routing
     # The local build links back to the root, not to /index.html - Vercel

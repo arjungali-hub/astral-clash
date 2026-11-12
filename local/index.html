@@ -1883,6 +1883,95 @@
             flex: 1 1 0;
             min-width: 0;
         }
+        /* ==ac:design-begin== */
+        /* THE DESIGN LAYER. One string in both builds: art/sync_local.py copies
+           everything between these two markers online -> local verbatim, which
+           is the only route by which new CSS reaches the local build whole. See
+           DESIGN_BEGIN there for why, and for the three rules this region has
+           to keep:
+
+             1. It is LAST in this <style> block, in both builds.
+             2. No selector in it may also be a rule above it. A second `button`
+                here would hide the first from the drift closer.
+             3. Every url() is root-relative (/assets/...). The local build sits
+                one directory down, and this text cannot be right twice.
+
+           Where the two builds must differ, the selector says so:
+           html.ac-online / html.ac-local, stamped by the build profile. */
+
+        /* AstralTitle = Saira, instanced at Semi Condensed (wdth 87.5) with the
+           weight axis kept at 500-900 and subset to Latin-1: 32 KB. The third
+           voice, for the wordmark, screen titles and fighter names - Recursive
+           reads friendly at heavy weights, and a title wants to read engineered.
+           Registered under an Astral* name because fontcheck and
+           consistencycheck accept nothing else, which is the point of them. */
+        @font-face {
+            font-family: 'AstralTitle';
+            src: url('/assets/fonts/astral-title.woff2') format('woff2');
+            font-weight: 500 900;
+            font-display: swap;
+        }
+
+        /* TOKENS. On `html`, not :root - :root is already a rule twice above,
+           and a third would be invisible to the porter along with both of
+           those. Every colour here was a literal somewhere in the 346 above;
+           the names are what they were being used FOR. */
+        html {
+            --font-title: 'AstralTitle', 'AstralDisplay', 'Segoe UI', sans-serif;
+
+            --ac-ground: #0a0d14;
+            --ac-surface-1: #0d0f18;
+            --ac-surface-2: #121622;
+            --ac-surface-3: #1c2439;
+            --ac-glass: rgba(13, 15, 24, 0.78);
+            --ac-line: #2e3a59;
+            --ac-line-strong: #46567e;
+
+            --ac-cyan: #00f3ff;
+            --ac-cyan-deep: #00bcd4;
+            --ac-violet: #a855f7;
+            --ac-coin: #f59e0b;
+            --ac-ok: #4ade80;
+            --ac-danger: #ef4444;
+            --ac-focus: #facc15;
+
+            --ac-text: #e2e8f0;
+            --ac-text-2: #94a3b8;
+            --ac-text-3: #8494a8;
+            --ac-ink: #0d0f18;
+
+            /* Whose side. Written from sideColor() at boot and on a palette
+               change, so the colourblind setting reaches CSS without CSS
+               knowing there is one. These two are only the fallback. */
+            --ac-p1: #00f3ff;
+            --ac-p2: #f472b6;
+
+            --ac-s1: 4px;
+            --ac-s2: 8px;
+            --ac-s3: 12px;
+            --ac-s4: 16px;
+            --ac-s5: 24px;
+            --ac-s6: 32px;
+            --ac-s7: 48px;
+
+            --ac-r1: 2px;
+            --ac-r2: 4px;
+            --ac-r3: 10px;
+            /* The one shape that is this game's: a corner taken off at 45
+               degrees. Used on the primary action and on tiles, nowhere else. */
+            --ac-cut: 12px;
+
+            --ac-e1: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 2px 8px rgba(0, 0, 0, 0.35);
+            --ac-e2: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 10px 28px rgba(0, 0, 0, 0.45);
+            --ac-e3: 0 1px 0 rgba(255, 255, 255, 0.09) inset, 0 22px 60px rgba(0, 0, 0, 0.6);
+
+            --ac-dur-1: 90ms;
+            --ac-dur-2: 180ms;
+            --ac-dur-3: 320ms;
+            --ac-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+            --ac-ease-snap: cubic-bezier(0.3, 1.4, 0.5, 1);
+        }
+        /* ==ac:design-end== */
         </style>
 </head>
 <body>
@@ -2294,6 +2383,11 @@ const AC_VENDOR = ['vendor/GLTFLoader.js', 'vendor/SkeletonUtils.js']
     .map(function (u) { return AC_BASE + u; })
     // PeerJS only where there is a peer. Absolute, so AC_BASE does not apply.
     .concat(AC_ONE_SIDE_PER_CLIENT ? ['https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js'] : []);
+// AND WHICH BUILD THIS IS, WHERE CSS CAN READ IT. The design layer is one
+// string in both builds (see ==ac:design-begin==), so a rule that has to differ
+// between them cannot fork - it names the build in its selector instead.
+// Derived from the flag above, so there is still exactly one fact to keep true.
+document.documentElement.classList.add(AC_ONE_SIDE_PER_CLIENT ? 'ac-online' : 'ac-local');
 </script>
 <script>
 // The shareable address for this build is /local. Anyone who arrives at the
