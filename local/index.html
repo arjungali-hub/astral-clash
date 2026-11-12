@@ -2140,6 +2140,123 @@
         html .fighter-btn .fcost[hidden] {
             display: none;
         }
+        /* ---- THE MENU STAGE ----------------------------------------------
+           shared/menustage.js draws a small 3D scene on the game canvas while
+           Home is up. Three classes on <html>, set by that module, and every
+           rule below is ALSO gated on the screen the frame is showing - so a
+           class left behind by anything can never restyle a match.
+
+             stage-poster  the baked image of the shot is the frame's
+                           background. Always on: it is what shows until there
+                           is a live frame, and all that shows where there will
+                           not be one (the poster tier; every checker).
+             stage-live    the canvas may fill the roomy menu frame.
+             stage-on      ...and has a frame on it, so it fades in. */
+        html.stage-poster #game-container[data-screen="home"] {
+            background-color: #06080f;
+            background-image: url('/assets/menu/stage-home.webp');
+            background-size: cover;
+            background-position: 64% 50%;
+        }
+        html.stage-poster #game-container[data-screen="home"] #gameCanvas {
+            opacity: 0;
+        }
+        html.stage-live #game-container[data-screen="home"] #gameCanvas {
+            height: 100%;
+        }
+        html.stage-live #game-container[data-screen="home"] #hudCanvas {
+            height: 100%;
+        }
+        html.stage-on #game-container[data-screen="home"] #gameCanvas {
+            opacity: 1;
+            transition: opacity var(--ac-dur-3) ease-out;
+        }
+        /* The overlay stops being a wall and becomes two scrims: one down from
+           the top for the wordmark, one behind the middle of the frame where
+           the menu sits. Everything a player reads is either on a panel with
+           its own ground or inside one of these. */
+        html.stage-poster #game-container[data-screen="home"] #ui-overlay {
+            background-color: transparent;
+            background-image:
+                linear-gradient(180deg, rgba(6, 8, 15, 0.82) 0, rgba(6, 8, 15, 0.35) 26%, rgba(6, 8, 15, 0) 44%),
+                radial-gradient(ellipse 46% 62% at 42% 56%, rgba(6, 8, 15, 0.6), rgba(6, 8, 15, 0) 78%);
+            background-size: auto;
+            background-position: 0 0;
+        }
+        /* THE SAME THREE SHAPES art/render_stage_poster.js photographs. The
+           stage frames its shot by aspect, so each needs the poster taken at
+           that aspect or the fade from poster to live is a jump cut. */
+        @media (min-aspect-ratio: 16/10) and (max-height: 520px) {
+            html.stage-poster #game-container[data-screen="home"] {
+                background-image: url('/assets/menu/stage-home-wide.webp');
+                background-position: 50% 50%;
+            }
+        }
+        @media (max-width: 700px) {
+            html.stage-poster #game-container[data-screen="home"] {
+                background-image: url('/assets/menu/stage-home-tall.webp');
+                background-position: 50% 50%;
+            }
+            /* Upright, the fighter stands where the wide layout keeps its
+               scrims - so they come off, down to a short one for the wordmark. */
+            html.stage-poster #game-container[data-screen="home"] #ui-overlay {
+                background-image:
+                    linear-gradient(180deg, rgba(6, 8, 15, 0.7) 0, rgba(6, 8, 15, 0) 16%);
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            html.stage-on #game-container[data-screen="home"] #gameCanvas { transition: none; }
+        }
+        /* ---- HOME --------------------------------------------------------
+           The menu takes the left of the frame and the fighter has the right.
+           It was a card in the dead centre, which is the one place a fighter
+           cannot stand beside. */
+        html #home-screen {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0 clamp(14px, 5.2vw, 72px);
+            /* The rule above this layer already makes Home a flex column that
+               centres itself safely; all that changes is which side. */
+            align-items: flex-start;
+        }
+        html #home-screen .brand {
+            text-align: left;
+            margin: 0 0 18px 10px;
+        }
+        html #home-screen .brand h1 {
+            margin-right: 0;
+            font-size: clamp(2.1rem, 5.2vw, 3.7rem);
+        }
+        html #home-screen .brand-divider {
+            width: min(300px, 60%);
+            margin: 14px 0 10px;
+            background: linear-gradient(90deg, var(--ac-cyan), rgba(0, 243, 255, 0));
+        }
+        html #home-screen .brand p {
+            margin-right: 0;
+        }
+        /* Glass: the scene shows through as colour and movement, and the text
+           still sits on a ground the panel owns. The blur is what stops a
+           bright edge of the stage running straight through a line of type. */
+        html #home-screen .home-card {
+            margin-left: 10px;
+            background-color: rgba(12, 16, 27, 0.82);
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+        }
+        /* UPRIGHT PHONE: there is no side to stand beside, so the fighter
+           takes the top of the frame and the menu starts under it. */
+        @media (max-width: 700px) {
+            html #home-screen { padding: 0 6px; align-items: center; justify-content: flex-start; }
+            html #home-screen .brand { text-align: center; margin: 6px 0 0; }
+            html #home-screen .brand-divider {
+                margin: 10px auto 8px;
+                background: linear-gradient(90deg, transparent, var(--ac-cyan) 30%, var(--ac-cyan) 70%, transparent);
+            }
+            html #home-screen .home-card {
+                margin: clamp(170px, 36vh, 320px) auto 0;
+            }
+        }
         /* ==ac:design-end== */
         </style>
 </head>
@@ -2636,7 +2753,8 @@ function startGame() {
 <script src="../shared/challenges.js"></script>
 <script src="../shared/account.js"></script>
 <script src="../shared/telemetry.js"></script>
-<script src="../shared/replay.js"></script><script>
+<script src="../shared/replay.js"></script>
+<script src="../shared/menustage.js"></script><script>
 function bootGame() {
     if (typeof THREE === 'undefined') return; // no engine yet — the fallback's onload will call us
     const canvas = document.getElementById('gameCanvas');
@@ -2652,12 +2770,27 @@ const MODAL_EL = { tutorial: 'tutorial-screen', settings: 'settings-screen', reb
 let currentScreen = 'select'; // matches the initial CSS (select shown)
 function showScreen(name) {
     currentScreen = name;
-    for (const k in SCREEN_EL) document.getElementById(SCREEN_EL[k]).style.display = (k === name) ? 'block' : 'none';
+    // HOME IS A FLEX COLUMN, and this used to turn it into a block. Its CSS
+    // says `display: flex` and that is what a first visit gets, because nothing
+    // has called this function yet; every later visit came through here and
+    // was stamped `block`, which drops the centring the flex rules were doing.
+    // Measured: the wordmark at y171 on load and y38 after goHome(), the whole
+    // menu 133px up the frame - after every match, and after leaving a room.
+    // Nobody reported it, presumably because nobody could say what had moved.
+    for (const k in SCREEN_EL) {
+        document.getElementById(SCREEN_EL[k]).style.display =
+            (k !== name) ? 'none' : (k === 'home' ? 'flex' : 'block');
+    }
     document.getElementById('ui-overlay').style.display = name ? 'flex' : 'none';
     // #1: the frame takes the window on a menu screen and returns to the 16:9
     // box for anything that sits over a match.
     const gc = document.getElementById('game-container');
     if (gc) gc.classList.toggle('menu-roomy', !!ROOMY_SCREENS[name]);
+    // LAST, after the frame has its new shape: the menu stage either takes the
+    // canvas for this screen or gives it back at match size, and it measures
+    // the canvas to do either. See menuStageOnScreen for why the giving back
+    // cannot wait for a frame.
+    menuStageOnScreen(name);
 }
 function hideOverlay() { showScreen(null); } // no screen — used when a match takes over the viewport
 function openModal(name) {
@@ -4037,6 +4170,7 @@ function applySky(theme) {
 // scene is skipped by the renderer. The cameras themselves render nothing.
 scene.add(camP1, camP2);
 onWindowResize(); // establish real pixel size now that a camera-ish setup exists
+menuStageInit({ renderer, renderWithBloom, ensureCharModel, buildRiggedCharacter, disposeObject3D, syncSurface: onWindowResize, screen: () => currentScreen, });
 
            // frames since the crush began; drives the whole sequence
  // fixed pool per fighter; never grows (see buildCrushRigs)
@@ -4265,6 +4399,11 @@ function syncCrushRigs(dt) {
 // bloom needs one composer per half before it can be turned on in a build that
 // splits - see AC_BLOOM.
 function renderViews(dt) {
+    // A MENU HAS A STAGE NOW (shared/menustage.js): its own small scene, drawn
+    // here because here is where this build draws. Asked first and only in
+    // MENU - the return below still stands for a menu with no stage, which is
+    // every screen but Home so far and every screen in the poster tier.
+    if (gameState === 'MENU' && menuStageFrame(dt)) return;
     // On the menu the whole 3D scene sits under #ui-overlay's ~opaque
     // background - invisible. Don't waste a full scene render on it (B15).
     if (gameState === 'MENU' || !player1 || !player2) return;

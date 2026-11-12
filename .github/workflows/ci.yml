@@ -102,7 +102,10 @@ jobs:
               }
             }
             for (const p of ["shared/common.js", "shared/roster.js", "shared/animation.js",
-                             "shared/props.js", "shared/characters.js", "art/local_extras.js"]) {
+                             "shared/props.js", "shared/characters.js", "shared/i18n.js",
+                             "shared/touch.js", "shared/challenges.js", "shared/account.js",
+                             "shared/telemetry.js", "shared/replay.js", "shared/menustage.js",
+                             "art/local_extras.js"]) {
               try { new vm.Script(fs.readFileSync(p, "utf8")); }
               catch (e) { bad++; console.error(p + ": " + e.message); }
             }
@@ -175,7 +178,7 @@ jobs:
           - shard: match
             tests: controlscheck localcombatcheck localmatchcheck crushcheck swingcheck artcheck
           - shard: rest
-            tests: onlineuxcheck coopnetcheck peercheck charcheck teleportcheck mapscheck maptimecheck placementcheck coopdowncheck awaypausecheck
+            tests: onlineuxcheck coopnetcheck peercheck charcheck teleportcheck mapscheck maptimecheck placementcheck coopdowncheck awaypausecheck stagecheck
           # spectatecheck launches THREE browsers, one per client, for the same
           # reason netcheck launches two: Chrome will not run rAF in a
           # background tab and only one window is foreground, so as tabs two of

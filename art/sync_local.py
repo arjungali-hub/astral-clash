@@ -53,7 +53,8 @@ SHARED_NAMES = set()
 # while missing the rest is what left the Language row in one build only.
 SHARED_PRE = ['roster.js', 'animation.js']
 SHARED_POST = ['props.js', 'characters.js', 'common.js', 'i18n.js', 'touch.js',
-               'challenges.js', 'account.js', 'telemetry.js', 'replay.js']
+               'challenges.js', 'account.js', 'telemetry.js', 'replay.js',
+               'menustage.js']
 SHARED_MODULES = SHARED_PRE + SHARED_POST
 
 

@@ -80,6 +80,9 @@ build *wants* a given id, selector or statement.
     common.js                   the game
     i18n.js                     English/Spanish/French
     touch.js                    the mobile control scheme (online only)
+    challenges.js account.js    daily challenges; accounts (online only)
+    telemetry.js replay.js      match results and error reports; replays
+    menustage.js                live 3D behind the menus - see below
 
 That list was five hardcoded `io.open` calls and six hand-written five-tuples
 until `i18n.js` was added to the tag order, loaded in both builds, and the
@@ -103,6 +106,63 @@ matches nothing. Run it after touching any user-visible string.
 
     python art/strings.py                 how many strings exist, by where they live
     python art/strings.py --out FILE      a catalogue for a translator
+
+## New CSS goes in the design layer
+
+The first `<style>` block of each build ends with a marked region:
+
+    /* ==ac:design-begin== */ ... /* ==ac:design-end== */
+
+`sync_local.py` copies it online -> local **verbatim**, ahead of every porter.
+It is the only route by which new CSS reaches the local build whole. The
+rule-by-rule porter above it is unchanged and still owns the legacy rules, but
+it cannot carry a redesign: a rule the local build lacks ports only if it is
+comma-free and houses a class with no rule at all, an id-keyed rule never
+ports, a declaration changed inside a media query the local build already has
+is never compared, and a deletion never travels.
+
+Three rules, each enforced by the sync (`design_layer_problems`):
+
+- **It is last in the block, in both builds.** That is what makes its cascade
+  order identical; a shared stylesheet was tried twice and reverted twice over
+  exactly that.
+- **No selector in it may also be a rule above it.** `extract_css.parse` returns
+  `None` for a selector seen twice, so a design rule on `button` would hide the
+  legacy `button` from the drift closer too. Lead with `html` (`html .btn-back`):
+  it makes the key distinct and beats the legacy twin by one element instead of
+  by luck. Tokens are on `html` for the same reason - `:root` is a rule twice.
+- **Every `url()` is root-relative** (`/assets/...`). The local build sits a
+  directory down and one string cannot be right twice.
+
+Where the builds must differ, the selector says so: the profile stamps `<html>`
+with `ac-online` or `ac-local`.
+
+Decorative class names must avoid `btn`, `button`, `card`, `tab`, `opt` and
+`chip`: `keyboardcheck` treats a non-focusable leaf with one of those in its
+class as a control somebody forgot to make reachable.
+
+## The menu stage
+
+`shared/menustage.js` draws a small 3D scene of its own - a dais, a fighter
+playing Idle - on the game's **one** renderer while a menu is up. It has its
+own `THREE.Scene` so it cannot touch the arena's light count (which is compiled
+into every arena shader), and it is injected with what it needs from inside
+`bootGame()` because shared code cannot reach in.
+
+- **It hands the canvas back synchronously.** On a menu the canvas fills the
+  roomy frame; a match is capped at 1170x650 because the field of view is fixed
+  and a taller canvas sees more arena. `menuStageOnScreen()` returns the surface
+  in the same call that hides the menu. `stagecheck` asserts it.
+- **Tiers only step down:** `high` -> `medium` (30fps, what a phone starts on)
+  -> `still` (reduced motion; one draw per change) -> `poster` (no WebGL, a
+  baked image). `?stage=live|still|poster` overrides the guess.
+- **Every checker but `stagecheck` runs the poster tier** - `harness.gameUrl`
+  asks for it - so 54 checkers that boot through the menu on a software
+  rasteriser do not pay for a turntable.
+- **After changing the set or the camera, re-bake the posters:**
+  `node art/render_stage_poster.js`. They are photographs the stage takes of
+  itself, at the three frame shapes the CSS picks between, so the fade from
+  poster to live is not a jump. Nothing checks that you did.
 
 ## Checking that nothing has slipped a key
 
