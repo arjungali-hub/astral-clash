@@ -6,7 +6,7 @@ glTF, then a binary chunk holding the actual buffers. Nothing here needs a
 mesh library - the positions are a flat float32 array at a known offset, and
 the skin weights say which bone owns each vertex. numpy does the rest.
 
-Used by art/fix_kaelen_hips.py. Kept separate because reading a model and
+Used by art/fix_hip_lobes.py. Kept separate because reading a model and
 changing one is worth having apart: the read side is run on its own whenever a
 report is about geometry rather than code, and it must not be able to write.
 """
