@@ -191,8 +191,11 @@ async function intoAFight(page) {
 
     // -------------------------------------------------------------- hand-back
     section('A match gets the canvas back at match size');
-    const homeY = await page.evaluate(() =>
-        Math.round(document.querySelector('#home-screen h1').getBoundingClientRect().top));
+    const homeWas = await page.evaluate(() => ({
+        display: getComputedStyle(document.getElementById('home-screen')).display,
+        y: Math.round(document.querySelector('#home-screen h1').getBoundingClientRect().top),
+    }));
+    const homeY = homeWas.y;
     if (!await intoAFight(page)) {
         check('reached a fight', false, 'never left the menu');
     } else {
@@ -217,7 +220,11 @@ async function intoAFight(page) {
         // showScreen() used to stamp Home `display: block` on every visit after
         // the first, dropping its flex centring: the wordmark sat at y171 on
         // load and y38 after goHome(). The whole menu, 133px up the frame.
-        check('Home is still a flex column', h.display === 'flex', h.display);
+        // Compared with what a first visit had, not with a literal: the
+        // point is that the two agree, and Home has already been a flex
+        // column and a grid in the life of this assertion.
+        check('Home is laid out as it was on first load', h.display === homeWas.display,
+            homeWas.display + ' -> ' + h.display);
         check('the wordmark is where it was on first load', h.y === homeY, homeY + ' -> ' + h.y);
     }
 

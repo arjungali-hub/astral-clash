@@ -2080,19 +2080,6 @@
         html #btn-tutorial-close:focus-visible, html #btn-account-go:focus-visible {
             clip-path: none;
         }
-        /* Play was a green outline - the quietest control on a screen whose
-           whole job is that button. */
-        html .home-card #btn-home-play {
-            background-color: var(--ac-cyan);
-            color: var(--ac-ink);
-            border-color: transparent;
-            min-height: 60px;
-            font-size: 1.3rem;
-            letter-spacing: 0.3em;
-        }
-        html .home-card #btn-home-play:hover {
-            background-color: #7df9ff;
-        }
         html .btn-secondary {
             border-color: rgba(0, 243, 255, 0.5);
             background-color: rgba(0, 243, 255, 0.04);
@@ -2142,22 +2129,29 @@
         }
         /* ---- THE MENU STAGE ----------------------------------------------
            shared/menustage.js draws a small 3D scene on the game canvas while
-           Home is up. Three classes on <html>, set by that module, and every
+           Home is up. Four classes on <html>, set by that module, and every
            rule below is ALSO gated on the screen the frame is showing - so a
            class left behind by anything can never restyle a match.
 
-             stage-poster  the baked image of the shot is the frame's
-                           background. Always on: it is what shows until there
-                           is a live frame, and all that shows where there will
-                           not be one (the poster tier; every checker).
+             stage-wait    a live stage is on its way: the frame shows the
+                           empty set, drawn here, for it to arrive on.
+             stage-poster  there will be no live stage (the poster tier; every
+                           checker): the frame shows the baked shot, for good.
              stage-live    the canvas may fill the roomy menu frame.
              stage-on      ...and has a frame on it, so it fades in. */
+        html.stage-wait #game-container[data-screen="home"] {
+            background-color: #06080f;
+            background-image:
+                radial-gradient(ellipse 30% 44% at 72% 52%, rgba(0, 243, 255, 0.12), rgba(0, 243, 255, 0) 72%),
+                linear-gradient(180deg, #05070d 0, #070a13 58%, #0c1326 100%);
+        }
         html.stage-poster #game-container[data-screen="home"] {
             background-color: #06080f;
             background-image: url('/assets/menu/stage-home.webp');
             background-size: cover;
             background-position: 64% 50%;
         }
+        html.stage-wait #game-container[data-screen="home"] #gameCanvas,
         html.stage-poster #game-container[data-screen="home"] #gameCanvas {
             opacity: 0;
         }
@@ -2171,21 +2165,21 @@
             opacity: 1;
             transition: opacity var(--ac-dur-3) ease-out;
         }
-        /* The overlay stops being a wall and becomes two scrims: one down from
-           the top for the wordmark, one behind the middle of the frame where
-           the menu sits. Everything a player reads is either on a panel with
-           its own ground or inside one of these. */
+        /* The overlay stops being a wall and becomes three scrims: down the
+           left where the menu is, and along the top and bottom edges where the
+           bars are. What a player reads is on a panel with its own ground or
+           inside one of these. */
+        html.stage-wait #game-container[data-screen="home"] #ui-overlay,
         html.stage-poster #game-container[data-screen="home"] #ui-overlay {
             background-color: transparent;
             background-image:
-                linear-gradient(180deg, rgba(6, 8, 15, 0.82) 0, rgba(6, 8, 15, 0.35) 26%, rgba(6, 8, 15, 0) 44%),
-                radial-gradient(ellipse 46% 62% at 42% 56%, rgba(6, 8, 15, 0.6), rgba(6, 8, 15, 0) 78%);
+                linear-gradient(90deg, rgba(6, 8, 15, 0.84) 0, rgba(6, 8, 15, 0.6) 30%, rgba(6, 8, 15, 0) 58%),
+                linear-gradient(180deg, rgba(6, 8, 15, 0.6) 0, rgba(6, 8, 15, 0) 20%),
+                linear-gradient(0deg, rgba(6, 8, 15, 0.78) 0, rgba(6, 8, 15, 0) 26%);
             background-size: auto;
             background-position: 0 0;
         }
-        /* THE SAME THREE SHAPES art/render_stage_poster.js photographs. The
-           stage frames its shot by aspect, so each needs the poster taken at
-           that aspect or the fade from poster to live is a jump cut. */
+        /* THE SAME THREE SHAPES art/render_stage_poster.js photographs. */
         @media (min-aspect-ratio: 16/10) and (max-height: 520px) {
             html.stage-poster #game-container[data-screen="home"] {
                 background-image: url('/assets/menu/stage-home-wide.webp');
@@ -2197,65 +2191,364 @@
                 background-image: url('/assets/menu/stage-home-tall.webp');
                 background-position: 50% 50%;
             }
-            /* Upright, the fighter stands where the wide layout keeps its
-               scrims - so they come off, down to a short one for the wordmark. */
+            html.stage-wait #game-container[data-screen="home"] {
+                background-image:
+                    radial-gradient(ellipse 60% 26% at 50% 30%, rgba(0, 243, 255, 0.12), rgba(0, 243, 255, 0) 72%),
+                    linear-gradient(180deg, #05070d 0, #070a13 58%, #0c1326 100%);
+            }
+            /* Upright, the fighter stands at the top and the menu is under
+               it: a short scrim for the wordmark, a long one for the menu. */
+            html.stage-wait #game-container[data-screen="home"] #ui-overlay,
             html.stage-poster #game-container[data-screen="home"] #ui-overlay {
                 background-image:
-                    linear-gradient(180deg, rgba(6, 8, 15, 0.7) 0, rgba(6, 8, 15, 0) 16%);
+                    linear-gradient(180deg, rgba(6, 8, 15, 0.7) 0, rgba(6, 8, 15, 0) 15%),
+                    linear-gradient(0deg, rgba(6, 8, 15, 0.9) 0, rgba(6, 8, 15, 0.78) 42%, rgba(6, 8, 15, 0) 58%);
             }
         }
         @media (prefers-reduced-motion: reduce) {
             html.stage-on #game-container[data-screen="home"] #gameCanvas { transition: none; }
         }
+
         /* ---- HOME --------------------------------------------------------
-           The menu takes the left of the frame and the fighter has the right.
-           It was a card in the dead centre, which is the one place a fighter
-           cannot stand beside. */
+           A front screen: the wordmark and the actions down the left, a bar
+           along the top for who you are and what you have, today's challenges
+           in the bottom corner, and the right-hand side of the frame left
+           empty for the fighter - with a nameplate under where they stand.
+
+           It was one card in the dead centre holding all of it, which is a
+           form, and the one place a fighter cannot stand beside.
+
+           The SLOT is that empty right-hand side as an element. The menu
+           stage aims its camera at its box, so every breakpoint below moves
+           the fighter simply by moving the slot. */
         html #home-screen {
             width: 100%;
             box-sizing: border-box;
-            padding: 0 clamp(14px, 5.2vw, 72px);
-            /* The rule above this layer already makes Home a flex column that
-               centres itself safely; all that changes is which side. */
-            align-items: flex-start;
+            display: grid;
+            grid-template-columns: minmax(0, 430px) minmax(0, 1fr);
+            grid-template-rows: auto minmax(10px, 1fr) auto auto minmax(10px, 1fr) auto;
+            grid-template-areas:
+                "top   top"
+                ".     ."
+                "brand ."
+                "act   ."
+                ".     ."
+                "daily plate";
+            column-gap: 28px;
+            align-items: start;
+            justify-items: start;
+            justify-content: normal;
+            align-content: normal;
+            padding: 2px clamp(14px, 4.4vw, 60px) 0;
+        }
+        html #home-slot {
+            grid-column: 2;
+            grid-row: 2 / 6;
+            align-self: stretch;
+            justify-self: stretch;
+            pointer-events: none;
         }
         html #home-screen .brand {
+            grid-area: brand;
             text-align: left;
-            margin: 0 0 18px 10px;
+            margin: 0 0 24px;
         }
         html #home-screen .brand h1 {
             margin-right: 0;
             font-size: clamp(2.1rem, 5.2vw, 3.7rem);
         }
         html #home-screen .brand-divider {
-            width: min(300px, 60%);
+            width: min(300px, 70%);
             margin: 14px 0 10px;
             background: linear-gradient(90deg, var(--ac-cyan), rgba(0, 243, 255, 0));
         }
         html #home-screen .brand p {
             margin-right: 0;
         }
-        /* Glass: the scene shows through as colour and movement, and the text
-           still sits on a ground the panel owns. The blur is what stops a
-           bright edge of the stage running straight through a line of type. */
-        html #home-screen .home-card {
-            margin-left: 10px;
+        html .home-actions {
+            grid-area: act;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        /* Play was a green outline in a row of other things - the quietest
+           control on a screen whose whole job is that button. */
+        html #home-screen #btn-home-play {
+            width: 100%;
+            margin: 0;
+            min-height: 74px;
+            background-color: var(--ac-cyan);
+            color: var(--ac-ink);
+            border-color: transparent;
+            font-size: 1.6rem;
+            letter-spacing: 0.38em;
+            /* Tracking adds its gap after the last letter too; this gives the
+               same to the front, so the word is centred and not the string. */
+            padding-left: calc(22px + 0.38em);
+            --ac-cut: 16px;
+        }
+        html #home-screen #btn-home-play:hover {
+            background-color: #8dfbff;
+        }
+        html #home-screen .home-note {
+            margin: 0;
+            text-align: left;
+            font-size: 0.82rem;
+            line-height: 1.5;
+            color: #a9b6c9;
+        }
+        html #home-screen .home-row {
+            gap: 10px;
+        }
+        html #home-screen .home-row button {
+            min-height: 46px;
+            font-size: 0.78rem;
+            border-color: rgba(0, 243, 255, 0.45);
+            background-color: rgba(12, 16, 27, 0.74);
+            -webkit-backdrop-filter: blur(8px);
+            backdrop-filter: blur(8px);
+        }
+        html #home-screen .home-row button:hover {
+            border-color: var(--ac-cyan);
+            background-color: rgba(0, 243, 255, 0.16);
+        }
+        /* The top bar: two glass tags, right-hand corner. */
+        html .home-top {
+            grid-area: top;
+            justify-self: end;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            align-items: stretch;
+            gap: 10px;
+        }
+        html .home-top .home-name-row {
+            margin: 0;
+            padding: 2px 3px 2px 12px;
+            min-height: 46px;
+            box-sizing: border-box;
+            background-color: rgba(12, 16, 27, 0.8);
+            border: 1px solid var(--ac-line);
+            border-radius: var(--ac-r1);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+        }
+        html .home-top .home-name-row input {
+            flex: none;
+            width: 138px;
+            /* 40px, found by phonelayoutcheck on its first run: the field was
+               32 tall, which is a fine text box and a poor thing to aim a
+               thumb at. The tag grows to hold it and the purse matches. */
+            min-height: 40px;
+            box-sizing: border-box;
+            background-color: rgba(0, 0, 0, 0.3);
+            border-color: transparent;
+            border-radius: var(--ac-r1);
+            padding: 6px 8px;
+        }
+        html .home-top .home-purse {
+            margin: 0;
+            padding: 4px 14px;
+            min-height: 46px;
+            box-sizing: border-box;
+            background-color: rgba(12, 16, 27, 0.8);
+            border: 1px solid var(--ac-line);
+            border-radius: var(--ac-r1);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+        }
+        /* Today's challenges: its own panel now, with the coin colour down
+           its edge because coins are what it is for. */
+        html #home-screen #daily-panel {
+            grid-area: daily;
+            align-self: end;
+            width: 100%;
+            box-sizing: border-box;
+            margin: 0;
+            padding: 12px 14px 10px;
             background-color: rgba(12, 16, 27, 0.82);
-            -webkit-backdrop-filter: blur(14px);
-            backdrop-filter: blur(14px);
+            border: 1px solid var(--ac-line);
+            border-left: 2px solid var(--ac-coin);
+            border-radius: var(--ac-r1);
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+        }
+        html #home-screen #daily-panel:empty {
+            display: none;
+        }
+        /* The nameplate. Not a control: it says who is standing there. */
+        html .home-plate {
+            grid-area: plate;
+            justify-self: end;
+            align-self: end;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 5px;
+            padding: 2px 16px 4px 0;
+            border-right: 3px solid var(--plate-accent, var(--ac-cyan));
+            pointer-events: none;
+        }
+        html .home-plate-name {
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 800;
+            font-size: clamp(1.5rem, 3.2vw, 2.5rem);
+            line-height: 1;
+            letter-spacing: 0.14em;
+            margin-right: -0.14em;
+            text-transform: uppercase;
+            color: #ffffff;
+            text-shadow: 0 2px 16px rgba(0, 0, 0, 0.9);
+        }
+        html .home-plate-title {
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 600;
+            font-size: 0.8rem;
+            letter-spacing: 0.3em;
+            margin-right: -0.3em;
+            text-transform: uppercase;
+            /* Not the fighter's colour. At this size, over a moving scene, a
+               mid-blue or a violet passes its ratio and still cannot be read;
+               the bar beside it carries the colour and this carries the words. */
+            color: #d3deee;
+            text-shadow: 0 1px 10px rgba(0, 0, 0, 0.95);
+        }
+        /* A SHORT, WIDE FRAME - a phone on its side. No room for spacer rows,
+           so the bar shares a row with the wordmark and the fighter's slot
+           runs from the top of the frame down past the actions. */
+        @media (max-height: 520px) and (min-width: 701px) {
+            html #home-screen {
+                grid-template-rows: auto auto auto;
+                grid-template-areas:
+                    "brand top"
+                    "act   ."
+                    "daily plate";
+                row-gap: 12px;
+            }
+            /* The whole height of the frame, less the bar above and the
+               nameplate below - as margins on the slot, because the stage
+               fits the fighter to this box and those two are what it must
+               not stand behind. */
+            html #home-slot { grid-row: 1 / 4; margin: 52px 0 54px; }
+            html #home-screen .brand { margin: 0; }
+            html #home-screen .brand h1 { font-size: 2rem; }
+            html #home-screen .brand-divider { margin: 8px 0 6px; }
+            html #home-screen #btn-home-play { min-height: 56px; font-size: 1.25rem; }
+            html #home-screen .home-note { display: none; }
+            /* ONE ROW for the bar. With its label and the roster count it was
+               wider than the column and wrapped, and a second row of it sat
+               across the fighter's face. The field still has its placeholder
+               and its aria label; the count is on the Armory. */
+            html .home-top { flex-wrap: nowrap; }
+            html .home-top .home-name-row label { display: none; }
+            html .home-top .home-name-row { padding-left: 3px; }
+            html .home-top .home-name-row input { width: 118px; }
+            html .home-top .home-roster { display: none; }
         }
         /* UPRIGHT PHONE: there is no side to stand beside, so the fighter
-           takes the top of the frame and the menu starts under it. */
+           takes a band across the top of the frame and the menu starts under
+           the nameplate. */
         @media (max-width: 700px) {
-            html #home-screen { padding: 0 6px; align-items: center; justify-content: flex-start; }
-            html #home-screen .brand { text-align: center; margin: 6px 0 0; }
+            html #home-screen {
+                grid-template-columns: minmax(0, 1fr);
+                grid-template-rows: auto auto clamp(190px, 38vh, 340px) auto auto auto;
+                grid-template-areas: "top" "brand" "slot" "plate" "act" "daily";
+                row-gap: 10px;
+                justify-items: stretch;
+                padding: 0 10px;
+            }
+            html #home-slot { grid-area: slot; }
+            html .home-top { justify-self: center; justify-content: center; }
+            html #home-screen .brand { text-align: center; margin: 0; }
             html #home-screen .brand-divider {
                 margin: 10px auto 8px;
                 background: linear-gradient(90deg, transparent, var(--ac-cyan) 30%, var(--ac-cyan) 70%, transparent);
             }
-            html #home-screen .home-card {
-                margin: clamp(170px, 36vh, 320px) auto 0;
+            html .home-plate {
+                justify-self: center;
+                align-items: center;
+                padding: 0 0 8px;
+                border-right: 0;
+                border-bottom: 2px solid var(--plate-accent, var(--ac-cyan));
             }
+            html .home-plate-name { margin-right: 0; padding-left: 0.14em; }
+            html .home-plate-title { margin-right: 0; padding-left: 0.3em; }
+            html #home-screen #daily-panel { margin-bottom: 6px; }
+        }
+
+        /* ---- THE LOBBY ---------------------------------------------------
+           Two ways in, side by side: host on the left, join on the right. It
+           was one column with a small "or" between two stacks of buttons,
+           which read as five steps rather than as a choice of two. CSS only -
+           the markup is the same nine children it always was. */
+        html #lobby-screen {
+            background: rgba(6, 8, 15, 0.7);
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+        }
+        html .lobby-panel {
+            width: min(760px, 94vw, calc(100vw - 32px));
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+            column-gap: 20px;
+            align-items: start;
+        }
+        html .lobby-panel > h3, html .lobby-panel > .lobby-sub, html .lobby-panel > .lobby-status,
+        html .lobby-panel > .btn-back {
+            grid-column: 1 / -1;
+        }
+        html .lobby-panel > .lobby-block {
+            margin: 6px 0 12px;
+        }
+        html .lobby-panel > .lobby-block button {
+            margin: 0 0 8px;
+        }
+        /* A hairline with the word in a gap in it. Two gradients, one above
+           the word and one below, because the word is a bare text node and
+           cannot be given a ground of its own to interrupt a single line. */
+        html .lobby-panel > .lobby-or {
+            align-self: stretch;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 30px;
+            margin: 6px 0 12px;
+            background:
+                linear-gradient(var(--ac-line), var(--ac-line)) top center / 1px calc(50% - 14px) no-repeat,
+                linear-gradient(var(--ac-line), var(--ac-line)) bottom center / 1px calc(50% - 14px) no-repeat;
+        }
+        html .lobby-panel .lobby-code {
+            font-size: 1.05rem;
+            letter-spacing: 0.16em;
+            border-radius: var(--ac-r1);
+        }
+        @media (max-width: 640px) {
+            html .lobby-panel { display: block; }
+            html .lobby-panel > .lobby-or {
+                display: block;
+                background: none;
+                margin: 4px 0 10px;
+            }
+        }
+
+        /* A control that cannot be used yet is quiet, not a slab. Disabled
+           buttons were a solid mid-grey block - on the Lobby, two of them
+           stacked were the heaviest thing on the panel, and the one button
+           that worked was the smallest. */
+        html button:disabled {
+            background-color: rgba(255, 255, 255, 0.04);
+            border-color: var(--ac-line);
+            color: #8494a8;
+            box-shadow: none;
+        }
+
+        /* The three buttons under Play are one row of the same thing, and one
+           of them had a brighter outline than its neighbours for no reason a
+           player could give. */
+        html .btn-tutorial {
+            border-color: rgba(0, 243, 255, 0.5);
+            background-color: rgba(0, 243, 255, 0.04);
         }
         /* ==ac:design-end== */
         </style>
@@ -2331,6 +2624,11 @@
                     <!-- Filled by refreshDailyUI() from shared/challenges.js, so
                          both builds render the same panel from one function. -->
                     <div class="daily-panel" id="daily-panel"></div>
+                    <div id="home-slot" aria-hidden="true"></div>
+                    <div class="home-plate" id="home-plate">
+                    <span class="home-plate-name" id="home-plate-name"></span>
+                    <span class="home-plate-title" id="home-plate-title"></span>
+                </div>
                 </div>
                 <div class="select-row">
                     <div class="menu-section side-panel">
@@ -2777,9 +3075,13 @@ function showScreen(name) {
     // Measured: the wordmark at y171 on load and y38 after goHome(), the whole
     // menu 133px up the frame - after every match, and after leaving a room.
     // Nobody reported it, presumably because nobody could say what had moved.
+    // ...so Home is left to its stylesheet: an empty inline display is "no
+    // opinion", and whatever the CSS makes it - a flex column then, a grid now
+    // - is what it is on every visit. The other screens are `display: none` in
+    // CSS and do need telling.
     for (const k in SCREEN_EL) {
         document.getElementById(SCREEN_EL[k]).style.display =
-            (k !== name) ? 'none' : (k === 'home' ? 'flex' : 'block');
+            (k !== name) ? 'none' : (k === 'home' ? '' : 'block');
     }
     document.getElementById('ui-overlay').style.display = name ? 'flex' : 'none';
     // #1: the frame takes the window on a menu screen and returns to the 16:9

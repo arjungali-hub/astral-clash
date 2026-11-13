@@ -291,8 +291,8 @@ const I18N = {
             'Tus propias monedas, desbloqueos y mejoras. Gana un combate para conseguir más.',
         'Click a key, then press its replacement. Esc cancels. Two actions cannot share a key — they swap.':
             'Haz clic en una tecla y pulsa su reemplazo. Esc cancela. Dos acciones no pueden compartir una tecla: se intercambian.',
-        'One of you hosts and shares a room code; the other joins with it. Two players, one fighter each, on separate machines.':
-            'Uno de los dos crea la partida y comparte un código de sala; el otro se une con él. Dos jugadores, un luchador cada uno, en máquinas distintas.',
+        'Two players, two machines. Host a room and share its code, or join with one.':
+            'Dos jugadores, dos dispositivos. Crea una sala y comparte su código, o únete con uno.',
         'The host plays as Player 1 and chooses the mode and arena. You will both land in the room as soon as the link is up.':
             'El anfitrión juega como Jugador 1 y elige el modo y la arena. Los dos entraréis en la sala en cuanto se establezca la conexión.',
         'The game engine failed to load from the CDN (cdn.jsdelivr.net). Check your internet connection, or an ad/script blocker may be blocking jsDelivr, then retry.':
@@ -974,8 +974,8 @@ const I18N = {
             'Vos propres pièces, déblocages et améliorations. Gagnez un combat pour en obtenir plus.',
         'Click a key, then press its replacement. Esc cancels. Two actions cannot share a key — they swap.':
             'Cliquez sur une touche, puis appuyez sur celle qui la remplace. Échap annule. Deux actions ne peuvent pas partager une touche : elles s’échangent.',
-        'One of you hosts and shares a room code; the other joins with it. Two players, one fighter each, on separate machines.':
-            'L’un de vous héberge et partage un code de salon ; l’autre le rejoint avec. Deux joueurs, un combattant chacun, sur deux machines.',
+        'Two players, two machines. Host a room and share its code, or join with one.':
+            'Deux joueurs, deux appareils. Hébergez un salon et partagez son code, ou rejoignez-en un.',
         'The host plays as Player 1 and chooses the mode and arena. You will both land in the room as soon as the link is up.':
             'L’hôte joue le Joueur 1 et choisit le mode et l’arène. Vous arriverez tous les deux dans le salon dès que la liaison est établie.',
         'The game engine failed to load from the CDN (cdn.jsdelivr.net). Check your internet connection, or an ad/script blocker may be blocking jsDelivr, then retry.':

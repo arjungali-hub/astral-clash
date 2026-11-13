@@ -144,7 +144,7 @@ jobs:
             bootcheck smoke localstartcheck localuxcheck localshopcheck \
             layoutcheck keyboardcheck fontcheck consistencycheck routingcheck \
             sandboxcheck batch24check batch38check symmetrycheck weaponcheck \
-            deadcontrolcheck inputguardcheck knockbackcheck backguardcheck \
+            deadcontrolcheck inputguardcheck knockbackcheck backguardcheck phonelayoutcheck \
             contrastcheck padmenucheck palettecheck langcheck \
             netsmoothcheck touchfpscheck reconnectcheck dailycheck accountcheck telemetrycheck \
             fpscapcheck replaycheck

@@ -51,6 +51,18 @@
 // Stage units are the game's: a fighter stands RIG_TARGET_HEIGHT (50) tall.
 const MENU_STAGE_DAIS_TOP = 5;
 const MENU_STAGE_FIGHTER_DEFAULT = 'Kaelen';
+// What has to fit in the slot, top to bottom: the dais, the fighter, headroom.
+const MENU_STAGE_FIGHTER_SPAN = 62;
+// How much fog there is AT THE FIGHTER, as density x distance. The camera backs
+// off to make the fighter small - on an upright phone it is two and a half
+// times further away than on a desktop - and a fixed density fogged the
+// fighter out with the scenery: 63% gone at that distance, which is why the
+// first upright shot was a grey figure. Holding this product constant keeps
+// the fighter as clear as on a desktop and lets the set do the receding.
+const MENU_STAGE_FOG_AT_FIGHTER = 0.41;
+// The element whose box is where the fighter stands, per shot. Empty, and
+// placed by the page's own layout - see menuStageReadSlot.
+const MENU_STAGE_SLOT = { home: 'home-slot' };
 
 // THE LADDER. `high` draws every frame; `medium` every other one, which is 30
 // a second and what a phone gets from the start; `still` draws when something
@@ -104,14 +116,26 @@ function menuStageInit(X) {
         lastAt: 0,
         watch: { sum: 0, n: 0, slow: 0 },
         fighter: null, fighterName: null, wantFighter: MENU_STAGE_FIGHTER_DEFAULT,
+        slot: null, slotAge: 0,
         size: new THREE.Vector2(),
         target: new THREE.Vector3(),
     };
-    // The poster is the floor under every tier: it is what the frame shows
-    // until a live stage has a first frame to fade in over it, and all it ever
-    // shows where there will not be one.
-    document.documentElement.classList.add('stage-poster');
-    window.addEventListener('resize', () => { if (menuStage) menuStage.dirty = true; });
+    // WHAT THE FRAME SHOWS UNTIL THERE IS A LIVE ONE. The poster tier shows the
+    // baked shot, for good. Every other tier waits on an EMPTY set drawn in
+    // CSS and fades its first frame in over that.
+    //
+    // It was the poster for everyone, and that was a jump cut waiting on the
+    // window: the live shot is framed by where this particular layout leaves
+    // room, while a poster is a photograph of three particular windows. On a
+    // 1366x768 laptop the baked fighter was a quarter larger than the live one
+    // who replaced him a third of a second later. An empty stage that a
+    // fighter arrives on has no size to disagree about.
+    document.documentElement.classList.add(menuStage.tier === 'poster' ? 'stage-poster' : 'stage-wait');
+    const relaid = () => { if (menuStage) { menuStage.slot = null; menuStage.dirty = true; } };
+    window.addEventListener('resize', relaid);
+    // The menu scrolls on a short window, and the slot scrolls with it.
+    const ov = document.getElementById('ui-overlay');
+    if (ov) ov.addEventListener('scroll', relaid, { passive: true });
     // A lost context takes every texture and program with it. The game's own
     // recovery is its business; the stage's is to stop drawing and let the
     // poster stand, which needs nothing the context held.
@@ -120,6 +144,28 @@ function menuStageInit(X) {
         el.addEventListener('webglcontextlost', () => menuStageDemote(menuStage, 'poster'));
     }
     menuStageOnScreen(typeof X.screen === 'function' ? X.screen() : null);
+    menuStageRefreshPlate();
+}
+
+// The nameplate under the fighter on Home: who the stage is showing, or about
+// to. Written here and not in the build because it reads nothing from inside
+// bootGame() - and because the stage is the only thing that knows the answer.
+//
+// The accent goes through accentTextColor() like every other use of a
+// fighter's colour as TEXT: Draven's grey and Nyx's violet are both under
+// 4.5:1 on this ground as they come.
+function menuStageRefreshPlate() {
+    const plate = document.getElementById('home-plate');
+    const st = menuStage;
+    if (!plate || !st) return;
+    const c = CHAR_MAP[st.wantFighter];
+    if (!c) return;
+    const nameEl = document.getElementById('home-plate-name');
+    const titleEl = document.getElementById('home-plate-title');
+    if (nameEl) nameEl.textContent = c.name;
+    if (titleEl) titleEl.textContent = (typeof t === 'function') ? t(c.title) : c.title;
+    plate.style.setProperty('--plate-accent', c.color);
+    plate.style.setProperty('--plate-text', accentTextColor(c.color));
 }
 
 // Called by showScreen() with the screen now showing, or null when a match
@@ -138,6 +184,7 @@ function menuStageOnScreen(name) {
     const st = menuStage;
     if (!st) return;
     st.wants = (name === 'home') ? 'home' : 'none';
+    st.slot = null;
     if (st.wants === 'none') menuStageRelease(st);
     else st.dirty = true;
 }
@@ -155,7 +202,11 @@ function menuStageDemote(st, tier) {
     st.tier = tier;
     st.dirty = true;
     st.watch.sum = 0; st.watch.n = 0; st.watch.slow = 0;
-    if (tier === 'poster') menuStageRelease(st);
+    if (tier === 'poster') {
+        menuStageRelease(st);
+        document.documentElement.classList.remove('stage-wait');
+        document.documentElement.classList.add('stage-poster');
+    }
     return tier;
 }
 
@@ -338,8 +389,19 @@ function menuStageBuildSet(st) {
     }
     const moteGeo = new THREE.BufferGeometry();
     moteGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    // A point is a SQUARE unless it is given a picture of something else, and
+    // one that drifts close to the camera is a large square - the first shot
+    // had a pale grey tile hanging beside the nameplate.
+    const moteTex = menuStageCanvasTexture(64, (g, s) => {
+        const r = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+        r.addColorStop(0, 'rgba(255,255,255,1)');
+        r.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+        r.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = r;
+        g.fillRect(0, 0, s, s);
+    });
     const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
-        color: 0x9fefff, size: 1.9, sizeAttenuation: true, transparent: true, opacity: 0.7,
+        color: 0x9fefff, size: 3.2, map: moteTex, sizeAttenuation: true, transparent: true, opacity: 0.8,
         blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
     sc.add(motes);
     st.motes = motes;
@@ -376,6 +438,7 @@ function menuStageSetFighter(name) {
     const st = menuStage;
     if (!st || !name) return Promise.resolve(false);
     st.wantFighter = name;
+    menuStageRefreshPlate();
     if (!st.scene || st.fighterName === name) return Promise.resolve(!!st.scene);
     return st.X.ensureCharModel(name).then((model) => {
         if (st.wantFighter !== name || st.fighterName === name) return false;
@@ -426,35 +489,59 @@ function menuStageEnsure(st) {
 
 // ---- the frame -----------------------------------------------------------
 
+// WHERE THE FIGHTER STANDS IS THE LAYOUT'S DECISION, and this reads it off the
+// page instead of making it again.
+//
+// The first version framed the shot from the canvas's aspect ratio: wide means
+// beside the menu, tall means above it. The CSS made the same decision from
+// the window's WIDTH - and at 640x530 the two disagreed, with a single-column
+// menu laid over a fighter standing where the second column would have been.
+// Two rules for one fact, in two languages, kept in step by hand.
+//
+// So the page has an empty element where the fighter goes (#home-slot), placed
+// by the same grid that places everything else, and the camera is aimed at
+// that box. A new breakpoint moves the fighter without this file hearing of it.
+function menuStageReadSlot(st) {
+    st.slotAge = 0;
+    st.slot = null;
+    const el = document.getElementById(MENU_STAGE_SLOT[st.wants] || '');
+    const surf = st.X.renderer.domElement;
+    if (!el || !surf) return;
+    const r = el.getBoundingClientRect(), c = surf.getBoundingClientRect();
+    if (r.width < 8 || r.height < 8) return;
+    st.slot = { x: r.left - c.left, y: r.top - c.top, w: r.width, h: r.height };
+}
+
 function menuStagePose(st) {
     const t = st.t;
     const W = st.size.x, H = st.size.y;
-    const aspect = W / Math.max(1, H);
     const cam = st.cam;
-    cam.aspect = aspect;
-    // WIDE: the fighter stands in the right-hand third and the menu has the
-    // left. TALL (a phone held upright): there is no third to give away, so
-    // the fighter is centred and the camera backs off to keep it whole.
-    const wide = Math.max(0, Math.min(1, (aspect - 0.8) / 0.4));
-    const dist = 142 + (1 - wide) * 150;
-    // HOW FAR ACROSS is a share of what the camera can SEE, not a distance:
-    // the menu takes a fixed number of pixels on the left, so on a wide frame
-    // the empty space - and its middle - is further right than on a square
-    // one. 0.24 of the visible width puts the fighter in the middle of what
-    // the menu leaves, at 1170x960 and at a phone's 810x374 alike.
-    const seen = 2 * dist * Math.tan(cam.fov * Math.PI / 360) * aspect;
-    const shift = 0.24 * seen * wide;
-    // LOW, looking slightly up the fighter. From eye height the frame was
+    // Re-read now and then even with nothing to say it moved: a web font
+    // arriving reflows the menu, and nothing fires an event for that.
+    if (!st.slot || st.slotAge++ > 90) menuStageReadSlot(st);
+    const slot = st.slot || { x: W * 0.5, y: 0, w: W * 0.5, h: H };
+    // SIZE: by whichever of the slot's sides runs out first.
+    const fit = Math.max(40, Math.min(slot.h * 0.94, slot.w * 1.5));
+    const seen = MENU_STAGE_FIGHTER_SPAN * H / fit;
+    const dist = seen / (2 * Math.tan(cam.fov * Math.PI / 360));
+    // Low, looking slightly up the fighter. From eye height the frame was
     // mostly the top of the dais.
-    cam.position.set(-shift * 0.7 + Math.sin(t * 0.17) * 2.2, 22 + Math.sin(t * 0.22) * 1.1, dist);
-    st.target.set(-shift, 30 - (1 - wide) * 34, 0);
+    cam.position.set(Math.sin(t * 0.17) * 2.2, 22 + Math.sin(t * 0.22) * 1.1, dist);
+    st.target.set(0, 31, 0);
     cam.lookAt(st.target);
-    cam.updateProjectionMatrix();
+    // PLACE: the camera stays pointed AT the fighter and the picture is slid
+    // sideways under it - a lens shift, which is what a view offset is. Turning
+    // the camera to put the fighter off-centre keystones the whole set; this
+    // is the same image a wider shot would give, cropped.
+    const dx = (slot.x + slot.w / 2) - W / 2;
+    const dy = (slot.y + slot.h / 2) - H / 2;
+    cam.setViewOffset(W, H, -dx, -dy, W, H);     // sets the aspect and the projection too
+    st.scene.fog.density = MENU_STAGE_FOG_AT_FIGHTER / dist;
     // A fighter's own +X is its forward. A quarter turn brings that to face
-    // the camera; the rest opens the guard stance toward the menu it stands
-    // beside, since an Idle clip holds the body side-on to its own forward.
-    st.holder.rotation.y = -Math.PI / 2 - 0.62 * wide + Math.sin(t * 0.33) * 0.1;
-    st.rift.position.x = -shift * 0.35;
+    // the camera; the rest opens the guard stance toward the middle of the
+    // frame, since an Idle clip holds the body side-on to its own forward.
+    const turn = Math.max(-1, Math.min(1, dx / (W * 0.25)));
+    st.holder.rotation.y = -Math.PI / 2 - 0.62 * turn + Math.sin(t * 0.33) * 0.1;
     st.rift.material.opacity = 0.58 + Math.sin(t * 0.6) * 0.07;
     st.motes.rotation.y = t * 0.012;
     st.motes.position.y = Math.sin(t * 0.21) * 5;
@@ -538,7 +625,7 @@ function menuStageStats() {
     return {
         tier: st.tier, wants: st.wants, built: !!st.scene, ready: st.ready,
         surface: st.surface, shown: st.shown, drawn: st.drawn,
-        fighter: st.fighterName,
+        fighter: st.fighterName, showing: st.wantFighter, slot: st.slot,
     };
 }
 
