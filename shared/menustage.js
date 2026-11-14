@@ -486,6 +486,9 @@ function menuStageSetFighter(name) {
         st.holder.add(g);
         st.fighter = g;
         st.fighterName = name;
+        // What animateWeapon() needs to hold this fighter's weapon at rest: it
+        // takes a Fighter and reads four things off it. See menuStageDraw.
+        st.poser = { name, mesh: g, atkState: 'idle', atkKind: null, atkStateTimer: 0 };
         st.reacting = 0;
         // ARRIVES, rather than appears: a little small and lit hard from
         // behind, settling over half a second. In a tier with no clock it is
@@ -623,6 +626,14 @@ function menuStageDraw(st, sec) {
     menuStagePose(st);
     const rig = st.fighter && st.fighter.userData.rig;
     if (rig && rig.mixer && sec > 0) rig.mixer.update(sec);
+    // THE WEAPON ARM IS NOT THE CLIP'S TO POSE. In a fight the mixer writes
+    // every bone and then animateWeapon() runs after it and takes the weapon
+    // arm back - that layering is how baked walk and run cycles coexist with
+    // the tuned per-character swings. A fighter built on its own gets the clip
+    // and not the second half, so the arm simply hangs: Nyx's scythe pointed
+    // straight down through the dais and stuck out a body-length below her
+    // feet. Same routine, same order, with a stand-in that is never attacking.
+    if (st.fighter && st.poser && typeof animateWeapon === 'function') animateWeapon(st.poser);
     // The arena sets an exposure per theme and the stage is not an arena.
     const exposure = R.toneMappingExposure;
     R.toneMappingExposure = 1.0;
