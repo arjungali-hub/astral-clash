@@ -151,7 +151,16 @@ function gameUrl(path, query) {
     // the URL rather than sniffed for in the game. stagecheck passes
     // `stage=live` and is the one that exercises the rest.
     const stage = /(^|&)stage=/.test(extra.slice(1)) ? '' : '&stage=poster';
-    return baseUrl + (path || '/index.html') + '?debug=1' + stage + extra;
+    // AND THE INTERFACE HOLDS STILL, for the same kind of reason. The menus
+    // animate now - panels scale in, rows arrive one after another - and
+    // nearly every checker here measures a box: a button at least 40px tall,
+    // a panel inside its frame. A box part-way through scaling in from 0.955
+    // is the wrong size for a third of a second, on a rasteriser where a third
+    // of a second is one frame. `motion=off` is what someone who asked their
+    // system for reduced motion gets, so it is a real interface and not a
+    // test-only one; tests/motioncheck.js asks for `motion=on`.
+    const motion = /(^|&)motion=/.test(extra.slice(1)) ? '' : '&motion=off';
+    return baseUrl + (path || '/index.html') + '?debug=1' + stage + motion + extra;
 }
 
 // EVERY browser this harness launches, so it can be closed no matter how the

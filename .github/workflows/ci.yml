@@ -178,7 +178,7 @@ jobs:
           - shard: match
             tests: controlscheck localcombatcheck localmatchcheck crushcheck swingcheck artcheck
           - shard: rest
-            tests: onlineuxcheck coopnetcheck peercheck charcheck teleportcheck mapscheck maptimecheck placementcheck coopdowncheck awaypausecheck stagecheck
+            tests: onlineuxcheck coopnetcheck peercheck charcheck teleportcheck mapscheck maptimecheck placementcheck coopdowncheck awaypausecheck stagecheck motioncheck
           # spectatecheck launches THREE browsers, one per client, for the same
           # reason netcheck launches two: Chrome will not run rAF in a
           # background tab and only one window is foreground, so as tabs two of

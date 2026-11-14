@@ -19,6 +19,54 @@ const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
 
 const REDUCED_MOTION = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
+// DOES THE INTERFACE MOVE. One answer, stamped on <html> as `ac-motion`, and
+// every animation in the menus is written against that class - so there is
+// nothing to switch OFF anywhere: without the class there is nothing switched
+// on. Someone who asked their system for less motion never gets the class.
+//
+// `?motion=off` is for the checkers, and harness.gameUrl asks for it. They
+// measure boxes - a button 40px tall, a panel inside its frame - and a box
+// that is two thirds of the way through scaling in from 0.955 is 38px tall for
+// a third of a second. Fifty-odd checkers would each have had to learn to
+// wait for an entrance to finish; instead they run a still interface, which
+// is a real one (it is what reduced motion gets), and tests/motioncheck.js is
+// the one that asks for the motion and checks it leaves nothing half-way.
+const UI_MOTION = !REDUCED_MOTION && new URLSearchParams(location.search).get('motion') !== 'off';
+if (UI_MOTION) document.documentElement.classList.add('ac-motion');
+
+// Play a one-shot animation on an element by re-adding the class that carries
+// it. The read of offsetWidth between the two is what makes that a restart:
+// without a reflow in between, removing and adding a class in one task is no
+// change at all as far as the style engine is concerned.
+//
+// NOT ON SOMETHING THAT ISN'T ON SCREEN. A class left on a hidden element
+// plays the moment the element is next shown - display:none to anything
+// restarts its animations - so every Settings pill stamped at load would have
+// bumped each time Settings opened.
+function uiBump(el, cls) {
+    if (!UI_MOTION || !el || !el.getClientRects().length) return;
+    const c = cls || 'ac-bump';
+    el.classList.remove(c);
+    void el.offsetWidth;
+    el.classList.add(c);
+    // Its own animation ending, not a child's: animationend bubbles, and the
+    // frame hears every entrance inside it finish.
+    const done = (e) => {
+        if (e.target !== el) return;
+        el.classList.remove(c);
+        el.removeEventListener('animationend', done);
+    };
+    el.addEventListener('animationend', done);
+}
+
+// Text that changed gets noticed. For numbers and states a player is watching
+// for - a coin total, a setting's value - where the change IS the feedback.
+function uiSetText(el, text) {
+    if (!el || el.textContent === text) return;
+    el.textContent = text;
+    uiBump(el);
+}
+
 const LOADING_TIPS = [
     'Dash has invulnerability frames \u2014 time it through an attack, not away from one.',
     'Your Special meter fills from damage dealt AND taken.',
@@ -2500,7 +2548,7 @@ function setOptState(id, text, on) {
     const el = document.getElementById(id);
     if (!el) return;
     const pill = el.querySelector('.opt-state');
-    if (pill) pill.textContent = text;
+    if (pill) uiSetText(pill, text);
     else el.textContent = text;   // a build whose row is still a plain button
     el.classList.toggle('is-on', !!on);
 }

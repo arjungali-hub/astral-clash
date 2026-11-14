@@ -117,6 +117,9 @@ function menuStageInit(X) {
         watch: { sum: 0, n: 0, slow: 0 },
         fighter: null, fighterName: null, wantFighter: MENU_STAGE_FIGHTER_DEFAULT,
         slot: null, slotAge: 0,
+        arrive: 0,              // 1 as a fighter lands on the dais, easing to 0
+        reacting: 0,            // seconds left of a one-shot clip
+        par: { x: 0, y: 0, tx: 0, ty: 0 },   // where the pointer is, eased
         size: new THREE.Vector2(),
         target: new THREE.Vector3(),
     };
@@ -136,6 +139,23 @@ function menuStageInit(X) {
     // The menu scrolls on a short window, and the slot scrolls with it.
     const ov = document.getElementById('ui-overlay');
     if (ov) ov.addEventListener('scroll', relaid, { passive: true });
+    // THE SET LEANS TOWARD THE POINTER, a few units of camera, so the pylons
+    // slide behind the fighter as the mouse crosses the frame. It is what
+    // makes a still backdrop read as a place, and every menu in Valorant does
+    // it. Stored here and eased in menuStagePose; nothing is drawn from an
+    // event handler.
+    const frame = document.getElementById('game-container');
+    if (frame) frame.addEventListener('pointermove', (e) => {
+        const st = menuStage;
+        if (!st || !st.surface) return;
+        const r = frame.getBoundingClientRect();
+        st.par.tx = ((e.clientX - r.left) / Math.max(1, r.width)) * 2 - 1;
+        st.par.ty = ((e.clientY - r.top) / Math.max(1, r.height)) * 2 - 1;
+    }, { passive: true });
+    // ...and the fighter answers a tap, which is the first thing anyone does
+    // to a character standing on a home screen.
+    const slotEl = document.getElementById(MENU_STAGE_SLOT.home);
+    if (slotEl) slotEl.addEventListener('click', menuStageReact);
     // A lost context takes every texture and program with it. The game's own
     // recovery is its business; the stage's is to stop drawing and let the
     // poster stand, which needs nothing the context held.
@@ -162,7 +182,10 @@ function menuStageRefreshPlate() {
     if (!c) return;
     const nameEl = document.getElementById('home-plate-name');
     const titleEl = document.getElementById('home-plate-title');
-    if (nameEl) nameEl.textContent = c.name;
+    if (nameEl && nameEl.textContent !== c.name) {
+        nameEl.textContent = c.name;
+        uiBump(nameEl, 'ac-slam');      // the name lands; see MOTION in the design layer
+    }
     if (titleEl) titleEl.textContent = (typeof t === 'function') ? t(c.title) : c.title;
     plate.style.setProperty('--plate-accent', c.color);
     plate.style.setProperty('--plate-text', accentTextColor(c.color));
@@ -202,6 +225,8 @@ function menuStageDemote(st, tier) {
     st.tier = tier;
     st.dirty = true;
     st.watch.sum = 0; st.watch.n = 0; st.watch.slow = 0;
+    // A tier with no clock cannot finish a clip it was half-way through.
+    if (!MENU_STAGE_EVERY[tier]) menuStageSettle(st);
     if (tier === 'poster') {
         menuStageRelease(st);
         document.documentElement.classList.remove('stage-wait');
@@ -312,7 +337,7 @@ function menuStageBuildSet(st) {
         return m;
     };
     hexRing(37.4, 0.8, MENU_STAGE_DAIS_TOP + 0.1, rimMat);
-    hexRing(25, 0.28, MENU_STAGE_DAIS_TOP + 0.1,
+    st.ringIn = hexRing(25, 0.28, MENU_STAGE_DAIS_TOP + 0.1,
         new THREE.MeshBasicMaterial({ color: 0x00f3ff, transparent: true, opacity: 0.4, toneMapped: false }));
     hexRing(66, 0.45, 0.2,
         new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.8, toneMapped: false }));
@@ -461,6 +486,11 @@ function menuStageSetFighter(name) {
         st.holder.add(g);
         st.fighter = g;
         st.fighterName = name;
+        st.reacting = 0;
+        // ARRIVES, rather than appears: a little small and lit hard from
+        // behind, settling over half a second. In a tier with no clock it is
+        // simply there.
+        st.arrive = MENU_STAGE_EVERY[st.tier] ? 1 : 0;
         const colour = CHAR_MAP[name] && CHAR_MAP[name].color;
         if (colour) { st.rimLight.color.set(colour); st.rimMat.color.set(colour); }
         st.dirty = true;
@@ -526,7 +556,8 @@ function menuStagePose(st) {
     const dist = seen / (2 * Math.tan(cam.fov * Math.PI / 360));
     // Low, looking slightly up the fighter. From eye height the frame was
     // mostly the top of the dais.
-    cam.position.set(Math.sin(t * 0.17) * 2.2, 22 + Math.sin(t * 0.22) * 1.1, dist);
+    cam.position.set(Math.sin(t * 0.17) * 2.2 + st.par.x * 5,
+        22 + Math.sin(t * 0.22) * 1.1 - st.par.y * 2.4, dist);
     st.target.set(0, 31, 0);
     cam.lookAt(st.target);
     // PLACE: the camera stays pointed AT the fighter and the picture is slid
@@ -545,6 +576,44 @@ function menuStagePose(st) {
     st.rift.material.opacity = 0.58 + Math.sin(t * 0.6) * 0.07;
     st.motes.rotation.y = t * 0.012;
     st.motes.position.y = Math.sin(t * 0.21) * 5;
+    st.ringIn.rotation.z = Math.PI / 2 + t * 0.16;
+    const land = st.arrive * st.arrive * (3 - 2 * st.arrive);
+    st.holder.scale.setScalar(1 - 0.1 * land);
+    st.rimLight.intensity = 2.8 + 6 * land;
+}
+
+// One clip, once, and back to Idle: what the fighter does when tapped. Only
+// where there is a clock to play it on.
+function menuStageReact() {
+    const st = menuStage;
+    if (!st || !st.fighter || !MENU_STAGE_EVERY[st.tier] || st.reacting > 0) return false;
+    const rig = st.fighter.userData.rig;
+    if (!rig || !rig.actions || !rig.actions.Jump || !rig.actions.Idle) return false;
+    const jump = rig.actions.Jump;
+    jump.reset();
+    jump.setLoop(THREE.LoopOnce, 1);
+    jump.clampWhenFinished = true;
+    jump.play();
+    jump.crossFadeFrom(rig.actions.Idle, 0.12, false);
+    rig.current = 'Jump';
+    st.reacting = Math.max(0.3, jump.getClip().duration);
+    st.arrive = Math.max(st.arrive, 0.45);     // the rim flares with it
+    return true;
+}
+
+// Back to Idle, now. Called when a clip runs out, and when the stage steps
+// down to a tier that could never have finished it.
+function menuStageSettle(st) {
+    st.reacting = 0;
+    st.arrive = 0;
+    const rig = st.fighter && st.fighter.userData.rig;
+    if (!rig || !rig.actions || !rig.actions.Idle || rig.current === 'Idle') return;
+    const idle = rig.actions.Idle;
+    idle.reset();
+    idle.play();
+    if (rig.actions[rig.current]) idle.crossFadeFrom(rig.actions[rig.current], 0.2, false);
+    rig.current = 'Idle';
+    st.dirty = true;
 }
 
 function menuStageDraw(st, sec) {
@@ -603,6 +672,14 @@ function menuStageFrame(dt) {
         st.lastAt = now;
         st.t += sec;
         st.owed += sec;
+        st.arrive = Math.max(0, st.arrive - sec * 2.1);
+        const ease = 1 - Math.exp(-sec * 4);
+        st.par.x += (st.par.tx - st.par.x) * ease;
+        st.par.y += (st.par.ty - st.par.y) * ease;
+        if (st.reacting > 0) {
+            st.reacting -= sec;
+            if (st.reacting <= 0.16) menuStageSettle(st);
+        }
         st.tick = (st.tick + 1) % every;
         if (st.tick && !st.dirty) return true;
         menuStageDraw(st, st.owed);
@@ -626,6 +703,7 @@ function menuStageStats() {
         tier: st.tier, wants: st.wants, built: !!st.scene, ready: st.ready,
         surface: st.surface, shown: st.shown, drawn: st.drawn,
         fighter: st.fighterName, showing: st.wantFighter, slot: st.slot,
+        reacting: st.reacting > 0,
     };
 }
 

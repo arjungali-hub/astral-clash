@@ -2904,6 +2904,279 @@
             border-color: rgba(0, 243, 255, 0.5);
             background-color: rgba(0, 243, 255, 0.04);
         }
+        /* ---- MOTION ------------------------------------------------------
+           Nearly everything in the menus moves, and all of it is written
+           against html.ac-motion (see UI_MOTION in shared/common.js): no
+           class, no motion - which is what reduced motion gets, and what the
+           checkers run.
+
+           HELD AGAINST TWO SHIPPED GAMES. Brawl Stars for how MUCH of a menu
+           moves, Valorant for how a first-person shooter does it:
+
+             what they animate                         here
+             ---------------------------------------  ----------------------
+             every button gives under the finger       :active, sprung release
+             hover is a fast wipe, not a colour swap    underline draws across
+             a screen builds in, piece by piece        entrances, staggered
+             a light crosses on a screen change         ac-swap on the frame
+             a panel pops, its backdrop fades          ac-pop / ac-fade
+             lists and grids arrive in a cascade       nth-child delays
+             stat bars fill; they do not appear        ac-fill, per row
+             the selected tile answers                 ac-select
+             a number that changed is seen to           ac-bump (uiSetText)
+             the wordmark is alive                     ac-breathe
+             the main action catches light             ac-sheen on Play/Start
+             a name LANDS when a fighter is chosen     ac-slam on the plate
+             the character idles, and answers a tap    menu stage: Idle, Jump
+             the set shifts with the pointer           menu stage: parallax
+             loading art drifts                        ac-zoom on the tableau
+
+           STILL TO COME, each with the screen it belongs to: panels and
+           screens animating OUT as well as in, the versus slam and the
+           lock-in flash on fighter select, and the results count-up.
+
+           ONE RULE WORTH KNOWING BEFORE ADDING TO THIS. An element's entrance
+           animation must stay FIRST in its `animation` list in every state.
+           A state rule that replaces the list - `.selected { animation:
+           ac-select }` - plays fine, and then on the way back the browser
+           sees ac-rise re-enter the list and plays the entrance again: every
+           tile would fade up from nothing each time it was deselected. So a
+           state rule repeats the entrance and adds to it. */
+        @keyframes ac-rise { from { opacity: 0; transform: translateY(16px); } }
+        @keyframes ac-drop { from { opacity: 0; transform: translateY(-14px); } }
+        @keyframes ac-from-left { from { opacity: 0; transform: translateX(-26px); } }
+        @keyframes ac-from-right { from { opacity: 0; transform: translateX(26px); } }
+        @keyframes ac-pop {
+            0% { opacity: 0; transform: translateY(12px) scale(0.955); }
+            62% { opacity: 1; transform: translateY(0) scale(1.012); }
+            100% { transform: none; }
+        }
+        @keyframes ac-fade { from { opacity: 0; } }
+        @keyframes ac-reveal { from { opacity: 0; transform: translateX(-22px); filter: blur(7px); } }
+        @keyframes ac-draw { from { transform: scaleX(0); } }
+        @keyframes ac-slam { from { opacity: 0; letter-spacing: 0.6em; } }
+        @keyframes ac-sheen {
+            0%, 58% { transform: translateX(-140%) skewX(-20deg); }
+            100% { transform: translateX(420%) skewX(-20deg); }
+        }
+        @keyframes ac-breathe {
+            50% { text-shadow: 0 0 36px rgba(0, 243, 255, 0.95), 0 0 3px rgba(0, 243, 255, 1); }
+        }
+        @keyframes ac-bump { 35% { transform: scale(1.24); } }
+        @keyframes ac-select { 40% { transform: scale(1.07); } }
+        @keyframes ac-fill { from { transform: scaleX(0); } }
+        @keyframes ac-wipe {
+            from { transform: translateX(-130%) skewX(-20deg); opacity: 1; }
+            to { transform: translateX(330%) skewX(-20deg); opacity: 0; }
+        }
+        @keyframes ac-zoom { from { transform: scale(1); } to { transform: scale(1.07); } }
+
+        /* -- every button gives, and springs back -- */
+        html.ac-motion button {
+            outline-offset: 7px;
+            transition: background-color var(--ac-dur-2) var(--ac-ease-out),
+                        border-color var(--ac-dur-2) var(--ac-ease-out),
+                        color var(--ac-dur-2) var(--ac-ease-out),
+                        box-shadow var(--ac-dur-2) var(--ac-ease-out),
+                        background-size 240ms var(--ac-ease-out),
+                        outline-offset var(--ac-dur-2) var(--ac-ease-out),
+                        transform 260ms var(--ac-ease-snap);
+        }
+        html.ac-motion button:active:not(:disabled) {
+            transform: scale(0.955);
+            transition-duration: 70ms;
+        }
+        /* The focus ring closes in on the control it lands on. */
+        html.ac-motion button:focus-visible {
+            outline-offset: 2px;
+        }
+        /* -- hover draws a line across; it does not just change a colour -- */
+        html.ac-motion .btn-secondary, html.ac-motion .btn-back, html.ac-motion .btn-tutorial {
+            background-image: linear-gradient(currentColor, currentColor);
+            background-repeat: no-repeat;
+            background-position: 0 100%;
+            background-size: 0 2px;
+        }
+        html.ac-motion .btn-secondary:hover:not(:disabled), html.ac-motion .btn-back:hover:not(:disabled),
+        html.ac-motion .btn-tutorial:hover:not(:disabled) {
+            background-size: 100% 2px;
+        }
+        html.ac-motion input {
+            transition: border-color var(--ac-dur-2) var(--ac-ease-out),
+                        box-shadow var(--ac-dur-2) var(--ac-ease-out),
+                        background-color var(--ac-dur-2) var(--ac-ease-out);
+        }
+
+        /* -- a screen change: one bar of light across the frame -- */
+        html.ac-motion #game-container.ac-swap::after {
+            content: "";
+            position: absolute;
+            top: -10%; bottom: -10%; left: 0;
+            width: 36%;
+            z-index: 70;
+            pointer-events: none;
+            background: linear-gradient(90deg, rgba(0, 243, 255, 0), rgba(0, 243, 255, 0.14) 35%,
+                rgba(255, 255, 255, 0.2) 50%, rgba(0, 243, 255, 0.14) 65%, rgba(0, 243, 255, 0));
+            animation: ac-wipe 520ms var(--ac-ease-out) both;
+        }
+
+        /* -- HOME builds in: the wordmark, then the actions, then the edges -- */
+        html.ac-motion #home-screen .brand h1 {
+            animation: ac-reveal 900ms var(--ac-ease-out) backwards,
+                       ac-breathe 5.5s ease-in-out 1.2s infinite;
+        }
+        html.ac-motion #home-screen .brand-divider {
+            transform-origin: left center;
+            animation: ac-draw 700ms var(--ac-ease-out) 180ms backwards;
+        }
+        html.ac-motion #home-screen .brand p {
+            animation: ac-fade 800ms ease-out 380ms backwards;
+        }
+        html.ac-motion .home-actions > #btn-home-play {
+            animation: ac-from-left 520ms var(--ac-ease-out) 260ms backwards;
+        }
+        html.ac-motion .home-actions > .home-note {
+            animation: ac-from-left 520ms var(--ac-ease-out) 340ms backwards;
+        }
+        html.ac-motion .home-row > * {
+            animation: ac-rise 420ms var(--ac-ease-out) backwards;
+        }
+        html.ac-motion .home-top > * {
+            animation: ac-drop 480ms var(--ac-ease-out) 220ms backwards;
+        }
+        html.ac-motion .home-top > :nth-child(2) {
+            animation-delay: 300ms;
+        }
+        html.ac-motion #home-screen #daily-panel {
+            animation: ac-rise 560ms var(--ac-ease-out) 460ms backwards;
+        }
+        html.ac-motion .home-plate {
+            animation: ac-from-right 600ms var(--ac-ease-out) 520ms backwards;
+        }
+        /* The name lands: wide, then closing to its set width. */
+        html.ac-motion .home-plate-name.ac-slam {
+            animation: ac-slam 520ms var(--ac-ease-out);
+        }
+        /* The main action catches the light every few seconds. */
+        html.ac-motion #home-screen #btn-home-play {
+            position: relative;
+            overflow: hidden;
+        }
+        html.ac-motion #home-screen #btn-home-play::after {
+            content: "";
+            position: absolute;
+            top: 0; bottom: 0; left: 0;
+            width: 30%;
+            pointer-events: none;
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+            animation: ac-sheen 4.4s ease-in-out 1.4s infinite;
+        }
+
+        /* -- a panel pops; what is behind it fades down -- */
+        html.ac-motion [id$="-screen"] > .menu-section {
+            animation: ac-pop 320ms var(--ac-ease-out) backwards;
+        }
+        html.ac-motion #settings-screen, html.ac-motion #account-screen, html.ac-motion #rebind-screen,
+        html.ac-motion #audio-screen, html.ac-motion #tutorial-screen, html.ac-motion #mapselect-screen,
+        html.ac-motion #lobby-screen, html.ac-motion #modeselect-screen, html.ac-motion #shop-screen {
+            animation: ac-fade 200ms ease-out backwards;
+        }
+        /* The room: its bar drops in, the two sides come from their own
+           edges, the panels rise. */
+        html.ac-motion .room-bar {
+            animation: ac-drop 420ms var(--ac-ease-out) backwards;
+        }
+        html.ac-motion #slot-you {
+            animation: ac-from-left 480ms var(--ac-ease-out) 120ms backwards;
+        }
+        html.ac-motion #slot-foe {
+            animation: ac-from-right 480ms var(--ac-ease-out) 120ms backwards;
+        }
+        html.ac-motion .pslot-vs {
+            animation: ac-pop 420ms var(--ac-ease-out) 300ms backwards;
+        }
+        html.ac-motion .room-main > .menu-section, html.ac-motion .select-row > .menu-section {
+            animation: ac-rise 460ms var(--ac-ease-out) 200ms backwards;
+        }
+        html.ac-motion .select-row > .menu-section:last-child {
+            animation-delay: 300ms;
+        }
+
+        /* -- lists and grids arrive one after another -- */
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, #gameover-actions, #match-summary) > * {
+            animation: ac-rise 380ms var(--ac-ease-out) backwards;
+        }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(1) { animation-delay: 85ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(2) { animation-delay: 130ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(3) { animation-delay: 175ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(4) { animation-delay: 220ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(5) { animation-delay: 265ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(6) { animation-delay: 310ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(7) { animation-delay: 355ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(8) { animation-delay: 400ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(9) { animation-delay: 445ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(10) { animation-delay: 490ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(11) { animation-delay: 535ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(12) { animation-delay: 580ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(13) { animation-delay: 625ms; }
+        html.ac-motion :is(.settings-list, .tutorial-grid, #mapselect-grid, #modeselect-list, .fighter-grid, #rebind-list, .daily-list, .home-row, #gameover-actions, #match-summary) > :nth-child(14) { animation-delay: 670ms; }
+        /* The chosen tile answers - WITH its entrance still first in the list;
+           see the rule at the head of this block. */
+        html.ac-motion .fighter-grid > .fighter-btn.selected {
+            animation: ac-rise 380ms var(--ac-ease-out) backwards, ac-select 340ms var(--ac-ease-snap);
+            animation-delay: 0s;
+        }
+        /* A fighter's detail is rebuilt each time one is looked at, so these
+           play on every look: the text rises, the bars fill. */
+        html.ac-motion .detail-scroll > * {
+            animation: ac-rise 320ms var(--ac-ease-out) backwards;
+        }
+        html.ac-motion .detail-scroll > :nth-child(2) { animation-delay: 50ms; }
+        html.ac-motion .detail-scroll > :nth-child(3) { animation-delay: 100ms; }
+        html.ac-motion .detail-scroll > :nth-child(4) { animation-delay: 150ms; }
+        html.ac-motion .detail-scroll > :nth-child(5) { animation-delay: 200ms; }
+        html.ac-motion .stat-fill {
+            transform-origin: left center;
+            animation: ac-fill 620ms var(--ac-ease-out) 140ms backwards;
+        }
+        html.ac-motion .stat-row:nth-child(2) .stat-fill { animation-delay: 210ms; }
+        html.ac-motion .stat-row:nth-child(3) .stat-fill { animation-delay: 280ms; }
+        html.ac-motion .stat-row:nth-child(4) .stat-fill { animation-delay: 350ms; }
+
+        /* -- a number or a state that changed is seen to -- */
+        html .coin-balance {
+            display: inline-block;
+        }
+        html.ac-motion .ac-bump {
+            animation: ac-bump 420ms var(--ac-ease-snap);
+        }
+
+        /* -- pause: the panel pops (above) and its buttons follow -- */
+        html.ac-motion #pause-screen .menu-section > button {
+            animation: ac-rise 340ms var(--ac-ease-out) 120ms backwards;
+        }
+        html.ac-motion #pause-screen .menu-section > button:nth-of-type(2) { animation-delay: 170ms; }
+        html.ac-motion #pause-screen .menu-section > button:nth-of-type(3) { animation-delay: 220ms; }
+        html.ac-motion #pause-screen .menu-section > button:nth-of-type(4) { animation-delay: 270ms; }
+
+        /* -- loading: the words come in and the art drifts toward you -- */
+        html.ac-motion #loading-screen.on .ld-brand {
+            animation: ac-reveal 700ms var(--ac-ease-out) backwards;
+        }
+        html.ac-motion #loading-screen.on #ld-arena {
+            animation: ac-from-left 600ms var(--ac-ease-out) 160ms backwards;
+        }
+        html.ac-motion #loading-screen.on .ld-corner {
+            animation: ac-rise 600ms var(--ac-ease-out) 260ms backwards;
+        }
+        html.ac-motion #loading-screen.on .ld-art {
+            animation: ac-zoom 14s ease-out both;
+        }
+        /* The fighter can be tapped where there is a live one to answer. */
+        html.stage-on #home-slot {
+            pointer-events: auto;
+            cursor: pointer;
+        }
         /* ==ac:design-end== */
     </style>
 </head>
@@ -3619,6 +3892,9 @@ function showScreen(name) {
     // box for anything that sits over a match.
     const gc = document.getElementById('game-container');
     if (gc) gc.classList.toggle('menu-roomy', !!ROOMY_SCREENS[name]);
+    // A bar of light crosses the frame when one screen gives way to another.
+    // Not for pause: that one arrives over a fight somebody is in the middle of.
+    if (name && name !== 'pause') uiBump(gc, 'ac-swap');
     // LAST, after the frame has its new shape: the menu stage either takes the
     // canvas for this screen or gives it back at match size, and it measures
     // the canvas to do either. See menuStageOnScreen for why the giving back
@@ -4446,7 +4722,7 @@ function refreshCoinDisplays() {
     // builds: the home screen exists in one, the two side purses in the other,
     // and each build simply skips the elements it does not have.
     const el = document.getElementById('home-coins');
-    if (el) el.textContent = String(myProg().coins);
+    uiSetText(el, String(myProg().coins));
     const roster = document.getElementById('home-roster');
     if (roster) {
         const owned = myProg().unlockedChars.length;
@@ -4459,10 +4735,8 @@ function refreshCoinDisplays() {
             : `\u00b7 ${owned} of ${CHARACTERS.length} fighters`;
     }
     for (const side of SIDES) {
-        const purse = document.getElementById(`${side}-coins`);
-        if (purse) purse.textContent = String(prog(side).coins);
-        const panel = document.getElementById('shop-coin-balance-' + side);
-        if (panel) panel.textContent = String(prog(side).coins);
+        uiSetText(document.getElementById(`${side}-coins`), String(prog(side).coins));
+        uiSetText(document.getElementById('shop-coin-balance-' + side), String(prog(side).coins));
     }
     const shopEl = document.getElementById('shop-coin-balance');
     if (shopEl) shopEl.textContent = String(prog(shopSide).coins);
