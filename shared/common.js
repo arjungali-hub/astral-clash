@@ -1532,6 +1532,32 @@ function markSelected(side, name) {
 // puts behind a portrait had never once shown through.
 function faceUrl(name) { return AC_ASSET_BASE + 'splash/' + String(name).toLowerCase() + '-bust.webp'; }
 
+// THE ICON SET. Inline SVG on a 24-unit grid, stroked in currentColor, so an
+// icon is the colour of whatever text it sits beside and needs no file, no
+// request and no second copy for a hover state. Drawn here rather than taken
+// from a library: a handful of shapes do not justify a dependency, and every
+// one of these is about this game - a crown for the boss, a ring for the zone.
+//
+// aria-hidden, always: each sits next to a word that says the same thing, and
+// a screen reader reading "image" before every mode name says nothing.
+const ICON_PATHS = {
+    classic: '<path d="M4 4l10 10M20 4L10 14M7.5 16.5L4 20M16.5 16.5L20 20M5.5 14.5l4 4M18.5 14.5l-4 4"/>',
+    zone: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+    timeattack: '<path d="M5.5 21V3.5M5.5 4h12l-2.5 4.5 2.5 4.5h-12"/>',
+    boss: '<path d="M3.5 18.5h17M4.5 18.5L3 7.5l5 4 4-7 4 7 5-4-1.5 11"/>',
+    survival: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9.5C7.5 20 4 17 4 12V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
+    random: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.1" fill="currentColor"/><circle cx="15" cy="9" r="1.1" fill="currentColor"/><circle cx="12" cy="12" r="1.1" fill="currentColor"/><circle cx="9" cy="15" r="1.1" fill="currentColor"/><circle cx="15" cy="15" r="1.1" fill="currentColor"/>',
+    jump: '<path d="M6 13.5l6-6 6 6M6 19.5l6-6 6 6"/>',
+    lock: '<rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8.5 11V8a3.5 3.5 0 017 0v3"/>',
+};
+function icon(name, cls) {
+    const p = ICON_PATHS[name];
+    if (!p) return '';
+    return '<svg class="ac-icon' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" width="24" height="24"'
+        + ' fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"'
+        + ' stroke-linejoin="round" aria-hidden="true" focusable="false">' + p + '</svg>';
+}
+
 function arenaSlug(name) {
     return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }

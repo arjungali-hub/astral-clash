@@ -54,13 +54,18 @@ const W = 960, HGT = 540;
 
             // The arena in game units: 1755 across, 975 deep, walls inside.
             const left = 60, right = 1755 - 60, top = 60, bottom = 975 - 60;
-            const cam = new THREE.PerspectiveCamera(58, w / h, 1, 9000);
+            const cam = new THREE.PerspectiveCamera(60, w / h, 1, 9000);
             cam.layers.enableAll();
             for (const L of [3, 4]) cam.layers.disable(L);   // no viewmodels
-            const eyeX = left + (right - left) * 0.06, eyeY = bottom - (bottom - top) * 0.07;
-            const atX = left + (right - left) * 0.62, atY = top + (bottom - top) * 0.34;
-            cam.position.set(D.worldX(eyeX), 112, D.worldZ(eyeY));
-            cam.lookAt(D.worldX(atX), 34, D.worldZ(atY));
+            // Above the heads but under the wall tops: high enough to see the
+            // layout past the first piece of cover, low enough that the arena
+            // is still a place you stand in and not a plan seen at an angle.
+            // The first pass was at 112 and the near wall took a quarter of
+            // most frames.
+            const eyeX = left + (right - left) * 0.04, eyeY = bottom - (bottom - top) * 0.05;
+            const atX = left + (right - left) * 0.58, atY = top + (bottom - top) * 0.42;
+            cam.position.set(D.worldX(eyeX), 168, D.worldZ(eyeY));
+            cam.lookAt(D.worldX(atX), 8, D.worldZ(atY));
 
             const R = D.renderer;
             const before = { w: R.domElement.width, h: R.domElement.height, ratio: R.getPixelRatio() };
