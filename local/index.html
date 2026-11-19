@@ -3731,6 +3731,178 @@
             letter-spacing: 0.24em;
             margin-right: -0.24em;
         }
+        /* ---- SETTINGS ----------------------------------------------------
+           Rows that read as controls: a hairline box with the value as a tag
+           at the far end, a cyan edge on hover, the tag filled when a setting
+           is on. */
+        html #settings-screen .menu-section {
+            width: min(460px, 94vw);
+            max-width: none;
+        }
+        html .settings-list {
+            gap: 6px;
+        }
+        html .opt {
+            min-height: 48px;
+            margin: 0;
+            padding: 10px 14px;
+            background-color: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--ac-line);
+            border-left: 2px solid var(--ac-line);
+            border-radius: var(--ac-r1);
+            color: var(--ac-text);
+            font-size: 0.86rem;
+        }
+        html .opt:hover {
+            background-color: rgba(0, 243, 255, 0.06);
+            border-color: var(--ac-line-strong);
+            border-left-color: var(--ac-cyan);
+            color: #ffffff;
+        }
+        html .opt .opt-state {
+            border-radius: var(--ac-r1);
+            padding: 4px 10px;
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 700;
+            font-size: 0.66rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+        html .opt.is-on .opt-state {
+            background-color: var(--ac-cyan);
+            border-color: var(--ac-cyan);
+            color: var(--ac-ink);
+        }
+        html .opt-chevron {
+            color: var(--ac-cyan);
+            font-size: 1.3rem;
+        }
+
+        /* ---- TEXT FIELDS -------------------------------------------------
+           Colours and edges only, on every field - never padding or height:
+           onlineuxcheck holds the room code's Copy chip to its field's height,
+           and the field's size is what that is measured against. */
+        html input:not([type]), html input[type="text"], html input[type="email"],
+        html input[type="password"], html select {
+            background-color: rgba(0, 0, 0, 0.35);
+            border-color: var(--ac-line);
+            border-radius: var(--ac-r1);
+            color: var(--ac-text);
+            transition: border-color var(--ac-dur-2) var(--ac-ease-out),
+                        box-shadow var(--ac-dur-2) var(--ac-ease-out);
+        }
+        html input:not([type]):focus, html input[type="text"]:focus, html input[type="email"]:focus,
+        html input[type="password"]:focus, html select:focus {
+            border-color: var(--ac-cyan);
+            box-shadow: 0 0 0 3px rgba(0, 243, 255, 0.16);
+        }
+
+        /* ---- REBIND: every key a keycap ---------------------------------- */
+        html .rebind-row button.rebind-key {
+            font-family: var(--font-hud);
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            background-color: #121a2c;
+            border: 1px solid var(--ac-line-strong);
+            border-radius: var(--ac-r2);
+            box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.04);
+            color: #e8eefc;
+        }
+        html .rebind-row button.rebind-key:hover {
+            background-color: #1a2440;
+            border-color: var(--ac-cyan);
+        }
+        html .rebind-row button.rebind-key.listening {
+            background-color: var(--ac-cyan);
+            color: var(--ac-ink);
+            box-shadow: 0 0 0 3px rgba(0, 243, 255, 0.25);
+        }
+
+        /* ---- HOW TO PLAY ------------------------------------------------- */
+        html .tutorial-card {
+            background-color: rgba(14, 19, 32, 0.92);
+            border: 1px solid var(--ac-line);
+            border-left: 2px solid var(--ac-cyan);
+            border-radius: var(--ac-r1);
+            padding: 12px 14px;
+        }
+        html .tutorial-card h4 {
+            margin: 0 0 6px;
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 800;
+            font-size: 0.84rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #ffffff;
+        }
+        html .tutorial-card p {
+            font-size: 0.72rem;
+            line-height: 1.5;
+            color: #aab6c8;
+        }
+
+        /* ---- ACCOUNT ----------------------------------------------------- */
+        html .account-tabs {
+            gap: 0;
+        }
+        html .account-tab {
+            border-radius: 0;
+            background-color: rgba(255, 255, 255, 0.03);
+            border-color: var(--ac-line);
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 700;
+            /* Tighter than the other buttons: at 0.12em "Create account" took
+               two lines in a tab half the panel wide, and French is longer. */
+            letter-spacing: 0.05em;
+            padding-left: 8px;
+            padding-right: 8px;
+            white-space: nowrap;
+            text-transform: uppercase;
+        }
+        html .account-tab:first-child {
+            border-radius: var(--ac-r1) 0 0 var(--ac-r1);
+        }
+        html .account-tab:last-child {
+            border-radius: 0 var(--ac-r1) var(--ac-r1) 0;
+        }
+        html .account-tab.on {
+            background-color: var(--ac-cyan);
+            border-color: var(--ac-cyan);
+            color: var(--ac-ink);
+        }
+
+        /* ---- THE SMALL THINGS -------------------------------------------
+           The toast and the pointer-lock hint are glass tags with a bar of
+           colour; the whole-screen notices (desktop only, CDN failure, turn
+           your phone) are the wordmark's type on the game's ground. */
+        html #debug-toast, html #lock-hint {
+            background-color: rgba(10, 14, 24, 0.92);
+            border: 1px solid var(--ac-line-strong);
+            border-left: 3px solid var(--ac-cyan);
+            border-radius: var(--ac-r1);
+            box-shadow: var(--ac-e2);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+        }
+        /* ---- EXITS -------------------------------------------------------
+           What arrives also leaves: a modal fades out and its panel drops a
+           little as it goes (uiHide). Short, because the player has already
+           decided - an exit only has to say where the panel went. */
+        @keyframes ac-fade-out { to { opacity: 0; } }
+        @keyframes ac-sink { to { opacity: 0; transform: translateY(10px) scale(0.98); } }
+        /* By id, like the entrance it replaces: a class alone loses to the
+           id-keyed entrance rule and the exit would never play. */
+        html.ac-motion #settings-screen.ac-leaving, html.ac-motion #account-screen.ac-leaving,
+        html.ac-motion #rebind-screen.ac-leaving, html.ac-motion #audio-screen.ac-leaving,
+        html.ac-motion #tutorial-screen.ac-leaving, html.ac-motion #mapselect-screen.ac-leaving,
+        html.ac-motion #lobby-screen.ac-leaving, html.ac-motion #modeselect-screen.ac-leaving,
+        html.ac-motion #shop-screen.ac-leaving {
+            animation: ac-fade-out 160ms ease-in forwards;
+            pointer-events: none;
+        }
+        html.ac-motion .ac-leaving > .menu-section {
+            animation: ac-sink 160ms ease-in forwards;
+        }
         /* ==ac:design-end== */
         </style>
 </head>
@@ -4307,6 +4479,7 @@ function openModal(name) {
     // which would end a running match. Checked here rather than at each
     // button, because per-button wiring is the one thing the sync cannot port.
     if (name === 'settings' && typeof syncSettingsForMatch === 'function') syncSettingsForMatch();
+    uiCancelHide(el);       // reopened inside its own exit: it stays
     el.style.display = 'flex';
     // Focus lands INSIDE the panel (#50). Opening Settings with Enter used to
     // leave focus on the button behind it, so the first Tab walked the page
@@ -4344,7 +4517,8 @@ function closeModal(viaBack) {
         const ov = document.getElementById('ui-overlay');
         if (ov) ov.style.overflowY = '';
     }
-    if (name) document.getElementById(MODAL_EL[name]).style.display = 'none';
+    // With an exit, where there is motion - see uiHide.
+    if (name) uiHide(document.getElementById(MODAL_EL[name]));
     // ...and focus goes back where it came from (#50), rather than onto BODY,
     // which would restart a keyboard user at the top of the page every time
     // they closed a panel.

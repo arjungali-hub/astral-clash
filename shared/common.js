@@ -59,6 +59,39 @@ function uiBump(el, cls) {
     el.addEventListener('animationend', done);
 }
 
+// HIDE WITH AN EXIT. A modal used to go from on screen to `display: none` in
+// one frame, which reads as the game dropping it rather than the player
+// closing it. With motion on it gets `.ac-leaving` for the length of a short
+// exit (the MOTION block) and is hidden when that ends - or after 220ms, so an
+// animation that never fires cannot leave a panel hanging. Everything that
+// matters happens at once regardless: the stack, the focus, the history entry.
+// Only the disappearing waits.
+//
+// uiCancelHide() is for opening: a panel reopened inside its own exit stays.
+function uiHide(el) {
+    if (!el) return;
+    uiCancelHide(el);
+    if (!UI_MOTION || el.style.display === 'none' || !el.getClientRects().length) {
+        el.style.display = 'none';
+        return;
+    }
+    el.classList.add('ac-leaving');
+    const done = () => {
+        if (el._acHide !== timer) return;
+        el._acHide = null;
+        el.classList.remove('ac-leaving');
+        el.style.display = 'none';
+    };
+    const timer = setTimeout(done, 220);
+    el._acHide = timer;
+}
+function uiCancelHide(el) {
+    if (!el || !el._acHide) return;
+    clearTimeout(el._acHide);
+    el._acHide = null;
+    el.classList.remove('ac-leaving');
+}
+
 // NUMBERS THAT ARRIVE COUNT UP. Every .ac-count inside `root` runs from zero
 // to its data-to over most of a second, eased so it slows into the total -
 // coins earned are the one number a results screen exists to deliver, and a

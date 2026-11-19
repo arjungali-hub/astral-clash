@@ -48,7 +48,7 @@ const H = require('./harness');
 // runner, so a committed snapshot would diff everywhere except where it was
 // made. The epoch is the part that belongs in version control; the measurements
 // belong to whichever machine took them.
-const BASELINE_EPOCH = '2026-11-18: redesign 7/9 - results on the stage, pause over the fight';
+const BASELINE_EPOCH = '2026-11-19: redesign 8/9 - settings, rebind, tutorial, account, fields, exits';
 // Previous epoch: '2026-10-24: .opt is border-box, so the Language row fits'.
 // Each phase of the menu redesign bumps this in its own commit: every one of
 // them restyles on purpose, and the baseline cached in CI would otherwise diff
