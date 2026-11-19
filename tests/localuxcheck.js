@@ -97,8 +97,22 @@ const H = require('./harness');
                  align: getComputedStyle(screen).alignItems };
     });
     check('its top edge is on screen', st.top >= -1, JSON.stringify(st));
+    // WHAT THIS GUARDS IS CENTRING, not a keyword. A panel taller than the
+    // screen that is centred has its top pushed above the screen, where no
+    // scrolling reaches it; aligned to the start, it overflows downward and
+    // the overlay scrolls to it. So anything centre- or end-aligned fails.
+    //
+    // It compared the computed value to the string 'flex-start' until CI's
+    // Chrome (installed as `stable`, so it moves) returned 'flow-start' for
+    // the same stylesheet - on a run where the same JSON showed the panel
+    // doing exactly the right thing: top at 122, all 755px of it inside a
+    // 1000px window. This machine's Chrome 157 still says 'flex-start'. A
+    // checker that fails on an engine's spelling reports the engine, and a
+    // red tick that is about the browser is the one nobody can act on.
+    const centred = /center|end/.test(st.align || '');
+    const fits = st.top >= -1 && st.top + st.height <= st.viewport + 1;
     check('and the overlay can scroll if the panel is taller than the screen',
-        st.align === 'flex-start' && (!st.scrollable || st.height > 0), JSON.stringify(st));
+        !centred && (fits || st.scrollable), JSON.stringify(st));
 
     section('Nothing inside a panel has its own scrollbar:');
     st = await page.evaluate(() => {
