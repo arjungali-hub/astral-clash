@@ -3961,6 +3961,130 @@
                 flex: 1 1 100%;
             }
         }
+        /* ---- RESULTS -----------------------------------------------------
+           The winner on the stage, celebrating; the loser further back,
+           fallen; the score and the coins beside them. It was one panel in
+           the middle of an almost opaque overlay, over a frozen frame of the
+           arena nobody could see. */
+        html #gameover-screen {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        html .results-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+            align-items: center;
+            gap: 18px;
+            width: min(1120px, 96%);
+            margin: 0 auto;
+        }
+        html .results-stage {
+            display: flex;
+            align-items: stretch;
+            height: clamp(240px, 58vh, 540px);
+        }
+        html .results-slot {
+            position: relative;
+            min-width: 0;
+            background-repeat: no-repeat;
+            background-position: center bottom;
+            background-size: contain;
+        }
+        html #results-slot-a { flex: 1.2 1 0; }
+        html #results-slot-b { flex: 1 1 0; }
+        html .results-slot.fallen {
+            filter: grayscale(1) brightness(0.45);
+        }
+        html.stage-on #game-container[data-stage="results"] .results-slot {
+            background-image: none !important;
+        }
+        html #gameover-screen .menu-section {
+            width: auto;
+            margin: 0;
+            text-align: left;
+            background-color: rgba(12, 16, 27, 0.88);
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+        }
+        html #winner-title {
+            font-size: clamp(1.25rem, 2.6vw, 1.9rem);
+            line-height: 1.15;
+            letter-spacing: 0.06em;
+            text-align: left;
+        }
+        html #match-summary {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 0.8rem;
+            color: #b8c4d6;
+        }
+        html #match-summary .summary-coins {
+            margin-top: 10px;
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 800;
+            font-size: 1.35rem;
+            letter-spacing: 0.06em;
+            color: var(--ac-coin);
+        }
+        html #match-summary .summary-coins .ac-count {
+            display: inline-block;
+            min-width: 1.6ch;
+            font-variant-numeric: tabular-nums;
+        }
+        html #match-summary .summary-daily {
+            margin-top: 6px;
+            font-weight: 700;
+            color: #34d399;
+        }
+        html #match-summary .summary-muted {
+            margin-top: 6px;
+            color: #8494a8;
+        }
+        html.stage-wait #game-container[data-stage="results"],
+        html.stage-poster #game-container[data-stage="results"] {
+            background-color: #06080f;
+            background-image:
+                radial-gradient(ellipse 40% 50% at 30% 50%, rgba(0, 243, 255, 0.1), rgba(0, 243, 255, 0) 72%),
+                linear-gradient(180deg, #05070d 0, #070a13 58%, #0c1326 100%);
+        }
+        html.stage-wait #game-container[data-stage="results"] #ui-overlay,
+        html.stage-poster #game-container[data-stage="results"] #ui-overlay {
+            background-color: transparent;
+            background-image: linear-gradient(270deg, rgba(6, 8, 15, 0.8) 0, rgba(6, 8, 15, 0.35) 40%, rgba(6, 8, 15, 0) 60%);
+            background-size: auto;
+            background-position: 0 0;
+        }
+        @media (max-width: 700px) {
+            html .results-layout { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+            html .results-stage { height: clamp(170px, 34vh, 300px); }
+            html.stage-wait #game-container[data-stage="results"] #ui-overlay,
+            html.stage-poster #game-container[data-stage="results"] #ui-overlay {
+                background-image: linear-gradient(0deg, rgba(6, 8, 15, 0.85) 0, rgba(6, 8, 15, 0) 55%);
+            }
+        }
+        html.ac-motion #gameover-screen .menu-section {
+            animation: ac-from-right 520ms var(--ac-ease-out) 120ms backwards;
+        }
+
+        /* ---- PAUSE -------------------------------------------------------
+           The fight you stopped is still there behind the menu, blurred, and
+           the menu is a narrow column - it was a panel over a wall. */
+        html #game-container[data-screen="pause"] #ui-overlay {
+            background-color: rgba(6, 8, 15, 0.5);
+            background-image: none;
+            -webkit-backdrop-filter: blur(9px) saturate(0.85);
+            backdrop-filter: blur(9px) saturate(0.85);
+        }
+        html #pause-screen > .menu-section {
+            width: min(360px, 92vw);
+            background-color: rgba(12, 16, 27, 0.86);
+        }
+        html #pause-screen #pause-title {
+            font-size: 1.7rem;
+            letter-spacing: 0.24em;
+            margin-right: -0.24em;
+        }
         /* ==ac:design-end== */
     </style>
 </head>
@@ -4168,6 +4292,14 @@
             </div>
 
             <div id="gameover-screen">
+                <!-- THE RESULT ON THE STAGE: the winner in the first box, the
+                     loser in the second, drawn there by shared/menustage.js
+                     (the `results` shot). Empty on purpose, like every slot. -->
+                <div class="results-layout">
+                <div class="results-stage" aria-hidden="true">
+                    <div id="results-slot-a" class="results-slot"></div>
+                    <div id="results-slot-b" class="results-slot"></div>
+                </div>
                 <div class="menu-section">
                     <h3 id="winner-title">Player Wins!</h3>
                     <div id="match-summary"></div>
@@ -4207,6 +4339,7 @@
                     </div>
                     <div id="gameover-wait" class="setup-note" style="display:none;">Waiting for the host to choose a rematch&hellip;</div>
                     <button id="btn-play-again" class="btn-back">Back to the Room</button>
+                </div>
                 </div>
             </div>
 
@@ -5454,17 +5587,19 @@ function unlockedCharNames(side) { return CHARACTERS.filter(c => isCharUnlocked(
 // earns their OWN award - the other side's purse is theirs, on their machine -
 // so printing both was never right. Split screen genuinely has two purses on
 // one machine, and still shows both.
+// Classes, not inline styles, so the results screen can be designed; and each
+// amount in an .ac-count, so uiCountUp() can run it up from zero.
 function coinAwardLine(earnedP1, earnedP2) {
-    const gold = 'margin-top:6px;color:#f59e0b;font-weight:bold;';
+    const n = (v) => `<span class="ac-count" data-to="${v}">${v}</span>`;
     if (!AC_ONE_SIDE_PER_CLIENT) {
-        return `<div style="${gold}">P1 +${earnedP1} ${t('coins')}`
-             + ` &nbsp;·&nbsp; P2 +${earnedP2} ${t('coins')}</div>`;
+        return `<div class="summary-coins">P1 +${n(earnedP1)} ${t('coins')}`
+             + ` &nbsp;·&nbsp; P2 +${n(earnedP2)} ${t('coins')}</div>`;
     }
     if (typeof accountSignedIn === 'function' && !accountSignedIn()) {
-        return `<div style="margin-top:6px;color:#94a3b8;">${t('Sign in to keep coins')}</div>`;
+        return `<div class="summary-muted">${t('Sign in to keep coins')}</div>`;
     }
     const mine = LOCAL_SIDE === 'p1' ? earnedP1 : earnedP2;
-    return `<div style="${gold}">+${mine} ${t('coins')}</div>`;
+    return `<div class="summary-coins">+${n(mine)} ${t('coins')}</div>`;
 }
 
 // HOW A COIN FIGURE IS WRITTEN, in one place (#29). "1000 coins" sat beside
@@ -6780,7 +6915,7 @@ function renderViews(dt) {
     // here because here is where this build draws. Asked first and only in
     // MENU - the return below still stands for a menu with no stage, which is
     // every screen but Home so far and every screen in the poster tier.
-    if (gameState === 'MENU' && menuStageFrame(dt)) return;
+    if ((gameState === 'MENU' || gameState === 'GAMEOVER') && menuStageFrame(dt)) return;
     // On the menu the whole 3D scene sits under #ui-overlay's ~opaque
     // background - invisible. Don't waste a full scene render on it (B15).
     if (gameState === 'MENU' || !player1 || !player2) return;
@@ -14287,12 +14422,12 @@ function endMatch() {
         ? payDaily(LOCAL_SIDE)
         : payDaily('p1').concat(payDaily('p2'));
     const challengeLine = earnedChallenges.length
-        ? '<div style="margin-top:6px;color:#34d399;font-weight:bold;">Daily: '
+        ? '<div class="summary-daily">Daily: '
           + earnedChallenges.map(c => c.text + ' (+' + c.coins + ')').join(' &middot; ')
           + '</div>'
         : '';
     const coinLine = matchIsSandbox()
-        ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
+        ? `<div class="summary-muted">No coins earned in the "unlock everything" sandbox</div>`
         : coinAwardLine(earnedP1, earnedP2);
     document.getElementById('match-summary').innerHTML =
         `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t(s1.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
@@ -14300,8 +14435,14 @@ function endMatch() {
         `<div>${t('Round times:')} ${roundTimesStr}</div>` +
         coinLine + challengeLine;
 
+    // The stage, BEFORE the screen: showScreen() is what asks it for a shot,
+    // and the shot is only right if it already knows who won.
+    menuStageShowResult(isDraw
+        ? { draw: [player1.name, player2.name] }
+        : { winner: winner.name, loser: (winner === player1 ? player2 : player1).name });
     showScreen('gameover');
     refreshGameOverUI();   // the guest gets no rematch buttons
+    uiCountUp(document.getElementById('match-summary'));
 }
 
 // Change 2b: the per-state work is a table of step functions keyed by
@@ -14365,15 +14506,17 @@ function endCoopMatch(won, detail) {
 
     const s1 = matchStats.p1, s2 = matchStats.p2;
     const coinLine = matchIsSandbox()
-        ? `<div style="margin-top:6px;color:#64748b;">No coins earned in the "unlock everything" sandbox</div>`
-        : `<div style="margin-top:6px;color:#f59e0b;font-weight:bold;">${t('Each player')} +${earned} ${t('coins')}</div>`;
+        ? `<div class="summary-muted">No coins earned in the "unlock everything" sandbox</div>`
+        : `<div class="summary-coins">${t('Each player')} +<span class="ac-count" data-to="${earned}">${earned}</span> ${t('coins')}</div>`;
     document.getElementById('match-summary').innerHTML =
         `<div>${coopResultText}</div>` +
         `<div><b>${player1.name} (${displayName('p1')})</b>: ${s1.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s1.largestHit.toFixed(0)}, ${s1.specialsUsed} ${t(s1.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
         `<div><b>${player2.name} (${displayName('p2')})</b>: ${s2.damageDealt.toFixed(0)} ${t('dmg dealt, largest hit')} ${s2.largestHit.toFixed(0)}, ${s2.specialsUsed} ${t(s2.specialsUsed === 1 ? 'special used' : 'specials used')}</div>` +
         coinLine;
+    menuStageShowResult({ team: [player1.name, player2.name], won: !!won });
     showScreen('gameover');
     refreshGameOverUI();   // the guest gets no rematch buttons
+    uiCountUp(document.getElementById('match-summary'));
 }
 
 // --- Batch 16/23: spawning/retiring co-op enemies. ---
@@ -14974,7 +15117,7 @@ if (DEBUG) {
         get TERRAIN() { return TERRAIN; },
         // Batch 16 co-op
         isCoopMode, pickTarget, getExtraCombatTargets, isAlive,
-        spawnCoopEntity, spawnBossForFight, spawnNextWave, disposeBoss, endCoopMatch, resolveCoopMode,
+        spawnCoopEntity, spawnBossForFight, spawnNextWave, disposeBoss, endCoopMatch, endMatch, resolveCoopMode,
         BOSS_MAP, BOSS_NAME, LAYER_BOSS_BODY, camP1, camP2,
         // `bossEntity` keeps meaning "the single notable enemy" for existing
         // checks; `coopEnemies` is the real list.

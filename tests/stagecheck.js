@@ -228,6 +228,52 @@ async function intoAFight(page) {
         check('the wordmark is where it was on first load', h.y === homeY, homeY + ' -> ' + h.y);
     }
 
+    // --------------------------------------------------------------- results
+    // THE MATCH IS OVER: the winner stands, the loser falls - and gets up
+    // again when the next screen loads, because the room after a lost match
+    // must not show your fighter lying on the dais you are about to pick from.
+    section('At the end of a match the winner stands and the loser falls');
+    if (!await intoAFight(page)) {
+        check('reached a fight to finish', false, 'never left the menu');
+    } else {
+        const names = await page.evaluate(() => [player1.name, player2.name]);
+        await page.evaluate(() => { winner = player1; isDraw = false; window.ACDebug.endMatch(); });
+        const both = await H.waitInPage(page,
+            "menuStageStats().wants === 'results' && menuStageStats().actors[1] !== null && menuStageStats().drawn > 0", 90000);
+        s = await stats(page);
+        check('the results screen asks for the results shot', s && s.wants === 'results', s && s.wants);
+        check('the winner stands in front, the loser behind', both
+            && s.actors[0] === names[0] && s.actors[1] === names[1], JSON.stringify(s && s.actors));
+        check('the loser is down and the winner is not', s && s.down[0] === false && s.down[1] === true,
+            JSON.stringify(s && s.down));
+        // After a DRAW, not after the fall: the grounding happens as the
+        // frame is drawn, and on a slow machine the stage draws on demand.
+        // The first version measured straight away and caught the body in
+        // the air between the fall starting and the frame that lays it down.
+        const d0 = (await stats(page)).drawn;
+        await page.evaluate(() => { menuStage.dirty = true; });
+        await H.waitInPage(page, 'menuStageStats().drawn > ' + d0, 30000);
+        const lowest = await page.evaluate(() => {
+            const a = menuStage.actors[1];
+            a.fighter.updateMatrixWorld(true);
+            let low = Infinity;
+            const v = new THREE.Vector3();
+            a.fighter.traverse(o => { if (o.isBone) { v.setFromMatrixPosition(o.matrixWorld); low = Math.min(low, v.y); } });
+            const top = new THREE.Vector3().setFromMatrixPosition(a.holder.matrixWorld).y;
+            return { low: Math.round(low * 10) / 10, top: Math.round(top * 10) / 10 };
+        });
+        // Laid on the dais, not hung above it: the Death clip alone left a
+        // fallen fighter forty pixels in the air (menuStageGround).
+        check('and lies on their dais rather than above it', Math.abs(lowest.low - lowest.top - 3) < 1.5,
+            JSON.stringify(lowest));
+
+        section('...and gets up again when the screen changes');
+        await page.evaluate(() => window.ACDebug.goHome());
+        await H.waitInPage(page, "menuStageStats().wants === 'home'", 30000);
+        s = await stats(page);
+        check('nobody is still down on Home', s && s.down.every(d => !d), JSON.stringify(s && s.down));
+    }
+
     // ----------------------------------------------------------------- local
     section('The local build has no Home; its stage is the pair between the panels');
     const local = await H.newPage(browser);

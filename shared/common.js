@@ -59,6 +59,27 @@ function uiBump(el, cls) {
     el.addEventListener('animationend', done);
 }
 
+// NUMBERS THAT ARRIVE COUNT UP. Every .ac-count inside `root` runs from zero
+// to its data-to over most of a second, eased so it slows into the total -
+// coins earned are the one number a results screen exists to deliver, and a
+// number that is simply there has not been delivered. Without motion the
+// final figure is already in the markup, so there is nothing to do.
+function uiCountUp(root) {
+    if (!UI_MOTION || !root) return;
+    const els = root.querySelectorAll('.ac-count');
+    if (!els.length) return;
+    const t0 = performance.now(), DUR = 900;
+    const targets = [...els].map(el => Number(el.getAttribute('data-to')) || 0);
+    els.forEach(el => { el.textContent = '0'; });
+    const step = (now) => {
+        const p = Math.min(1, (now - t0) / DUR);
+        const e = 1 - Math.pow(1 - p, 3);
+        els.forEach((el, k) => { el.textContent = String(Math.round(targets[k] * e)); });
+        if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+}
+
 // Text that changed gets noticed. For numbers and states a player is watching
 // for - a coin total, a setting's value - where the change IS the feedback.
 function uiSetText(el, text) {

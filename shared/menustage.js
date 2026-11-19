@@ -69,6 +69,11 @@ const MENU_STAGE_FOG_AT_FIGHTER = 0.41;
 const MENU_STAGE_SHOTS = {
     home: { screen: 'home', slots: [['home-slot']] },
     duel: { screen: 'select', slots: [['slot-you-portrait', 'duel-slot-a'], ['slot-foe-portrait', 'duel-slot-b']] },
+    // The match is over: the winner in front, the loser further back. Who is
+    // which, and what each does, is TOLD to the stage by the match's end
+    // (menuStageShowResult) - nothing here could tell a co-op defeat from a
+    // co-op win by looking at the fighters.
+    results: { screen: 'gameover', slots: [['results-slot-a'], ['results-slot-b']] },
 };
 
 // THE LADDER. `high` draws every frame; `medium` every other one, which is 30
@@ -135,6 +140,9 @@ function menuStageNewActor(i) {
         arrive: 0,              // 1 as a fighter lands on the dais, easing to 0
         reacting: 0,            // seconds left of a one-shot clip
         locked: false,          // duel: this side has confirmed
+        down: false,            // lying where the Death clip left them
+        onArrive: null,         // 'jump' | 'fall', played once they stand here
+        depth: 0,               // results: how far back they stand
     };
 }
 
@@ -157,6 +165,7 @@ function menuStageInit(X) {
         watch: { sum: 0, n: 0, slow: 0 },
         actors: [menuStageNewActor(0), menuStageNewActor(1)],
         homeFighter: MENU_STAGE_FIGHTER_DEFAULT,
+        result: null,           // what the last match's end asked the stage to show
         slotsRead: false, slotAge: 0,
         par: { x: 0, y: 0, tx: 0, ty: 0 },   // where the pointer is, eased
         size: new THREE.Vector2(),
@@ -266,6 +275,29 @@ function menuStageOnScreen(name) {
 
 // Who stands where, for the shot now wanted.
 function menuStageApplyWants(st) {
+    // A fighter who fell on the results screen gets up again anywhere else:
+    // the room after a lost match must not show your fighter lying on the
+    // dais you are about to pick from.
+    if (st.wants !== 'results') st.actors.forEach(a => { a.depth = 0; a.onArrive = null; menuStageRise(st, a); });
+    if (st.wants === 'results') {
+        const r = st.result || { names: [null, null], react: [null, null], depth: [0, 0] };
+        st.actors.forEach((a, i) => {
+            a.depth = r.depth[i] || 0;
+            // The SAME fighter may already be standing here - a rematch with
+            // the same picks - and then nothing is loaded and nothing
+            // "arrives". So the reaction is played now in that case, and on
+            // arrival otherwise.
+            if (a.name && a.name === r.names[i]) {
+                a.onArrive = null;
+                menuStageRise(st, a);
+                menuStagePlayReaction(i, r.react[i]);
+            } else {
+                a.onArrive = r.react[i];
+            }
+            menuStageSetActor(i, r.names[i]);
+        });
+        return;
+    }
     if (st.wants === 'home') {
         menuStageSetActor(0, st.homeFighter);
         menuStageSetActor(1, null);
@@ -297,6 +329,98 @@ function menuStageSyncDuel() {
         if (locked && !a.locked) menuStageReact(i);
         a.locked = locked;
     });
+}
+
+// THE MATCH IS OVER, and this is what to show. Called by endMatch() and
+// endCoopMatch() just before they show the results screen.
+//
+//   { winner, loser }      a versus result: the winner jumps, the loser falls
+//   { draw: [a, b] }       both stand
+//   { team: [a, b], won }  co-op: both jump, or both fall
+function menuStageShowResult(r) {
+    const st = menuStage;
+    if (!st || !r) return;
+    if (r.draw) {
+        st.result = { names: r.draw.slice(0, 2), react: [null, null], depth: [0, 0] };
+    } else if (r.team) {
+        const how = r.won ? 'jump' : 'fall';
+        st.result = { names: r.team.slice(0, 2), react: [how, how], depth: [0, 0] };
+    } else {
+        st.result = { names: [r.winner, r.loser], react: ['jump', 'fall'], depth: [0, -70] };
+    }
+    if (st.wants === 'results') menuStageApplyWants(st);
+}
+
+function menuStagePlayReaction(i, how) {
+    if (how === 'jump') return menuStageReact(i);
+    if (how === 'fall') return menuStageFall(i);
+    return false;
+}
+
+// The Death clip, once, and then STAY down: clampWhenFinished holds the last
+// frame. In a tier with no clock the clip cannot play, so the pose is jumped
+// to its end instead - a still frame of a fallen fighter, not a standing one.
+function menuStageFall(i) {
+    const st = menuStage;
+    const a = st && st.actors[i || 0];
+    if (!a || !a.fighter) return false;
+    const rig = a.fighter.userData.rig;
+    if (!rig || !rig.actions || !rig.actions.Death) return false;
+    const death = rig.actions.Death;
+    death.reset();
+    death.setLoop(THREE.LoopOnce, 1);
+    death.clampWhenFinished = true;
+    death.play();
+    if (rig.actions[rig.current] && rig.current !== 'Death') death.crossFadeFrom(rig.actions[rig.current], 0.15, false);
+    rig.current = 'Death';
+    a.down = true;
+    a.reacting = 0;
+    if (!MENU_STAGE_EVERY[st.tier]) {
+        if (rig.actions.Idle) rig.actions.Idle.stop();
+        rig.mixer.update(death.getClip().duration + 0.05);
+    }
+    st.dirty = true;
+    return true;
+}
+
+// LAID ON THE DAIS, not hung above it. In a match the Death clip plays while
+// gravity settles the body; the stage has no gravity, and the clip alone left
+// a fallen fighter crumpled forty pixels above their own dais. So while a
+// fighter is down, the lowest of its bones is found each frame and the body
+// lowered until that bone rests just above the dais top. Bones, not the mesh:
+// a skinned mesh's bounding box is its bind pose and knows nothing of the fall.
+const _groundV = new THREE.Vector3();
+function menuStageGround(a) {
+    const g = a.fighter;
+    if (!g) return;
+    if (!a.down) { g.position.y = 0; return; }
+    g.position.y = 0;
+    g.updateMatrixWorld(true);
+    let low = Infinity;
+    g.traverse(o => {
+        if (!o.isBone) return;
+        _groundV.setFromMatrixPosition(o.matrixWorld);
+        if (_groundV.y < low) low = _groundV.y;
+    });
+    if (low === Infinity) return;
+    a.holder.updateMatrixWorld(true);
+    _groundV.setFromMatrixPosition(a.holder.matrixWorld);
+    const scale = a.holder.scale.y || 1;
+    g.position.y = (_groundV.y + 3 - low) / scale;
+}
+
+// Up again, straight into Idle.
+function menuStageRise(st, a) {
+    if (!a.down) return;
+    a.down = false;
+    if (a.fighter) a.fighter.position.y = 0;
+    const rig = a.fighter && a.fighter.userData.rig;
+    if (!rig || !rig.actions || !rig.actions.Idle) return;
+    rig.mixer.stopAllAction();
+    rig.actions.Idle.reset().play();
+    rig.current = 'Idle';
+    rig.mixer.update(0.6);
+    st.dirty = true;
 }
 
 function menuStageRelease(st) {
@@ -565,6 +689,8 @@ function menuStagePaintSlots(st) {
         el.style.backgroundImage = c ? "url('" + menuStageSplashUrl(who) + "')" : 'none';
         el.style.setProperty('--slot-accent', c ? c.color : 'transparent');
         el.classList.toggle('filled', !!c);
+        const r = st.wants === 'results' && st.result;
+        el.classList.toggle('fallen', !!(r && r.react[i] === 'fall'));
     });
 }
 
@@ -623,6 +749,7 @@ function menuStageSetActor(i, name) {
         a.holder.add(g);
         a.fighter = g;
         a.name = name;
+        a.down = false;
         // What animateWeapon() needs to hold this fighter's weapon at rest: it
         // takes a Fighter and reads four things off it. See menuStageDraw.
         a.poser = { name, mesh: g, atkState: 'idle', atkKind: null, atkStateTimer: 0 };
@@ -634,6 +761,11 @@ function menuStageSetActor(i, name) {
         const colour = CHAR_MAP[name] && CHAR_MAP[name].color;
         if (colour) a.rimMat.color.set(colour);
         st.dirty = true;
+        if (a.onArrive) {
+            const how = a.onArrive;
+            a.onArrive = null;
+            menuStagePlayReaction(i, how);
+        }
         return true;
     });
 }
@@ -748,6 +880,7 @@ function menuStagePose(st) {
         if (!a.group.visible) return;
         const off = (here.x + here.w / 2) - cx;             // px from the group's middle
         a.group.position.x = off * perPx;
+        a.group.position.z = a.depth;
         // A fighter's own +X is its forward. A quarter turn brings that to
         // face the camera; the rest turns it toward the middle of the frame -
         // toward the menu when alone, toward the other fighter in a duel -
@@ -797,6 +930,7 @@ function menuStageReact(i) {
 function menuStageSettle(st, a) {
     a.reacting = 0;
     a.arrive = 0;
+    if (a.down) return;
     const rig = a.fighter && a.fighter.userData.rig;
     if (!rig || !rig.actions || !rig.actions.Idle || rig.current === 'Idle') return;
     const idle = rig.actions.Idle;
@@ -823,6 +957,7 @@ function menuStageDraw(st, sec) {
         // own gets the clip and not the second half. Same routine, same
         // order, with a stand-in that is never attacking.
         if (a.poser && typeof animateWeapon === 'function') animateWeapon(a.poser);
+        menuStageGround(a);
     }
     // The arena sets an exposure per theme and the stage is not an arena.
     const exposure = R.toneMappingExposure;
@@ -911,6 +1046,7 @@ function menuStageStats() {
         actors: st.actors.map(x => x.name),
         wanted: st.actors.map(x => x.want),
         reacting: st.actors.some(x => x.reacting > 0),
+        down: st.actors.map(x => x.down),
     };
 }
 
