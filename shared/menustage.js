@@ -8,9 +8,9 @@
 //
 // WHAT THIS IS
 //
-// One small THREE.Scene of its own - a dais, a floor running into fog, some
-// distant pylons, a rift of light, drifting motes - with a fighter standing on
-// it, drawn by the game's ONE renderer while a menu is up.
+// One small THREE.Scene of its own - a floor running into fog, some distant
+// pylons, a rift of light, drifting motes - with up to two fighters standing
+// on it, each on a dais, drawn by the game's ONE renderer while a menu is up.
 //
 // WHY ITS OWN SCENE, and not the arena that is already loaded behind the menu.
 // Three reasons, each of which was a real cost somewhere else in this codebase:
@@ -51,7 +51,7 @@
 // Stage units are the game's: a fighter stands RIG_TARGET_HEIGHT (50) tall.
 const MENU_STAGE_DAIS_TOP = 5;
 const MENU_STAGE_FIGHTER_DEFAULT = 'Kaelen';
-// What has to fit in the slot, top to bottom: the dais, the fighter, headroom.
+// What has to fit in a slot, top to bottom: the dais, the fighter, headroom.
 const MENU_STAGE_FIGHTER_SPAN = 62;
 // How much fog there is AT THE FIGHTER, as density x distance. The camera backs
 // off to make the fighter small - on an upright phone it is two and a half
@@ -60,14 +60,22 @@ const MENU_STAGE_FIGHTER_SPAN = 62;
 // first upright shot was a grey figure. Holding this product constant keeps
 // the fighter as clear as on a desktop and lets the set do the receding.
 const MENU_STAGE_FOG_AT_FIGHTER = 0.41;
-// The element whose box is where the fighter stands, per shot. Empty, and
-// placed by the page's own layout - see menuStageReadSlot.
-const MENU_STAGE_SLOT = { home: 'home-slot' };
+
+// THE SHOTS: which screen asks for one, and WHERE EACH FIGHTER STANDS in it -
+// as the id of an empty element the page's own layout has placed. A slot is a
+// list because the two builds name the same place differently: the online room
+// already had a portrait per player, and the local build's two side panels
+// share a pair of slots between them.
+const MENU_STAGE_SHOTS = {
+    home: { screen: 'home', slots: [['home-slot']] },
+    duel: { screen: 'select', slots: [['slot-you-portrait', 'duel-slot-a'], ['slot-foe-portrait', 'duel-slot-b']] },
+};
 
 // THE LADDER. `high` draws every frame; `medium` every other one, which is 30
 // a second and what a phone gets from the start; `still` draws when something
 // changed and otherwise holds the frame it has; `poster` never touches WebGL
-// and shows a baked image of the same shot (art/render_stage_poster.js).
+// and shows a baked image instead (art/render_stage_poster.js for Home; each
+// fighter's splash figure in a duel slot).
 const MENU_STAGE_EVERY = { high: 1, medium: 2 };
 // Frame-time thresholds, in ms between game-loop frames - NOT between stage
 // draws, so `medium` drawing every other frame does not read as slow.
@@ -98,6 +106,38 @@ function menuStageChooseTier() {
     return live;
 }
 
+function menuStageSlotEl(ids) {
+    for (const id of ids || []) {
+        const el = document.getElementById(id);
+        if (el) return el;
+    }
+    return null;
+}
+
+// The shot a screen asks for, in THIS build: a shot whose first slot is not in
+// the document is another build's (the local build has no Home to stand on).
+function menuStageShotFor(screen) {
+    for (const key of Object.keys(MENU_STAGE_SHOTS)) {
+        const shot = MENU_STAGE_SHOTS[key];
+        if (shot.screen === screen && menuStageSlotEl(shot.slots[0])) return key;
+    }
+    return null;
+}
+
+function menuStageNewActor(i) {
+    return {
+        i,
+        want: null,             // who should be standing here
+        name: null,             // ...and who is
+        fighter: null, poser: null,
+        group: null, holder: null, rimMat: null, ringIn: null, ringOut: null,
+        slot: null,             // the box on the page, in canvas pixels
+        arrive: 0,              // 1 as a fighter lands on the dais, easing to 0
+        reacting: 0,            // seconds left of a one-shot clip
+        locked: false,          // duel: this side has confirmed
+    };
+}
+
 // X: what this module needs from inside bootGame(). See THE SCOPE RULE above.
 //   renderer, renderWithBloom(scene, camera, dt), ensureCharModel(name),
 //   buildRiggedCharacter(name), disposeObject3D(obj), syncSurface(), screen()
@@ -115,10 +155,9 @@ function menuStageInit(X) {
         t: 0, owed: 0, tick: 0, sinceDraw: 0, drawn: 0,
         lastAt: 0,
         watch: { sum: 0, n: 0, slow: 0 },
-        fighter: null, fighterName: null, wantFighter: MENU_STAGE_FIGHTER_DEFAULT,
-        slot: null, slotAge: 0,
-        arrive: 0,              // 1 as a fighter lands on the dais, easing to 0
-        reacting: 0,            // seconds left of a one-shot clip
+        actors: [menuStageNewActor(0), menuStageNewActor(1)],
+        homeFighter: MENU_STAGE_FIGHTER_DEFAULT,
+        slotsRead: false, slotAge: 0,
         par: { x: 0, y: 0, tx: 0, ty: 0 },   // where the pointer is, eased
         size: new THREE.Vector2(),
         target: new THREE.Vector3(),
@@ -134,9 +173,9 @@ function menuStageInit(X) {
     // who replaced him a third of a second later. An empty stage that a
     // fighter arrives on has no size to disagree about.
     document.documentElement.classList.add(menuStage.tier === 'poster' ? 'stage-poster' : 'stage-wait');
-    const relaid = () => { if (menuStage) { menuStage.slot = null; menuStage.dirty = true; } };
+    const relaid = () => { if (menuStage) { menuStage.slotsRead = false; menuStage.dirty = true; } };
     window.addEventListener('resize', relaid);
-    // The menu scrolls on a short window, and the slot scrolls with it.
+    // The menu scrolls on a short window, and the slots scroll with it.
     const ov = document.getElementById('ui-overlay');
     if (ov) ov.addEventListener('scroll', relaid, { passive: true });
     // THE SET LEANS TOWARD THE POINTER, a few units of camera, so the pylons
@@ -152,10 +191,14 @@ function menuStageInit(X) {
         st.par.tx = ((e.clientX - r.left) / Math.max(1, r.width)) * 2 - 1;
         st.par.ty = ((e.clientY - r.top) / Math.max(1, r.height)) * 2 - 1;
     }, { passive: true });
-    // ...and the fighter answers a tap, which is the first thing anyone does
-    // to a character standing on a home screen.
-    const slotEl = document.getElementById(MENU_STAGE_SLOT.home);
-    if (slotEl) slotEl.addEventListener('click', menuStageReact);
+    // ...and a fighter answers a tap, which is the first thing anyone does to
+    // a character standing on a menu.
+    for (const key of Object.keys(MENU_STAGE_SHOTS)) {
+        MENU_STAGE_SHOTS[key].slots.forEach((ids, i) => {
+            const slotEl = menuStageSlotEl(ids);
+            if (slotEl) slotEl.addEventListener('click', () => menuStageReact(i));
+        });
+    }
     // A lost context takes every texture and program with it. The game's own
     // recovery is its business; the stage's is to stop drawing and let the
     // poster stand, which needs nothing the context held.
@@ -178,7 +221,7 @@ function menuStageRefreshPlate() {
     const plate = document.getElementById('home-plate');
     const st = menuStage;
     if (!plate || !st) return;
-    const c = CHAR_MAP[st.wantFighter];
+    const c = CHAR_MAP[st.homeFighter];
     if (!c) return;
     const nameEl = document.getElementById('home-plate-name');
     const titleEl = document.getElementById('home-plate-title');
@@ -202,14 +245,58 @@ function menuStageRefreshPlate() {
 // advantage the cap exists to prevent - so the surface is returned here, in
 // the same call that hides the menu, before any match code can read a size.
 function menuStageOnScreen(name) {
+    const shot = menuStageShotFor(name);
     const gc = document.getElementById('game-container');
-    if (gc) gc.setAttribute('data-screen', name || '');
+    if (gc) {
+        gc.setAttribute('data-screen', name || '');
+        // The shot, where CSS can read it. Every stage rule is gated on this
+        // attribute being present, so a class left on <html> by anything can
+        // never restyle a screen that has no stage - a match least of all.
+        if (shot) gc.setAttribute('data-stage', shot);
+        else gc.removeAttribute('data-stage');
+    }
     const st = menuStage;
     if (!st) return;
-    st.wants = (name === 'home') ? 'home' : 'none';
-    st.slot = null;
-    if (st.wants === 'none') menuStageRelease(st);
-    else st.dirty = true;
+    st.wants = shot || 'none';
+    st.slotsRead = false;
+    if (st.wants === 'none') { menuStageRelease(st); return; }
+    menuStageApplyWants(st);
+    st.dirty = true;
+}
+
+// Who stands where, for the shot now wanted.
+function menuStageApplyWants(st) {
+    if (st.wants === 'home') {
+        menuStageSetActor(0, st.homeFighter);
+        menuStageSetActor(1, null);
+    } else if (st.wants === 'duel') {
+        menuStageSyncDuel();
+    }
+}
+
+// THE ROOM, AND THE LOCAL SELECT SCREEN: two fighters facing each other, each
+// whoever that side is looking at or has chosen. Called from refreshMenuUI(),
+// which both builds already run on every change to a pick - so this reads the
+// same four variables the room reads and cannot disagree with it.
+//
+// Left is always YOU. Online the guest is p2, and a room that put the guest's
+// own fighter on the right because the host is "player one" would be showing
+// each of them the other one's view.
+function menuStageSyncDuel() {
+    const st = menuStage;
+    if (!st || st.wants !== 'duel') return;
+    const sides = (AC_ONE_SIDE_PER_CLIENT && LOCAL_SIDE === 'p2') ? ['p2', 'p1'] : ['p1', 'p2'];
+    sides.forEach((side, i) => {
+        const choice = side === 'p1' ? p1Choice : p2Choice;
+        const preview = side === 'p1' ? p1Preview : p2Preview;
+        const stage = side === 'p1' ? p1Stage : p2Stage;
+        const a = st.actors[i];
+        const locked = stage === 'confirmed' && !!choice;
+        menuStageSetActor(i, choice || preview || null);
+        // THE LOCK-IN. The moment a side confirms, its fighter answers.
+        if (locked && !a.locked) menuStageReact(i);
+        a.locked = locked;
+    });
 }
 
 function menuStageRelease(st) {
@@ -226,7 +313,7 @@ function menuStageDemote(st, tier) {
     st.dirty = true;
     st.watch.sum = 0; st.watch.n = 0; st.watch.slow = 0;
     // A tier with no clock cannot finish a clip it was half-way through.
-    if (!MENU_STAGE_EVERY[tier]) menuStageSettle(st);
+    if (!MENU_STAGE_EVERY[tier] && st.actors) st.actors.forEach(a => menuStageSettle(st, a));
     if (tier === 'poster') {
         menuStageRelease(st);
         document.documentElement.classList.remove('stage-wait');
@@ -265,6 +352,57 @@ function menuStageCanvasTexture(size, paint) {
     return tex;
 }
 
+// One dais: the slab, the ring round its rim, a smaller ring that turns, a
+// wide one on the floor, and a soft dark blob where a shadow would be. Each
+// fighter stands on their own, and the rim takes their colour.
+function menuStageBuildDais(st, actor) {
+    const group = new THREE.Group();
+    // Six-sided because the accent trim in the arenas is, and lit from its
+    // own rim so the fighter reads as standing ON light.
+    const slab = new THREE.Mesh(
+        new THREE.CylinderGeometry(38, 44, MENU_STAGE_DAIS_TOP, 6),
+        // UNLIT. Lit, even a 4%-albedo top face came out pale lavender: it
+        // faces straight up into the key, the hemisphere and both rims at
+        // once, and was the brightest surface in a frame it is meant to be the
+        // floor of. Its edge is drawn by the rings; the slab only has to be
+        // dark and take the fog.
+        new THREE.MeshBasicMaterial({ color: 0x0b101c }));
+    slab.position.y = MENU_STAGE_DAIS_TOP / 2;
+    group.add(slab);
+    const hexRing = (radius, tube, y, mat) => {
+        const m = new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 6, 6), mat);
+        m.rotation.x = Math.PI / 2;
+        m.rotation.z = Math.PI / 2;      // the cylinder's corners sit a twelfth of a turn round from the torus's
+        m.position.y = y;
+        group.add(m);
+        return m;
+    };
+    // toneMapped: false on everything that is meant to be a LIGHT rather than
+    // a lit surface. The renderer tone-maps with ACES, which rolls a saturated
+    // bright colour off toward grey - correct for a sunlit wall and exactly
+    // wrong for a neon edge, which came out the colour of wet slate. Unmapped,
+    // it is also bright enough to clear the bloom threshold where there is one.
+    actor.rimMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff, toneMapped: false });
+    hexRing(37.4, 0.8, MENU_STAGE_DAIS_TOP + 0.1, actor.rimMat);
+    actor.ringIn = hexRing(25, 0.28, MENU_STAGE_DAIS_TOP + 0.1,
+        new THREE.MeshBasicMaterial({ color: 0x00f3ff, transparent: true, opacity: 0.4, toneMapped: false }));
+    actor.ringOut = hexRing(66, 0.45, 0.2,
+        new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.8, toneMapped: false }));
+    // The renderer has shadow maps on for the arena's sake; nothing here casts
+    // into one, so nothing here pays for one.
+    const blob = new THREE.Mesh(
+        new THREE.PlaneGeometry(52, 52),
+        new THREE.MeshBasicMaterial({ map: st.blobTex, transparent: true, depthWrite: false }));
+    blob.rotation.x = -Math.PI / 2;
+    blob.position.y = MENU_STAGE_DAIS_TOP + 0.2;
+    group.add(blob);
+    actor.holder = new THREE.Group();
+    actor.holder.position.y = MENU_STAGE_DAIS_TOP;
+    group.add(actor.holder);
+    actor.group = group;
+    st.scene.add(group);
+}
+
 function menuStageBuildSet(st) {
     const sc = new THREE.Scene();
     const ground = 0x06080f;
@@ -274,8 +412,8 @@ function menuStageBuildSet(st) {
     sc.fog = new THREE.FogExp2(ground, 0.0030);
 
     // THREE LIGHTS AND A KICK, and the count never changes after this line -
-    // the rim is RETINTED per fighter, which costs a uniform, where swapping a
-    // light in or out would cost every program in the scene.
+    // the rim is RETINTED, which costs a uniform, where swapping a light in or
+    // out would cost every program in the scene.
     sc.add(new THREE.HemisphereLight(0xcfe2ff, 0x0b0e16, 0.85));
     const keyLight = new THREE.DirectionalLight(0xfff2e0, 2.1);
     keyLight.position.set(-70, 95, 120);
@@ -310,43 +448,7 @@ function menuStageBuildSet(st) {
     gridMesh.position.y = 0.05;
     sc.add(gridMesh);
 
-    // The dais. Six-sided because the accent trim in the arenas is, and lit
-    // from its own rim so the fighter reads as standing ON light.
-    const dais = new THREE.Mesh(
-        new THREE.CylinderGeometry(38, 44, MENU_STAGE_DAIS_TOP, 6),
-        // UNLIT. Lit, even a 4%-albedo top face came out pale lavender: it
-        // faces straight up into the key, the hemisphere and both rims at
-        // once, and was the brightest surface in a frame it is meant to be the
-        // floor of. Its edge is drawn by the rings; the slab only has to be
-        // dark and take the fog.
-        new THREE.MeshBasicMaterial({ color: 0x0b101c }));
-    dais.position.y = MENU_STAGE_DAIS_TOP / 2;
-    sc.add(dais);
-    // toneMapped: false on everything that is meant to be a LIGHT rather than
-    // a lit surface. The renderer tone-maps with ACES, which rolls a saturated
-    // bright colour off toward grey - correct for a sunlit wall and exactly
-    // wrong for a neon edge, which came out the colour of wet slate. Unmapped,
-    // it is also bright enough to clear the bloom threshold where there is one.
-    const rimMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff, toneMapped: false });
-    const hexRing = (radius, tube, y, mat) => {
-        const m = new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 6, 6), mat);
-        m.rotation.x = Math.PI / 2;
-        m.rotation.z = Math.PI / 2;      // the cylinder's corners sit a twelfth of a turn round from the torus's
-        m.position.y = y;
-        sc.add(m);
-        return m;
-    };
-    hexRing(37.4, 0.8, MENU_STAGE_DAIS_TOP + 0.1, rimMat);
-    st.ringIn = hexRing(25, 0.28, MENU_STAGE_DAIS_TOP + 0.1,
-        new THREE.MeshBasicMaterial({ color: 0x00f3ff, transparent: true, opacity: 0.4, toneMapped: false }));
-    hexRing(66, 0.45, 0.2,
-        new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.8, toneMapped: false }));
-    st.rimMat = rimMat;
-
-    // A soft dark blob where a shadow would be. The renderer has shadow maps on
-    // for the arena's sake; nothing here casts into one, so nothing here pays
-    // for one.
-    const blobTex = menuStageCanvasTexture(128, (g, s) => {
+    st.blobTex = menuStageCanvasTexture(128, (g, s) => {
         const r = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
         r.addColorStop(0, 'rgba(0,0,0,0.85)');
         r.addColorStop(0.6, 'rgba(0,0,0,0.35)');
@@ -354,12 +456,17 @@ function menuStageBuildSet(st) {
         g.fillStyle = r;
         g.fillRect(0, 0, s, s);
     });
-    const blob = new THREE.Mesh(
-        new THREE.PlaneGeometry(52, 52),
-        new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
-    blob.rotation.x = -Math.PI / 2;
-    blob.position.y = MENU_STAGE_DAIS_TOP + 0.2;
-    sc.add(blob);
+
+    // EVERYTHING BEHIND THE FIGHTERS IS ONE GROUP, scaled with the camera's
+    // distance (see menuStagePose). The camera backs off to fit a smaller
+    // slot or a second fighter, and a backdrop that stayed put grew to fill
+    // the frame as it did: in the first duel shot the pylons were four bright
+    // slabs the height of the picture with two small figures in front of
+    // them. Scaled, the set is the same composition at every distance - and
+    // the same share of it is fog, since the fog thins by the same factor.
+    const back = new THREE.Group();
+    sc.add(back);
+    st.back = back;
 
     // Pylons, far enough back that fog does most of the drawing. Positions are
     // a fixed table, not random: the poster is a photograph of this set, and
@@ -375,15 +482,15 @@ function menuStageBuildSet(st) {
     for (const [px, pz, ph, which] of PYLONS) {
         const body = new THREE.Mesh(new THREE.BoxGeometry(26, ph, 26), pylonMat);
         body.position.set(px, ph / 2, pz);
-        sc.add(body);
+        back.add(body);
         const strip = new THREE.Mesh(new THREE.BoxGeometry(2.2, ph * 0.72, 0.8), which ? stripB : stripA);
         strip.position.set(px, ph * 0.5, pz + 13.6);
-        sc.add(strip);
+        back.add(strip);
     }
 
     // The rift: the "dimensional" in the tagline, as the one bright thing
-    // behind the fighter. Additive and unfogged, so it reads as a light source
-    // rather than as an object at a distance.
+    // behind the fighters. Additive and unfogged, so it reads as a light
+    // source rather than as an object at a distance.
     const riftTex = menuStageCanvasTexture(256, (g, s) => {
         const r = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
         r.addColorStop(0, 'rgba(190, 250, 255, 0.95)');
@@ -398,7 +505,7 @@ function menuStageBuildSet(st) {
         new THREE.MeshBasicMaterial({ map: riftTex, transparent: true, opacity: 0.62,
             blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false }));
     rift.position.set(0, 120, -470);
-    sc.add(rift);
+    back.add(rift);
     st.rift = rift;
 
     // Motes. Their positions come from a fixed seed for the same reason the
@@ -428,25 +535,46 @@ function menuStageBuildSet(st) {
     const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
         color: 0x9fefff, size: 3.2, map: moteTex, sizeAttenuation: true, transparent: true, opacity: 0.8,
         blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
-    sc.add(motes);
+    back.add(motes);
     st.motes = motes;
-
-    const holder = new THREE.Group();
-    holder.position.y = MENU_STAGE_DAIS_TOP;
-    sc.add(holder);
-    st.holder = holder;
 
     st.cam = new THREE.PerspectiveCamera(30, 1, 1, 4000);
     st.scene = sc;
+    st.actors.forEach(a => menuStageBuildDais(st, a));
 }
 
-// ---- the fighter ---------------------------------------------------------
+// ---- the fighters --------------------------------------------------------
 
-function menuStageDropFighter(st) {
-    const g = st.fighter;
+function menuStageSplashUrl(name) {
+    return AC_ASSET_BASE + 'splash/' + String(name).toLowerCase() + '.webp';
+}
+
+// WHAT A DUEL SLOT SHOWS WHEN NOTHING IS DRAWN IN IT: that fighter's splash
+// figure, as the slot's own background. It is the poster tier's whole picture
+// and every other tier's placeholder until the first live frame - the design
+// layer takes it away again once the stage is on (html.stage-on). Home's slot
+// is left alone: its poster is a photograph of the whole frame.
+function menuStagePaintSlots(st) {
+    const shot = MENU_STAGE_SHOTS[st.wants];
+    if (!shot || st.wants === 'home') return;
+    shot.slots.forEach((ids, i) => {
+        const el = menuStageSlotEl(ids);
+        if (!el) return;
+        const who = st.actors[i].want;
+        const c = who && CHAR_MAP[who];
+        el.style.backgroundImage = c ? "url('" + menuStageSplashUrl(who) + "')" : 'none';
+        el.style.setProperty('--slot-accent', c ? c.color : 'transparent');
+        el.classList.toggle('filled', !!c);
+    });
+}
+
+function menuStageDropFighter(st, a) {
+    const g = a.fighter;
+    a.fighter = null;
+    a.name = null;
+    a.poser = null;
+    a.reacting = 0;
     if (!g) return;
-    st.fighter = null;
-    st.fighterName = null;
     if (g.parent) g.parent.remove(g);
     const rig = g.userData && g.userData.rig;
     if (rig && rig.mixer) {
@@ -456,17 +584,26 @@ function menuStageDropFighter(st) {
     st.X.disposeObject3D(g);
 }
 
-// Resolves once `name` is standing on the dais. A newer call wins: a slow
-// download for a fighter nobody is waiting for any more is thrown away on
-// arrival rather than swapped in over the one they asked for after it.
-function menuStageSetFighter(name) {
+// Resolves once `name` is standing in place `i` - or, with no name, once
+// nobody is. A newer call wins: a slow download for a fighter nobody is waiting
+// for any more is thrown away on arrival rather than swapped in over the one
+// they asked for after it.
+function menuStageSetActor(i, name) {
     const st = menuStage;
-    if (!st || !name) return Promise.resolve(false);
-    st.wantFighter = name;
-    menuStageRefreshPlate();
-    if (!st.scene || st.fighterName === name) return Promise.resolve(!!st.scene);
+    const a = st && st.actors[i];
+    if (!a) return Promise.resolve(false);
+    name = name || null;
+    a.want = name;
+    menuStagePaintSlots(st);
+    if (!st.scene) return Promise.resolve(false);    // applied when the set is built
+    if (a.name === name) return Promise.resolve(true);
+    if (!name) {
+        menuStageDropFighter(st, a);
+        st.dirty = true;
+        return Promise.resolve(true);
+    }
     return st.X.ensureCharModel(name).then((model) => {
-        if (st.wantFighter !== name || st.fighterName === name) return false;
+        if (a.want !== name || a.name === name) return false;
         let g = model ? st.X.buildRiggedCharacter(name) : null;
         // The same fallback a match uses when a model will not load: the
         // procedural body. It has no clips, so it simply stands.
@@ -474,7 +611,7 @@ function menuStageSetFighter(name) {
             g = PROC_MESH_BUILDERS[name](CHAR_MAP[name].color);
         }
         if (!g) return false;
-        menuStageDropFighter(st);
+        menuStageDropFighter(st, a);
         const rig = g.userData.rig;
         if (rig && rig.actions && rig.actions.Idle) {
             rig.actions.Idle.reset().play();
@@ -483,22 +620,33 @@ function menuStageSetFighter(name) {
             // the mixer has before its first update.
             rig.mixer.update(0.6);
         }
-        st.holder.add(g);
-        st.fighter = g;
-        st.fighterName = name;
+        a.holder.add(g);
+        a.fighter = g;
+        a.name = name;
         // What animateWeapon() needs to hold this fighter's weapon at rest: it
         // takes a Fighter and reads four things off it. See menuStageDraw.
-        st.poser = { name, mesh: g, atkState: 'idle', atkKind: null, atkStateTimer: 0 };
-        st.reacting = 0;
+        a.poser = { name, mesh: g, atkState: 'idle', atkKind: null, atkStateTimer: 0 };
+        a.reacting = 0;
         // ARRIVES, rather than appears: a little small and lit hard from
         // behind, settling over half a second. In a tier with no clock it is
         // simply there.
-        st.arrive = MENU_STAGE_EVERY[st.tier] ? 1 : 0;
+        a.arrive = MENU_STAGE_EVERY[st.tier] ? 1 : 0;
         const colour = CHAR_MAP[name] && CHAR_MAP[name].color;
-        if (colour) { st.rimLight.color.set(colour); st.rimMat.color.set(colour); }
+        if (colour) a.rimMat.color.set(colour);
         st.dirty = true;
         return true;
     });
+}
+
+// Home's fighter. Kept under this name because it is the one question the
+// rest of the game asks of the stage: who is on the front screen.
+function menuStageSetFighter(name) {
+    const st = menuStage;
+    if (!st || !name) return Promise.resolve(false);
+    st.homeFighter = name;
+    menuStageRefreshPlate();
+    if (st.wants !== 'home') return Promise.resolve(false);
+    return menuStageSetActor(0, name);
 }
 
 function menuStageEnsure(st) {
@@ -512,7 +660,10 @@ function menuStageEnsure(st) {
             menuStageDemote(st, 'poster');
             return;
         }
-        menuStageSetFighter(st.wantFighter).then(() => { st.ready = true; st.dirty = true; });
+        // Whoever the screen wants by now - it may have changed while this
+        // waited for an idle moment.
+        const waiting = st.actors.map(a => menuStageSetActor(a.i, a.want));
+        Promise.all(waiting).then(() => { st.ready = true; st.dirty = true; });
     };
     // On idle: this is a backdrop, and the first seconds of a visit belong to
     // the page that is actually being read.
@@ -522,7 +673,7 @@ function menuStageEnsure(st) {
 
 // ---- the frame -----------------------------------------------------------
 
-// WHERE THE FIGHTER STANDS IS THE LAYOUT'S DECISION, and this reads it off the
+// WHERE A FIGHTER STANDS IS THE LAYOUT'S DECISION, and this reads it off the
 // page instead of making it again.
 //
 // The first version framed the shot from the canvas's aspect ratio: wide means
@@ -531,66 +682,103 @@ function menuStageEnsure(st) {
 // menu laid over a fighter standing where the second column would have been.
 // Two rules for one fact, in two languages, kept in step by hand.
 //
-// So the page has an empty element where the fighter goes (#home-slot), placed
-// by the same grid that places everything else, and the camera is aimed at
-// that box. A new breakpoint moves the fighter without this file hearing of it.
-function menuStageReadSlot(st) {
+// So the page has an empty element where each fighter goes, placed by the same
+// layout that places everything else, and the camera is aimed at those boxes.
+// A new breakpoint moves a fighter without this file hearing of it.
+function menuStageReadSlots(st) {
     st.slotAge = 0;
-    st.slot = null;
-    const el = document.getElementById(MENU_STAGE_SLOT[st.wants] || '');
+    st.slotsRead = true;
+    const shot = MENU_STAGE_SHOTS[st.wants];
     const surf = st.X.renderer.domElement;
-    if (!el || !surf) return;
-    const r = el.getBoundingClientRect(), c = surf.getBoundingClientRect();
-    if (r.width < 8 || r.height < 8) return;
-    st.slot = { x: r.left - c.left, y: r.top - c.top, w: r.width, h: r.height };
+    const c = surf ? surf.getBoundingClientRect() : null;
+    st.actors.forEach((a, i) => {
+        a.slot = null;
+        const el = c && shot && menuStageSlotEl(shot.slots[i]);
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        if (r.width < 8 || r.height < 8) return;
+        a.slot = { x: r.left - c.left, y: r.top - c.top, w: r.width, h: r.height };
+    });
 }
 
 function menuStagePose(st) {
     const t = st.t;
     const W = st.size.x, H = st.size.y;
     const cam = st.cam;
-    // Re-read now and then even with nothing to say it moved: a web font
+    // Re-read now and then even with nothing to say they moved: a web font
     // arriving reflows the menu, and nothing fires an event for that.
-    if (!st.slot || st.slotAge++ > 90) menuStageReadSlot(st);
-    const slot = st.slot || { x: W * 0.5, y: 0, w: W * 0.5, h: H };
-    // SIZE: by whichever of the slot's sides runs out first.
-    const fit = Math.max(40, Math.min(slot.h * 0.94, slot.w * 1.5));
-    const seen = MENU_STAGE_FIGHTER_SPAN * H / fit;
+    if (!st.slotsRead || st.slotAge++ > 90) menuStageReadSlots(st);
+    const placed = st.actors.filter(a => a.slot);
+    const boxes = placed.length ? placed.map(a => a.slot) : [{ x: W * 0.5, y: 0, w: W * 0.5, h: H }];
+    // SIZE: by whichever side of whichever slot runs out first, so two
+    // fighters in two slots are the same scale as each other.
+    let fit = Infinity;
+    for (const b of boxes) fit = Math.min(fit, b.h * 0.94, b.w * 1.5);
+    fit = Math.max(40, fit);
+    const seen = MENU_STAGE_FIGHTER_SPAN * H / fit;        // world units up the frame
     const dist = seen / (2 * Math.tan(cam.fov * Math.PI / 360));
-    // Low, looking slightly up the fighter. From eye height the frame was
-    // mostly the top of the dais.
+    // Low, looking slightly up the fighters. From eye height the frame was
+    // mostly the tops of the daises.
     cam.position.set(Math.sin(t * 0.17) * 2.2 + st.par.x * 5,
         22 + Math.sin(t * 0.22) * 1.1 - st.par.y * 2.4, dist);
     st.target.set(0, 31, 0);
     cam.lookAt(st.target);
-    // PLACE: the camera stays pointed AT the fighter and the picture is slid
-    // sideways under it - a lens shift, which is what a view offset is. Turning
-    // the camera to put the fighter off-centre keystones the whole set; this
-    // is the same image a wider shot would give, cropped.
-    const dx = (slot.x + slot.w / 2) - W / 2;
-    const dy = (slot.y + slot.h / 2) - H / 2;
-    cam.setViewOffset(W, H, -dx, -dy, W, H);     // sets the aspect and the projection too
+    // PLACE: the camera stays pointed at the middle of the group and the
+    // picture is slid under it - a lens shift, which is what a view offset is.
+    // Turning the camera to put a fighter off-centre keystones the whole set;
+    // this is the image a wider shot would give, cropped. Within the group
+    // each fighter is then MOVED, by as many world units as its slot is pixels
+    // from the group's middle.
+    let cx = 0, cy = 0;
+    for (const b of boxes) { cx += b.x + b.w / 2; cy += b.y + b.h / 2; }
+    cx /= boxes.length; cy /= boxes.length;
+    cam.setViewOffset(W, H, -(cx - W / 2), -(cy - H / 2), W, H);   // sets the aspect and the projection too
     st.scene.fog.density = MENU_STAGE_FOG_AT_FIGHTER / dist;
-    // A fighter's own +X is its forward. A quarter turn brings that to face
-    // the camera; the rest opens the guard stance toward the middle of the
-    // frame, since an Idle clip holds the body side-on to its own forward.
-    const turn = Math.max(-1, Math.min(1, dx / (W * 0.25)));
-    st.holder.rotation.y = -Math.PI / 2 - 0.62 * turn + Math.sin(t * 0.33) * 0.1;
+    // 142 is the distance the set was composed at: a lone fighter filling a
+    // desktop frame.
+    const far = dist / 142;
+    st.back.scale.setScalar(far);
+    st.motes.material.size = 3.2 * far;
+    const perPx = seen / H;
+    const alone = placed.length < 2;
+    let flare = 0;
+    st.actors.forEach((a, i) => {
+        const here = a.slot || (placed.length ? null : boxes[0]);
+        a.group.visible = !!here && (i === 0 || !!a.slot);
+        if (!a.group.visible) return;
+        const off = (here.x + here.w / 2) - cx;             // px from the group's middle
+        a.group.position.x = off * perPx;
+        // A fighter's own +X is its forward. A quarter turn brings that to
+        // face the camera; the rest turns it toward the middle of the frame -
+        // toward the menu when alone, toward the other fighter in a duel -
+        // and a little further than that, since an Idle clip holds the body
+        // side-on to its own forward.
+        const lean = alone ? (cx - W / 2) / (W * 0.25) : (off > 0 ? 1.25 : -1.25);
+        const turn = Math.max(-1.25, Math.min(1.25, lean));
+        a.holder.rotation.y = -Math.PI / 2 - 0.62 * turn + Math.sin(t * 0.33 + i * 1.7) * 0.08;
+        a.ringIn.rotation.z = Math.PI / 2 + t * 0.16 * (i ? -1 : 1);
+        a.ringOut.visible = alone;
+        const land = a.arrive * a.arrive * (3 - 2 * a.arrive);
+        a.holder.scale.setScalar(1 - 0.1 * land);
+        flare = Math.max(flare, land);
+    });
+    // One rim light for the set: a fighter's own colour when alone, the game's
+    // cyan when two share it.
+    const solo = alone && st.actors[0].name && CHAR_MAP[st.actors[0].name];
+    st.rimLight.color.set(solo ? solo.color : '#00f3ff');
+    st.rimLight.intensity = 2.8 + 6 * flare;
     st.rift.material.opacity = 0.58 + Math.sin(t * 0.6) * 0.07;
     st.motes.rotation.y = t * 0.012;
     st.motes.position.y = Math.sin(t * 0.21) * 5;
-    st.ringIn.rotation.z = Math.PI / 2 + t * 0.16;
-    const land = st.arrive * st.arrive * (3 - 2 * st.arrive);
-    st.holder.scale.setScalar(1 - 0.1 * land);
-    st.rimLight.intensity = 2.8 + 6 * land;
 }
 
-// One clip, once, and back to Idle: what the fighter does when tapped. Only
-// where there is a clock to play it on.
-function menuStageReact() {
+// One clip, once, and back to Idle: what a fighter does when tapped, and when
+// its side locks in. Only where there is a clock to play it on.
+function menuStageReact(i) {
     const st = menuStage;
-    if (!st || !st.fighter || !MENU_STAGE_EVERY[st.tier] || st.reacting > 0) return false;
-    const rig = st.fighter.userData.rig;
+    const a = st && st.actors[i || 0];
+    if (!a || !a.fighter || !MENU_STAGE_EVERY[st.tier] || a.reacting > 0) return false;
+    const rig = a.fighter.userData.rig;
     if (!rig || !rig.actions || !rig.actions.Jump || !rig.actions.Idle) return false;
     const jump = rig.actions.Jump;
     jump.reset();
@@ -599,17 +787,17 @@ function menuStageReact() {
     jump.play();
     jump.crossFadeFrom(rig.actions.Idle, 0.12, false);
     rig.current = 'Jump';
-    st.reacting = Math.max(0.3, jump.getClip().duration);
-    st.arrive = Math.max(st.arrive, 0.45);     // the rim flares with it
+    a.reacting = Math.max(0.3, jump.getClip().duration);
+    a.arrive = Math.max(a.arrive, 0.45);       // the rim flares with it
     return true;
 }
 
 // Back to Idle, now. Called when a clip runs out, and when the stage steps
 // down to a tier that could never have finished it.
-function menuStageSettle(st) {
-    st.reacting = 0;
-    st.arrive = 0;
-    const rig = st.fighter && st.fighter.userData.rig;
+function menuStageSettle(st, a) {
+    a.reacting = 0;
+    a.arrive = 0;
+    const rig = a.fighter && a.fighter.userData.rig;
     if (!rig || !rig.actions || !rig.actions.Idle || rig.current === 'Idle') return;
     const idle = rig.actions.Idle;
     idle.reset();
@@ -624,16 +812,18 @@ function menuStageDraw(st, sec) {
     R.getSize(st.size);
     if (st.size.x < 2 || st.size.y < 2) return false;
     menuStagePose(st);
-    const rig = st.fighter && st.fighter.userData.rig;
-    if (rig && rig.mixer && sec > 0) rig.mixer.update(sec);
-    // THE WEAPON ARM IS NOT THE CLIP'S TO POSE. In a fight the mixer writes
-    // every bone and then animateWeapon() runs after it and takes the weapon
-    // arm back - that layering is how baked walk and run cycles coexist with
-    // the tuned per-character swings. A fighter built on its own gets the clip
-    // and not the second half, so the arm simply hangs: Nyx's scythe pointed
-    // straight down through the dais and stuck out a body-length below her
-    // feet. Same routine, same order, with a stand-in that is never attacking.
-    if (st.fighter && st.poser && typeof animateWeapon === 'function') animateWeapon(st.poser);
+    for (const a of st.actors) {
+        if (!a.fighter) continue;
+        const rig = a.fighter.userData.rig;
+        if (rig && rig.mixer && sec > 0) rig.mixer.update(sec);
+        // THE WEAPON ARM IS NOT THE CLIP'S TO POSE. In a fight the mixer writes
+        // every bone and then animateWeapon() runs after it and takes the
+        // weapon arm back - that layering is how baked walk and run cycles
+        // coexist with the tuned per-character swings. A fighter built on its
+        // own gets the clip and not the second half. Same routine, same
+        // order, with a stand-in that is never attacking.
+        if (a.poser && typeof animateWeapon === 'function') animateWeapon(a.poser);
+    }
     // The arena sets an exposure per theme and the stage is not an arena.
     const exposure = R.toneMappingExposure;
     R.toneMappingExposure = 1.0;
@@ -666,6 +856,7 @@ function menuStageFrame(dt) {
         document.documentElement.classList.add('stage-live');
         st.X.syncSurface();
         st.surface = true;
+        st.slotsRead = false;
         st.dirty = true;
         st.lastAt = 0;
     }
@@ -683,13 +874,15 @@ function menuStageFrame(dt) {
         st.lastAt = now;
         st.t += sec;
         st.owed += sec;
-        st.arrive = Math.max(0, st.arrive - sec * 2.1);
         const ease = 1 - Math.exp(-sec * 4);
         st.par.x += (st.par.tx - st.par.x) * ease;
         st.par.y += (st.par.ty - st.par.y) * ease;
-        if (st.reacting > 0) {
-            st.reacting -= sec;
-            if (st.reacting <= 0.16) menuStageSettle(st);
+        for (const a of st.actors) {
+            a.arrive = Math.max(0, a.arrive - sec * 2.1);
+            if (a.reacting > 0) {
+                a.reacting -= sec;
+                if (a.reacting <= 0.16) menuStageSettle(st, a);
+            }
         }
         st.tick = (st.tick + 1) % every;
         if (st.tick && !st.dirty) return true;
@@ -697,8 +890,8 @@ function menuStageFrame(dt) {
         st.owed = 0;
     }
     if (!st.shown) {
-        // AFTER the first frame is on the canvas, so what fades in over the
-        // poster is the stage and not a cleared buffer.
+        // AFTER the first frame is on the canvas, so what fades in is the
+        // stage and not a cleared buffer.
         st.shown = true;
         document.documentElement.classList.add('stage-on');
     }
@@ -710,11 +903,14 @@ function menuStageFrame(dt) {
 function menuStageStats() {
     const st = menuStage;
     if (!st) return null;
+    const a = st.actors[0];
     return {
         tier: st.tier, wants: st.wants, built: !!st.scene, ready: st.ready,
         surface: st.surface, shown: st.shown, drawn: st.drawn,
-        fighter: st.fighterName, showing: st.wantFighter, slot: st.slot,
-        reacting: st.reacting > 0,
+        fighter: a.name, showing: st.wants === 'home' ? st.homeFighter : a.want, slot: a.slot,
+        actors: st.actors.map(x => x.name),
+        wanted: st.actors.map(x => x.want),
+        reacting: st.actors.some(x => x.reacting > 0),
     };
 }
 

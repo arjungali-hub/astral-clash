@@ -77,6 +77,52 @@ function measureHome() {
     };
 }
 
+// THE ROOM, with a fighter being looked at - which is when the detail panel is
+// there to overflow. Added after it did: on an upright phone the picker was a
+// flex row (an inline style beat its stylesheet grid), the detail took the
+// width of its longest sentence - 1,076px - and the roster beside it was zero
+// wide. On a phone on its side the picker panel kept the 350px every panel
+// has, and the roster got 200px for ten fighters. Neither showed on any
+// screen a checker had looked at.
+function measureRoom() {
+    const vis = (el) => {
+        if (!el) return false;
+        const cs = getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+    };
+    const box = (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+    };
+    const frame = document.getElementById('game-container').getBoundingClientRect();
+    const room = document.getElementById('select-screen');
+    const panel = document.querySelector('.picker-panel').getBoundingClientRect();
+    const detail = document.getElementById('p1-detail');
+    const d = detail.getBoundingClientRect();
+    const tiles = [...document.querySelectorAll('#p1-grid .fighter-btn')].filter(vis).map(box);
+    const small = [], cut = [], clipped = [];
+    for (const el of [...room.querySelectorAll('button, input, select, a[href]')].filter(vis)) {
+        const r = el.getBoundingClientRect();
+        const name = el.id || el.className || el.tagName;
+        if (Math.min(r.width, r.height) < 40) small.push(name + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
+        if (r.left < frame.left - 1 || r.right > frame.right + 1) cut.push(name);
+        if (el.tagName === 'BUTTON' && el.scrollWidth > el.clientWidth + 1) {
+            clipped.push(name + ' needs ' + el.scrollWidth + ' has ' + el.clientWidth);
+        }
+    }
+    return {
+        pageWider: document.documentElement.scrollWidth > window.innerWidth + 1,
+        overlayWider: (() => { const o = document.getElementById('ui-overlay'); return o.scrollWidth > o.clientWidth + 1; })(),
+        detailShown: vis(detail),
+        detailInside: d.left >= panel.left - 1 && d.right <= panel.right + 1,
+        detail: box(detail), panel: { x: Math.round(panel.left), w: Math.round(panel.width) },
+        tiles: tiles.length, narrowest: tiles.length ? Math.min(...tiles.map(t => t.w)) : 0,
+        small, cut, clipped,
+    };
+}
+
 (async () => {
     const browser = await H.launch();
     await H.startServer();
@@ -113,6 +159,27 @@ function measureHome() {
             check('and it is not underneath Play', !m.slotUnderPlay,
                 'slot ' + JSON.stringify(m.slot) + ', Play ' + JSON.stringify(m.play));
             check('logged no errors', page.errors.length === 0, JSON.stringify(page.errors.slice(0, 2)));
+
+            section('The room, ' + label + (lang === 'en' ? '' : ', in French') + ', looking at a fighter');
+            await page.evaluate(() => {
+                window.ACDebug.setDebugUnlockAll(true);
+                window.ACDebug.enterRoom();
+            });
+            await H.sleep(300);
+            await page.evaluate(() => document.querySelector('#p1-grid .fighter-btn').click());
+            await H.sleep(700);
+            const r = await page.evaluate(measureRoom);
+            check('nothing is wider than the screen', !r.pageWider && !r.overlayWider,
+                'page ' + r.pageWider + ', overlay ' + r.overlayWider);
+            check("the fighter's detail is showing", r.detailShown);
+            check('and fits inside the picker', r.detailInside,
+                'detail ' + JSON.stringify(r.detail) + ', picker ' + JSON.stringify(r.panel));
+            check('all ten fighters are there to pick', r.tiles === 10, r.tiles + ' tiles');
+            check('and none is squeezed below 56px', r.narrowest >= 56, 'narrowest ' + r.narrowest + 'px');
+            check('every visible control is at least ' + MIN_TARGET + 'px', r.small.length === 0, r.small.join('; '));
+            check('none is cut off by the side of the frame', r.cut.length === 0, r.cut.join('; '));
+            check('no button label is clipped', r.clipped.length === 0, r.clipped.join('; '));
+            check('the room logged no errors', page.errors.length === 0, JSON.stringify(page.errors.slice(0, 2)));
             if (last) await last.close();
             last = page;
         }

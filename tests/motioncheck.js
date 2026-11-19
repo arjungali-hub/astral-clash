@@ -216,7 +216,7 @@ const differences = (now, base) => {
         // the watchdog steps down again and the stage settles it.
         check('and it settles', await H.waitInPage(live, 'menuStageStats().reacting === false', 90000));
         const idle = await live.evaluate(() => {
-            const rig = menuStage.fighter.userData.rig;
+            const rig = menuStage.actors[0].fighter.userData.rig;
             return { current: rig.current, running: rig.actions.Idle.isRunning() };
         });
         check('back in Idle', idle.current === 'Idle' && idle.running, JSON.stringify(idle));

@@ -977,6 +977,17 @@ MARKUP_INTERFACE = {
     'btn-account': 'part of the online-only account panel',
     'btn-account-back': 'part of the online-only account panel',
     'input-account-email': 'part of the online-only account panel',
+    # HOME is the online build's front screen and this build has none: it opens
+    # straight into the picker. These four are Home's - the box its fighter
+    # stands in and the nameplate under it - and the porter carried all four in
+    # here anyway, beside the daily panel, because shared/menustage.js names
+    # them and "shared code names it" is the porter's whole test for whether a
+    # build wants an element. For a week this build showed "KAELEN / TEMPO
+    # DUELIST" under its challenges, describing a fighter standing nowhere.
+    'home-slot': 'Home is online-only; this build opens into the picker',
+    'home-plate': 'the nameplate under Home\'s fighter; no Home here',
+    'home-plate-name': 'part of the Home nameplate',
+    'home-plate-title': 'part of the Home nameplate',
 }
 
 

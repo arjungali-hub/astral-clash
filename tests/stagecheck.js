@@ -229,17 +229,52 @@ async function intoAFight(page) {
     }
 
     // ----------------------------------------------------------------- local
-    section('The local build has no Home, so it builds no stage');
+    section('The local build has no Home; its stage is the pair between the panels');
     const local = await H.newPage(browser);
     await local.setViewport(VIEW);
     await H.boot(local, { clearStorage: true, path: '/local/index.html', query: 'stage=live' });
-    await H.sleep(2500);
+    const localDrew = await H.waitInPage(local, 'menuStageStats() && menuStageStats().drawn > 0', 120000);
     s = await stats(local);
-    check('it initialised', !!s, JSON.stringify(s));
-    check('no screen there asks for a shot', s && s.wants === 'none', s && s.wants);
-    check('so nothing was built', s && s.built === false && s.drawn === 0, JSON.stringify(s));
+    check('the select screen asks for the duel', s && s.wants === 'duel', s && s.wants);
+    check('and it draws', localDrew, JSON.stringify(s));
+    check('with nobody standing on it yet', s && s.actors.every(n => n === null), JSON.stringify(s && s.actors));
+    // Player 1 looks at a fighter; player 2 has not.
+    const looked = await local.evaluate(() => {
+        const b = document.querySelector('#p1-grid .fighter-btn');
+        b.click();
+        return b.dataset.name;
+    });
+    check('P1 looking at a fighter puts them on the left dais',
+        await H.waitInPage(local, 'menuStageStats().actors[0] === ' + JSON.stringify(looked), 60000),
+        JSON.stringify(await stats(local)));
+    check('and leaves the right one empty', (await stats(local)).actors[1] === null);
     check('local page logged no errors', local.errors.length === 0, JSON.stringify(local.errors.slice(0, 2)));
     await local.close();
+
+    // ------------------------------------------------------------- the room
+    section('In the online room, left is you and right is them');
+    await page.evaluate(() => window.ACDebug.enterRoom());
+    await H.waitInPage(page, "menuStageStats().wants === 'duel'", 10000);
+    const mine = await page.evaluate(() => {
+        const b = document.querySelector('#p1-grid .fighter-btn');
+        b.click();
+        return b.dataset.name;
+    });
+    check('your pick stands on the left',
+        await H.waitInPage(page, 'menuStageStats().actors[0] === ' + JSON.stringify(mine), 60000),
+        JSON.stringify(await stats(page)));
+    const slots = await page.evaluate(() => {
+        const st = menuStage;
+        st.slotsRead = false; st.dirty = true;
+        return new Promise(done => requestAnimationFrame(() => requestAnimationFrame(() => done({
+            a: st.actors[0].slot, b: st.actors[1].slot,
+            ax: st.actors[0].group.position.x, bx: st.actors[1].group.position.x,
+        }))));
+    });
+    check('both slots were found on the page', !!slots.a && !!slots.b, JSON.stringify(slots));
+    check('and the fighters stand apart, yours to the left', slots.ax < -1 && slots.bx > 1,
+        'x ' + Math.round(slots.ax) + ' and ' + Math.round(slots.bx));
+    await page.evaluate(() => window.ACDebug.goHome());
 
     await finish(browser, page);
 })();

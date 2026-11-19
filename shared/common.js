@@ -1526,7 +1526,11 @@ function markSelected(side, name) {
 // The accent color stays as the border and glow - it is how a fighter is
 // identified everywhere else - and stays as the FALLBACK fill, so a missing
 // portrait file degrades to exactly the old behaviour instead of a blank hole.
-function faceUrl(name) { return AC_ASSET_BASE + 'faces/' + String(name).toLowerCase() + '.png'; }
+// A fighter's bust, on real transparency (art/render_splash.js). It was
+// 'faces/<name>.png', which art/render_faces.js writes on opaque black - the
+// renderer has no alpha channel to clear - so the accent colour every caller
+// puts behind a portrait had never once shown through.
+function faceUrl(name) { return AC_ASSET_BASE + 'splash/' + String(name).toLowerCase() + '-bust.webp'; }
 
 function arenaSlug(name) {
     return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -2681,22 +2685,12 @@ let _charLoader = null;
 // keeps the slot readable without inventing new art.
 function paintSlotPortrait(el, name) {
     if (!el) return;
+    // The slot is where that side's fighter STANDS now - the menu stage draws
+    // them there, and paints the slot with their splash figure where it does
+    // not (menuStagePaintSlots). All that is left for the room to say is whose
+    // colour the slot is.
     const c = name && CHAR_MAP[name];
-    el.style.borderColor = c ? c.color : '#2e3a59';
-    el.style.boxShadow = c ? `0 0 12px ${c.color}66` : 'none';
-    if (c) {
-        // The accent stays underneath the portrait: it shows through the
-        // transparent background the render leaves, and it is what you see if
-        // the image 404s.
-        el.style.backgroundColor = c.color;
-        el.style.backgroundImage = `url('${faceUrl(name)}')`;
-        el.style.backgroundSize = 'cover';
-        el.style.backgroundPosition = 'center top';
-        el.style.backgroundRepeat = 'no-repeat';
-    } else {
-        el.style.backgroundColor = '#0d1017';
-        el.style.backgroundImage = 'none';
-    }
+    el.style.setProperty('--slot-accent', c ? c.color : 'transparent');
 }
 
 // Which numbered player the local client drives. Online this is decided by the

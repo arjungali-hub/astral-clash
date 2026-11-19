@@ -2129,9 +2129,11 @@
         }
         /* ---- THE MENU STAGE ----------------------------------------------
            shared/menustage.js draws a small 3D scene on the game canvas while
-           Home is up. Four classes on <html>, set by that module, and every
-           rule below is ALSO gated on the screen the frame is showing - so a
-           class left behind by anything can never restyle a match.
+           a menu that has a SHOT is up - Home, and the room. Four classes on
+           <html>, set by that module, and every rule below is ALSO gated on
+           #game-container[data-stage], which the module sets only while such
+           a screen is showing - so a class left behind by anything can never
+           restyle a match.
 
              stage-wait    a live stage is on its way: the frame shows the
                            empty set, drawn here, for it to arrive on.
@@ -2139,29 +2141,29 @@
                            checker): the frame shows the baked shot, for good.
              stage-live    the canvas may fill the roomy menu frame.
              stage-on      ...and has a frame on it, so it fades in. */
-        html.stage-wait #game-container[data-screen="home"] {
+        html.stage-wait #game-container[data-stage="home"] {
             background-color: #06080f;
             background-image:
                 radial-gradient(ellipse 30% 44% at 72% 52%, rgba(0, 243, 255, 0.12), rgba(0, 243, 255, 0) 72%),
                 linear-gradient(180deg, #05070d 0, #070a13 58%, #0c1326 100%);
         }
-        html.stage-poster #game-container[data-screen="home"] {
+        html.stage-poster #game-container[data-stage="home"] {
             background-color: #06080f;
             background-image: url('/assets/menu/stage-home.webp');
             background-size: cover;
             background-position: 64% 50%;
         }
-        html.stage-wait #game-container[data-screen="home"] #gameCanvas,
-        html.stage-poster #game-container[data-screen="home"] #gameCanvas {
+        html.stage-wait #game-container[data-stage] #gameCanvas,
+        html.stage-poster #game-container[data-stage] #gameCanvas {
             opacity: 0;
         }
-        html.stage-live #game-container[data-screen="home"] #gameCanvas {
+        html.stage-live #game-container[data-stage] #gameCanvas {
             height: 100%;
         }
-        html.stage-live #game-container[data-screen="home"] #hudCanvas {
+        html.stage-live #game-container[data-stage] #hudCanvas {
             height: 100%;
         }
-        html.stage-on #game-container[data-screen="home"] #gameCanvas {
+        html.stage-on #game-container[data-stage] #gameCanvas {
             opacity: 1;
             transition: opacity var(--ac-dur-3) ease-out;
         }
@@ -2169,8 +2171,8 @@
            left where the menu is, and along the top and bottom edges where the
            bars are. What a player reads is on a panel with its own ground or
            inside one of these. */
-        html.stage-wait #game-container[data-screen="home"] #ui-overlay,
-        html.stage-poster #game-container[data-screen="home"] #ui-overlay {
+        html.stage-wait #game-container[data-stage="home"] #ui-overlay,
+        html.stage-poster #game-container[data-stage="home"] #ui-overlay {
             background-color: transparent;
             background-image:
                 linear-gradient(90deg, rgba(6, 8, 15, 0.84) 0, rgba(6, 8, 15, 0.6) 30%, rgba(6, 8, 15, 0) 58%),
@@ -2181,32 +2183,32 @@
         }
         /* THE SAME THREE SHAPES art/render_stage_poster.js photographs. */
         @media (min-aspect-ratio: 16/10) and (max-height: 520px) {
-            html.stage-poster #game-container[data-screen="home"] {
+            html.stage-poster #game-container[data-stage="home"] {
                 background-image: url('/assets/menu/stage-home-wide.webp');
                 background-position: 50% 50%;
             }
         }
         @media (max-width: 700px) {
-            html.stage-poster #game-container[data-screen="home"] {
+            html.stage-poster #game-container[data-stage="home"] {
                 background-image: url('/assets/menu/stage-home-tall.webp');
                 background-position: 50% 50%;
             }
-            html.stage-wait #game-container[data-screen="home"] {
+            html.stage-wait #game-container[data-stage="home"] {
                 background-image:
                     radial-gradient(ellipse 60% 26% at 50% 30%, rgba(0, 243, 255, 0.12), rgba(0, 243, 255, 0) 72%),
                     linear-gradient(180deg, #05070d 0, #070a13 58%, #0c1326 100%);
             }
             /* Upright, the fighter stands at the top and the menu is under
                it: a short scrim for the wordmark, a long one for the menu. */
-            html.stage-wait #game-container[data-screen="home"] #ui-overlay,
-            html.stage-poster #game-container[data-screen="home"] #ui-overlay {
+            html.stage-wait #game-container[data-stage="home"] #ui-overlay,
+            html.stage-poster #game-container[data-stage="home"] #ui-overlay {
                 background-image:
                     linear-gradient(180deg, rgba(6, 8, 15, 0.7) 0, rgba(6, 8, 15, 0) 15%),
                     linear-gradient(0deg, rgba(6, 8, 15, 0.9) 0, rgba(6, 8, 15, 0.78) 42%, rgba(6, 8, 15, 0) 58%);
             }
         }
         @media (prefers-reduced-motion: reduce) {
-            html.stage-on #game-container[data-screen="home"] #gameCanvas { transition: none; }
+            html.stage-on #game-container[data-stage] #gameCanvas { transition: none; }
         }
 
         /* ---- HOME --------------------------------------------------------
@@ -2572,14 +2574,14 @@
              a number that changed is seen to           ac-bump (uiSetText)
              the wordmark is alive                     ac-breathe
              the main action catches light             ac-sheen on Play/Start
+             versus slams in; a lock-in flashes        ac-pop, ac-lock, + Jump
              a name LANDS when a fighter is chosen     ac-slam on the plate
              the character idles, and answers a tap    menu stage: Idle, Jump
              the set shifts with the pointer           menu stage: parallax
              loading art drifts                        ac-zoom on the tableau
 
            STILL TO COME, each with the screen it belongs to: panels and
-           screens animating OUT as well as in, the versus slam and the
-           lock-in flash on fighter select, and the results count-up.
+           screens animating OUT as well as in, and the results count-up.
 
            ONE RULE WORTH KNOWING BEFORE ADDING TO THIS. An element's entrance
            animation must stay FIRST in its `animation` list in every state.
@@ -2616,6 +2618,11 @@
             to { transform: translateX(330%) skewX(-20deg); opacity: 0; }
         }
         @keyframes ac-zoom { from { transform: scale(1); } to { transform: scale(1.07); } }
+        @keyframes ac-lock {
+            0% { filter: brightness(1); }
+            22% { filter: brightness(2.1) drop-shadow(0 0 18px rgba(74, 222, 128, 0.9)); }
+            100% { filter: brightness(1); }
+        }
 
         /* -- every button gives, and springs back -- */
         html.ac-motion button {
@@ -2741,6 +2748,14 @@
         html.ac-motion .pslot-vs {
             animation: ac-pop 420ms var(--ac-ease-out) 300ms backwards;
         }
+        /* THE LOCK-IN. A side that confirms flashes - with its entrance still
+           first in the list (the rule at the head of this block). */
+        html.ac-motion #slot-you.locked {
+            animation: ac-from-left 480ms var(--ac-ease-out) 120ms backwards, ac-lock 620ms var(--ac-ease-out);
+        }
+        html.ac-motion #slot-foe.locked {
+            animation: ac-from-right 480ms var(--ac-ease-out) 120ms backwards, ac-lock 620ms var(--ac-ease-out);
+        }
         html.ac-motion .room-main > .menu-section, html.ac-motion .select-row > .menu-section {
             animation: ac-rise 460ms var(--ac-ease-out) 200ms backwards;
         }
@@ -2823,6 +2838,478 @@
             pointer-events: auto;
             cursor: pointer;
         }
+        /* ---- THE DUEL: the room online, the select screen locally ---------
+           Two fighters, facing each other, each standing in a box the layout
+           placed: the room's two portrait slots online, a pair of slots
+           between the side panels locally. The stage aims at those boxes; in
+           the poster tier, and until a live stage has its first frame, each
+           box shows that fighter's splash figure instead (painted by
+           menuStagePaintSlots - hence the !important that takes it away). */
+        html.stage-wait #game-container[data-stage="duel"],
+        html.stage-poster #game-container[data-stage="duel"] {
+            background-color: #06080f;
+            background-image:
+                radial-gradient(ellipse 50% 42% at 50% 30%, rgba(0, 243, 255, 0.1), rgba(0, 243, 255, 0) 72%),
+                linear-gradient(180deg, #05070d 0, #070a13 58%, #0c1326 100%);
+        }
+        html.stage-wait #game-container[data-stage="duel"] #ui-overlay,
+        html.stage-poster #game-container[data-stage="duel"] #ui-overlay {
+            background-color: transparent;
+            background-image:
+                linear-gradient(180deg, rgba(6, 8, 15, 0.72) 0, rgba(6, 8, 15, 0) 14%);
+            background-size: auto;
+            background-position: 0 0;
+        }
+        html .pslot-portrait, html .duel-slot {
+            position: relative;
+            flex: 1 1 auto;
+            width: 100%;
+            height: auto;
+            min-height: 96px;
+            margin: 0;
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
+            background-color: transparent;
+            background-repeat: no-repeat;
+            background-position: center bottom;
+            background-size: contain;
+        }
+        /* A pool of the fighter's colour under their feet, where the dais is
+           when the stage is live. */
+        html .pslot-portrait::after, html .duel-slot::after {
+            content: "";
+            position: absolute;
+            left: 14%; right: 14%; bottom: -4px;
+            height: 16px;
+            border-radius: 50%;
+            background: radial-gradient(ellipse at center, var(--slot-accent, transparent), rgba(0, 0, 0, 0) 70%);
+            opacity: 0.75;
+            pointer-events: none;
+        }
+        html.stage-on #game-container[data-stage="duel"] .pslot-portrait,
+        html.stage-on #game-container[data-stage="duel"] .duel-slot {
+            background-image: none !important;
+            cursor: pointer;
+        }
+        html.stage-on #game-container[data-stage="duel"] .pslot-portrait::after,
+        html.stage-on #game-container[data-stage="duel"] .duel-slot::after {
+            display: none;
+        }
+
+        /* -- the online room -- */
+        html .room-bar, html .room-slots, html .room-main {
+            width: min(1080px, 92vw, calc(100vw - 32px));
+        }
+        html .room-slots {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+            align-items: stretch;
+            gap: 0 10px;
+            height: clamp(200px, 43vh, 450px);
+            margin: 0 auto 12px;
+        }
+        html .room-slots > .pslot {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            min-height: 0;
+            padding: 0 0 2px;
+            background: none;
+        }
+        /* The legacy slot rules are id rules; these have to be too. */
+        html #slot-you, html #slot-foe, html #slot-you.locked, html #slot-foe.locked, html #slot-foe.empty {
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
+            opacity: 1;
+        }
+        html .pslot-role {
+            align-self: flex-start;
+            margin: 0 0 2px;
+            padding: 3px 10px;
+            background-color: rgba(12, 16, 27, 0.8);
+            border: 1px solid var(--ac-line);
+            border-left: 2px solid var(--ac-cyan);
+            border-radius: var(--ac-r1);
+            color: #c9d6ea;
+            font-size: 0.68rem;
+            letter-spacing: 0.14em;
+        }
+        html #slot-foe .pslot-role {
+            align-self: flex-end;
+            border-left: 1px solid var(--ac-line);
+            border-right: 2px solid var(--ac-violet);
+        }
+        html .pslot-name {
+            margin-top: 8px;
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 800;
+            font-size: clamp(1.1rem, 2.5vw, 1.9rem);
+            line-height: 1;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #ffffff;
+            text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
+        }
+        html .pslot-state {
+            margin-top: 6px;
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 600;
+            font-size: 0.72rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            text-shadow: 0 1px 8px rgba(0, 0, 0, 0.95);
+        }
+        html #slot-foe.empty .pslot-name {
+            color: #8494a8;
+        }
+        html .pslot-vs {
+            width: clamp(52px, 8vw, 112px);
+            align-self: center;
+        }
+        html .vs-label {
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 900;
+            font-style: italic;
+            font-size: clamp(1.9rem, 5vw, 3.6rem);
+            line-height: 1;
+            color: #ffffff;
+            text-shadow: 0 0 22px rgba(0, 243, 255, 0.75), 3px 3px 0 rgba(168, 85, 247, 0.65);
+        }
+        html .room-main {
+            align-items: stretch;
+            gap: 12px;
+        }
+        html .room-main > .setup-panel {
+            flex: 0 0 clamp(220px, 26%, 290px);
+            width: auto;
+            margin: 0;
+        }
+        html .picker-panel, html .setup-panel {
+            background-color: rgba(12, 16, 27, 0.86);
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+        }
+
+        /* -- THE ROSTER, AS TILES. A fighter's bust fills the tile and their
+           name sits under it; it was a 34px chip beside two lines of text. -- */
+        html .fighter-grid {
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 8px;
+        }
+        html.ac-local .fighter-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 6px;
+        }
+        html .fighter-btn {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0;
+            padding: 0;
+            overflow: hidden;
+            text-align: center;
+            background-color: #0d1220;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: var(--ac-r1);
+        }
+        /* !important because buildGrid paints the accent as an inline
+           background colour behind the portrait, and a roster of ten flat
+           saturated squares is a paint chart. The accent is the bar under the
+           bust instead. */
+        html .fighter-btn .fface {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 1 / 1;
+            border: 0;
+            border-radius: 0;
+            background-color: #141c30 !important;
+            background-size: cover;
+            background-position: center top;
+            box-shadow: inset 0 -3px 0 var(--accent, #00f3ff);
+        }
+        html .fighter-btn .fmeta {
+            align-items: center;
+            padding: 5px 4px 6px;
+        }
+        html .fighter-btn .fname {
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 700;
+            font-size: 0.74rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #e8eefc;
+            filter: none;
+        }
+        html .fighter-btn .ftitle {
+            display: none;
+        }
+        html .fighter-btn .fkey {
+            position: absolute;
+            top: 4px; left: 4px;
+            margin: 0;
+            background-color: rgba(6, 8, 15, 0.82);
+        }
+        html .fighter-btn .fcost {
+            position: absolute;
+            top: 4px; right: 4px;
+            margin: 0;
+        }
+        html .fighter-btn:hover {
+            background-color: #141c30;
+            border-color: var(--accent, #00f3ff);
+            box-shadow: 0 0 0 1px var(--accent, #00f3ff), 0 10px 22px rgba(0, 0, 0, 0.5);
+            transform: translateY(-2px);
+        }
+        html .fighter-btn:hover .fname, html .fighter-btn.selected .fname {
+            color: #ffffff;
+        }
+        html .fighter-btn:hover .fkey {
+            color: var(--accent-text, #00f3ff);
+        }
+        html .fighter-btn.selected {
+            background-color: #18223d;
+            border-color: var(--accent, #00f3ff);
+            box-shadow: 0 0 0 2px var(--accent, #00f3ff), 0 0 24px rgba(0, 243, 255, 0.25);
+        }
+        @media (max-width: 700px) {
+            html .fighter-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+            html .room-slots { height: clamp(170px, 30vh, 260px); }
+        }
+
+        /* -- the local select screen: the pair of slots between the panels -- */
+        html.ac-local .vs-column {
+            width: clamp(230px, 34vw, 430px);
+            padding-top: 0;
+            justify-content: flex-start;
+        }
+        html .duel-stage {
+            display: flex;
+            align-items: stretch;
+            gap: 6px;
+            width: 100%;
+            height: clamp(210px, 40vh, 370px);
+        }
+        /* -- a fighter's detail: their bust where the colour square was -- */
+        html .detail-header {
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        html .detail-swatch {
+            width: 52px;
+            height: 52px;
+            border-radius: var(--ac-r1);
+            background-color: #141c30;
+            background-size: cover;
+            background-position: center top;
+            background-repeat: no-repeat;
+            box-shadow: inset 0 -3px 0 var(--accent, #00f3ff);
+        }
+        html .detail-name {
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 800;
+            font-size: 1.2rem;
+            line-height: 1.05;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--accent-text, #ffffff);
+        }
+        html .detail-title {
+            margin-top: 3px;
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 600;
+            font-size: 0.66rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: #a9b6c9;
+        }
+
+        /* -- the room on a SHORT frame: a phone on its side. The stage shrinks
+           so the roster starts on the first screen, and the setup panel goes
+           under the picker rather than beside it, because beside it the
+           picker was left 200px for ten fighters. -- */
+        @media (max-width: 960px) {
+            html .room-main { flex-direction: column; align-items: stretch; }
+            /* Both: every panel is a .menu-section, which is 350px wide unless
+               a flex ROW stretches it - and once stacked, nothing does. */
+            html .room-main > .setup-panel, html .room-main > .picker-panel { flex: none; width: auto; }
+        }
+        @media (max-height: 520px) and (min-width: 701px) {
+            html .room-slots { height: clamp(130px, 36vh, 210px); margin-bottom: 8px; }
+            html .pslot-name { margin-top: 4px; font-size: 1.05rem; }
+            html .pslot-state { margin-top: 3px; font-size: 0.62rem; }
+            html .pslot-role { font-size: 0.6rem; padding: 2px 8px; }
+            html .vs-label { font-size: 1.9rem; }
+        }
+
+        /* -- THE LOCAL SELECT SCREEN. A header bar - the wordmark at one end,
+           the three global buttons at the other - and under it the two
+           players' panels with their two fighters standing between them; the
+           day's challenges underneath, where they no longer push the panels
+           off the first screen. It was the wordmark, three buttons and the
+           challenges stacked in the middle of the frame, 300px of it before
+           either player could see a fighter. -- */
+        html.ac-local #select-screen > .brand {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+            align-items: center;
+            column-gap: 10px;
+            text-align: left;
+            margin: 0 0 14px;
+            padding: 0 6px;
+        }
+        html.ac-local #select-screen > .brand > h1 {
+            grid-column: 1;
+            grid-row: 1;
+            margin: 0;
+            font-size: 2.1rem;
+        }
+        html.ac-local #select-screen > .brand > .brand-divider {
+            display: none;
+        }
+        html.ac-local #select-screen > .brand > p {
+            grid-column: 1;
+            grid-row: 2;
+            margin: 6px 0 0;
+        }
+        html.ac-local #select-screen > .brand > button {
+            grid-row: 1 / 3;
+            margin: 0;
+        }
+        html.ac-local #select-screen > .brand > #btn-open-modeselect { grid-column: 3; }
+        html.ac-local #select-screen > .brand > #btn-open-tutorial { grid-column: 4; }
+        html.ac-local #select-screen > .brand > #btn-open-settings { grid-column: 5; }
+        /* The whole frame, not the width of what is in it: #ui-overlay
+           centres its children and so shrink-wraps them, and a row that is
+           only as wide as two panels leaves the fighters between them 162px. */
+        html.ac-local #select-screen {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        html.ac-local #select-screen .select-row {
+            flex-wrap: nowrap;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 0 6px;
+        }
+        html.ac-local .side-panel {
+            flex: 0 0 auto;
+            width: min(350px, 30vw);
+            box-sizing: border-box;
+            margin: 0;
+            min-height: 0;
+        }
+        /* The detail spans the top of the grid it lives in, and the roster
+           sits under it. It was one cell of a two-column grid, with the
+           chosen card stretched to the detail's full height beside it. */
+        html.ac-local .side-panel .fighter-grid {
+            align-items: start;
+        }
+        html.ac-local .side-panel .fighter-grid > .fighter-detail {
+            grid-column: 1 / -1;
+            margin: 0 0 6px;
+        }
+        html.ac-local .side-panel .fighter-btn .fname {
+            font-size: 0.66rem;
+            letter-spacing: 0.05em;
+        }
+        html.ac-local .vs-column {
+            --duel-h: clamp(210px, 40vh, 380px);
+            flex: 1 1 0;
+            min-width: 0;
+            width: auto;
+            min-height: 0;
+            padding-top: 0;
+            justify-content: flex-start;
+        }
+        html .duel-stage {
+            height: var(--duel-h, clamp(210px, 40vh, 380px));
+        }
+        /* VS between the two fighters, not under them. `translate` rather than
+           transform, so the entrance animation - which is a transform - adds
+           to the centring instead of replacing it. */
+        html.ac-local .vs-column > .vs-label, html.ac-local .vs-column > .vs-glow {
+            position: absolute;
+            top: calc(var(--duel-h) * 0.42);
+            left: 50%;
+            transform: none;
+            translate: -50% -50%;
+            z-index: 1;
+            pointer-events: none;
+        }
+        html.ac-local .vs-status {
+            width: auto;
+            font-family: var(--font-title);
+            font-variation-settings: 'wght' 600;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            font-size: 0.74rem;
+        }
+        html.ac-local #select-screen > #daily-panel {
+            width: min(760px, 100%);
+            box-sizing: border-box;
+            margin: 18px auto 6px;
+            padding: 12px 14px 10px;
+            background-color: rgba(12, 16, 27, 0.82);
+            border: 1px solid var(--ac-line);
+            border-left: 2px solid var(--ac-coin);
+            border-radius: var(--ac-r1);
+        }
+        /* Narrow: the legacy rule stacks P1, the fighters and P2 in a column,
+           and the header bar wraps its buttons under the wordmark. */
+        @media (max-width: 900px) {
+            html.ac-local #select-screen > .brand {
+                grid-template-columns: repeat(3, auto);
+                justify-content: center;
+                text-align: center;
+                row-gap: 10px;
+            }
+            html.ac-local #select-screen > .brand > h1, html.ac-local #select-screen > .brand > p {
+                grid-column: 1 / -1;
+            }
+            html.ac-local #select-screen > .brand > button { grid-row: 3; }
+            html.ac-local #select-screen > .brand > #btn-open-modeselect { grid-column: 1; }
+            html.ac-local #select-screen > .brand > #btn-open-tutorial { grid-column: 2; }
+            html.ac-local #select-screen > .brand > #btn-open-settings { grid-column: 3; }
+            html.ac-local .side-panel { width: min(350px, 92vw); }
+            html.ac-local .vs-column { width: min(430px, 92vw); flex: none; }
+        }
+        html.ac-motion.ac-local .vs-column > .vs-label {
+            animation: ac-pop 420ms var(--ac-ease-out) 300ms backwards;
+        }
+        /* TOUCH TARGETS IN THE ROOM. Armory and Random were 28px tall and
+           Leave Room 32 - fine under a mouse pointer and a miss under a thumb,
+           found by phonelayoutcheck the first time it opened the room. 36 for
+           everyone; 44 where the pointer is a finger. */
+        html .side-actions button {
+            min-height: 36px;
+        }
+        @media (hover: none) {
+            html .side-actions button, html #btn-room-leave.btn-back {
+                min-height: 44px;
+            }
+        }
+        /* THE PICKER'S DETAIL COLUMN EXISTS ONLY WHILE THERE IS A DETAIL.
+           With the picker a grid again (see showLocalPickerOnly), a fixed
+           286px second track stayed reserved with the detail hidden, and the
+           roster sat in 391 of 687px - layoutcheck's "the picker fills only
+           the left half", come back. An `auto` track is as wide as what is in
+           it, and a hidden detail is nothing; the gap moves onto the detail
+           as a margin so it goes away with it. */
+        html .picker-side {
+            grid-template-columns: minmax(0, 1fr) auto;
+            column-gap: 0;
+        }
+        html .picker-side > .fighter-detail {
+            margin-left: 10px;
+        }
+        @media (max-width: 700px) {
+            html .picker-side { grid-template-columns: minmax(0, 1fr); }
+            html .picker-side > .fighter-detail { margin-left: 0; }
+        }
         /* ==ac:design-end== */
         </style>
 </head>
@@ -2894,14 +3381,6 @@
                          screen. It belongs with the other two global controls. -->
                     <button id="btn-open-tutorial" class="btn-tutorial">How to Play</button>
                     <button id="btn-open-settings" class="btn-secondary">Settings</button>
-                    <!-- Filled by refreshDailyUI() from shared/challenges.js, so
-                         both builds render the same panel from one function. -->
-                    <div class="daily-panel" id="daily-panel"></div>
-                    <div id="home-slot" aria-hidden="true"></div>
-                    <div class="home-plate" id="home-plate">
-                    <span class="home-plate-name" id="home-plate-name"></span>
-                    <span class="home-plate-title" id="home-plate-title"></span>
-                </div>
                 </div>
                 <div class="select-row">
                     <div class="menu-section side-panel">
@@ -2934,6 +3413,15 @@
                         </div>
                     </div>
                     <div class="vs-column">
+                        <!-- A pair of boxes for the `duel` shot in
+                             shared/menustage.js: player one's fighter is drawn
+                             in the first and player two's in the second, sized
+                             and placed to fit. The room in the other build has
+                             a portrait slot per player and uses those. -->
+                        <div class="duel-stage">
+                            <div id="duel-slot-a" class="duel-slot" aria-hidden="true"></div>
+                            <div id="duel-slot-b" class="duel-slot" aria-hidden="true"></div>
+                        </div>
                         <div class="vs-glow"></div>
                         <div class="vs-label">VS</div>
                         <div class="vs-status" id="vs-status">Choose your fighters</div>
@@ -2970,6 +3458,9 @@
                         </div>
                     </div>
                 </div>
+                <!-- Filled by refreshDailyUI() from shared/challenges.js, so
+                     both builds render the same panel from one function. -->
+                <div class="daily-panel" id="daily-panel"></div>
 
             </div>
 
@@ -5338,7 +5829,17 @@ function showLocalPickerOnly() {
         // The WRAPPER, not the grid and detail inside it: showDetail() writes
         // display straight onto those two, so hiding them individually could be
         // silently undone by any call that touched the remote side.
-        if (wrap) wrap.style.display = isLocalSide(side) ? 'flex' : 'none';
+        //
+        // SHOWN BY CLEARING, NOT BY SAYING WHAT TO SHOW. This wrote 'flex',
+        // and the picker's stylesheet says `display: grid` - with a second
+        // template for an upright phone that puts the detail under the roster.
+        // The inline flex beat both, for as long as both existed. On a desktop
+        // nobody could tell, because the detail had a fixed width and a flex
+        // row of [grid, 286px] looks like the grid it was meant to be. On a
+        // phone the detail's width is `auto`, which in a flex row means as
+        // wide as its longest sentence: measured at 390px wide, the detail
+        // was 1,076px and the roster beside it was zero.
+        if (wrap) wrap.style.display = isLocalSide(side) ? '' : 'none';
     }
 }
 
@@ -9805,7 +10306,7 @@ function characterInfoHTML(side, c) {
     const speed = +(c.speed * upgradeMult(side, c.name, 'speed')).toFixed(2);
     return `
         <div class="detail-header">
-            <span class="detail-swatch"></span>
+            <span class="detail-swatch" style="background-image:url('${faceUrl(c.name)}')"></span>
             <div><div class="detail-name">${c.name}</div><div class="detail-title">${c.title}</div></div>
         </div>
         <p class="detail-desc">${c.desc}</p>
@@ -9930,6 +10431,10 @@ function refreshMenuUI() {
     // confirmed). A human confirming as the final action still auto-starts.
     document.getElementById('btn-start-match').style.display = bothReady ? '' : 'none';
     refreshCoinDisplays(); // coins change on match end / purchases; cheap to keep in sync here
+    // ...and the two fighters standing between the panels, LAST: they are
+    // whoever each side is looking at or has chosen, read from the same four
+    // variables this function has just painted the panels from.
+    menuStageSyncDuel();
 }
 refreshCoinDisplays(); // initial paint at load, before any menu interaction
 for (const nameSide of SIDES) {
