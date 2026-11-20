@@ -6071,9 +6071,10 @@ function syncCrushRigs(dt) {
 // splits - see AC_BLOOM.
 function renderViews(dt) {
     // A MENU HAS A STAGE NOW (shared/menustage.js): its own small scene, drawn
-    // here because here is where this build draws. Asked first and only in
-    // MENU - the return below still stands for a menu with no stage, which is
-    // every screen but Home so far and every screen in the poster tier.
+    // here because here is where this build draws. Asked first, in MENU and on
+    // the results screen, and it answers true for any screen with a shot -
+    // whatever its tier, the canvas there is the stage's or hidden. The return
+    // below still stands for a menu with no shot.
     if ((gameState === 'MENU' || gameState === 'GAMEOVER') && menuStageFrame(dt)) return;
     // On the menu the whole 3D scene sits under #ui-overlay's ~opaque
     // background - invisible. Don't waste a full scene render on it (B15).

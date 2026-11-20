@@ -223,7 +223,11 @@ function runOne(name) {
     }
     if (verdict !== 'pass') {
         failed.push(name);
-        const detail = out.split('\n').filter(l => /FAIL|Error|error:/.test(l)).slice(0, 3);
+        // NOT DRAWING too: harness.reportFrameStarvation's verdict on a wait
+        // that expired. It is printed just above the FAIL it explains, and
+        // without it the annotation - often all anyone sees of a CI failure -
+        // reads as a game that cannot do the thing, not a browser that stopped.
+        const detail = out.split('\n').filter(l => /FAIL|Error|error:|NOT DRAWING/.test(l)).slice(0, 3);
         console.log('%s %s  %s', name.padEnd(22), secs.padStart(5), verdict);
         for (const d of detail) console.log('      ' + d.trim().slice(0, 150));
         annotate(name, verdict, detail, out);

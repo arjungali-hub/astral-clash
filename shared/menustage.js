@@ -973,20 +973,31 @@ function menuStageDraw(st, sec) {
 }
 
 // Called at the top of renderViews() while a menu owns the frame. `dt` is the
-// game's: elapsed time in sixtieths of a second. Returns true when the stage
-// has the canvas - drew to it, or is deliberately holding the frame on it.
+// game's: elapsed time in sixtieths of a second. Returns true whenever a shot
+// is wanted - the frame is the stage's then, drawn to, held, or hidden.
+//
+// IN EVERY TIER AND AT EVERY STEP, drawn or not. Under a shot the canvas shows
+// the stage's own picture (stage-on) or nothing at all (stage-wait and
+// stage-poster hide it: the MENU STAGE block), so there is never anything for
+// the game to draw there. This returned false in the poster tier and while the
+// set was being built, which cost nothing on Home and the room - renderViews
+// draws no arena in MENU anyway - and then the results screen arrived: the one
+// shot that is up while a match's arena still exists. It redrew that whole
+// arena, both halves in the local build, every frame, into a canvas nobody
+// could see - on the tier a slow device is given, because it is slow.
 function menuStageFrame(dt) {
     const st = menuStage;
-    if (!st || st.tier === 'poster' || st.wants === 'none') return false;
+    if (!st || st.wants === 'none') return false;
+    if (st.tier === 'poster') return true;
     // Not under a modal and not behind the loading cover: neither can be seen
     // through, and the first of those blurs whatever is under it, which is
     // cheapest when what is under it has stopped moving.
     const covered = modalStack.length > 0 || (typeof loadingVisible === 'function' && loadingVisible());
     if (!st.ready) {
         if (!covered) menuStageEnsure(st);
-        return false;
+        return true;
     }
-    if (covered) return st.surface;
+    if (covered) return true;
     if (!st.surface) {
         document.documentElement.classList.add('stage-live');
         st.X.syncSurface();

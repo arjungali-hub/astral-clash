@@ -129,7 +129,19 @@ const H = require('./harness');
     });
     check('the gameover screen offers a rematch', again, 'no #btn-rematch');
     const back = await H.waitInPage(page, "window.ACDebug.gameState === 'FIGHT'", 90000);
-    check('the rematch reaches a live fight', back, 'never returned to FIGHT');
+    // WHERE IT GOT TO, on the FAIL line itself: CI shows a failing checker's
+    // FAIL lines and nothing else, and "never returned to FIGHT" alone cannot
+    // tell a rematch that is stuck from a browser that stopped drawing - which
+    // is the first thing anyone has to know before classifying it.
+    const where = back ? null : await page.evaluate(() => {
+        const D = window.ACDebug;
+        const ld = document.getElementById('loading-screen');
+        const gc = document.getElementById('game-container');
+        return { state: D.gameState, cover: !!(ld && ld.classList.contains('on')),
+                 screen: gc ? gc.getAttribute('data-screen') : null };
+    }).catch(e => ({ unreadable: String(e.message).slice(0, 80) }));
+    check('the rematch reaches a live fight', back,
+        'never returned to FIGHT ' + JSON.stringify(Object.assign({ fps: page.framesPerSecond }, where)));
 
     const rej = await page.evaluate(() => window.__acRej || []);
     check('no page errors across the whole match, death and rematch',
