@@ -148,9 +148,10 @@ const H = require('./harness');
         const out = { base: AC_ASSET_BASE, results: {} };
         for (const [label, url] of [
             ['model', CHAR_MODEL_URLS.Kaelen],
-            // faceUrl lives inside bootGame() in both builds, so it is not a
-            // global to call from here - the base is what this is testing.
-            ['face', AC_ASSET_BASE + 'faces/kaelen.png'],
+            // The portrait every tile uses - faceUrl() itself, which lives in
+            // shared code now and points at the splash bust. The BASE is still
+            // what this is testing.
+            ['face', faceUrl('Kaelen')],
         ]) {
             try {
                 const r = await fetch(url, { method: 'GET' });

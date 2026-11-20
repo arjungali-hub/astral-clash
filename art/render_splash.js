@@ -6,9 +6,10 @@
 // Writes assets/splash/<name>.webp (the figure, 768x1024) and
 // assets/splash/<name>-bust.webp (head and shoulders, 320x320).
 //
-// WHY THIS IS NOT render_faces.js WITH A WIDER LENS. That script draws to the
-// game's canvas and reads it back with toDataURL, and it sets the clear alpha
-// to zero first so the portrait will sit on a coloured chip. It does not work:
+// WHY THIS IS NOT THE OLD render_faces.js WITH A WIDER LENS (retired, along
+// with the faces it made). That script drew to the game's canvas and read it
+// back with toDataURL, setting the clear alpha to zero first so the portrait
+// would sit on a coloured chip. It did not work:
 // the renderer is created without `alpha: true`, so its drawing buffer HAS no
 // alpha channel, and every portrait in assets/faces/ is a head on opaque
 // black. Nobody noticed because the chips are 34px and dark.

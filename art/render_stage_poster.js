@@ -10,7 +10,7 @@
 //
 // So the image has to be THE SAME SHOT, or the fade is a jump cut: a fighter
 // who is two metres left of where the poster had him. That is why this does
-// not build a scene of its own the way render_faces.js does. It boots the real
+// not build a scene of its own the way the retired render_faces.js did. It boots the real
 // game with `stage=still`, waits for the stage to draw, and asks the stage for
 // its own pixels (menuStageSnapshot) - one camera, one set, one pose, written
 // in one place.

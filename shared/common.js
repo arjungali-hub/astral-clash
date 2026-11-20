@@ -1563,27 +1563,20 @@ function markSelected(side, name) {
     grid.querySelectorAll('.fighter-btn').forEach(b => b.classList.toggle('selected', b.dataset.name === name));
 }
 
-// Batch 37: the circles hold the character's FACE.
+// A FIGHTER'S BUST, for every tile and portrait in the menus: baked from the
+// actual model by art/render_splash.js, on real transparency.
 //
-// They were a flat disc of the character's accent color, which was the right
-// answer when the fighters were assembled primitives with no face to show.
-// Every character has one now, so `assets/faces/<name>.png` is a baked
-// head-and-shoulders portrait rendered from the actual model by
-// art/render_faces.js.
+// Baked rather than rendered live for two reasons: the roster would otherwise
+// have to load fourteen 2 MB GLBs to draw fourteen tiles (the whole point of
+// the lazy model loading was not doing that), and a portrait wants its own
+// framing and lighting rather than whatever the arena happens to have.
 //
-// Baked rather than rendered live for two reasons: the select screen would
-// otherwise have to load fourteen 2 MB GLBs to draw fourteen 44-pixel circles
-// (the whole point of the lazy model loading was not doing that), and a
-// portrait wants its own framing and lighting rather than whatever the arena
-// happens to have.
-//
-// The accent color stays as the border and glow - it is how a fighter is
-// identified everywhere else - and stays as the FALLBACK fill, so a missing
-// portrait file degrades to exactly the old behaviour instead of a blank hole.
-// A fighter's bust, on real transparency (art/render_splash.js). It was
-// 'faces/<name>.png', which art/render_faces.js writes on opaque black - the
-// renderer has no alpha channel to clear - so the accent colour every caller
-// puts behind a portrait had never once shown through.
+// It was 'faces/<name>.png', from a script that drew to the game canvas and
+// cleared it to transparent first - which does nothing, because the renderer
+// has no alpha channel to clear. Every one of those faces was a head on opaque
+// black, so the accent colour every caller put behind a portrait never once
+// showed through. The bust is drawn into an RGBA render target instead. The
+// faces and their script are retired.
 function faceUrl(name) { return AC_ASSET_BASE + 'splash/' + String(name).toLowerCase() + '-bust.webp'; }
 
 // THE ICON SET. Inline SVG on a 24-unit grid, stroked in currentColor, so an

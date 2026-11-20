@@ -568,7 +568,21 @@ is one query.
 
 ## What is left
 
-**Nothing is open.** Every item on this list is done or declined, and the three
+**The menus were redesigned** (November 2026), to the standard of a shipped
+game rather than a prototype - held against Brawl Stars for how much moves and
+Valorant for how a first-person shooter handles it. Every screen outside a
+fight: a design layer both builds share, live 3D behind the menus (Home, the
+room and the local select screen, the results), the roster as splash-art tiles,
+arenas shown from where a player stands, motion on nearly everything, and
+designed layouts for phones both ways up. Checked by `stagecheck`,
+`motioncheck` and `phonelayoutcheck`, which did not exist before it.
+
+**One part of it is waiting, by decision:** new character clips - a victory
+pose, a select-screen flourish, a defeated slump - need Blender open on the
+machine with its plugin running. Until then the stage uses the six clips every
+fighter has: a winner celebrates with Jump, a loser falls with Death.
+
+**Nothing else is open.** Every item on this list is done or declined, and the three
 declines are decisions with reasons rather than things that ran out of time:
 
 **Item 7, matchmaking** - declined. The game is staying small, so there is no

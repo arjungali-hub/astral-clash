@@ -143,11 +143,24 @@ class as a control somebody forgot to make reachable.
 
 ## The menu stage
 
-`shared/menustage.js` draws a small 3D scene of its own - a dais, a fighter
-playing Idle - on the game's **one** renderer while a menu is up. It has its
-own `THREE.Scene` so it cannot touch the arena's light count (which is compiled
-into every arena shader), and it is injected with what it needs from inside
-`bootGame()` because shared code cannot reach in.
+`shared/menustage.js` draws a small 3D scene of its own - up to two fighters,
+each on a dais, playing their clips - on the game's **one** renderer while a
+menu is up. It has its own `THREE.Scene` so it cannot touch the arena's light
+count (which is compiled into every arena shader), and it is injected with what
+it needs from inside `bootGame()` because shared code cannot reach in.
+
+**Where a fighter stands is the layout's decision.** Each SHOT names, per
+fighter, the id of an empty element the page has placed - `#home-slot`, the
+room's two portrait slots (`#slot-you-portrait`, `#slot-foe-portrait`), the
+local build's `#duel-slot-a/b`, `#results-slot-a/b` - and the camera is aimed at
+those boxes. Move a fighter by moving its slot in CSS; the stage never hears of
+a breakpoint.
+
+| shot | screen | who stands there | told by |
+| --- | --- | --- | --- |
+| `home` | Home | the front-screen fighter | `menuStageSetFighter()` |
+| `duel` | the room / local select | whoever each side is looking at or has chosen; left is always you | `menuStageSyncDuel()`, last in `refreshMenuUI()` |
+| `results` | game over | winner in front (jumps), loser behind (falls) | `menuStageShowResult()`, from `endMatch()` / `endCoopMatch()` |
 
 - **It hands the canvas back synchronously.** On a menu the canvas fills the
   roomy frame; a match is capped at 1170x650 because the field of view is fixed
@@ -160,9 +173,42 @@ into every arena shader), and it is injected with what it needs from inside
   asks for it - so 54 checkers that boot through the menu on a software
   rasteriser do not pay for a turntable.
 - **After changing the set or the camera, re-bake the posters:**
-  `node art/render_stage_poster.js`. They are photographs the stage takes of
-  itself, at the three frame shapes the CSS picks between, so the fade from
-  poster to live is not a jump. Nothing checks that you did.
+  `node art/render_stage_poster.js`. They are Home's poster-tier picture, taken
+  by the stage of itself at the three frame shapes the CSS picks between.
+  The duel and results slots need no poster: there each slot shows that
+  fighter's splash figure. Nothing checks that you re-baked.
+
+## Motion
+
+Nearly everything in the menus animates - entrances, a light across the frame
+on a screen change, panels that pop and leave, counts that run up, buttons
+that give - and all of it is written against **`html.ac-motion`**, set once by
+`UI_MOTION` in `shared/common.js`. No class, no motion: that is what reduced
+motion gets, and what **`?motion=off`** gets, which the harness asks for so that
+fifty checkers measuring boxes never catch one part-way through scaling in.
+`motioncheck` is the one that asks for the motion, and it compares each screen
+at rest with the same screen with motion off.
+
+One rule that is not guessable: **an element's entrance animation stays first
+in its `animation` list in every state.** A state rule that replaces the list
+plays, and then the browser replays the entrance on the way back - every tile
+fading up from nothing each time it is deselected.
+
+`uiBump(el)` replays a one-shot class, `uiSetText(el, text)` bumps a value that
+changed, `uiCountUp(root)` runs every `.ac-count` up from zero, `uiHide(el)`
+hides with an exit. Icons are `icon(name)` - inline SVG on currentColor.
+
+## Generated art
+
+All of it is rendered by the game itself, through `tests/harness.js`:
+
+    node art/render_splash.js          every fighter as a cut-out (splash/), for tiles and portraits
+    node art/render_arena_hero.js      every arena from a corner at head height (arena/*-hero.webp)
+    node art/render_arenas.js          every arena from above (arena/*.png), the map tiles' inset
+    node art/render_stage_poster.js    Home's poster tier (menu/)
+
+The renderer has no alpha channel, so anything meant to sit on a coloured
+ground renders into an RGBA render target (`render_splash.js`), never the canvas.
 
 ## Checking that nothing has slipped a key
 
