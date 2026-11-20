@@ -137,6 +137,18 @@ Three rules, each enforced by the sync (`design_layer_problems`):
 Where the builds must differ, the selector says so: the profile stamps `<html>`
 with `ac-online` or `ac-local`.
 
+Two things about the LEGACY rules above the layer:
+
+- **Inside a conditional block, one selector per rule.** A rule in an
+  `@media` block travels only if the local build has a top-level rule with
+  that exact selector text. `.a, .b { }` matches neither `.a` nor `.b`, so
+  it never travels - which is how the local build kept two pulses looping
+  for players who had asked for reduced motion.
+- **A deletion travels only as a declaration.** Take a declaration out of a
+  rule both builds have and the sync takes it out of local. Delete a whole
+  rule, trim a selector list, or change a rule inside `@media`, and the local
+  build keeps the old one until something removes it there too.
+
 Decorative class names must avoid `btn`, `button`, `card`, `tab`, `opt` and
 `chip`: `keyboardcheck` treats a non-focusable leaf with one of those in its
 class as a control somebody forgot to make reachable.

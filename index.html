@@ -166,10 +166,7 @@
             z-index: 10;
         }
         .brand { text-align: center; margin-bottom: 8px; }
-        /* The display cut's heavy end for the wordmark and headings; buttons a
-           notch lighter so they read as controls rather than as titles. */
-        .brand h1 { font-variation-settings: 'CASL' 0, 'MONO' 0, 'wght' 800; letter-spacing: 0.1em; }
-        h1, h2, h3 { font-variation-settings: 'CASL' 0, 'wght' 700; letter-spacing: 0.02em; }
+        h1, h3 { letter-spacing: 0.02em; }
         /* THIS USED TO BE ITS OWN `button { }` RULE, and index.html therefore
            had two of them. extract_css.parse returns None for a selector that
            appears twice - "order matters, skip both" - so close_css_drift could
@@ -190,7 +187,7 @@
            `font: inherit` would also drag size and weight along, which those
            elements set for themselves - so inherit only the family and the
            OpenType features. */
-        button, input, select, textarea, optgroup {
+        button, input, select {
             font-family: inherit;
             font-feature-settings: inherit;
         }
@@ -208,14 +205,6 @@
             margin: 2px 0;
             font-size: 2.4rem;
             letter-spacing: 0.06em;
-            text-transform: uppercase;
-        }
-        .brand-divider {
-            width: 90px;
-            height: 2px;
-            margin: 4px auto 6px;
-            background: linear-gradient(90deg, transparent, #00f3ff, transparent);
-            opacity: 0.7;
         }
         p { color: #94a3b8; margin: 0 0 6px; font-size: 0.9rem; }
         /* TWO PANEL WIDTHS (#3), as tokens rather than ten separate numbers.
@@ -236,13 +225,9 @@
             font-size: var(--panel-h3);
         }
         .menu-section {
-            position: relative;
             background: linear-gradient(180deg, #1c2439, #161d2f);
             padding: 24px;
-            border-radius: 8px;
             margin: 10px;
-            border: 1px solid #2e3a59;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
             text-align: center;
             width: 350px;
         }
@@ -252,9 +237,6 @@
         .menu-section::before {
             content: "";
             position: absolute;
-            top: 0; left: 12%; right: 12%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, rgba(0, 243, 255, 0.6), transparent);
         }
         /* --- Button hierarchy (B4). PRIMARY = the base cyan-filled button
            (Start Match, Confirm, Resume, Rematch…). SECONDARY = .btn-secondary
@@ -285,11 +267,9 @@
             padding: 14px 22px;
             font-weight: bold;
             font-size: 1.08rem;
-            border-radius: 4px;
             cursor: pointer;
             margin: 8px 0;
             width: auto;
-            transition: 0.2s;
         }
         button:hover {
             background: #00bcd4;
@@ -329,12 +309,10 @@
         }
         /* #19: stops a paragraph ending on a single word, which it did in all
            three languages. Ignored by browsers that do not know it. */
-        p, .setup-note, .lobby-note, .account-note { text-wrap: pretty; }
+        p, .setup-note { text-wrap: pretty; }
         button:disabled {
             background: #334155;
-            color: #64748b;
             cursor: not-allowed;
-            box-shadow: none;
         }
         /* Batch 34: `.select-row` / `.vs-column` / `.side-panel` are gone with
            the two-roster layout - see the room rules below. `.key-hint` is
@@ -357,45 +335,10 @@
            `center` stays as the fallback for an engine that does not know the
            keyword. */
         #home-screen {
-            display: flex; flex-direction: column; align-items: center;
-            justify-content: center;
-            justify-content: safe center;
+            flex-direction: column;
             min-height: 100%;
         }
-        /* BORDER-BOX, because .menu-section adds 24px of padding and a 1px
-           border on each side: 368px of content was a 418px box, which on a
-           400px screen put the card's own left border 9px off-screen where
-           nothing could scroll to it. */
-        .home-card {
-            box-sizing: border-box; width: min(430px, 92vw); max-width: 100%;
-            text-align: center;
-            /* ONE GAP (#24). The spacing down this card was 12, 14, 10, 12 and 2
-               - five numbers from five rules, each a margin on whichever child
-               happened to own it, which is why the last one could be 2px and
-               nobody noticed. The column owns the rhythm now, and the children's
-               own vertical margins are cleared so they cannot add to it. */
-            display: flex; flex-direction: column; gap: 12px;
-        }
-        .home-card > * { margin-top: 0; margin-bottom: 0; }
-        /* margin reset (#23): the inherited `button { margin: 8px 0 }` plus this
-           row's own alignment put Play 4px right of every other row and 4px
-           past the card's content edge. */
-        .home-card .btn-online { width: 100%; font-size: 1rem; padding: 13px 18px;
-            margin: 6px 0 0; }
         .home-note { color: #94a3b8; font-size: 0.8rem; line-height: 1.55; margin: 12px 0 14px; }
-        /* ONE GAP (#23). The card's five gaps measured 24, 26, 22, 34 and 24,
-           because each child brought its own margins and adjacent ones summed
-           or collapsed depending on which pair it was. A flex column with a
-           single `gap` makes the rhythm one number instead of five accidents.
-           The margins are zeroed at (0,2,0) so the per-element rules above and
-           below this line - .home-note's 12/14, .btn-online's 6, .home-purse's
-           12 - cannot win on source order. */
-        .menu-section.home-card { display: flex; flex-direction: column; gap: 24px; }
-        .menu-section.home-card > * { margin: 0; }
-        /* Play STAYS LARGER than the row under it: that is the hierarchy, not
-           an inconsistency - it is the one thing on this screen you came to
-           press. 47px was simply an odd number to be large by. */
-        .menu-section.home-card .btn-online { min-height: 48px; }
         .home-purse {
             display: flex; align-items: center; justify-content: center; gap: 8px;
             padding: 9px 12px; margin-bottom: 12px;
@@ -435,15 +378,8 @@
             box-sizing: border-box; min-height: 38px; }
 
         .room-bar {
-            display: flex; align-items: center; justify-content: space-between; gap: 10px;
-            /* calc(100vw - 32px) GUARANTEES THE 16px GUTTER, and cannot widen
-           anything: min() returns the smallest term, so above ~533px the
-           94vw already wins and nothing changes. Padding the container
-           instead was the first attempt, and it overflowed - these widths
-           are measured against the VIEWPORT, not the container, so a 94vw
-           child does not shrink when its parent gains padding. layoutcheck
-           caught it: "nor the page, with the room bar full". */
-        width: min(880px, 94vw, calc(100vw - 32px)); margin: 0 auto 12px; padding: 8px 10px;
+            display: flex; justify-content: space-between; gap: 10px;
+            margin: 0 auto 12px; padding: 8px 10px;
             background: rgba(0,0,0,0.3); border: 1px solid #2e3a59; border-radius: 10px;
             box-sizing: border-box; flex-wrap: wrap;
         }
@@ -486,58 +422,42 @@
         /* Two slots and a VS badge. Deliberately NOT a grid of identical
            panels: yours carries the accent, theirs is observed. */
         .room-slots {
-            display: flex; align-items: stretch; justify-content: center; gap: 10px;
-            width: min(880px, 94vw, calc(100vw - 32px)); margin: 0 auto 14px;
+            justify-content: center;
         }
         .pslot {
             flex: 1; min-width: 0; padding: 12px;
             background: rgba(18,22,34,0.9); border: 1px solid #2e3a59; border-radius: 10px;
             text-align: center;
         }
-        #slot-you { border-color: #00f3ff; box-shadow: 0 0 14px rgba(0,243,255,0.14); }
-        #slot-foe.empty { opacity: 0.6; border-style: dashed; }
-        #slot-foe.locked { border-color: #4ade80; }
-        #slot-you.locked { box-shadow: 0 0 18px rgba(74,222,128,0.2); border-color: #4ade80; }
         /* #64748b read 3.80:1 at 11.2px (#18). */
-        .pslot-role { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #8a99ad; margin-bottom: 8px; }
+        .pslot-role { text-transform: uppercase; }
         /* Batch 37: the roster card's face chip. */
-        .fighter-btn { display: flex; align-items: center; gap: 9px; text-align: left; }
         .fighter-btn .fface {
-            flex: 0 0 auto; width: 34px; height: 34px; border-radius: 6px;
-            background-size: cover; background-position: center top;
+            flex: 0 0 auto;
             background-repeat: no-repeat;
-            border: 1px solid rgba(255,255,255,0.16);
         }
         .fighter-btn .fmeta { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
         .fighter-btn.locked .fface { filter: grayscale(1) brightness(0.6); }
 
         .pslot-portrait {
-            width: 52px; height: 52px; margin: 0 auto 8px; border-radius: 50%;
-            background: #0d1017; border: 2px solid #2e3a59;
+            background: #0d1017;
         }
-        .pslot-name { font-weight: bold; font-size: 0.95rem; color: #e2e8f0; }
+        .pslot-name { font-weight: bold; }
         /* The word beside an inline mark - "opponent", "Loading fighter". */
         .ld-busy-label { font-size: 0.72rem; color: #64748b; letter-spacing: 0.04em; }
-        .pslot-state { font-size: 0.72rem; color: #94a3b8; margin-top: 3px; min-height: 1.1em; }
-        .pslot-vs { display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; width: 74px; flex: none; }
+        .pslot-state { color: #94a3b8; min-height: 1.1em; }
+        .pslot-vs { display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; flex: none; }
 
         .room-main {
-            display: flex; align-items: flex-start; justify-content: center; gap: 10px;
-            width: min(880px, 94vw, calc(100vw - 32px)); margin: 0 auto;
+            display: flex; justify-content: center;
+            margin: 0 auto;
         }
         .picker-panel { flex: 1 1 auto; min-width: 0; margin: 0; }
         /* Roster and detail side by side: the detail panel appears the moment
            you preview a fighter, and pushing it under a two-column grid made
            the page taller than the viewport at the exact moment you need to
            read it and press Confirm. */
-        /* A RESERVED COLUMN (#45). As a flex row the detail panel only took
-           space once it existed, so previewing a fighter shrank the grid's
-           columns from 264px to 116px and grew the picker 464 -> 566px - the
-           whole roster moved under the pointer that had just clicked it, and
-           row 1 jumped 101px because a title then wrapped. An explicit grid
-           column is there whether or not anything is in it. */
-        .picker-side { display: grid; grid-template-columns: minmax(0, 1fr) 286px;
-            align-items: start; gap: 10px; }
+        .picker-side { display: grid; align-items: start; gap: 10px; }
         .picker-side .fighter-grid { flex: 1 1 auto; min-width: 0; }
         /* Same floor, one level up (#12): as a grid item the detail panel took
            its CONTENT width - 1,074px inside a 400px screen at the stacked
@@ -569,9 +489,6 @@
            container - takes over, which is the behaviour actually wanted. */
         .picker-side .detail-scroll { max-height: none; overflow-y: visible; }
         @media (max-width: 700px) {
-            /* One column; the reserved detail column above would otherwise keep
-               286px of the width at a size that has none to spare. */
-            .picker-side { grid-template-columns: minmax(0, 1fr); }
             .picker-side .fighter-detail { width: auto; align-self: stretch; }
             /* Stacked, the roster is the full width of the column. `flex: 1 1
                auto` does not do this here - in a column flexbox that sizes the
@@ -605,7 +522,7 @@
         .guest-label { color: #64748b; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.06em; }
 
         @media (max-width: 780px) {
-            .room-main { flex-direction: column; align-items: stretch; }
+            .room-main { flex-direction: column; }
             /* EVERY panel in the stacked room, not just .setup-panel.
                `align-items: stretch` above is powerless against the explicit
                `.menu-section { width: 350px }`, so the fighter picker kept the
@@ -614,7 +531,7 @@
                fills only the left half". */
             .room-main .menu-section { width: auto; }
             .room-slots { flex-wrap: wrap; }
-            .pslot-vs { width: 100%; height: 34px; }
+            .pslot-vs { height: 34px; }
         }
 
         .side-actions { display: flex; gap: 8px; margin-bottom: 8px; }
@@ -622,13 +539,6 @@
         .side-actions .btn-secondary { padding-left: 10px; } /* random pick: plain secondary, no toggle knob */
         .fighter-grid {
             display: grid;
-            /* minmax(0, 1fr), NOT 1fr (#11, #12). A bare `1fr` floors each track
-               at its item's min-content width, so a long fighter name widened
-               the column past the grid and spilled over the detail panel beside
-               it - 40px of overlap on desktop, and a click in that strip picked
-               the card underneath rather than pressing Confirm. */
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 7px;
         }
         /* The cards have to be allowed to be narrower than their text, or the
            track floor above just moves down a level. */
@@ -646,33 +556,29 @@
         }
         .vs-label {
             position: relative;
-            font-size: 2.4rem;
             font-weight: 800;
-            font-style: italic;
             letter-spacing: 0.06em;
-            color: #e2e8f0;
-            text-shadow: 0 0 18px rgba(0, 243, 255, 0.45);
         }
         #btn-start-match {
-            width: auto;
             padding: 10px 26px;
             font-size: 0.95rem;
             background: #00f3ff;
-            box-shadow: 0 0 18px rgba(0, 243, 255, 0.5);
             animation: startPulse 1.3s ease-in-out infinite;
         }
         @keyframes startPulse {
             0%, 100% { box-shadow: 0 0 14px rgba(0, 243, 255, 0.4); }
             50% { box-shadow: 0 0 24px rgba(0, 243, 255, 0.7); }
         }
-        @keyframes vsReadyPulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.6; }
-        }
         /* Honor the OS "reduce motion" setting: kill the looping menu pulses
            (the intro drop cinematic is gated in JS off REDUCED_MOTION). */
         @media (prefers-reduced-motion: reduce) {
-            .vs-status.ready, #btn-start-match { animation: none; }
+            /* One selector per rule, ON PURPOSE: the sync carries a rule into
+               a conditional block only when the local build has a rule with
+               that exact selector, and it has these two apart, never as a
+               pair. As a pair this never travelled, and the local build kept
+               both pulses looping for somebody who had asked for less motion. */
+            .vs-status.ready { animation: none; }
+            #btn-start-match { animation: none; }
         }
         /* Bot toggle: state reads from the label text ("Bot: OFF"/"Bot: ON")
            plus the amber .active fill — used to also draw a track+knob
@@ -687,15 +593,8 @@
            the bot's fighter is picked randomly at match start, so there's
            nothing for a human to choose here. */
         .fighter-btn {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 2px;
             background: #0f1420;
-            border: 1px solid var(--accent, #00f3ff);
             color: #fff;
-            text-align: left;
-            padding: 7px 11px;
             margin: 0;
         }
         .fighter-btn .fkey {
@@ -711,7 +610,6 @@
             font-size: 0.76rem;
             padding: 1px 6px;
             border-radius: 3px;
-            margin-right: 7px;
         }
         /* BRIGHTENED, because a roster accent doubles as body text here. Draven's
            identity color is #6b7280, a grey, which renders his name at 3.8:1 -
@@ -720,9 +618,6 @@
            reason was never build-specific. */
         .fighter-btn .fname {
             font-weight: bold;
-            color: var(--accent, #00f3ff);
-            font-size: 0.95rem;
-            filter: brightness(1.45) saturate(1.15);
         }
         .fighter-btn.locked .fname,
         .fighter-btn.locked .fkey { filter: none; }   /* locked SHOULD look dim */
@@ -730,11 +625,11 @@
            their whole grid row 14px taller than every other row. */
         .fighter-btn .ftitle { font-size: 0.7rem; color: #94a3b8; font-weight: normal;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .fighter-btn:hover { background: var(--accent, #00f3ff); box-shadow: 0 0 15px rgba(0, 243, 255, 0.4); }
+        .fighter-btn:hover { background: var(--accent, #00f3ff); }
         .fighter-btn:hover .fname, .fighter-btn:hover .ftitle, .fighter-btn:hover .fkey { color: #0d0f18; }
         /* B13: the picked card stays lit in the grid while its detail shows
            alongside, so you always see where your choice sits in the roster. */
-        .fighter-btn.selected { background: var(--accent, #00f3ff); box-shadow: 0 0 15px rgba(0, 243, 255, 0.45); }
+        .fighter-btn.selected { background: var(--accent, #00f3ff); }
         .fighter-btn.selected .fname, .fighter-btn.selected .ftitle { color: #0d0f18; }
         .fighter-btn.selected .fkey { background: #0d0f18; color: var(--accent, #00f3ff); }
         /* Once confirmed the grid stays visible but is locked out (dimmed,
@@ -770,10 +665,9 @@
         .fighter-btn .fcost {
             display: inline-block; background: #0d0f18; border: 1px solid #f59e0b; color: #f59e0b;
             font-weight: bold; font-size: 0.62rem; padding: 1px 6px; border-radius: 3px;
-            margin: 3px 0 0; white-space: nowrap;
+            white-space: nowrap;
             max-width: 100%; overflow: hidden; text-overflow: ellipsis;
         }
-        .fighter-btn .fcost[hidden] { display: none; }
         /* Coin balance, shown per player on the select screen and in the Armory header. */
         .coin-balance { color: #f59e0b; font-weight: bold; font-size: 0.9rem; letter-spacing: 0.02em; }
         .coin-balance::before { content: "\25CF"; margin-right: 5px; color: #fbbf24; }
@@ -818,10 +712,9 @@
         #lobby-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
             align-items: center; justify-content: center; z-index: 30; padding: 20px; box-sizing: border-box;
         }
-        .lobby-panel { width: min(var(--panel-wide), 94vw, calc(100vw - 32px)); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
+        .lobby-panel { max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
         .lobby-panel h3 { color: #4ade80; margin: 0 0 4px; }
         /* Secondary to Join, because joining is what most people came to do -
            quieter fill, same size and hit area. */
@@ -918,20 +811,19 @@
             background: radial-gradient(ellipse at 50% 30%, rgba(20,28,44,0.96), rgba(8,11,18,0.98));
             align-items: center; justify-content: center; z-index: 30; padding: 20px; box-sizing: border-box;
         }
-        .modeselect-panel { width: min(var(--panel-wide), 94vw, calc(100vw - 32px)); max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
+        .modeselect-panel { max-height: 100%; overflow-y: auto; box-sizing: border-box; text-align: center; }
         .modeselect-panel h3 { color: #a855f7; margin: 0 0 4px; }
         .mode-card {
-            display: block; width: 100%; text-align: left; margin: 0 0 8px; padding: 11px 14px;
-            background: #10151f; color: #e2e8f0; border: 1px solid #2e3a59; border-left: 3px solid #2e3a59;
-            border-radius: 6px; font-weight: normal; box-shadow: none;
+            width: 100%; text-align: left;
+            background: #10151f; color: #e2e8f0;
+            font-weight: normal; box-shadow: none;
         }
-        .mode-card:hover { background: #161d2c; border-color: #a855f7; box-shadow: none; }
-        .mode-card.active { border-color: #a855f7; border-left-color: #a855f7; background: #1a1430; }
-        .mode-card .mode-name { display: block; font-weight: bold; font-size: 0.94rem; color: #e2e8f0; margin-bottom: 3px; }
+        .mode-card:hover { background: #161d2c; box-shadow: none; }
+        .mode-card.active { background: #1a1430; }
+        .mode-card .mode-name { display: block; font-weight: bold; color: #e2e8f0; }
         .mode-card.active .mode-name { color: #c084fc; }
-        .mode-card .mode-blurb { display: block; font-size: 0.7rem; color: #94a3b8; line-height: 1.45; }
-        /* #21: 4.47:1 at 10.2px, and 10.2px is small for a status tag. */
-        .mode-card .mode-current { float: right; font-size: 0.7rem; color: #c084fc; font-weight: bold; }
+        .mode-card .mode-blurb { display: block; }
+        .mode-card .mode-current { font-weight: bold; }
         /* Batch 38: the armory is a PAGE, not a panel floating over one.
            Requested as "make the shop fill up the whole screen (a separate page
            instead of something that pops up on the same page)". It was a
@@ -1017,13 +909,12 @@
            touches the row above is hard to scan precisely because each row is
            four small controls in a line. */
         .shop-card {
-            background: #10151f; border: 1px solid #2e3a59; border-left: 3px solid var(--accent, #00f3ff);
-            border-radius: 8px; padding: 15px 18px; margin-bottom: 14px;
+            background: #10151f;
         }
         /* #30: space-between with three children parked Details in the middle
            of a 957px row, attached to neither end. The name takes the slack
            instead, so Details sits with the name and the status stays right. */
-        .shop-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .shop-card-head { display: flex; align-items: center; gap: 12px; }
         .shop-card-head > .shop-name,
         .shop-card-head > :first-child { margin-right: auto; }
         .shop-card-head > div:first-child { min-width: 0; } /* let the label shrink instead of squeezing the button */
@@ -1032,7 +923,7 @@
            their accent is their identity everywhere else, so the TEXT gets a
            lightened variant of the same hue instead. accentTextColor computes
            it; the fallback chain keeps a card that never ran the JS readable. */
-        .shop-name { font-weight: bold; color: var(--accent-text, var(--accent, #00f3ff)); font-size: 1rem; }
+        .shop-name { font-weight: bold; color: var(--accent-text, var(--accent, #00f3ff)); }
         .shop-title { font-size: 0.72rem; color: #94a3b8; font-weight: normal; }
         /* The "Unlock to buy upgrades" line in the second screenshot sat hard
            against the card edge below it. */
@@ -1049,7 +940,7 @@
         .upg-row .upg-label { min-width: 52px; flex: 0 0 auto; }
         .upg-pips { display: flex; gap: 3px; flex-shrink: 0; }
         .upg-pip { width: 9px; height: 9px; border-radius: 2px; background: #1e2637; border: 1px solid #2e3a59; }
-        .upg-pip.filled { background: #00f3ff; border-color: #00f3ff; box-shadow: 0 0 6px rgba(0,243,255,0.5); }
+        .upg-pip.filled { background: #00f3ff; }
         /* NOTE the `.menu-section` prefix: `.shop-panel` is itself a
            `.menu-section`, and `.menu-section button { width: 100% }` (class +
            element = higher specificity than a lone class) would otherwise
@@ -1094,10 +985,9 @@
 
         .fighter-detail { display: none; text-align: left; margin-top: 10px; }
         .fighter-detail.confirmed { outline: 2px solid var(--accent); border-radius: 6px; padding: 4px; }
-        .detail-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-        .detail-swatch { width: 28px; height: 28px; border-radius: 6px; background: var(--accent); flex-shrink: 0; box-shadow: 0 0 10px var(--accent); }
-        .detail-name { font-weight: bold; color: var(--accent); font-size: 1.05rem; }
-        .detail-title { font-size: 0.68rem; color: #94a3b8; }
+        .detail-header { display: flex; align-items: center; }
+        .detail-swatch { background: var(--accent); flex-shrink: 0; }
+        .detail-name { font-weight: bold; }
         /* The select screen has always been taller than the viewport with a
            detail panel open — #ui-overlay is the scroll container for exactly
            that reason (see its comment). What this cap buys is that the panel's
@@ -1107,7 +997,7 @@
            outside this box so they never scroll away from the text they act on.
            A small hover-local scroll region, unlike the row-wide one the
            .select-row comment above rules out for fighting the mouse wheel. */
-        .detail-scroll { max-height: min(200px, 30vh); overflow-y: auto; padding-right: 4px; }
+        .detail-scroll { padding-right: 4px; }
         /* 0.68rem was 10.9px. The description is the sentence somebody reads
            to choose a fighter; it is not a caption. */
         .detail-desc { font-size: 0.74rem; color: #94a3b8; margin: 4px 0 8px; }
@@ -1155,15 +1045,12 @@
         /* #31: the label swaps Details <-> Hide, which moved the button 8px and
            changed its width by 15. A floor stops the row twitching. */
         .menu-section .shop-info { min-width: 68px; }
-        /* #35: 3.2:1 at 10.6px. The dimmed background still reads as disabled;
-           the text does not have to be unreadable as well. */
-        button:disabled { color: #94a3b8; }
         /* #48: Confirm 139 against Back 141 online, 166 against 168 local. */
         /* `flex: 1` was already here, but with the default `auto` basis the
            content still set the width - which is the 139-vs-141 the finding
            measured. A zero basis makes them share the row exactly. */
         .detail-actions > button { flex-basis: 0; min-width: 0; }
-        .btn-back { width: auto; background: #1a2235; color: #cbd5e1;
+        .btn-back { width: auto; background: #1a2235;
             border: 1px solid #2e3a59; font-weight: normal;
             /* min-height: 50px removed with #37: it WAS the reason Return to
                Menu came out a pixel over Rebind beside it, and now that the
@@ -1181,14 +1068,8 @@
            re-adding the class (see announceResult), because a CSS animation
            only replays if the class actually changes. */
         #winner-title {
-            /* 1.6rem caps it at about 26px. It was clamp(1.6rem, 4.2vw,
-               2.8rem), i.e. 44.8px on a desktop, which wrapped the title to
-               four lines and pushed the panel past the frame it sits in.
-               overflow-wrap is for the display name: 14 characters is the
+            /* overflow-wrap is for the display name: 14 characters is the
                field's maximum and the longest of them ran off the panel. */
-            font-size: clamp(1.15rem, 2.2vw, 1.6rem);
-            line-height: 1.2;
-            letter-spacing: 0.02em;
             margin: 0 0 12px;
             overflow-wrap: anywhere;
             text-shadow: 0 0 22px rgba(0,243,255,0.45);
@@ -1236,14 +1117,14 @@
         #rebind-screen .menu-section { max-width: var(--panel-narrow); max-height: 85%; overflow-y: auto; }
         /* Left-aligned rows: fixed-width action label + fixed-width, uniform,
            slate key buttons (not full-width cyan blocks). */
-        .rebind-row { display: flex; justify-content: flex-start; align-items: center; gap: 12px; padding: 3px 0; font-size: 0.78rem; }
-        .rebind-row span.rebind-action { color: #94a3b8; flex: 0 0 64px; width: 64px; }
+        .rebind-row { display: flex; align-items: center; gap: 12px; padding: 3px 0; font-size: 0.78rem; }
+        .rebind-row span.rebind-action { color: #94a3b8; }
         .rebind-row button.rebind-key {
-            flex: 0 0 110px; width: 110px; margin: 0; padding: 6px 8px; text-align: center;
-            background: #1e293b; color: #e2e8f0; border: 1px solid #334155; font-weight: normal; font-size: 0.78rem;
+            width: 110px; margin: 0; padding: 6px 8px; text-align: center;
+            background: #1e293b; font-size: 0.78rem;
         }
         .rebind-row button.rebind-key:hover { background: #334155; box-shadow: none; }
-        .rebind-row button.rebind-key.listening { background: #38bdf8; color: #0a0d14; }
+        .rebind-row button.rebind-key.listening { background: #38bdf8; }
         /* WIDER KEYS, RIGHT-ALIGNED LABELS. Reported as "narrow and left-heavy,
            with empty space on the right" - the label column was a fixed 64px on
            the left and the key button hugged it, leaving the rest of a 320px
@@ -1287,26 +1168,25 @@
                and it was the only row that could. */
             box-sizing: border-box;
             display: flex; align-items: center; justify-content: space-between;
-            gap: 12px; width: 100%; margin: 6px 0; padding: 9px 12px;
-            background: #1a2235; color: #cbd5e1; border: 1px solid #2e3a59;
-            border-radius: 6px; font-size: 0.82rem; font-weight: 600;
+            gap: 12px; width: 100%;
+            background: #1a2235;
+            font-weight: 600;
             box-shadow: none; text-align: left; cursor: pointer;
         }
-        .opt:hover { background: #232d47; color: #e2e8f0; box-shadow: none; }
+        .opt:hover { background: #232d47; box-shadow: none; }
         /* The chevron on a row that OPENS something rather than toggling it. */
-        .opt-chevron { flex: none; color: #64748b; font-size: 1rem; line-height: 1; }
+        .opt-chevron { flex: none; line-height: 1; }
         /* #67: with a 26-character display name the value pill ran past the
            row's right padding. Truncated rather than allowed to push. */
         .opt .opt-state {
             max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-            flex: none; padding: 3px 10px; border-radius: 999px;
+            flex: none;
             background: #0f1626; border: 1px solid #334155;
-            color: #94a3b8; font-size: 0.74rem; font-weight: 700;
-            letter-spacing: 0.04em;
+            color: #94a3b8; font-weight: 700;
         }
         /* ON is the only state that gets color, so a glance finds it. */
         .opt.is-on .opt-state {
-            background: rgba(0, 243, 255, 0.14); border-color: #00f3ff; color: #00f3ff;
+            background: rgba(0, 243, 255, 0.14);
         }
         .menu-section .opt { width: 100%; }
         /* ONE ROW HEIGHT (#64, #17). The Language row came out 45px because
@@ -1314,7 +1194,6 @@
            Colors came out 51px because its label wrapped - in a column where
            everything else was 41. A floor plus a single line settles both
            without pinning a maximum that a translation would overflow. */
-        .opt { min-height: 44px; }
         .opt > span:first-child, .opt-select > span:first-child { white-space: nowrap; }
         /* The select sized like the pill it stands in for. */
         .opt-select select { min-height: 26px; }
@@ -1436,8 +1315,7 @@
             background: rgba(10,13,20,0.92);
             align-items: center; justify-content: center; z-index: 20;
         }
-        #settings-screen .menu-section { max-width: var(--panel-narrow); }
-        .settings-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+        .settings-list { display: flex; flex-direction: column; margin: 10px 0; }
         .settings-list button { margin: 0; text-align: left; }
         .settings-check {
             display: flex; align-items: center; gap: 8px; margin: 12px 0 4px;
@@ -1492,7 +1370,6 @@
            being dropped. */
         @media (max-width: 640px) {
             .shop-panel { padding-left: 8px; padding-right: 8px; }
-            .shop-card { padding-left: 12px; padding-right: 12px; }
         }
         /* TOUCH, which is the question - a narrow desktop window has a mouse and
            does not need 36px rows. Details was 58x20 and Max/Owned 44x22. */
@@ -1508,25 +1385,25 @@
             align-items: center; justify-content: center; z-index: 25;
             padding: 20px;
         }
-        .mapselect-panel { width: min(1000px, 96vw, calc(100vw - 32px)); max-height: 92vh; overflow-y: auto; text-align: center; }
+        .mapselect-panel { max-height: 92vh; overflow-y: auto; text-align: center; }
         .mapselect-panel h3 { color: #00f3ff; margin: 0 0 4px; letter-spacing: 1px; }
         .mapselect-sub { color: #8aa0b8; margin: 0 0 14px; font-size: 0.9rem; }
         /* Random Arena is a secondary (outline) action — the default choice,
            but it shouldn't out-shout the map cards it sits above. */
         .map-random-btn {
             width: auto; margin: 0 auto 16px; padding: 10px 26px; font-size: 1.05rem; font-weight: 700;
-            background: transparent; color: #00f3ff; border: 1px solid #00f3ff; border-radius: 8px;
+            background: transparent; color: #00f3ff; border: 1px solid #00f3ff;
             cursor: pointer; transition: transform .1s, box-shadow .1s;
         }
         .map-random-btn:hover { transform: translateY(-2px); background: rgba(0,243,255,0.12); box-shadow: 0 0 12px rgba(0, 243, 255, 0.35); }
         .mapselect-grid {
-            display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px;
+            display: grid; grid-template-columns: repeat(5, 1fr); margin-bottom: 16px;
         }
         @media (max-width: 720px) { .mapselect-grid { grid-template-columns: repeat(2, 1fr); } }
 
         .map-card {
-            position: relative; border-radius: 10px; overflow: hidden; cursor: pointer;
-            border: 2px solid #ffffff14; background: #0d1420; transition: transform .12s, border-color .12s, box-shadow .12s;
+            position: relative; overflow: hidden; cursor: pointer;
+            background: #0d1420; transition: transform .12s, border-color .12s, box-shadow .12s;
             /* These cards are BUTTONS (see buildMapSelect), so the base `button`
                rule reaches them: cyan background, 14px/22px padding, 1.08rem,
                8px margins. Undone the same way .mode-card does it. */
@@ -1536,8 +1413,7 @@
         }
         /* background RESTATED: `button:hover` is (0,1,1) and outranks a bare
            .map-card, so without this the card flashes cyan under the pointer. */
-        .map-card:hover { transform: translateY(-3px) scale(1.02); border-color: var(--mapaccent, #00f3ff); box-shadow: 0 10px 30px #00000090;
-            background: #0d1420; }
+        .map-card:hover { background: #0d1420; }
         /* Until the render has decoded, the card is the mark on a dark plate
            rather than an empty hole. */
         .map-card .map-shot {
@@ -1550,11 +1426,11 @@
             object-fit: cover; background: #0d1420;
         }
         .map-card .map-name {
-            position: absolute; left: 0; right: 0; bottom: 0; padding: 5px 8px;
-            font-size: 0.78rem; font-weight: 700; color: #fff; text-align: left;
-            background: linear-gradient(0deg, rgba(6,10,18,0.92), rgba(6,10,18,0)); text-shadow: 0 1px 3px #000;
+            position: absolute; left: 0; right: 0; bottom: 0;
+            font-weight: 700; color: #fff; text-align: left;
+            text-shadow: 0 1px 3px #000;
         }
-        .map-card .map-accent-bar { position: absolute; left: 0; top: 0; height: 3px; width: 100%; background: var(--mapaccent, #00f3ff); }
+        .map-card .map-accent-bar { position: absolute; left: 0; width: 100%; background: var(--mapaccent, #00f3ff); }
         #tutorial-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -1584,13 +1460,8 @@
         }
         .tutorial-card {
             background: #10151f;
-            border: 1px solid #2e3a59;
-            border-radius: 6px;
-            padding: 10px 12px;
         }
-        .tutorial-card-icon { font-size: 1.3rem; line-height: 1; margin-bottom: 4px; }
-        .tutorial-card h4 { margin: 0 0 4px; font-size: 0.8rem; color: #e2e8f0; }
-        .tutorial-card p { margin: 0; font-size: 0.68rem; line-height: 1.45; color: #94a3b8; }
+        .tutorial-card p { margin: 0; }
         .tutorial-controls-row { font-size: 0.66rem; color: #94a3b8; line-height: 1.6; }
         .tutorial-controls-row b { color: #e2e8f0; }
         .tutorial-hide-row {
@@ -1605,7 +1476,7 @@
         /* #75: was a 220px left-aligned button where every other panel's main
            action spans the panel. */
         #tutorial-screen .menu-section button#btn-tutorial-close { width: 100%; margin: 6px 0 0; }
-        #match-summary { font-size: 0.72rem; color: #94a3b8; text-align: left; margin: 8px 0; line-height: 1.5; }
+        #match-summary { text-align: left; margin: 8px 0; line-height: 1.5; }
         #match-summary b { color: #e2e8f0; }
         #pause-controls-reminder { font-size: 0.78rem; line-height: 1.5; text-align: left; }
         /* #83: a key and its action are one row, so neither can wrap away from
@@ -1787,10 +1658,10 @@
         /* Label on the left, field taking the slack, so three rows of
            different label lengths still line their inputs up. */
         .account-row {
-            display: flex; align-items: center; gap: 8px; margin: 10px 0;
+            display: flex; margin: 10px 0;
         }
         .account-row label {
-            flex: 0 0 96px; text-align: left;
+            text-align: left;
             font-size: 0.72rem; color: #94a3b8;
         }
         .account-row input {
@@ -1847,7 +1718,7 @@
             padding: 4px 8px; cursor: pointer; max-width: 55%;
         }
         .opt-select select:focus-visible { outline: 2px solid #00f3ff; outline-offset: 2px; }
-        .account-tabs { display: flex; gap: 6px; margin: 0 0 12px; }
+        .account-tabs { display: flex; margin: 0 0 12px; }
         .account-tab {
             flex: 1 1 0; margin: 0;
             background: rgba(15,23,42,0.5);
@@ -1856,8 +1727,6 @@
         }
         .account-tab.on {
             background: rgba(0,243,255,0.12);
-            border-color: rgba(0,243,255,0.55);
-            color: #e2e8f0;
         }
         /* The login name, shown beside the display name so somebody can see
            which account they are in without it competing with the name they
@@ -1875,7 +1744,6 @@
             min-height: 32px;
         }
         .account-link:hover { color: #cbd5e1; background: none; box-shadow: none; }
-        .account-status.ok { color: #34d399; }
         .account-username {
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
             font-size: 0.92em; color: #94a3b8;
@@ -1886,20 +1754,6 @@
         }
         .account-status.err { color: #f87171; }
         .account-status.ok { color: #34d399; }
-        /* The conflict prompt. Two real saves, side by side with their numbers
-           on them, because "cloud or local?" is not answerable without them. */
-        .account-conflict {
-            border: 1px solid rgba(245,158,11,0.45);
-            background: rgba(245,158,11,0.08);
-            border-radius: 8px; padding: 12px; margin: 10px 0; text-align: left;
-        }
-        .account-conflict h4 { margin: 0 0 6px; font-size: 0.8rem; color: #fbbf24; }
-        .account-choices { display: flex; gap: 8px; margin-top: 10px; }
-        .account-choices button { flex: 1 1 0; }
-        .account-save-line {
-            font-size: 0.74rem; color: #cbd5e1; line-height: 1.6;
-            font-variant-numeric: tabular-nums;
-        }
         #desktop-only {
             display: none;
             position: fixed;
@@ -1914,7 +1768,7 @@
             overflow-y: auto;
         }
         #desktop-only .menu-section { max-width: 400px; }
-        #desktop-only h3 { color: #00f3ff; margin: 0 0 10px; font-size: 1.25rem; }
+        #desktop-only h3 { color: #00f3ff; margin: 0 0 10px; }
         #desktop-only p { color: #cbd5e1; font-size: 0.86rem; line-height: 1.6; margin: 0 0 12px; }
         /* Batch 41: `.desktop-only-alt` and the two buttons are gone with the
            escape hatches - see the markup. */
@@ -1957,9 +1811,9 @@
             position: fixed; left: 50%; bottom: 14px;
             transform: translate(-50%, 8px);
             z-index: 60; pointer-events: none; opacity: 0; transition: opacity .18s, transform .18s;
-            background: rgba(8, 11, 18, 0.94); border: 1px solid #00f3ff; border-radius: 6px;
+            background: rgba(8, 11, 18, 0.94);
             color: #00f3ff; font-size: 0.76rem; font-weight: bold; padding: 8px 14px;
-            box-shadow: 0 0 18px rgba(0, 243, 255, 0.35); max-width: min(340px, 70%);
+            max-width: min(340px, 70%);
         }
         #debug-toast.show { opacity: 1; transform: translate(-50%, 0); }
         @media (prefers-reduced-motion: reduce) { #debug-toast { transition: none; } }
@@ -2222,11 +2076,10 @@
                part you are trying to look at. */
             position: absolute; left: 50%; bottom: 22%;
             transform: translateX(-50%);
-            padding: 8px 16px; border-radius: 999px;
-            background: rgba(10, 13, 20, 0.82); border: 1px solid #00f3ff;
+            padding: 8px 16px;
+            background: rgba(10, 13, 20, 0.82);
             color: #e2e8f0; font-size: 0.82rem; letter-spacing: 0.03em;
             pointer-events: none; z-index: 12; display: none;
-            box-shadow: 0 0 18px rgba(0, 243, 255, 0.25);
             transition: opacity 600ms ease, transform 600ms ease;
         }
         /* AFTER A FEW SECONDS it steps back. The hint has to stay - it is the
@@ -2273,51 +2126,25 @@
         html {
             --font-title: 'AstralTitle', 'AstralDisplay', 'Segoe UI', sans-serif;
 
-            --ac-ground: #0a0d14;
-            --ac-surface-1: #0d0f18;
-            --ac-surface-2: #121622;
-            --ac-surface-3: #1c2439;
-            --ac-glass: rgba(13, 15, 24, 0.78);
             --ac-line: #2e3a59;
             --ac-line-strong: #46567e;
 
             --ac-cyan: #00f3ff;
-            --ac-cyan-deep: #00bcd4;
             --ac-violet: #a855f7;
             --ac-coin: #f59e0b;
-            --ac-ok: #4ade80;
-            --ac-danger: #ef4444;
-            --ac-focus: #facc15;
 
             --ac-text: #e2e8f0;
             --ac-text-2: #94a3b8;
-            --ac-text-3: #8494a8;
             --ac-ink: #0d0f18;
-
-            /* Whose side. Written from sideColor() at boot and on a palette
-               change, so the colourblind setting reaches CSS without CSS
-               knowing there is one. These two are only the fallback. */
-            --ac-p1: #00f3ff;
-            --ac-p2: #f472b6;
-
-            --ac-s1: 4px;
-            --ac-s2: 8px;
-            --ac-s3: 12px;
-            --ac-s4: 16px;
-            --ac-s5: 24px;
-            --ac-s6: 32px;
-            --ac-s7: 48px;
 
             --ac-r1: 2px;
             --ac-r2: 4px;
-            --ac-r3: 10px;
             /* The one shape that is this game's: a corner taken off at 45
                degrees. Used on the primary action and on tiles, nowhere else. */
             --ac-cut: 12px;
 
             --ac-e1: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 2px 8px rgba(0, 0, 0, 0.35);
             --ac-e2: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 10px 28px rgba(0, 0, 0, 0.45);
-            --ac-e3: 0 1px 0 rgba(255, 255, 255, 0.09) inset, 0 22px 60px rgba(0, 0, 0, 0.6);
 
             --ac-dur-1: 90ms;
             --ac-dur-2: 180ms;
@@ -3252,6 +3079,12 @@
         }
 
         /* -- the online room -- */
+        /* calc(100vw - 32px) GUARANTEES THE 16px GUTTER, and cannot widen
+           anything: min() returns the smallest term. Padding the container
+           instead overflowed - these widths are measured against the
+           VIEWPORT, not the container, so a 92vw child does not shrink when
+           its parent gains padding. layoutcheck caught it: "nor the page,
+           with the room bar full". */
         html .room-bar, html .room-slots, html .room-main {
             width: min(1080px, 92vw, calc(100vw - 32px));
         }
@@ -3435,17 +3268,11 @@
         }
 
         /* -- the local select screen: the pair of slots between the panels -- */
-        html.ac-local .vs-column {
-            width: clamp(230px, 34vw, 430px);
-            padding-top: 0;
-            justify-content: flex-start;
-        }
         html .duel-stage {
             display: flex;
             align-items: stretch;
             gap: 6px;
             width: 100%;
-            height: clamp(210px, 40vh, 370px);
         }
         /* -- a fighter's detail: their bust where the colour square was -- */
         html .detail-header {

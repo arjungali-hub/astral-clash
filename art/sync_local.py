@@ -1344,8 +1344,9 @@ _AT_RULE = re.compile(r'@(keyframes|media|supports|font-face)([^{]*)'
 _ANIM_NAME = re.compile(r'animation(?:-name)?' + chr(92) + r's*:[^;}]*')
 
 
-def _at_blocks(block):
-    """(kind, condition, whole text) for each top-level at-rule."""
+def _at_blocks(block, with_start=False):
+    """(kind, condition, whole text) for each top-level at-rule - and, with
+    with_start, its offset in `block` as a fourth item."""
     out = []
     for m in _AT_RULE.finditer(block):
         depth, i = 1, m.end()
@@ -1355,7 +1356,8 @@ def _at_blocks(block):
             elif block[i] == '}':
                 depth -= 1
             i += 1
-        out.append((m.group(1), ' '.join(m.group(2).split()), block[m.start():i]))
+        item = (m.group(1), ' '.join(m.group(2).split()), block[m.start():i])
+        out.append(item + (m.start(),) if with_start else item)
     return out
 
 
@@ -1445,16 +1447,26 @@ def at_rule_inserts(src, dst):
 
     # Every block this build has, grouped by condition: the union is what the
     # browser applies, and the LAST block is where a new rule goes.
+    #
+    # ...the last block OUTSIDE THE DESIGN LAYER, and nothing is taken from
+    # inside online's either. The layer is copied whole, ahead of every porter,
+    # so a rule inserted into one of its blocks is overwritten on the next run
+    # and inserted again; and since the layer ends the sheet, its blocks had
+    # become the "last block" for every condition they share. Its rules still
+    # count towards what this build HAS - the browser applies them.
+    on_d, lo_d = design_region(on_block), design_region(lo_block)
+    inside = lambda d, pos: d is not None and d[0] <= pos < d[1]
     lo_have, lo_last = {}, {}
-    for kind, cond, text in _at_blocks(lo_block):
+    for kind, cond, text, pos in _at_blocks(lo_block, with_start=True):
         if kind == 'keyframes':
             continue
         lo_have.setdefault((kind, cond), set()).update(inner_rules(text))
-        lo_last[(kind, cond)] = text
+        if not inside(lo_d, pos):
+            lo_last[(kind, cond)] = text
 
     on_want = {}
-    for kind, cond, text in _at_blocks(on_block):
-        if kind == 'keyframes' or (kind, cond) not in lo_have:
+    for kind, cond, text, pos in _at_blocks(on_block, with_start=True):
+        if kind == 'keyframes' or (kind, cond) not in lo_last or inside(on_d, pos):
             continue
         for sel, rule in inner_rules(text).items():
             if sel in lo_have[(kind, cond)] or sel not in carried:

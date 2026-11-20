@@ -83,7 +83,7 @@
            `font: inherit` would also drag size and weight along, which those
            elements set for themselves - so inherit only the family and the
            OpenType features. */
-        button, input, select, textarea, optgroup {
+        button, input, select {
             font-family: inherit;
             font-feature-settings: inherit;
         }
@@ -188,24 +188,12 @@
             margin: 2px 0;
             font-size: 2.4rem;
             letter-spacing: 0.06em;
-            text-transform: uppercase;
-        }
-        .brand-divider {
-            width: 90px;
-            height: 2px;
-            margin: 4px auto 6px;
-            background: linear-gradient(90deg, transparent, #00f3ff, transparent);
-            opacity: 0.7;
         }
         p { color: #94a3b8; margin: 0 0 6px; font-size: 0.9rem; }
         .menu-section {
-            position: relative;
             background: linear-gradient(180deg, #1c2439, #161d2f);
             padding: 24px;
-            border-radius: 8px;
             margin: 10px;
-            border: 1px solid #2e3a59;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
             text-align: center;
             width: 350px;
         }
@@ -215,9 +203,6 @@
         .menu-section::before {
             content: "";
             position: absolute;
-            top: 0; left: 12%; right: 12%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, rgba(0, 243, 255, 0.6), transparent);
         }
         /* --- Button hierarchy (B4). PRIMARY = the base cyan-filled button
            (Start Match, Confirm, Resume, Rematch…). SECONDARY = .btn-secondary
@@ -248,11 +233,9 @@
             padding: 14px 22px;
             font-weight: bold;
             font-size: 1.08rem;
-            border-radius: 4px;
             cursor: pointer;
             margin: 8px 0;
             width: auto;
-            transition: 0.2s;
         }
         button:hover {
             background: #00bcd4;
@@ -281,9 +264,7 @@
         }
         button:disabled {
             background: #334155;
-            color: #64748b;
             cursor: not-allowed;
-            box-shadow: none;
         }
         #select-screen .select-row {
             display: flex;
@@ -335,24 +316,14 @@
         .side-actions button { flex: 1; margin: 0; padding: 6px 10px; font-size: 0.74rem; }
         .side-actions .btn-secondary { padding-left: 10px; } /* random pick: plain secondary, no toggle knob */
         /* Batch 37: the roster card's face chip. */
-        .fighter-btn { display: flex; align-items: center; gap: 9px; text-align: left; }
         .fighter-btn .fface {
-            flex: 0 0 auto; width: 34px; height: 34px; border-radius: 6px;
-            background-size: cover; background-position: center top;
+            flex: 0 0 auto;
             background-repeat: no-repeat;
-            border: 1px solid rgba(255,255,255,0.16);
         }
         .fighter-btn .fmeta { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
         .fighter-btn.locked .fface { filter: grayscale(1) brightness(0.6); }
         .fighter-grid {
             display: grid;
-            /* minmax(0, 1fr), NOT 1fr (#11, #12). A bare `1fr` floors each track
-               at its item's min-content width, so a long fighter name widened
-               the column past the grid and spilled over the detail panel beside
-               it - 40px of overlap on desktop, and a click in that strip picked
-               the card underneath rather than pressing Confirm. */
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 7px;
         }
         .vs-column {
             position: relative;
@@ -380,12 +351,8 @@
         }
         .vs-label {
             position: relative;
-            font-size: 2.4rem;
             font-weight: 800;
-            font-style: italic;
             letter-spacing: 0.06em;
-            color: #e2e8f0;
-            text-shadow: 0 0 18px rgba(0, 243, 255, 0.45);
         }
         .vs-status {
             font-size: 0.8rem;
@@ -407,7 +374,6 @@
             padding: 10px 26px;
             font-size: 0.95rem;
             background: #00f3ff;
-            box-shadow: 0 0 18px rgba(0, 243, 255, 0.5);
             animation: startPulse 1.3s ease-in-out infinite;
         }
         @keyframes startPulse {
@@ -417,36 +383,6 @@
         @keyframes vsReadyPulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.6; }
-        }
-        /* Honor the OS "reduce motion" setting: kill the looping menu pulses
-           (the intro drop cinematic is gated in JS off REDUCED_MOTION). */
-        @media (prefers-reduced-motion: reduce) {
-        }
-        .menu-footer {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 8px;
-            margin: 14px auto 0;
-            padding-top: 12px;
-            border-top: 1px solid #2e3a59;
-            width: min(700px, 92vw);
-        }
-        .menu-footer button {
-            width: auto;
-            flex: 0 1 auto;
-            background: #1a2235;
-            color: #94a3b8;
-            border: 1px solid #2e3a59;
-            font-size: 0.78rem;
-            font-weight: normal;
-            padding: 8px 16px;
-            margin: 0;
-        }
-        .menu-footer button:hover {
-            background: #232d47;
-            color: #e2e8f0;
-            box-shadow: none;
         }
         /* Bot toggle: state reads from the label text ("Bot: OFF"/"Bot: ON")
            plus the amber .active fill — used to also draw a track+knob
@@ -485,15 +421,8 @@
         .bot-mode-title { font-size: 1.02rem; font-weight: bold; color: #f59e0b; }
         .bot-mode-sub { font-size: 0.74rem; color: #94a3b8; text-align: center; }
         .fighter-btn {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 2px;
             background: #0f1420;
-            border: 1px solid var(--accent, #00f3ff);
             color: #fff;
-            text-align: left;
-            padding: 7px 11px;
             margin: 0;
         }
         .fighter-btn .fkey {
@@ -509,7 +438,6 @@
             font-size: 0.76rem;
             padding: 1px 6px;
             border-radius: 3px;
-            margin-right: 7px;
         }
         /* Batch 49: a floor under the accent's brightness. Draven's identity
            color is #6b7280, a mid grey - which as a card NAME is exactly what
@@ -517,9 +445,6 @@
            The accent still tints it; it just cannot go dim. */
         .fighter-btn .fname {
             font-weight: bold;
-            color: var(--accent, #00f3ff);
-            font-size: 0.95rem;
-            filter: brightness(1.45) saturate(1.15);
         }
         .fighter-btn.locked .fname { filter: none; }   /* locked SHOULD look dim */
         .fighter-btn .ftitle {
@@ -530,11 +455,15 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .fighter-btn:hover { background: var(--accent, #00f3ff); box-shadow: 0 0 15px rgba(0, 243, 255, 0.4); }
+        .fighter-btn:hover {
+            background: var(--accent, #00f3ff);
+        }
         .fighter-btn:hover .fname, .fighter-btn:hover .ftitle, .fighter-btn:hover .fkey { color: #0d0f18; }
         /* B13: the picked card stays lit in the grid while its detail shows
            alongside, so you always see where your choice sits in the roster. */
-        .fighter-btn.selected { background: var(--accent, #00f3ff); box-shadow: 0 0 15px rgba(0, 243, 255, 0.45); }
+        .fighter-btn.selected {
+            background: var(--accent, #00f3ff);
+        }
         .fighter-btn.selected .fname, .fighter-btn.selected .ftitle { color: #0d0f18; }
         .fighter-btn.selected .fkey { background: #0d0f18; color: var(--accent, #00f3ff); }
         /* Once confirmed the grid stays visible but is locked out (dimmed,
@@ -573,7 +502,6 @@
             font-size: 0.62rem;
             padding: 1px 6px;
             border-radius: 3px;
-            margin: 3px 0 0;
             white-space: nowrap;
             max-width: 100%;
             overflow: hidden;
@@ -647,7 +575,6 @@
             align-items: center; justify-content: center; z-index: 30; padding: 20px; box-sizing: border-box;
         }
         .modeselect-panel {
-            width: min(var(--panel-wide), 94vw, calc(100vw - 32px));
             max-height: none;
             overflow-y: visible;
             box-sizing: border-box;
@@ -658,17 +585,33 @@
             margin: 0 0 4px;
         }
         .mode-card {
-            display: block; width: 100%; text-align: left; margin: 0 0 8px; padding: 11px 14px;
-            background: #10151f; color: #e2e8f0; border: 1px solid #2e3a59; border-left: 3px solid #2e3a59;
-            border-radius: 6px; font-weight: normal; box-shadow: none;
+            width: 100%;
+            text-align: left;
+            background: #10151f;
+            color: #e2e8f0;
+            font-weight: normal;
+            box-shadow: none;
         }
-        .mode-card:hover { background: #161d2c; border-color: #a855f7; box-shadow: none; }
-        .mode-card.active { border-color: #a855f7; border-left-color: #a855f7; background: #1a1430; }
-        .mode-card .mode-name { display: block; font-weight: bold; font-size: 0.94rem; color: #e2e8f0; margin-bottom: 3px; }
+        .mode-card:hover {
+            background: #161d2c;
+            box-shadow: none;
+        }
+        .mode-card.active {
+            background: #1a1430;
+        }
+        .mode-card .mode-name {
+            display: block;
+            font-weight: bold;
+            color: #e2e8f0;
+        }
         .mode-card.active .mode-name { color: #c084fc; }
-        .mode-card .mode-blurb { display: block; font-size: 0.7rem; color: #94a3b8; line-height: 1.45; }
+        .mode-card .mode-blurb {
+            display: block;
+        }
         /* #21: 4.47:1 at 10.2px, and 10.2px is small for a status tag. */
-        .mode-card .mode-current { float: right; font-size: 0.7rem; color: #c084fc; font-weight: bold; }
+        .mode-card .mode-current {
+            font-weight: bold;
+        }
         #shop-screen {
             display: none;
             position: absolute;
@@ -694,12 +637,9 @@
            spending is answered by where the panel is rather than by reading a
            highlighted tab. The panel is narrowed to match: a 760px panel anchored
            left still reaches across the half it is meant to leave alone. */
-        #shop-screen.side-p1 { justify-content: flex-start; }
-        #shop-screen.side-p2 { justify-content: flex-end; }
         .shop-panel { width: min(560px, 46vw); max-height: none; overflow-y: visible; text-align: left; }
         @media (max-width: 900px) {
             /* Too narrow to sit beside anything — fall back to centred and wide. */
-            #shop-screen.side-p1, #shop-screen.side-p2 { justify-content: center; }
             .shop-panel { width: min(560px, 94vw); }
         }
         /* The pre-purchase description: an inline expansion rather than a third
@@ -731,20 +671,17 @@
         .shop-sub { text-align: center; color: #8aa0b8; margin: 0 0 12px; font-size: 0.8rem; }
         .shop-head { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 12px; }
         .shop-card {
-            background: #10151f; border: 1px solid #2e3a59; border-left: 3px solid var(--accent, #00f3ff);
-            border-radius: 6px; padding: 9px 12px; margin-bottom: 8px;
+            background: #10151f;
         }
         .shop-card-head {
             display: flex;
             align-items: center;
             gap: 10px;
-            margin-bottom: 6px;
         }
         .shop-card-head > div:first-child { min-width: 0; } /* let the label shrink instead of squeezing the button */
         .shop-name {
             font-weight: bold;
             color: var(--accent-text, var(--accent, #00f3ff));
-            font-size: 0.92rem;
         }
         .shop-title { font-size: 0.66rem; color: #94a3b8; font-weight: normal; }
         .shop-upgrades { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 6px 10px; }
@@ -755,7 +692,9 @@
         }
         .upg-pips { display: flex; gap: 3px; flex-shrink: 0; }
         .upg-pip { width: 9px; height: 9px; border-radius: 2px; background: #1e2637; border: 1px solid #2e3a59; }
-        .upg-pip.filled { background: #00f3ff; border-color: #00f3ff; box-shadow: 0 0 6px rgba(0,243,255,0.5); }
+        .upg-pip.filled {
+            background: #00f3ff;
+        }
         /* NOTE the `.menu-section` prefix: `.shop-panel` is itself a
            `.menu-section`, and `.menu-section button { width: 100% }` (class +
            element = higher specificity than a lone class) would otherwise
@@ -796,10 +735,17 @@
 
         .fighter-detail { display: none; text-align: left; margin-top: 10px; }
         .fighter-detail.confirmed { outline: 2px solid var(--accent); border-radius: 6px; padding: 4px; }
-        .detail-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-        .detail-swatch { width: 28px; height: 28px; border-radius: 6px; background: var(--accent); flex-shrink: 0; box-shadow: 0 0 10px var(--accent); }
-        .detail-name { font-weight: bold; color: var(--accent); font-size: 1.05rem; }
-        .detail-title { font-size: 0.68rem; color: #94a3b8; }
+        .detail-header {
+            display: flex;
+            align-items: center;
+        }
+        .detail-swatch {
+            background: var(--accent);
+            flex-shrink: 0;
+        }
+        .detail-name {
+            font-weight: bold;
+        }
         /* The select screen has always been taller than the viewport with a
            detail panel open — #ui-overlay is the scroll container for exactly
            that reason (see its comment). What this cap buys is that the panel's
@@ -814,7 +760,7 @@
            page" - the fighter detail had its own 200px scroll box, inside a panel,
            inside a scrollable overlay: three nested scrollbars to read one
            paragraph. It grows now and the page carries it. */
-        .detail-scroll { max-height: none; overflow: visible; padding-right: 0; }
+        .detail-scroll { padding-right: 0; }
         .detail-desc {
             font-size: 0.74rem;
             color: #94a3b8;
@@ -852,7 +798,6 @@
         .btn-back {
             width: auto;
             background: #1a2235;
-            color: #cbd5e1;
             border: 1px solid #2e3a59;
             font-weight: normal;
             /* min-height: 50px removed with #37: it WAS the reason Return to
@@ -883,10 +828,12 @@
         .rebind-row span.rebind-action { color: #94a3b8; flex: 0 0 64px; width: 64px; }
         .rebind-row button.rebind-key {
             flex: 0 0 110px; width: 110px; margin: 0; padding: 6px 8px; text-align: center;
-            background: #1e293b; color: #e2e8f0; border: 1px solid #334155; font-weight: normal; font-size: 0.78rem;
+            background: #1e293b; font-size: 0.78rem;
         }
         .rebind-row button.rebind-key:hover { background: #334155; box-shadow: none; }
-        .rebind-row button.rebind-key.listening { background: #38bdf8; color: #0a0d14; }
+        .rebind-row button.rebind-key.listening {
+            background: #38bdf8;
+        }
         .rebind-hint {
             font-size: 0.68rem;
             color: #8494a8;
@@ -985,19 +932,6 @@
            bare `.modal-x` is (0,1,0) - the x came out 1040px wide, spanning the
            whole panel and hanging 8px off its left edge. layoutcheck caught it
            by measuring, which is exactly the failure the Copy button had. */
-        .menu-section .modal-x, .shop-panel .modal-x, .tutorial-panel .modal-x {
-            position: absolute; top: 8px; right: 8px;
-            /* 40x40 (#68): 30 is under every touch-target guideline, and this
-               is the control that exists to be findable. */
-            width: 40px; height: 40px; min-width: 0; padding: 0; margin: 0;
-            display: flex; align-items: center; justify-content: center;
-            background: transparent; color: #94a3b8;
-            border: 1px solid #2e3a59; border-radius: 6px;
-            font-size: 1.05rem; line-height: 1; box-shadow: none;
-        }
-        .menu-section .modal-x:hover, .shop-panel .modal-x:hover, .tutorial-panel .modal-x:hover {
-            background: #232d47; color: #e2e8f0; box-shadow: none;
-        }
 
 
         /* Single "Settings" entry point gathering Rebind/HUD-scale/Audio —
@@ -1007,9 +941,6 @@
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(10,13,20,0.92);
             align-items: center; justify-content: center; z-index: 20;
-        }
-        #settings-screen .menu-section {
-            max-width: var(--panel-narrow);
         }
         .opt {
             /* BORDER-BOX, because this rule is worn by two different elements.
@@ -1026,37 +957,30 @@
             justify-content: space-between;
             gap: 12px;
             width: 100%;
-            margin: 6px 0;
-            padding: 9px 12px;
             background: #1a2235;
-            color: #cbd5e1;
-            border: 1px solid #2e3a59;
-            border-radius: 6px;
-            font-size: 0.82rem;
             font-weight: 600;
             box-shadow: none;
             text-align: left;
             cursor: pointer;
         }
-        .opt:hover { background: #232d47; color: #e2e8f0; box-shadow: none; }
+        .opt:hover {
+            background: #232d47;
+            box-shadow: none;
+        }
         .opt .opt-state {
             max-width: 46%;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
             flex: none;
-            padding: 3px 10px;
-            border-radius: 999px;
             background: #0f1626;
             border: 1px solid #334155;
             color: #94a3b8;
-            font-size: 0.74rem;
             font-weight: 700;
-            letter-spacing: 0.04em;
         }
         /* ON is the only state that gets color, so a glance finds it. */
         .opt.is-on .opt-state {
-            background: rgba(0, 243, 255, 0.14); border-color: #00f3ff; color: #00f3ff;
+            background: rgba(0, 243, 255, 0.14);
         }
         .menu-section .opt { width: 100%; }
         .menu-section .modal-x, .shop-panel .modal-x, .tutorial-panel .modal-x {
@@ -1084,7 +1008,11 @@
         .menu-section .modal-x:hover, .shop-panel .modal-x:hover, .tutorial-panel .modal-x:hover {
             background: #232d47; color: #e2e8f0; box-shadow: none;
         }
-        .settings-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+        .settings-list {
+            display: flex;
+            flex-direction: column;
+            margin: 10px 0;
+        }
         .settings-list button { margin: 0; text-align: left; }
         .settings-check {
             display: flex; align-items: center; gap: 8px; margin: 12px 0 4px;
@@ -1154,7 +1082,6 @@
             padding: 20px;
         }
         .mapselect-panel {
-            width: min(1000px, 96vw, calc(100vw - 32px));
             max-height: none;
             overflow-y: visible;
             text-align: center;
@@ -1168,21 +1095,28 @@
         /* Random Arena is a secondary (outline) action — the default choice,
            but it shouldn't out-shout the map cards it sits above. */
         .map-random-btn {
-            width: auto; margin: 0 auto 16px; padding: 10px 26px; font-size: 1.05rem; font-weight: 700;
-            background: transparent; color: #00f3ff; border: 1px solid #00f3ff; border-radius: 8px;
-            cursor: pointer; transition: transform .1s, box-shadow .1s;
+            width: auto;
+            margin: 0 auto 16px;
+            padding: 10px 26px;
+            font-size: 1.05rem;
+            font-weight: 700;
+            background: transparent;
+            color: #00f3ff;
+            border: 1px solid #00f3ff;
+            cursor: pointer;
+            transition: transform .1s, box-shadow .1s;
         }
         .map-random-btn:hover { transform: translateY(-2px); background: rgba(0,243,255,0.12); box-shadow: 0 0 12px rgba(0, 243, 255, 0.35); }
         .mapselect-grid {
-            display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            margin-bottom: 16px;
         }
         @media (max-width: 720px) { .mapselect-grid { grid-template-columns: repeat(2, 1fr); } }
         .map-card {
             position: relative;
-            border-radius: 10px;
             overflow: hidden;
             cursor: pointer;
-            border: 2px solid #ffffff14;
             background: #0d1420;
             transition: transform .12s, border-color .12s, box-shadow .12s;
             /* These cards are BUTTONS (see buildMapSelect), so the base `button`
@@ -1199,9 +1133,6 @@
             appearance: none;
         }
         .map-card:hover {
-            transform: translateY(-3px) scale(1.02);
-            border-color: var(--mapaccent, #00f3ff);
-            box-shadow: 0 10px 30px #00000090;
             background: #0d1420;
         }
         .map-card canvas, .map-card .map-shot {
@@ -1209,11 +1140,21 @@
             object-fit: cover; background: #0d1420;
         }
         .map-card .map-name {
-            position: absolute; left: 0; right: 0; bottom: 0; padding: 5px 8px;
-            font-size: 0.78rem; font-weight: 700; color: #fff; text-align: left;
-            background: linear-gradient(0deg, rgba(6,10,18,0.92), rgba(6,10,18,0)); text-shadow: 0 1px 3px #000;
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            font-weight: 700;
+            color: #fff;
+            text-align: left;
+            text-shadow: 0 1px 3px #000;
         }
-        .map-card .map-accent-bar { position: absolute; left: 0; top: 0; height: 3px; width: 100%; background: var(--mapaccent, #00f3ff); }
+        .map-card .map-accent-bar {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            background: var(--mapaccent, #00f3ff);
+        }
         #tutorial-screen {
             display: none;
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -1246,13 +1187,10 @@
         }
         .tutorial-card {
             background: #10151f;
-            border: 1px solid #2e3a59;
-            border-radius: 6px;
-            padding: 10px 12px;
         }
-        .tutorial-card-icon { font-size: 1.3rem; line-height: 1; margin-bottom: 4px; }
-        .tutorial-card h4 { margin: 0 0 4px; font-size: 0.8rem; color: #e2e8f0; }
-        .tutorial-card p { margin: 0; font-size: 0.68rem; line-height: 1.45; color: #94a3b8; }
+        .tutorial-card p {
+            margin: 0;
+        }
         .tutorial-controls-row { font-size: 0.66rem; color: #94a3b8; line-height: 1.6; }
         .tutorial-controls-row b { color: #e2e8f0; }
         .tutorial-hide-row {
@@ -1268,25 +1206,17 @@
             width: 100%;
             margin: 6px 0 0;
         }
-        #match-summary { font-size: 0.72rem; color: #94a3b8; text-align: left; margin: 8px 0; line-height: 1.5; }
+        #match-summary {
+            text-align: left;
+            margin: 8px 0;
+            line-height: 1.5;
+        }
         #match-summary b { color: #e2e8f0; }
         #pause-controls-reminder {
             font-size: 0.78rem;
             line-height: 1.5;
             text-align: left;
         }
-        .daily-panel { margin: 10px 0 2px; text-align: left; }
-        .daily-panel h4 {
-            margin: 0 0 6px; font-size: 0.68rem; letter-spacing: 0.1em;
-            /* #64748b read 4.02:1 against this panel - under AA's 4.5 for text
-               this size, and caught by contrastcheck the first time CI managed
-               to run it. #7c8ba3 is the smallest step that clears it (5.17:1)
-               and keeps the heading quieter than the challenge text it labels,
-               which was the point of the grey. */
-            text-transform: uppercase; color: #7c8ba3; font-weight: 700;
-        }
-        .daily-list { list-style: none; margin: 0; padding: 0;
-                      display: flex; flex-direction: column; gap: 5px; }
         .daily-row {
             /* 0.72rem was 11.5px in a 16px row (#26). */
             display: flex;
@@ -1300,9 +1230,6 @@
                stay in a line down the panel instead of wandering with the
                length of each challenge. */;
         }
-        .daily-text { flex: 1 1 auto; }
-        .daily-coins { flex: none; color: #f59e0b; font-weight: 700;
-                       font-variant-numeric: tabular-nums; }
         .daily-mark {
             flex: none;
             color: #7c8ba3;
@@ -1323,7 +1250,10 @@
             overflow-y: auto;
         }
         #desktop-only .menu-section { max-width: 400px; }
-        #desktop-only h3 { color: #00f3ff; margin: 0 0 10px; font-size: 1.25rem; }
+        #desktop-only h3 {
+            color: #00f3ff;
+            margin: 0 0 10px;
+        }
         #desktop-only p { color: #cbd5e1; font-size: 0.86rem; line-height: 1.6; margin: 0 0 12px; }
         /* Batch 41: `.desktop-only-alt` and the two buttons are gone with the
            escape hatches - see the markup. */
@@ -1404,13 +1334,10 @@
             opacity: 0;
             transition: opacity .18s, transform .18s;
             background: rgba(8, 11, 18, 0.94);
-            border: 1px solid #00f3ff;
-            border-radius: 6px;
             color: #00f3ff;
             font-size: 0.76rem;
             font-weight: bold;
             padding: 8px 14px;
-            box-shadow: 0 0 18px rgba(0, 243, 255, 0.35);
             max-width: min(340px, 70%);
         }
         #debug-toast.show {
@@ -1626,6 +1553,8 @@
         @media (prefers-reduced-motion: reduce) {
             .ld-seg { animation-duration: 3s; }
             #winner-title.emphasise { animation: none; }
+            #btn-start-match { animation: none; }
+            .vs-status.ready { animation: none; }
         }        #lock-hint {
             /* 14% -> 22%: at 14% it sat over the weapon in the lower centre of
                the frame, which is both the busiest part of the picture and the
@@ -1635,16 +1564,13 @@
             bottom: 14%;
             transform: translateX(-50%);
             padding: 8px 16px;
-            border-radius: 999px;
             background: rgba(10, 13, 20, 0.82);
-            border: 1px solid #00f3ff;
             color: #e2e8f0;
             font-size: 0.82rem;
             letter-spacing: 0.03em;
             pointer-events: none;
             z-index: 12;
             display: none;
-            box-shadow: 0 0 18px rgba(0, 243, 255, 0.25);
             transition: opacity 600ms ease, transform 600ms ease;
         }
     
@@ -1663,14 +1589,8 @@
             white-space: nowrap;
         }
         #winner-title {
-            /* 1.6rem caps it at about 26px. It was clamp(1.6rem, 4.2vw,
-               2.8rem), i.e. 44.8px on a desktop, which wrapped the title to
-               four lines and pushed the panel past the frame it sits in.
-               overflow-wrap is for the display name: 14 characters is the
+            /* overflow-wrap is for the display name: 14 characters is the
                field's maximum and the longest of them ran off the panel. */
-            font-size: clamp(1.15rem, 2.2vw, 1.6rem);
-            line-height: 1.2;
-            letter-spacing: 0.02em;
             margin: 0 0 12px;
             overflow-wrap: anywhere;
             text-shadow: 0 0 22px rgba(0,243,255,0.45);
@@ -1755,7 +1675,7 @@
             text-decoration: line-through;
         }
         .daily-panel {
-            margin: 10px 0 2px;
+            margin: 10px 0 12px;
             text-align: left;
         }
         .daily-panel h4 {
@@ -1773,7 +1693,6 @@
         }
         .account-tabs {
             display: flex;
-            gap: 6px;
             margin: 0 0 12px;
         }
         .account-username {
@@ -1824,17 +1743,14 @@
         }
         @media (max-width: 640px) {
             .shop-panel { padding-left: 8px; padding-right: 8px; }
-            .shop-card { padding-left: 12px; padding-right: 12px; }
         }
                 #game-container.menu-roomy {
             height: min(96vh, 1000px);
         }
                 .opt-chevron {
-            flex: none;
-            color: #64748b;
-            font-size: 1rem;
-            line-height: 1;
-        }
+                    flex: none;
+                    line-height: 1;
+                }
                 .ctl-grid {
             display: grid;
             grid-template-columns: max-content 1fr;
@@ -1919,51 +1835,25 @@
         html {
             --font-title: 'AstralTitle', 'AstralDisplay', 'Segoe UI', sans-serif;
 
-            --ac-ground: #0a0d14;
-            --ac-surface-1: #0d0f18;
-            --ac-surface-2: #121622;
-            --ac-surface-3: #1c2439;
-            --ac-glass: rgba(13, 15, 24, 0.78);
             --ac-line: #2e3a59;
             --ac-line-strong: #46567e;
 
             --ac-cyan: #00f3ff;
-            --ac-cyan-deep: #00bcd4;
             --ac-violet: #a855f7;
             --ac-coin: #f59e0b;
-            --ac-ok: #4ade80;
-            --ac-danger: #ef4444;
-            --ac-focus: #facc15;
 
             --ac-text: #e2e8f0;
             --ac-text-2: #94a3b8;
-            --ac-text-3: #8494a8;
             --ac-ink: #0d0f18;
-
-            /* Whose side. Written from sideColor() at boot and on a palette
-               change, so the colourblind setting reaches CSS without CSS
-               knowing there is one. These two are only the fallback. */
-            --ac-p1: #00f3ff;
-            --ac-p2: #f472b6;
-
-            --ac-s1: 4px;
-            --ac-s2: 8px;
-            --ac-s3: 12px;
-            --ac-s4: 16px;
-            --ac-s5: 24px;
-            --ac-s6: 32px;
-            --ac-s7: 48px;
 
             --ac-r1: 2px;
             --ac-r2: 4px;
-            --ac-r3: 10px;
             /* The one shape that is this game's: a corner taken off at 45
                degrees. Used on the primary action and on tiles, nowhere else. */
             --ac-cut: 12px;
 
             --ac-e1: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 2px 8px rgba(0, 0, 0, 0.35);
             --ac-e2: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 10px 28px rgba(0, 0, 0, 0.45);
-            --ac-e3: 0 1px 0 rgba(255, 255, 255, 0.09) inset, 0 22px 60px rgba(0, 0, 0, 0.6);
 
             --ac-dur-1: 90ms;
             --ac-dur-2: 180ms;
@@ -2898,6 +2788,12 @@
         }
 
         /* -- the online room -- */
+        /* calc(100vw - 32px) GUARANTEES THE 16px GUTTER, and cannot widen
+           anything: min() returns the smallest term. Padding the container
+           instead overflowed - these widths are measured against the
+           VIEWPORT, not the container, so a 92vw child does not shrink when
+           its parent gains padding. layoutcheck caught it: "nor the page,
+           with the room bar full". */
         html .room-bar, html .room-slots, html .room-main {
             width: min(1080px, 92vw, calc(100vw - 32px));
         }
@@ -3081,17 +2977,11 @@
         }
 
         /* -- the local select screen: the pair of slots between the panels -- */
-        html.ac-local .vs-column {
-            width: clamp(230px, 34vw, 430px);
-            padding-top: 0;
-            justify-content: flex-start;
-        }
         html .duel-stage {
             display: flex;
             align-items: stretch;
             gap: 6px;
             width: 100%;
-            height: clamp(210px, 40vh, 370px);
         }
         /* -- a fighter's detail: their bust where the colour square was -- */
         html .detail-header {

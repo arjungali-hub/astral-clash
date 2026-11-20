@@ -151,11 +151,13 @@ async function frame(page) {
 
     // ---- Home: #23 the gaps, #25 the focus ring -------------------------
     if (!LOCAL) {
+        // #home-screen, since the redesign: the card these measured is gone,
+        // and Home is one grid whose rows are the stack the card used to be.
         show('HOME (#23 sizes)', await rects(page, [
             '#btn-home-play', '.home-row button', '#input-name',
-            '.home-card',
+            '#home-screen',
         ]));
-        console.log('HOME gaps (#23): ' + JSON.stringify(await gaps(page, '.home-card')));
+        console.log('HOME gaps (#23): ' + JSON.stringify(await gaps(page, '#home-screen')));
         // A REAL focus, not .focus(): :focus-visible only matches when the
         // browser decides the focus came from the keyboard.
         await page.evaluate(() => document.getElementById('btn-home-play').focus());
