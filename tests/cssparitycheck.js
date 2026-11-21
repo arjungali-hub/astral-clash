@@ -217,8 +217,10 @@ async function capture(page, build) {
         // present on a fresh checkout - failed on every single run regardless
         // of the code. A tick that is always red reports nothing.
         //
-        // So: seed it, say plainly that nothing was compared, and pass. CI
-        // caches the file between runs, so the run after this one does compare.
+        // So: seed it, say plainly that nothing was compared, and pass. In CI
+        // the baseline is rendered from the commit that began this epoch
+        // (.github/workflows/ci.yml), so it is missing only on the commit that
+        // declares the epoch - which has nothing earlier to be compared with.
         fs.writeFileSync(file, JSON.stringify(data));
         section('No baseline existed, so one was established:');
         check('baseline written - this run compared NOTHING', true,

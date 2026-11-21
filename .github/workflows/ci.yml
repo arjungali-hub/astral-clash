@@ -210,16 +210,21 @@ jobs:
         run: node tests/run.js --jobs 3 ${{ matrix.tests }}
 
   # ------------------------------------------------------------- css parity
-  # On its own, because it is the only checker that carries state between runs.
-  # Sharing one cache key across three parallel shards would have them
-  # overwriting each other's baseline, which is worse than having none.
+  # On its own, because it is the only checker that compares two commits: it
+  # renders an earlier one before it can judge this one (see below).
   cssparity:
     name: CSS parity
     runs-on: ubuntu-latest
     needs: guards
     timeout-minutes: 30
     steps:
+      # Every commit, so the one that began this epoch can be found; no file
+      # contents until asked for, so finding it does not fetch every version
+      # of every model.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -231,34 +236,36 @@ jobs:
         working-directory: tests
         run: npm ci || npm install
 
-      # THE CSS BASELINE, carried between runs. It is git-ignored, so without
-      # this every run starts with nothing to compare and cssparitycheck can
-      # only report that it established one.
+      # THE BASELINE IS THE COMMIT THAT BEGAN THIS EPOCH, rendered here.
       #
-      # KEYED ON THE SOURCES THAT DECIDE THE CSS, not on the run alone. The key
-      # was css-baseline-<run_id> restoring from a bare `css-baseline-` prefix,
-      # so every run compared against the newest earlier baseline whatever the
-      # stylesheet now said - and an INTENDED visual change therefore failed
-      # the job on that run and on every run after it, with no way to re-save
-      # from inside CI. `cssparitycheck --save` fixes it on a laptop and cannot
-      # reach the cache. One intended change left this red forever, which is
-      # the always-red tick this file already learned about twice.
+      # BASELINE_EPOCH (tests/cssparitycheck.js) is bumped in the commit that
+      # changes the look on purpose. So within an epoch the computed CSS must
+      # not move at all, and this renders the epoch's first commit with the
+      # same Chrome on the same machine and compares the commit under test
+      # against it. A commit that bumps the epoch compares against itself.
       #
-      # With the sources hashed, an intended change misses the cache and seeds
-      # a fresh baseline - a FIRST RUN, which the checker passes and says so -
-      # while a run that changed none of them restores and genuinely diffs. The
-      # question becomes "did the computed CSS move WITHOUT a source change",
-      # which is the one worth failing a build over: a Chrome upgrade, a
-      # dependency, or a shared-code edit with visual reach nobody expected.
-      - name: Restore the CSS baseline
-        uses: actions/cache@v4
-        with:
-          path: tests/.css-baseline.json
-          key: >-
-            css-baseline-${{ hashFiles('index.html', 'local/index.html',
-            'shared/*.js') }}-${{ github.run_id }}
-          restore-keys: |
-            css-baseline-${{ hashFiles('index.html', 'local/index.html', 'shared/*.js') }}-
+      # It used to be a cache keyed on a hash of index.html, local/index.html
+      # and shared/*.js. That fixed a worse fault - an intended change failing
+      # this job forever - but it meant any commit that touched those files
+      # missed the cache and compared NOTHING. Those are exactly the commits
+      # that can break the cascade, so the check never ran when it mattered. A
+      # commit that deleted ~170 lines of CSS on the claim that nothing moved
+      # was "verified" by this job without one comparison being made.
+      - name: Render the commit that began this epoch
+        env:
+          AC_CHROME: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          EPOCH_LINE="$(grep -m1 '^const BASELINE_EPOCH' tests/cssparitycheck.js)"
+          BASE="$(git log -n 1 --format=%H -S"$EPOCH_LINE" -- tests/cssparitycheck.js)"
+          echo "This epoch began at ${BASE:-?}"
+          if [ -z "$BASE" ] || [ "$BASE" = "$(git rev-parse HEAD)" ]; then
+            echo "This commit declares the epoch: nothing earlier to compare against."
+            exit 0
+          fi
+          git worktree add --detach ../css-base "$BASE"
+          ln -s "$GITHUB_WORKSPACE/tests/node_modules" ../css-base/tests/node_modules
+          (cd ../css-base && node tests/cssparitycheck.js --save)
+          cp ../css-base/tests/.css-baseline.json tests/.css-baseline.json
 
       - name: Run
         env:
