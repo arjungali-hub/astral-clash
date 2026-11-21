@@ -193,8 +193,8 @@ Jump and Death, which is all every fighter had before.
   -> `still` (reduced motion; one draw per change) -> `poster` (no WebGL, a
   baked image). `?stage=live|still|poster` overrides the guess.
 - **Every checker but `stagecheck` runs the poster tier** - `harness.gameUrl`
-  asks for it - so 54 checkers that boot through the menu on a software
-  rasteriser do not pay for a turntable.
+  asks for it - so every other checker, each booting through the menu on a
+  software rasteriser, does not pay for a turntable.
 - **After changing the set or the camera, re-bake the posters:**
   `node art/render_stage_poster.js`. They are Home's poster-tier picture, taken
   by the stage of itself at the three frame shapes the CSS picks between.

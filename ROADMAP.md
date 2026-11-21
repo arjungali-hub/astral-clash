@@ -575,7 +575,8 @@ fight: a design layer both builds share, live 3D behind the menus (Home, the
 room and the local select screen, the results), the roster as splash-art tiles,
 arenas shown from where a player stands, motion on nearly everything, and
 designed layouts for phones both ways up. Checked by `stagecheck`,
-`motioncheck` and `phonelayoutcheck`, which did not exist before it.
+`motioncheck`, `phonelayoutcheck` and `langfitcheck` (French and Spanish fit on
+every screen), none of which existed before it.
 
 **The menus have their own clips** now, the part that waited for Blender: every
 fighter carries Victory (the results screen's winner, looping), Defeat (the
