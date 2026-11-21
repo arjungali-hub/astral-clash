@@ -104,6 +104,13 @@ string simply stays English. `tests/langcheck.js` exists for exactly this — it
 collects every prose key from the live DOM and fails on any table entry that
 matches nothing. Run it after touching any user-visible string.
 
+`tests/langfitcheck.js` is the other half: that the translations FIT. Every
+screen in French and Spanish - online at a desktop and at a phone both ways
+up, local at a desktop - must open, be the screen measured, and have no label
+clipped by its own button and nothing wider than the screen. French and
+Spanish run 20-40% longer than English, so a label that fits in English is no
+evidence at all.
+
     python art/strings.py                 how many strings exist, by where they live
     python art/strings.py --out FILE      a catalogue for a translator
 
