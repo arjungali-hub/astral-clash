@@ -102,11 +102,19 @@ const BASELINE_EPOCH = '2026-11-19: redesign 8/9 - settings, rebind, tutorial, a
 // since an intended insertion is going to bump the epoch anyway.
 
 // Enough to catch a cascade change; not so much that noise drowns it.
-// The flex properties beside the box ones: an element that MOVES without
-// resizing - a panel centred in one build and top-aligned in the other - is
+// The flex properties beside the box ones, because where a flex item sits is
 // decided by its container's flex-direction, flex-wrap, align-content and
-// align-items, and by its own align-self, none of which were here.
-const PROPS = ['display', 'position', 'width', 'height', 'margin', 'padding',
+// align-items, and by its own align-self.
+//
+// NOT `margin`. Its effect is measured directly instead - `at` and `box`, below
+// - because what getComputedStyle REPORTS for an auto margin is not reliable.
+// Found the first time CI compared two commits (476bbe5 against 48e5125): the
+// local build's arena panel had the same position, the same size and the same
+// flex properties in both renders, with every rule reaching its margin
+// identical in both, and its `margin-top: auto` still read "0px" in one and
+// "210.797px" in the other. A margin that moves something shows as that
+// something's `at`; one that moves nothing is not a difference anyone sees.
+const PROPS = ['display', 'position', 'width', 'height', 'padding',
     'color', 'background-color', 'border', 'border-radius', 'font-size',
     'font-weight', 'text-align', 'flex', 'overflow', 'max-height', 'z-index',
     'opacity', 'top', 'left', 'right', 'bottom',
@@ -179,9 +187,8 @@ async function capture(page, build) {
                     if (!key || out[key]) continue;
                     const cs = getComputedStyle(el);
                     const r = el.getBoundingClientRect();
-                    // Where it IS, not only how big: `box` alone let a panel
-                    // move 211px down its screen with nothing to show for it
-                    // but the auto margin that moved it.
+                    // Where it IS, not only how big. This is what stands in for
+                    // `margin` (see PROPS): the place a margin puts things.
                     const rec = { box: [Math.round(r.width), Math.round(r.height)],
                                   at: [Math.round(r.left), Math.round(r.top)] };
                     for (const p of props) rec[p] = cs.getPropertyValue(p);
