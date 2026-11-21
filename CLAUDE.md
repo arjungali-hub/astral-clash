@@ -172,7 +172,11 @@ a breakpoint.
 | --- | --- | --- | --- |
 | `home` | Home | the front-screen fighter | `menuStageSetFighter()` |
 | `duel` | the room / local select | whoever each side is looking at or has chosen; left is always you | `menuStageSyncDuel()`, last in `refreshMenuUI()` |
-| `results` | game over | winner in front (jumps), loser behind (falls) | `menuStageShowResult()`, from `endMatch()` / `endCoopMatch()` |
+| `results` | game over | winner in front (Victory, looping), loser behind (Defeat) | `menuStageShowResult()`, from `endMatch()` / `endCoopMatch()` |
+
+A lock-in, or a tap on a fighter, plays Ready. Victory, Defeat and Ready are
+the menus' own clips (see Generated art); a model without them falls back to
+Jump and Death, which is all every fighter had before.
 
 - **It hands the canvas back synchronously.** On a menu the canvas fills the
   roomy frame; a match is capped at 1170x650 because the field of view is fixed
@@ -222,6 +226,18 @@ All of it is rendered by the game itself, through `tests/harness.js`:
 The renderer has no alpha channel, so anything meant to sit on a coloured
 ground renders into an RGBA render target (`render_splash.js`), never the canvas.
 
+The menus' clips are written into the models themselves:
+
+    python art/menu_clips.py           Victory, Defeat, Ready into every assets/chars/*.glb
+
+It appends them and touches nothing else in the file, and a re-run replaces
+what the last run added. **Re-run it after any model is rebuilt or edited**
+(`art/pipeline.py`, `art/fix_hip_lobes.py`), or that model loses its menu clips
+and charcheck says so. The poses are in pipeline.py's notation; design a change
+by writing a preview (`--preview kaelen OUT.glb`) and looking at it in Blender.
+The feet are planted by skinning the mesh, never by hand - one hip height cannot
+fit fourteen bodies.
+
 ## Checking that nothing has slipped a key
 
     python art/coverage.py            every line, by what keeps it in step
@@ -266,6 +282,12 @@ this machine unusable. `node tests/run.js smoke localcombatcheck` runs a subset.
 re-save it: `node tests/cssparitycheck.js --save`. It samples mid-transition
 colors occasionally, so confirm a failure reproduces before chasing it.
 
+**In CI it compares against the commit that began the current epoch** - it
+renders that commit first, in the same job. So an intended change to how
+anything looks must bump `BASELINE_EPOCH` in the same commit, and every
+commit after it until the next bump must leave the computed CSS exactly
+where it was. That is what makes "deleted, and nothing moved" checkable.
+
 ## CI
 
 `.github/workflows/ci.yml`, three jobs: `guards` (no browser, seconds), `fast`
@@ -278,8 +300,10 @@ checkers need is git-ignored, so it does not exist on a fresh checkout*:
 - `tests/.css-baseline.json`. `cssparitycheck` compared against it and called
   `check(false)` when it was absent, so the slow job failed on every run by
   design. A missing baseline is a FIRST RUN, not a regression: it now seeds one,
-  says plainly that it compared nothing, and passes. CI caches the file on a
-  rolling key so the next run genuinely diffs against the last.
+  says plainly that it compared nothing, and passes. CI used to carry the file
+  in a cache keyed on the source files' hash - which missed, and so compared
+  nothing, on every commit that touched CSS. It renders the epoch's first
+  commit instead (see Tests).
 - `tests/screenshots/`. `page.screenshot({path})` into a missing directory
   throws ENOENT. The harness creates it on launch.
 

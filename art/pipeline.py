@@ -966,6 +966,10 @@ def set_rest_pose_arms_down(mesh, rig, front_is_neg_y=True):
 def bake_clips(rig, scale_hint=1.0):
     """Author the six locomotion clips as Blender actions.
 
+    The menus' three - Victory, Defeat, Ready - are NOT baked here: a model
+    exported by this script has none until `python art/menu_clips.py` writes
+    them in, in the same pose notation as _mk_poses below.
+
     Hip translation is scaled by the character's own height so a titan's bob is
     proportional rather than a fixed distance that would be invisible on it and
     violent on a minion."""

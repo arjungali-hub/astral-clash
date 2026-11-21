@@ -10592,7 +10592,9 @@ function buildRiggedCharacter(name) {
         const actions = {};
         for (const clip of m.animations) {
             const a = mixer.clipAction(clip);
-            const oneShot = /^(Hit|Death|Jump)$/.test(clip.name);
+            // Defeat and Ready are the menus' (art/menu_clips.py), and play
+            // once like these; Victory loops, like Idle.
+            const oneShot = /^(Hit|Death|Jump|Defeat|Ready)$/.test(clip.name);
             a.loop = oneShot ? THREE.LoopOnce : THREE.LoopRepeat;
             a.clampWhenFinished = oneShot;
             actions[clip.name] = a;

@@ -577,10 +577,13 @@ arenas shown from where a player stands, motion on nearly everything, and
 designed layouts for phones both ways up. Checked by `stagecheck`,
 `motioncheck` and `phonelayoutcheck`, which did not exist before it.
 
-**One part of it is waiting, by decision:** new character clips - a victory
-pose, a select-screen flourish, a defeated slump - need Blender open on the
-machine with its plugin running. Until then the stage uses the six clips every
-fighter has: a winner celebrates with Jump, a loser falls with Death.
+**The menus have their own clips** now, the part that waited for Blender: every
+fighter carries Victory (the results screen's winner, looping), Defeat (the
+loser - the knees go, not the life) and Ready (a lock-in: a strike, then a
+guard). Designed in Blender against previews of the real models, written into
+the models by `art/menu_clips.py`, with the feet planted by skinning the mesh
+so all fourteen bodies stand on the floor. The fight still has the six clips it
+always had.
 
 **Nothing else is open.** Every item on this list is done or declined, and the three
 declines are decisions with reasons rather than things that ran out of time:

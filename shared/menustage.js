@@ -140,8 +140,10 @@ function menuStageNewActor(i) {
         arrive: 0,              // 1 as a fighter lands on the dais, easing to 0
         reacting: 0,            // seconds left of a one-shot clip
         locked: false,          // duel: this side has confirmed
-        down: false,            // lying where the Death clip left them
-        onArrive: null,         // 'jump' | 'fall', played once they stand here
+        down: false,            // results: where Defeat (or Death) left them
+        planted: false,         // ...by a clip that keeps itself on the floor
+        celebrating: false,     // results: Victory, looping
+        onArrive: null,         // 'win' | 'lose', played once they stand here
         depth: 0,               // results: how far back they stand
     };
 }
@@ -343,41 +345,78 @@ function menuStageShowResult(r) {
     if (r.draw) {
         st.result = { names: r.draw.slice(0, 2), react: [null, null], depth: [0, 0] };
     } else if (r.team) {
-        const how = r.won ? 'jump' : 'fall';
+        const how = r.won ? 'win' : 'lose';
         st.result = { names: r.team.slice(0, 2), react: [how, how], depth: [0, 0] };
     } else {
-        st.result = { names: [r.winner, r.loser], react: ['jump', 'fall'], depth: [0, -70] };
+        st.result = { names: [r.winner, r.loser], react: ['win', 'lose'], depth: [0, -70] };
     }
     if (st.wants === 'results') menuStageApplyWants(st);
 }
 
 function menuStagePlayReaction(i, how) {
-    if (how === 'jump') return menuStageReact(i);
-    if (how === 'fall') return menuStageFall(i);
+    if (how === 'win') return menuStageCelebrate(i);
+    if (how === 'lose') return menuStageFall(i);
     return false;
 }
 
-// The Death clip, once, and then STAY down: clampWhenFinished holds the last
-// frame. In a tier with no clock the clip cannot play, so the pose is jumped
-// to its end instead - a still frame of a fallen fighter, not a standing one.
+// THE WINNER CELEBRATES, for as long as the results are up: Victory, on a
+// loop, as a winner does in every game that has one (art/menu_clips.py). A
+// model without the clip jumps once, as every one did before it had one. In a
+// tier with no clock the loop cannot run, so its first frame is the still -
+// the fist thrown up.
+function menuStageCelebrate(i) {
+    const st = menuStage;
+    const a = st && st.actors[i || 0];
+    if (!a || !a.fighter) return false;
+    const rig = a.fighter.userData.rig;
+    if (!rig || !rig.actions || !rig.actions.Victory) return menuStageReact(i);
+    const win = rig.actions.Victory;
+    a.celebrating = true;
+    a.reacting = 0;
+    if (!MENU_STAGE_EVERY[st.tier]) {
+        rig.mixer.stopAllAction();
+        win.reset().play();
+        rig.mixer.update(0);
+    } else {
+        win.reset();
+        win.setLoop(THREE.LoopRepeat, Infinity);
+        win.play();
+        if (rig.actions[rig.current] && rig.current !== 'Victory') win.crossFadeFrom(rig.actions[rig.current], 0.2, false);
+        a.arrive = Math.max(a.arrive, 0.45);       // the rim flares with it
+    }
+    rig.current = 'Victory';
+    st.dirty = true;
+    return true;
+}
+
+// THE LOSER GOES DOWN, once, and STAYS down: clampWhenFinished holds the last
+// frame. Defeat where the model has it - the knees go and the head drops, the
+// beaten rather than the dead - and Death where it does not. In a tier with no
+// clock the clip cannot play, so the pose is jumped to its end instead - a
+// still frame of a fallen fighter, not a standing one.
 function menuStageFall(i) {
     const st = menuStage;
     const a = st && st.actors[i || 0];
     if (!a || !a.fighter) return false;
     const rig = a.fighter.userData.rig;
-    if (!rig || !rig.actions || !rig.actions.Death) return false;
-    const death = rig.actions.Death;
-    death.reset();
-    death.setLoop(THREE.LoopOnce, 1);
-    death.clampWhenFinished = true;
-    death.play();
-    if (rig.actions[rig.current] && rig.current !== 'Death') death.crossFadeFrom(rig.actions[rig.current], 0.15, false);
-    rig.current = 'Death';
+    const name = rig && rig.actions && (rig.actions.Defeat ? 'Defeat' : rig.actions.Death ? 'Death' : null);
+    if (!name) return false;
+    const fall = rig.actions[name];
+    fall.reset();
+    fall.setLoop(THREE.LoopOnce, 1);
+    fall.clampWhenFinished = true;
+    fall.play();
+    if (rig.actions[rig.current] && rig.current !== name) fall.crossFadeFrom(rig.actions[rig.current], 0.15, false);
+    rig.current = name;
     a.down = true;
+    a.celebrating = false;
+    // Defeat keeps its own body on the floor (menu_clips.py plants it every
+    // frame, measured from the skinned mesh); only Death needs grounding here.
+    a.planted = name === 'Defeat';
     a.reacting = 0;
     if (!MENU_STAGE_EVERY[st.tier]) {
         if (rig.actions.Idle) rig.actions.Idle.stop();
-        rig.mixer.update(death.getClip().duration + 0.05);
+        rig.mixer.update(fall.getClip().duration + 0.05);
     }
     st.dirty = true;
     return true;
@@ -389,11 +428,13 @@ function menuStageFall(i) {
 // fighter is down, the lowest of its bones is found each frame and the body
 // lowered until that bone rests just above the dais top. Bones, not the mesh:
 // a skinned mesh's bounding box is its bind pose and knows nothing of the fall.
+// A PLANTED clip (Defeat) is left alone: it is already on the floor, by its
+// mesh rather than its bones, which is the more exact of the two.
 const _groundV = new THREE.Vector3();
 function menuStageGround(a) {
     const g = a.fighter;
     if (!g) return;
-    if (!a.down) { g.position.y = 0; return; }
+    if (!a.down || a.planted) { g.position.y = 0; return; }
     g.position.y = 0;
     g.updateMatrixWorld(true);
     let low = Infinity;
@@ -409,10 +450,13 @@ function menuStageGround(a) {
     g.position.y = (_groundV.y + 3 - low) / scale;
 }
 
-// Up again, straight into Idle.
+// Up again, straight into Idle - from the floor, or from a celebration the
+// next screen has no reason to keep.
 function menuStageRise(st, a) {
-    if (!a.down) return;
+    if (!a.down && !a.celebrating) return;
     a.down = false;
+    a.planted = false;
+    a.celebrating = false;
     if (a.fighter) a.fighter.position.y = 0;
     const rig = a.fighter && a.fighter.userData.rig;
     if (!rig || !rig.actions || !rig.actions.Idle) return;
@@ -700,6 +744,8 @@ function menuStageDropFighter(st, a) {
     a.name = null;
     a.poser = null;
     a.reacting = 0;
+    a.celebrating = false;
+    a.planted = false;
     if (!g) return;
     if (g.parent) g.parent.remove(g);
     const rig = g.userData && g.userData.rig;
@@ -750,6 +796,8 @@ function menuStageSetActor(i, name) {
         a.fighter = g;
         a.name = name;
         a.down = false;
+        a.planted = false;
+        a.celebrating = false;
         // What animateWeapon() needs to hold this fighter's weapon at rest: it
         // takes a Fighter and reads four things off it. See menuStageDraw.
         a.poser = { name, mesh: g, atkState: 'idle', atkKind: null, atkStateTimer: 0 };
@@ -906,21 +954,24 @@ function menuStagePose(st) {
 }
 
 // One clip, once, and back to Idle: what a fighter does when tapped, and when
-// its side locks in. Only where there is a clock to play it on.
+// its side locks in - Ready, a strike and a guard held up by the chin, where
+// the model has it, and a jump where it does not. Only where there is a clock
+// to play it on, and never over a fighter who is down or celebrating.
 function menuStageReact(i) {
     const st = menuStage;
     const a = st && st.actors[i || 0];
-    if (!a || !a.fighter || !MENU_STAGE_EVERY[st.tier] || a.reacting > 0) return false;
+    if (!a || !a.fighter || !MENU_STAGE_EVERY[st.tier] || a.reacting > 0 || a.down || a.celebrating) return false;
     const rig = a.fighter.userData.rig;
-    if (!rig || !rig.actions || !rig.actions.Jump || !rig.actions.Idle) return false;
-    const jump = rig.actions.Jump;
-    jump.reset();
-    jump.setLoop(THREE.LoopOnce, 1);
-    jump.clampWhenFinished = true;
-    jump.play();
-    jump.crossFadeFrom(rig.actions.Idle, 0.12, false);
-    rig.current = 'Jump';
-    a.reacting = Math.max(0.3, jump.getClip().duration);
+    const name = rig && rig.actions && (rig.actions.Ready ? 'Ready' : rig.actions.Jump ? 'Jump' : null);
+    if (!name || !rig.actions.Idle) return false;
+    const clip = rig.actions[name];
+    clip.reset();
+    clip.setLoop(THREE.LoopOnce, 1);
+    clip.clampWhenFinished = true;
+    clip.play();
+    clip.crossFadeFrom(rig.actions[rig.current] || rig.actions.Idle, 0.12, false);
+    rig.current = name;
+    a.reacting = Math.max(0.3, clip.getClip().duration);
     a.arrive = Math.max(a.arrive, 0.45);       // the rim flares with it
     return true;
 }
@@ -930,6 +981,12 @@ function menuStageReact(i) {
 function menuStageSettle(st, a) {
     a.reacting = 0;
     a.arrive = 0;
+    // A celebration is not a one-shot to come back from. Stepping down to a
+    // tier with no clock re-poses it on its still: the fist thrown up.
+    if (a.celebrating) {
+        if (!MENU_STAGE_EVERY[st.tier]) menuStageCelebrate(a.i);
+        return;
+    }
     if (a.down) return;
     const rig = a.fighter && a.fighter.userData.rig;
     if (!rig || !rig.actions || !rig.actions.Idle || rig.current === 'Idle') return;
@@ -1058,6 +1115,8 @@ function menuStageStats() {
         wanted: st.actors.map(x => x.want),
         reacting: st.actors.some(x => x.reacting > 0),
         down: st.actors.map(x => x.down),
+        // The clip each one is playing - 'Victory', 'Defeat', 'Ready', 'Idle'.
+        clips: st.actors.map(x => (x.fighter && x.fighter.userData.rig && x.fighter.userData.rig.current) || null),
     };
 }
 

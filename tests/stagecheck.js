@@ -246,6 +246,10 @@ async function intoAFight(page) {
             && s.actors[0] === names[0] && s.actors[1] === names[1], JSON.stringify(s && s.actors));
         check('the loser is down and the winner is not', s && s.down[0] === false && s.down[1] === true,
             JSON.stringify(s && s.down));
+        // THE MENUS' OWN CLIPS (art/menu_clips.py), not a fight's borrowed:
+        // the winner celebrates on a loop, the loser's knees go.
+        check('the winner celebrates (Victory) and the loser is beaten (Defeat)',
+            s && s.clips && s.clips[0] === 'Victory' && s.clips[1] === 'Defeat', JSON.stringify(s && s.clips));
         // After a DRAW, not after the fall: the grounding happens as the
         // frame is drawn, and on a slow machine the stage draws on demand.
         // The first version measured straight away and caught the body in
@@ -253,18 +257,30 @@ async function intoAFight(page) {
         const d0 = (await stats(page)).drawn;
         await page.evaluate(() => { menuStage.dirty = true; });
         await H.waitInPage(page, 'menuStageStats().drawn > ' + d0, 30000);
+        // THE BODY, not the bones: every vertex skinned as the GPU skins it
+        // (SkinnedMesh.boneTransform), and the lowest of them. Defeat is
+        // planted on the floor by its mesh, so this is the measure that means
+        // "resting on the dais" - a knee joint sits a knee's thickness above it.
         const lowest = await page.evaluate(() => {
             const a = menuStage.actors[1];
             a.fighter.updateMatrixWorld(true);
             let low = Infinity;
             const v = new THREE.Vector3();
-            a.fighter.traverse(o => { if (o.isBone) { v.setFromMatrixPosition(o.matrixWorld); low = Math.min(low, v.y); } });
+            a.fighter.traverse(o => {
+                if (!o.isSkinnedMesh) return;
+                const n = o.geometry.attributes.position.count;
+                for (let k = 0; k < n; k++) {
+                    o.boneTransform(k, v);
+                    v.applyMatrix4(o.matrixWorld);
+                    if (v.y < low) low = v.y;
+                }
+            });
             const top = new THREE.Vector3().setFromMatrixPosition(a.holder.matrixWorld).y;
-            return { low: Math.round(low * 10) / 10, top: Math.round(top * 10) / 10 };
+            return { low: Math.round(low * 10) / 10, top: Math.round(top * 10) / 10, clip: menuStageStats().clips[1] };
         });
-        // Laid on the dais, not hung above it: the Death clip alone left a
-        // fallen fighter forty pixels in the air (menuStageGround).
-        check('and lies on their dais rather than above it', Math.abs(lowest.low - lowest.top - 3) < 1.5,
+        // Resting on the dais, neither hung above it - the Death clip alone left
+        // a fallen fighter forty pixels in the air - nor sunk into it.
+        check('and rests on their dais, neither above it nor through it', Math.abs(lowest.low - lowest.top) < 1.5,
             JSON.stringify(lowest));
 
         section('...and gets up again when the screen changes');
@@ -272,6 +288,8 @@ async function intoAFight(page) {
         await H.waitInPage(page, "menuStageStats().wants === 'home'", 30000);
         s = await stats(page);
         check('nobody is still down on Home', s && s.down.every(d => !d), JSON.stringify(s && s.down));
+        check('...or still celebrating', s && s.clips && s.clips.every(c => c !== 'Victory' && c !== 'Defeat'),
+            JSON.stringify(s && s.clips));
     }
 
     // ----------------------------------------------------------------- local

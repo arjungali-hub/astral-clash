@@ -68,7 +68,7 @@ const H = require('./harness');
                 rigged: !!g.userData.rigged,
                 armL: !!g.userData.armPos, armR: !!g.userData.armNeg,
                 head: !!g.userData.head, torso: !!g.userData.torso,
-                clips: m.animations.length,
+                clips: m.animations.map(c => c.name),
                 h: +size.y.toFixed(1), w: +size.x.toFixed(1), d: +size.z.toFixed(1),
                 expected: 50 * (D.RIG_HEIGHT_MULT[name] || 1),
                 ok: true,
@@ -84,8 +84,12 @@ const H = require('./harness');
     check('each exposes both arms, a head and a torso for the animators',
         built.every(r => r.armL && r.armR && r.head && r.torso),
         JSON.stringify(built.filter(r => !(r.armL && r.armR && r.head && r.torso)).map(r => r.name)));
-    check('each carries all six baked clips', built.every(r => r.clips >= 6),
-        JSON.stringify(built.map(r => [r.name, r.clips]).filter(x => x[1] < 6)));
+    // The six a fight plays, and the three the menus play (art/menu_clips.py) -
+    // by name, because a count of nine says nothing about which nine.
+    const CLIPS = ['Idle', 'Walk', 'Run', 'Jump', 'Hit', 'Death', 'Victory', 'Defeat', 'Ready'];
+    const lacking = built.map(r => [r.name, CLIPS.filter(c => !r.clips.includes(c))]).filter(x => x[1].length);
+    check('each carries all nine clips: the six a fight plays and the menus\' three',
+        lacking.length === 0, JSON.stringify(lacking));
 
     section('Nobody is lying down (the orientation bug):');
     // Compare height against the THINNEST and WIDEST horizontal extents rather
