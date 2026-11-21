@@ -116,6 +116,20 @@ process.on('unhandledRejection', (e) => {
     section('A host and a guest get into a match:');
     await host.evaluate(() => window.ACDebug.netFakeConnect('host'));
     await join.evaluate(() => window.ACDebug.netFakeConnect('joiner'));
+    // A LONG SILENCE LIMIT, for the relay's sake and not the game's. The match
+    // start below loads models, builds the arena and compiles every combat
+    // shader in all three browsers at once, on one CI box, software-rendered;
+    // each page's main thread then blocks for seconds, the relay cannot reach
+    // it, and the 15s real limit ran out. CI (a48cd0a, and cb4ca95 before it)
+    // reported "host state PAUSED, guest state PAUSED, netWatcherCount 0" in a
+    // watch job that took 14 minutes instead of 2: both players in the
+    // connection-lost grace, the watcher dropped. Three players on three
+    // machines do not share one CPU; what this checker tests is spectating,
+    // and the one silence it does test (the watcher's short fuse, below) sets
+    // its own.
+    const SILENCE = H.budget(60000);
+    await host.evaluate((ms) => window.ACDebug.netSetTimeout(ms), SILENCE);
+    await join.evaluate((ms) => window.ACDebug.netSetTimeout(ms), SILENCE);
     startRelay();
     // EACH CLIENT PICKS ITS OWN FIGHTER, which is not a style choice - the
     // game refuses a client picking for the other side, and netcheck asserts
@@ -184,7 +198,9 @@ process.on('unhandledRejection', (e) => {
     check('it is kept alive while it waits',
         await watch.evaluate(() => window.ACDebug.netIsWatching() && window.ACDebug.netActive()),
         'the watcher dropped: ' + await watch.evaluate(() => window.ACDebug.gameState));
-    await watch.evaluate(() => window.ACDebug.netSetTimeout(15000));
+    // Fuse tested; back to the same long limit as the players, for the same
+    // reason (see SILENCE above).
+    await watch.evaluate((ms) => window.ACDebug.netSetTimeout(ms), SILENCE);
 
     // chooseMap + startOnline, NOT beginMatch. Online, beginMatch() only
     // refreshes the room UI and returns - the host chooses an arena and presses
