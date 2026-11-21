@@ -264,6 +264,10 @@ jobs:
           fi
           git worktree add --detach ../css-base "$BASE"
           ln -s "$GITHUB_WORKSPACE/tests/node_modules" ../css-base/tests/node_modules
+          # Measured by THIS commit's checker, so both sides are read the same
+          # way: a property added to the checker is recorded for both, and only
+          # the game differs between the two renders.
+          cp tests/cssparitycheck.js tests/harness.js ../css-base/tests/
           (cd ../css-base && node tests/cssparitycheck.js --save)
           cp ../css-base/tests/.css-baseline.json tests/.css-baseline.json
 

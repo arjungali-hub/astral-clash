@@ -102,10 +102,16 @@ const BASELINE_EPOCH = '2026-11-19: redesign 8/9 - settings, rebind, tutorial, a
 // since an intended insertion is going to bump the epoch anyway.
 
 // Enough to catch a cascade change; not so much that noise drowns it.
+// The flex properties beside the box ones: an element that MOVES without
+// resizing - a panel centred in one build and top-aligned in the other - is
+// decided by its container's flex-direction, flex-wrap, align-content and
+// align-items, and by its own align-self, none of which were here.
 const PROPS = ['display', 'position', 'width', 'height', 'margin', 'padding',
     'color', 'background-color', 'border', 'border-radius', 'font-size',
     'font-weight', 'text-align', 'flex', 'overflow', 'max-height', 'z-index',
-    'opacity', 'top', 'left', 'right', 'bottom'];
+    'opacity', 'top', 'left', 'right', 'bottom',
+    'flex-direction', 'flex-wrap', 'align-content', 'align-items', 'align-self',
+    'justify-content'];
 
 const SCREENS = [
     ['select', null],
@@ -173,7 +179,11 @@ async function capture(page, build) {
                     if (!key || out[key]) continue;
                     const cs = getComputedStyle(el);
                     const r = el.getBoundingClientRect();
-                    const rec = { box: [Math.round(r.width), Math.round(r.height)] };
+                    // Where it IS, not only how big: `box` alone let a panel
+                    // move 211px down its screen with nothing to show for it
+                    // but the auto margin that moved it.
+                    const rec = { box: [Math.round(r.width), Math.round(r.height)],
+                                  at: [Math.round(r.left), Math.round(r.top)] };
                     for (const p of props) rec[p] = cs.getPropertyValue(p);
                     out[key] = rec;
                 }
