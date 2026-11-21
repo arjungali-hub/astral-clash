@@ -48,8 +48,8 @@ jobs:
     name: Build guards
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -119,8 +119,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: guards
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
       - uses: browser-actions/setup-chrome@v2
@@ -187,8 +187,8 @@ jobs:
           - shard: watch
             tests: spectatecheck
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
       - uses: browser-actions/setup-chrome@v2
@@ -221,11 +221,11 @@ jobs:
       # Every commit, so the one that began this epoch can be found; no file
       # contents until asked for, so finding it does not fetch every version
       # of every model.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           filter: blob:none
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
       - uses: browser-actions/setup-chrome@v2
@@ -278,7 +278,7 @@ jobs:
 
       - name: Keep the CSS baseline
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: css-baseline
           path: tests/.css-baseline.json
